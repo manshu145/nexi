@@ -8,6 +8,7 @@
     "build": "astro build",
     "preview": "astro preview",
     "deploy": "wrangler pages deploy ./dist --project-name=nexigrate-marketing --commit-dirty=true",
+    "deploy:local": "pnpm build && pnpm deploy",
     "astro": "astro",
     "typecheck": "astro check",
     "lint": "astro check",
