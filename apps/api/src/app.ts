@@ -3,6 +3,8 @@ import { cors } from 'hono/cors';
 import { HTTPException } from 'hono/http-exception';
 import { authMiddleware, makeVerifier } from './auth.js';
 import type { Env } from './env.js';
+import { getFirebaseFirestore } from './lib/firebaseAdmin.js';
+import { FirestoreLedgerStore } from './lib/firestoreLedger.js';
 import type { Logger } from './logger.js';
 import { makeCreditsRoutes, defaultEngineDeps, InMemoryLedgerStore, type LedgerStore } from './routes/credits.js';
 import { makeHealthRoutes } from './routes/health.js';
@@ -25,7 +27,11 @@ export interface AppDeps {
 
 export function buildApp(deps: AppDeps): Hono {
   const { env, logger } = deps;
-  const ledger = deps.ledger ?? new InMemoryLedgerStore();
+  const ledger =
+    deps.ledger ??
+    (env.PERSISTENCE === 'firestore'
+      ? new FirestoreLedgerStore(getFirebaseFirestore(env))
+      : new InMemoryLedgerStore());
   const verifier = makeVerifier(env);
 
   const app = new Hono();

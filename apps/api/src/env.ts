@@ -26,6 +26,23 @@ const schema = z.object({
    */
   GCP_PROJECT_ID: z.string().min(1).optional(),
 
+  /** GCP project number (numeric). Used in WIF principal strings; optional at runtime. */
+  GCP_PROJECT_NUMBER: z.string().optional(),
+
+  /** Region for regional resources, mostly informational on the api side. */
+  GCP_REGION: z.string().default('asia-south1'),
+
+  /** Service account email the api runs as. Informational; identity comes from the runtime. */
+  GCP_SERVICE_ACCOUNT: z.string().optional(),
+
+  /**
+   * Persistence backend.
+   *   'memory'    -- in-memory ledger, suitable for local dev/tests
+   *   'firestore' -- Firestore-backed ledger via firebase-admin
+   * Production refuses to start with 'memory'; loadEnv() throws below.
+   */
+  PERSISTENCE: z.enum(['memory', 'firestore']).default('memory'),
+
   /**
    * Auth mode. 'firebase' verifies real Firebase ID tokens; 'stub' accepts
    * any bearer token of the form `stub:<userId>:<role>` for local development
@@ -65,6 +82,14 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   }
   if (parsed.data.NODE_ENV === 'production' && parsed.data.AUTH_MODE === 'stub') {
     throw new Error("AUTH_MODE='stub' is not allowed in production. Set AUTH_MODE='firebase'.");
+  }
+  if (parsed.data.NODE_ENV === 'production' && parsed.data.PERSISTENCE === 'memory') {
+    throw new Error(
+      "PERSISTENCE='memory' is not allowed in production. Set PERSISTENCE='firestore'.",
+    );
+  }
+  if (parsed.data.PERSISTENCE === 'firestore' && !parsed.data.GCP_PROJECT_ID) {
+    throw new Error("PERSISTENCE='firestore' requires GCP_PROJECT_ID to be set.");
   }
   cached = Object.freeze(parsed.data);
   return cached;
