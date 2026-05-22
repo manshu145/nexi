@@ -1,24 +1,23 @@
-name: Deploy marketing site
+name: Deploy marketing site (manual fallback)
+
+# Cloudflare Workers Builds is the primary deploy path for the marketing
+# site \u2014 every push to the production branch triggers a build on
+# Cloudflare's side. This workflow is a manual fallback you can run from
+# the GitHub Actions UI when the Cloudflare-side build is unavailable
+# or you need to redeploy a specific commit.
+#
+# Required GitHub secrets (only used by this manual workflow):
+#   - CLOUDFLARE_API_TOKEN
+#   - CLOUDFLARE_ACCOUNT_ID
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'apps/marketing/**'
-      - 'packages/**'
-      - 'pnpm-lock.yaml'
-      - 'package.json'
-      - '.github/workflows/deploy-marketing.yml'
   workflow_dispatch:
     inputs:
-      environment:
-        description: 'Environment to deploy to'
+      branch:
+        description: 'Cloudflare Pages branch to deploy to (production = "main")'
         required: true
-        default: 'production'
-        type: choice
-        options:
-          - production
-          - preview
+        default: 'main'
+        type: string
 
 concurrency:
   group: deploy-marketing-${{ github.ref }}
@@ -31,12 +30,9 @@ env:
 
 jobs:
   deploy:
-    name: Build and deploy to Cloudflare Pages
+    name: Build and deploy to Cloudflare
     runs-on: ubuntu-latest
     timeout-minutes: 12
-    environment:
-      name: ${{ inputs.environment || 'production' }}
-      url: https://nexigrate.com
     permissions:
       contents: read
       deployments: write
@@ -60,8 +56,7 @@ jobs:
         run: pnpm install --frozen-lockfile=false
 
       - name: Build marketing site
-        working-directory: apps/marketing
-        run: pnpm build
+        run: pnpm build:marketing
         env:
           NODE_ENV: production
 
@@ -70,10 +65,9 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: apps/marketing
           command: >-
-            pages deploy ./dist
+            pages deploy apps/marketing/dist
             --project-name=${{ env.CLOUDFLARE_PROJECT }}
-            --branch=${{ github.ref == 'refs/heads/main' && 'main' || github.head_ref }}
+            --branch=${{ inputs.branch }}
             --commit-hash=${{ github.sha }}
-            --commit-message="${{ github.event.head_commit.message || github.event.pull_request.title || 'manual deploy' }}"
+            --commit-message="manual deploy: ${{ github.event.head_commit.message || github.sha }}"
