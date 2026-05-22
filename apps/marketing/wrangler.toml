@@ -1,8 +1,24 @@
-# Cloudflare Pages configuration for the Nexigrate marketing site.
-# This file is consumed by `wrangler pages deploy` and the Astro Cloudflare adapter.
+# Cloudflare configuration for the Nexigrate marketing site.
 #
-# Bindings configured here are available on the `runtime.env` object inside
-# Astro endpoints (e.g. src/pages/api/waitlist.ts).
+# This project is deployed via Cloudflare Workers Builds (Pages-style):
+# Astro's @astrojs/cloudflare adapter emits a `dist/` directory containing
+# prerendered HTML, static assets, and a `_worker.js/` SSR entry. Cloudflare
+# auto-detects this layout when `pages_build_output_dir` is set.
+#
+# IMPORTANT: bindings (KV namespaces, secrets, etc.) are configured via the
+# Cloudflare dashboard, NOT in this file. Dashboard bindings always override
+# wrangler.toml at runtime, and keeping bindings out of source control means
+# we don't have to commit namespace IDs.
+#
+# Required dashboard bindings for this project:
+#   - KV namespace `WAITLIST_KV`  ->  the `nexigrate-waitlist` namespace
+#
+# Required dashboard build settings (Workers Builds):
+#   - Root directory:           /
+#   - Build command:            pnpm install --frozen-lockfile=false && pnpm --filter @nexigrate/marketing build
+#   - Build output directory:   apps/marketing/dist
+#
+# See docs/CLOUDFLARE_BUILD_SETUP.md for the full setup walkthrough.
 
 name = "nexigrate-marketing"
 compatibility_date = "2025-01-15"
@@ -10,18 +26,7 @@ compatibility_flags = ["nodejs_compat"]
 
 pages_build_output_dir = "./dist"
 
-# KV namespace for the waitlist signup store.
-# Create this in the Cloudflare dashboard (Workers & Pages -> KV -> Create) and
-# replace the id below, OR set it via dashboard binding (Pages -> Settings ->
-# Functions -> KV namespace bindings) which overrides this file. The dashboard
-# binding is the recommended approach for production.
-#
-# Variable name expected by the code: WAITLIST_KV
-[[kv_namespaces]]
-binding = "WAITLIST_KV"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
-
-# Public, non-secret environment variables.
+# Public, non-secret environment variables baked into the worker.
 [vars]
 PUBLIC_SITE_URL = "https://nexigrate.com"
 PUBLIC_CONTACT_EMAIL = "hello@nexigrate.com"

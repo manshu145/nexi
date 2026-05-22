@@ -10,7 +10,9 @@
     "pnpm": ">=9.0.0"
   },
   "scripts": {
-    "build": "turbo run build",
+    "build": "pnpm --filter @nexigrate/marketing build",
+    "build:all": "turbo run build",
+    "build:marketing": "pnpm --filter @nexigrate/marketing build",
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
