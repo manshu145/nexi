@@ -1,0 +1,49 @@
+---
+const pillars = [
+  {
+    title: 'Verified three times',
+    body: 'Every chapter, every MCQ, every explanation cross-checked by three independent AI models from three different providers \u2014 then reviewed by a human subject-matter expert before it reaches you.',
+    accent: 'Trust',
+  },
+  {
+    title: 'Free forever, by design',
+    body: 'Earn credits for what serious students already do: take the daily MCQ, refer a friend, keep your streak. No ads. No paywall to read NCERT. Subscriptions are optional, never required.',
+    accent: 'Access',
+  },
+  {
+    title: 'A reading mode that stays out of your way',
+    body: 'Inspired by Kindle. Warm paper background, calm serif type, no popups, no algorithmic feed, no notifications during a focus session. Built so the page disappears and the idea remains.',
+    accent: 'Calm',
+  },
+  {
+    title: 'Grounded in real sources',
+    body: 'NCERT textbooks. UPSC and JEE/NEET previous-year papers. Official Government of India publications. Every fact you read on Nexigrate is one click away from its primary source.',
+    accent: 'Truth',
+  },
+] as const;
+---
+
+<section id="why" class="section border-y border-line bg-paper-50/60">
+  <div class="mx-auto max-w-6xl px-5 py-20 sm:py-24">
+    <div class="max-w-2xl">
+      <p class="pill mb-5">Why Nexigrate</p>
+      <h2 class="font-serif text-3xl font-semibold leading-tight text-ink-900 sm:text-4xl">
+        Built for students who are tired of being sold to.
+      </h2>
+      <p class="mt-4 text-lg leading-relaxed text-ink-800">
+        Indian EdTech became loud, expensive, and untrustworthy. We are building the
+        opposite \u2014 a small, calm, honest study tool you can stay on for years.
+      </p>
+    </div>
+
+    <div class="mt-14 grid gap-5 md:grid-cols-2">
+      {pillars.map((p) => (
+        <article class="paper-card p-7 transition hover:-translate-y-0.5 hover:shadow-lg">
+          <p class="text-xs font-semibold uppercase tracking-[0.18em] text-ember-600">{p.accent}</p>
+          <h3 class="mt-3 font-serif text-2xl font-semibold leading-snug text-ink-900">{p.title}</h3>
+          <p class="mt-3 leading-relaxed text-ink-800">{p.body}</p>
+        </article>
+      ))}
+    </div>
+  </div>
+</section>

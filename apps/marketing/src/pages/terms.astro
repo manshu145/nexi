@@ -1,0 +1,54 @@
+---
+import Layout from '~/layouts/Layout.astro';
+import Nav from '~/components/Nav.astro';
+import Footer from '~/components/Footer.astro';
+
+export const prerender = true;
+---
+
+<Layout title="Terms \u2014 Nexigrate" description="Terms of use for the Nexigrate pre-launch waitlist." pathname="/terms">
+  <Nav />
+  <main id="main" class="mx-auto max-w-3xl px-5 py-16 sm:py-20">
+    <p class="pill mb-5">Terms</p>
+    <h1 class="font-serif text-4xl font-semibold leading-tight text-ink-900 sm:text-5xl">
+      Terms of use (pre-launch)
+    </h1>
+    <p class="mt-3 text-sm text-muted-500">Effective date: this is a placeholder pre-launch draft.</p>
+
+    <div class="mt-10 space-y-6 leading-relaxed text-ink-800">
+      <p>
+        These terms apply to the Nexigrate marketing site and waitlist. A full
+        Terms of Service will replace this document when public sign-ups open.
+      </p>
+
+      <h2 class="font-serif text-2xl font-semibold text-ink-900">No service yet</h2>
+      <p>
+        Nexigrate is in pre-launch. No study product, payment service, or
+        verification service is being offered through this site. Joining the
+        waitlist is not a contract.
+      </p>
+
+      <h2 class="font-serif text-2xl font-semibold text-ink-900">Honest use</h2>
+      <p>
+        Please don't try to spam the waitlist, scrape the site, or impersonate
+        anyone. We rate-limit the form and review submissions before sending
+        any communication.
+      </p>
+
+      <h2 class="font-serif text-2xl font-semibold text-ink-900">Intellectual property</h2>
+      <p>
+        The Nexigrate name, logo, copy, and design system on this site are the
+        property of Nexigrate. The educational content distributed through the
+        full product is or will be derived from publicly available NCERT and
+        Government of India sources, used under fair-use educational
+        provisions, with original publishers credited.
+      </p>
+
+      <h2 class="font-serif text-2xl font-semibold text-ink-900">Contact</h2>
+      <p>
+        Questions: <a class="text-ember-600 underline" href="mailto:hello@nexigrate.com">hello@nexigrate.com</a>.
+      </p>
+    </div>
+  </main>
+  <Footer />
+</Layout>

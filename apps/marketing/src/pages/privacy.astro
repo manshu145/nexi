@@ -1,0 +1,63 @@
+---
+import Layout from '~/layouts/Layout.astro';
+import Nav from '~/components/Nav.astro';
+import Footer from '~/components/Footer.astro';
+
+export const prerender = true;
+---
+
+<Layout title="Privacy \u2014 Nexigrate" description="How Nexigrate handles your data." pathname="/privacy">
+  <Nav />
+  <main id="main" class="mx-auto max-w-3xl px-5 py-16 sm:py-20">
+    <p class="pill mb-5">Privacy</p>
+    <h1 class="font-serif text-4xl font-semibold leading-tight text-ink-900 sm:text-5xl">
+      Privacy policy
+    </h1>
+    <p class="mt-3 text-sm text-muted-500">Effective date: this is a placeholder pre-launch draft.</p>
+
+    <div class="mt-10 space-y-6 leading-relaxed text-ink-800">
+      <p>
+        Nexigrate is being built to comply with the Digital Personal Data
+        Protection Act, 2023 (India). This page summarises our approach during
+        the pre-launch phase. The full legal policy will replace this document
+        before public sign-ups open.
+      </p>
+
+      <h2 class="font-serif text-2xl font-semibold text-ink-900">What we collect during the waitlist</h2>
+      <ul class="list-disc space-y-2 pl-6">
+        <li>The email address you give us.</li>
+        <li>The exam you say you are preparing for.</li>
+        <li>Anonymous, aggregated visit metrics (no third-party trackers).</li>
+      </ul>
+
+      <h2 class="font-serif text-2xl font-semibold text-ink-900">What we do with it</h2>
+      <ul class="list-disc space-y-2 pl-6">
+        <li>Tell you when Nexigrate is ready for you to sign up.</li>
+        <li>Decide which exams to prioritise based on aggregate demand.</li>
+        <li>Nothing else. We do not sell, rent, or share your data.</li>
+      </ul>
+
+      <h2 class="font-serif text-2xl font-semibold text-ink-900">Where it lives</h2>
+      <p>
+        Waitlist data is stored in Cloudflare KV in our India region. Production
+        student data will be stored in Firestore in Mumbai (asia-south1) and
+        encrypted in transit and at rest.
+      </p>
+
+      <h2 class="font-serif text-2xl font-semibold text-ink-900">Minors</h2>
+      <p>
+        Students under 18 will require verifiable parental consent before any
+        personal data is processed at full launch. The waitlist itself is open
+        to anyone who can give a working email address.
+      </p>
+
+      <h2 class="font-serif text-2xl font-semibold text-ink-900">Removing your data</h2>
+      <p>
+        Email <a class="text-ember-600 underline" href="mailto:hello@nexigrate.com">hello@nexigrate.com</a>
+        and we will delete your record from the waitlist. There are no dark
+        patterns; we just unsubscribe you and move on.
+      </p>
+    </div>
+  </main>
+  <Footer />
+</Layout>

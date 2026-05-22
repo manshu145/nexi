@@ -1,0 +1,75 @@
+---
+import '~/styles/global.css';
+
+export interface Props {
+  title?: string;
+  description?: string;
+  pathname?: string;
+}
+
+const {
+  title = 'Nexigrate \u2014 Study smart. Verified facts. Zero distractions.',
+  description = 'The free, distraction-free study OS for Indian students. Class 11 to UPSC. AI-powered, expert-verified, NCERT-grounded.',
+  pathname = '/',
+} = Astro.props;
+
+const canonical = new URL(pathname, Astro.site ?? 'https://nexigrate.com').toString();
+const ogImage = new URL('/og-image.svg', Astro.site ?? 'https://nexigrate.com').toString();
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="generator" content={Astro.generator} />
+
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="theme-color" content="#F5ECD7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#2A241A" media="(prefers-color-scheme: dark)" />
+    <meta name="color-scheme" content="light" />
+
+    {/* Open Graph */}
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:site_name" content="Nexigrate" />
+    <meta property="og:locale" content="en_IN" />
+
+    {/* Twitter */}
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
+
+    {/* Structured data */}
+    <script is:inline type="application/ld+json" set:html={JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'Organization',
+      name: 'Nexigrate',
+      url: 'https://nexigrate.com',
+      logo: 'https://nexigrate.com/favicon.svg',
+      description,
+      foundingDate: '2026',
+      areaServed: 'IN',
+      contactPoint: {
+        '@type': 'ContactPoint',
+        contactType: 'customer support',
+        email: 'hello@nexigrate.com',
+        availableLanguage: ['en', 'hi'],
+      },
+    })} />
+  </head>
+  <body>
+    <a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded focus:bg-ink-900 focus:px-3 focus:py-2 focus:text-paper-100">
+      Skip to content
+    </a>
+    <slot />
+  </body>
+</html>

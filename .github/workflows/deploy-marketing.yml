@@ -1,0 +1,73 @@
+name: Deploy marketing site (manual fallback)
+
+# Cloudflare Workers Builds is the primary deploy path for the marketing
+# site \u2014 every push to the production branch triggers a build on
+# Cloudflare's side. This workflow is a manual fallback you can run from
+# the GitHub Actions UI when the Cloudflare-side build is unavailable
+# or you need to redeploy a specific commit.
+#
+# Required GitHub secrets (only used by this manual workflow):
+#   - CLOUDFLARE_API_TOKEN
+#   - CLOUDFLARE_ACCOUNT_ID
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Cloudflare Pages branch to deploy to (production = "main")'
+        required: true
+        default: 'main'
+        type: string
+
+concurrency:
+  group: deploy-marketing-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+  PNPM_VERSION: '9.15.0'
+  CLOUDFLARE_PROJECT: nexigrate-marketing
+
+jobs:
+  deploy:
+    name: Build and deploy to Cloudflare
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Build marketing site
+        run: pnpm build:marketing
+        env:
+          NODE_ENV: production
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: >-
+            pages deploy apps/marketing/dist
+            --project-name=${{ env.CLOUDFLARE_PROJECT }}
+            --branch=${{ inputs.branch }}
+            --commit-hash=${{ github.sha }}
+            --commit-message="manual deploy: ${{ github.event.head_commit.message || github.sha }}"

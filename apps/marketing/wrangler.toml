@@ -1,0 +1,35 @@
+# Cloudflare Pages configuration for the Nexigrate marketing site.
+#
+# Astro's @astrojs/cloudflare adapter emits a `dist/` directory containing
+# prerendered HTML, static assets, and a `_worker.js/` SSR entry. Cloudflare
+# Pages auto-detects this layout via `pages_build_output_dir`.
+#
+# IMPORTANT: bindings (KV namespaces, secrets, etc.) are configured via the
+# Cloudflare Pages dashboard, NOT in this file. Dashboard bindings always
+# override wrangler.toml at runtime, and keeping bindings out of source
+# control means we don't have to commit namespace IDs.
+#
+# Required dashboard bindings for this project:
+#   - KV namespace `WAITLIST_KV`  ->  the `nexigrate-waitlist` namespace
+#
+# Required dashboard build settings (Pages):
+#   - Framework preset:         Astro
+#   - Build command:            pnpm install --frozen-lockfile=false && pnpm --filter @nexigrate/marketing build
+#   - Build output directory:   apps/marketing/dist
+#   - Root directory:           (leave empty)
+#
+# Cloudflare Pages handles deploy automatically after a successful build
+# when connected via Git -- no manual deploy command is required.
+#
+# See docs/CLOUDFLARE_BUILD_SETUP.md for the full setup walkthrough.
+
+name = "nexigrate-marketing"
+compatibility_date = "2025-01-15"
+compatibility_flags = ["nodejs_compat"]
+
+pages_build_output_dir = "./dist"
+
+# Public, non-secret environment variables baked into the deployment.
+[vars]
+PUBLIC_SITE_URL = "https://nexigrate.com"
+PUBLIC_CONTACT_EMAIL = "hello@nexigrate.com"

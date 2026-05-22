@@ -1,0 +1,30 @@
+{
+  "name": "nexigrate",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Nexigrate \u2014 the verified, distraction-free study OS for Indian students.",
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "scripts": {
+    "build": "pnpm --filter @nexigrate/marketing build",
+    "build:all": "turbo run build",
+    "build:marketing": "pnpm --filter @nexigrate/marketing build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,astro,css}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,astro,css}\"",
+    "clean": "turbo run clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "prettier": "^3.4.2",
+    "prettier-plugin-astro": "^0.14.1",
+    "prettier-plugin-tailwindcss": "^0.6.11",
+    "turbo": "^2.4.0",
+    "typescript": "^5.7.3"
+  }
+}

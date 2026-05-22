@@ -1,0 +1,20 @@
+---
+import WaitlistForm from './WaitlistForm.astro';
+---
+
+<section class="border-t border-line bg-paper-50/70">
+  <div class="mx-auto max-w-3xl px-5 py-20 text-center sm:py-24">
+    <p class="pill mb-5">Pre-launch</p>
+    <h2 class="font-serif text-3xl font-semibold leading-tight text-ink-900 sm:text-5xl">
+      Reserve your spot.
+    </h2>
+    <p class="mx-auto mt-4 max-w-xl text-lg leading-relaxed text-ink-800">
+      We are letting in the first verified students by hand, batch by batch, so
+      we can listen and fix things before scaling. Get in early.
+    </p>
+
+    <div class="mx-auto mt-2 max-w-xl text-left">
+      <WaitlistForm variant="bottom" id="waitlist-form-bottom" />
+    </div>
+  </div>
+</section>
