@@ -1,24 +1,44 @@
 # @nexigrate/credits
 
-The credit economy logic, isolated and testable.
+Pure, framework-agnostic credit-economy engine. No Firestore, no HTTP, no React. Just pure functions that:
 
-- Pure functions: `awardCredits(event)`, `chargeCredits(action)`, `expireCredits(date)`
-- Deterministic and idempotent (safe to retry)
-- Single source of truth for the earn/spend table
-- **Status**: scaffolded in Phase 2
+- award credits to a user
+- spend credits (FIFO across non-expired buckets)
+- compute the current balance (with "expiring soon" hint)
+- enforce idempotency and the single-transaction cap
 
-Earn table (initial):
-- `signup_verified` \u2192 +200 (expires 14 days)
-- `daily_login` \u2192 +10
-- `mcq_pass` \u2192 +50
-- `mcq_fail_attempted` \u2192 +5
-- `streak_7d` \u2192 +150
-- `referral_signup` \u2192 +100
-- `referral_retained_7d` \u2192 +200
+The persistence layer (Firestore in `apps/api`) loads the ledger, calls these functions, and writes the resulting events transactionally.
 
-Spend table (initial):
-- `read_chapter` \u2192 -5
-- `focus_session_1h` \u2192 -10
-- `mock_test` \u2192 -20
-- `ai_tutor_question` \u2192 -5
-- `concept_video` \u2192 -5
+## API at a glance
+
+```ts
+import { award, spend, computeBalance } from '@nexigrate/credits';
+import { asUserId, asISODateTime } from '@nexigrate/shared';
+
+const deps = {
+  newId: () => crypto.randomUUID() as CreditEventId,
+  now: () => asISODateTime(new Date().toISOString()),
+};
+
+const result = award(
+  {
+    userId: asUserId('user_abc'),
+    source: 'signup_verified',
+    idempotencyKey: 'signup:user_abc',
+  },
+  /* existing ledger from Firestore: */ [],
+  deps,
+);
+
+if (result.kind === 'awarded') {
+  // persist result.event in Firestore, update cached balance
+}
+```
+
+## Tests
+
+```bash
+pnpm --filter @nexigrate/credits test
+```
+
+Coverage threshold: 90% statements / 85% branches. The `vitest.config.ts` enforces this and CI fails below.
