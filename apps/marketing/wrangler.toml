@@ -1,22 +1,25 @@
-# Cloudflare configuration for the Nexigrate marketing site.
+# Cloudflare Pages configuration for the Nexigrate marketing site.
 #
-# This project is deployed via Cloudflare Workers Builds (Pages-style):
 # Astro's @astrojs/cloudflare adapter emits a `dist/` directory containing
 # prerendered HTML, static assets, and a `_worker.js/` SSR entry. Cloudflare
-# auto-detects this layout when `pages_build_output_dir` is set.
+# Pages auto-detects this layout via `pages_build_output_dir`.
 #
 # IMPORTANT: bindings (KV namespaces, secrets, etc.) are configured via the
-# Cloudflare dashboard, NOT in this file. Dashboard bindings always override
-# wrangler.toml at runtime, and keeping bindings out of source control means
-# we don't have to commit namespace IDs.
+# Cloudflare Pages dashboard, NOT in this file. Dashboard bindings always
+# override wrangler.toml at runtime, and keeping bindings out of source
+# control means we don't have to commit namespace IDs.
 #
 # Required dashboard bindings for this project:
 #   - KV namespace `WAITLIST_KV`  ->  the `nexigrate-waitlist` namespace
 #
-# Required dashboard build settings (Workers Builds):
-#   - Root directory:           /
+# Required dashboard build settings (Pages):
+#   - Framework preset:         Astro
 #   - Build command:            pnpm install --frozen-lockfile=false && pnpm --filter @nexigrate/marketing build
 #   - Build output directory:   apps/marketing/dist
+#   - Root directory:           (leave empty)
+#
+# Cloudflare Pages handles deploy automatically after a successful build
+# when connected via Git -- no manual deploy command is required.
 #
 # See docs/CLOUDFLARE_BUILD_SETUP.md for the full setup walkthrough.
 
@@ -26,7 +29,7 @@ compatibility_flags = ["nodejs_compat"]
 
 pages_build_output_dir = "./dist"
 
-# Public, non-secret environment variables baked into the worker.
+# Public, non-secret environment variables baked into the deployment.
 [vars]
 PUBLIC_SITE_URL = "https://nexigrate.com"
 PUBLIC_CONTACT_EMAIL = "hello@nexigrate.com"
