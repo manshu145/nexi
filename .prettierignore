@@ -1,0 +1,12 @@
+node_modules
+dist
+build
+.next
+.astro
+.turbo
+.vercel
+.wrangler
+out
+coverage
+*.lock
+*.log
