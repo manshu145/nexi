@@ -42,12 +42,12 @@ jobs:
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          service_account: nexigrate-api@nexigrate-prod.iam.gserviceaccount.com
 
       - name: Deploy Firestore + Storage rules and indexes
         working-directory: infra/firebase
         run: |
           firebase deploy \
             --only firestore:rules,firestore:indexes,storage:rules \
-            --project ${{ secrets.GCP_PROJECT_ID }} \
+            --project nexigrate-prod \
             --non-interactive
