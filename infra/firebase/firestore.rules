@@ -1,0 +1,75 @@
+rules_version = '2';
+
+// Firestore security rules.
+//
+// Default posture: deny everything. The api service uses the firebase-admin
+// SDK which bypasses these rules; clients (web, mobile) must go through the
+// api for any non-trivial read or write. We allow narrow direct-from-client
+// reads only where it is safer/cheaper than a round trip:
+//
+//   - users/{uid}: a user can read their own profile document
+//   - credits/{uid}: a user can read their own balance snapshot
+//   - syllabus/**: public read for the published curriculum
+//
+// Phase 2.2 will expand these as more features come online; every change
+// should land with a unit test in infra/firebase/__tests__/.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.admin == true;
+    }
+
+    // Public, read-only curriculum.
+    match /syllabus/{exam}/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Per-user profile -- owner read, admin write.
+    match /users/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow write: if isAdmin();
+
+      // Anything nested under the user doc inherits the same scope.
+      match /{document=**} {
+        allow read: if isOwner(uid) || isAdmin();
+        allow write: if isAdmin();
+      }
+    }
+
+    // Per-user balance snapshot, kept in sync by the api.
+    match /credits/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow write: if false; // mutated only by the api via Admin SDK
+    }
+
+    // Append-only credit ledger -- read scoped to the user, never writable
+    // from the client (only the api service writes via Admin SDK).
+    match /credit_events/{eventId} {
+      allow read: if isAdmin() || (
+        isSignedIn() && resource.data.userId == request.auth.uid
+      );
+      allow write: if false;
+    }
+
+    // Audit log -- admin only.
+    match /audit_log/{entryId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // Default deny.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

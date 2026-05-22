@@ -10,7 +10,7 @@ This document is the living plan for Phase 2. It groups the work into commits/PR
 - 🟢 in flight (open PR)
 - ⬜ not started
 
-## Phase 2.1 — Foundation (this PR)
+## Phase 2.1 — Foundation (PR #2 + follow-up commits)
 
 The bedrock everything else builds on. Pure logic and a working API skeleton, no GCP credentials required.
 
@@ -20,10 +20,13 @@ The bedrock everything else builds on. Pure logic and a working API skeleton, no
 - ✅ `apps/api` skeleton — Hono on Node 22, stub auth for local dev, in-memory ledger, real `/v1/credits/*` routes
 - ✅ Dockerfile for Cloud Run deployment
 - ✅ Turbo `test` task wired up
-- ✅ `docs/PHASE_2_SETUP.md` — GCP + Firebase + service account walkthrough
+- ✅ `infra/firebase/` — `.firebaserc`, `firebase.json` (emulator config), `firestore.rules`, `firestore.indexes.json`, `storage.rules`, `web-config.ts` populated with the production project values
+- ✅ `infra/terraform/` — skeleton: providers, variables, required-API enablement; pinned to `nexigrate-prod` / `505978726927` / `asia-south1`
+- ✅ `apps/api/.env.example` — populated with the production project ids and Razorpay test KEY_ID
+- ✅ `docs/PHASE_2_SETUP.md` — what's already provisioned + what GitHub secrets are still pending
 - ✅ `docs/PHASE_2_PLAN.md` — this file
 
-After this PR merges, you can `pnpm install && PORT=9090 pnpm --filter @nexigrate/api dev` and exercise the engine end-to-end with stub bearer tokens. No external service is required.
+After PR #2 merges, you can `pnpm install && PORT=9090 pnpm --filter @nexigrate/api dev` and exercise the engine end-to-end with stub bearer tokens. No external service is required.
 
 ## Phase 2.2 — Real Firestore + Real Firebase Auth
 
@@ -33,11 +36,10 @@ Swap the in-memory ledger and stub auth for production implementations. The HTTP
 - ⬜ `apps/api/src/lib/firestore.ts` — typed Firestore wrappers + transaction helpers
 - ⬜ `apps/api/src/routes/credits.ts` — replace `InMemoryLedgerStore` with `FirestoreLedgerStore` (same interface)
 - ⬜ `apps/api/src/auth.ts` — wire `FirebaseTokenVerifier` to `firebase-admin` `auth().verifyIdToken()`
-- ⬜ Firestore security rules in `infra/firebase/firestore.rules`
-- ⬜ Firestore composite indexes in `infra/firebase/firestore.indexes.json`
-- ⬜ Firebase emulator config in `infra/firebase/firebase.json` for local dev
-- ⬜ `infra/terraform/` — minimal Terraform: project, billing budget alert (₹500), required APIs enabled, Artifact Registry repo, Cloud Run service, IAM, Cloud Scheduler entry for the nightly credit-expiry sweeper
+- ⬜ Firestore unit tests against the emulator (`@firebase/rules-unit-testing`)
+- ⬜ `infra/terraform/` — add Cloud Run, Artifact Registry, Workload Identity Federation, billing budget, Cloud Scheduler nightly sweeper
 - ⬜ GitHub Actions: `deploy-api.yml` builds the container, pushes to Artifact Registry, deploys to Cloud Run via OIDC
+- ⬜ GitHub Actions: `deploy-firebase.yml` deploys rules + indexes on every push that touches `infra/firebase/`
 
 ## Phase 2.3 — Onboarding + Verification
 

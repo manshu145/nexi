@@ -1,0 +1,43 @@
+rules_version = '2';
+
+// Cloud Storage security rules.
+//
+// All writes go through the api service via signed URLs; we never let the
+// client write directly to a bucket without an api-issued URL. Reads are
+// generally scoped to the owning user, and admins can read everything.
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.admin == true;
+    }
+
+    // Verification uploads (marksheets, admit cards) -- only the owner and
+    // admins can read; writes happen via api-issued signed URLs only.
+    match /verification/{uid}/{verificationId}/{filename} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow write: if false;
+    }
+
+    // Profile photos -- owner read/write up to 2 MB, public read.
+    match /profile/{uid}/{filename} {
+      allow read: if true;
+      allow write: if isOwner(uid)
+        && request.resource.size < 2 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Default deny.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
