@@ -1,0 +1,117 @@
+name: Deploy api to Cloud Run
+
+# Auto-deploys the @nexigrate/api Cloud Run service on every push to main
+# that touches the api or its workspace dependencies.
+#
+# Requires GitHub Secrets:
+#   GCP_PROJECT_ID, GCP_PROJECT_NUMBER, GCP_SERVICE_ACCOUNT,
+#   GCP_WORKLOAD_IDENTITY_PROVIDER, FIREBASE_SERVICE_ACCOUNT_JSON
+#
+# The WIF secret comes from `terraform apply` in infra/terraform (the
+# `workload_identity_provider` output). The service-account JSON is only
+# used for local dev; Cloud Run uses workload identity at runtime so the
+# JSON never lives on the running container.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/api/**'
+      - 'packages/shared/**'
+      - 'packages/credits/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/deploy-api.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-api-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  GCP_REGION: asia-south1
+  AR_REPO: nexigrate
+  SERVICE: nexigrate-api
+  IMAGE_BASENAME: nexigrate-api
+
+permissions:
+  contents: read
+  id-token: write # required for OIDC -> WIF
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: ${{ steps.deploy.outputs.url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          token_format: access_token
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Compute image tag
+        id: tag
+        run: |
+          SHA=${GITHUB_SHA::12}
+          echo "tag=${SHA}" >> "$GITHUB_OUTPUT"
+          echo "image=${{ env.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.AR_REPO }}/${{ env.IMAGE_BASENAME }}:${SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Build container image
+        run: |
+          docker build \
+            -f apps/api/Dockerfile \
+            -t ${{ steps.tag.outputs.image }} \
+            .
+
+      - name: Push container image
+        run: |
+          docker push ${{ steps.tag.outputs.image }}
+
+      - name: Deploy revision to Cloud Run
+        id: deploy
+        run: |
+          gcloud run deploy ${{ env.SERVICE }} \
+            --image=${{ steps.tag.outputs.image }} \
+            --region=${{ env.GCP_REGION }} \
+            --platform=managed \
+            --allow-unauthenticated \
+            --service-account=${{ secrets.GCP_SERVICE_ACCOUNT }} \
+            --max-instances=3 \
+            --cpu=1 --memory=512Mi \
+            --set-env-vars=NODE_ENV=production,AUTH_MODE=firebase,PERSISTENCE=firestore,LOG_JSON=true,GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }},GCP_PROJECT_NUMBER=${{ secrets.GCP_PROJECT_NUMBER }},GCP_REGION=${{ env.GCP_REGION }},GCP_SERVICE_ACCOUNT=${{ secrets.GCP_SERVICE_ACCOUNT }},CORS_ALLOWED_ORIGINS=https://app.nexigrate.com\,https://admin.nexigrate.com \
+            --quiet
+          URL=$(gcloud run services describe ${{ env.SERVICE }} --region=${{ env.GCP_REGION }} --format='value(status.url)')
+          echo "url=${URL}" >> "$GITHUB_OUTPUT"
+          echo "::notice::Deployed ${{ env.SERVICE }} at ${URL}"
+
+      - name: Smoke-test /healthz
+        run: |
+          set -e
+          for i in 1 2 3 4 5; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${{ steps.deploy.outputs.url }}/healthz" || true)
+            if [ "$STATUS" = "200" ]; then
+              echo "Healthz OK on attempt $i"
+              exit 0
+            fi
+            echo "Attempt $i: status=$STATUS, retrying in 5s..."
+            sleep 5
+          done
+          echo "::error::Healthz never returned 200"
+          exit 1

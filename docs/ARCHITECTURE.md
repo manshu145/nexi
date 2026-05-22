@@ -33,7 +33,7 @@
        Firebase   Firestore   Cloud Storage   Vertex AI    Cloud Functions
         Auth       (data)        (uploads)     (Gemini)     (workers / cron)
                                                                        \u2502
-                              External: OpenAI \u00b7 Groq \u00b7 MSG91 \u00b7 Razorpay \u00b7 Resend
+                              External: OpenAI \u00b7 Groq \u00b7 Razorpay \u00b7 Resend
 ```
 
 ---
@@ -102,7 +102,7 @@ Already documented in [`packages/ai-pipeline/README.md`](../packages/ai-pipeline
 | Public launch | 10,000 | \u20b98,000\u201315,000 |
 | At \u20b93 lakh MRR | 25,000 | \u20b930,000\u201360,000 |
 
-Biggest variable is phone OTP volume; mitigation is Google sign-in primary + MSG91 fallback (~\u20b90.15 / OTP).
+Biggest variable is phone OTP volume; mitigation is Google sign-in primary (free) so phone OTP is only used for users without Gmail. A configurable daily OTP cap in the admin panel prevents runaway abuse.
 
 ---
 

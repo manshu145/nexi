@@ -1,0 +1,6 @@
+{
+  "projects": {
+    "default": "nexigrate-prod",
+    "production": "nexigrate-prod"
+  }
+}

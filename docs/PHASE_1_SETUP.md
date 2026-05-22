@@ -139,7 +139,7 @@ The earlier attempt used Workers Builds, which kept fighting our pnpm monorepo l
 Once the landing page is live, the next phase begins:
 
 1. Create the GCP project + Firebase project (we'll walk through this when you're ready).
-2. Add the rest of the API keys (OpenAI, Gemini, Groq, Razorpay, Resend, MSG91).
+2. Add the rest of the API keys (OpenAI, Gemini, Groq, Razorpay, Resend).
 3. Scaffold `apps/web`, `apps/api`, and the shared `packages/*`.
 4. Build auth, onboarding, the credits engine, and the daily MCQ flow.
 5. Build the manual document-verification queue in the admin panel.

@@ -1,0 +1,53 @@
+name: Deploy Firebase rules and indexes
+
+# Pushes Firestore security rules + indexes and Cloud Storage rules to the
+# nexigrate-prod Firebase project on every push to main that touches them.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'infra/firebase/firestore.rules'
+      - 'infra/firebase/firestore.indexes.json'
+      - 'infra/firebase/storage.rules'
+      - 'infra/firebase/firebase.json'
+      - '.github/workflows/deploy-firebase.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-firebase-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools@latest
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Deploy Firestore + Storage rules and indexes
+        working-directory: infra/firebase
+        run: |
+          firebase deploy \
+            --only firestore:rules,firestore:indexes,storage:rules \
+            --project ${{ secrets.GCP_PROJECT_ID }} \
+            --non-interactive
