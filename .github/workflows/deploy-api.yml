@@ -1,17 +1,5 @@
 name: Deploy api to Cloud Run
 
-# Auto-deploys the @nexigrate/api Cloud Run service on every push to main
-# that touches the api or its workspace dependencies.
-#
-# Requires GitHub Secrets:
-#   GCP_PROJECT_ID, GCP_PROJECT_NUMBER, GCP_SERVICE_ACCOUNT,
-#   GCP_WORKLOAD_IDENTITY_PROVIDER, FIREBASE_SERVICE_ACCOUNT_JSON
-#
-# The WIF secret comes from `terraform apply` in infra/terraform (the
-# `workload_identity_provider` output). The service-account JSON is only
-# used for local dev; Cloud Run uses workload identity at runtime so the
-# JSON never lives on the running container.
-
 on:
   push:
     branches: [main]
@@ -29,13 +17,12 @@ concurrency:
 
 env:
   GCP_REGION: asia-south1
-  AR_REPO: nexigrate
+  GCP_PROJECT: nexigrate-prod
   SERVICE: nexigrate-api
-  IMAGE_BASENAME: nexigrate-api
+  SA_EMAIL: nexigrate-api@nexigrate-prod.iam.gserviceaccount.com
 
 permissions:
   contents: read
-  id-token: write # required for OIDC -> WIF
 
 jobs:
   build-and-deploy:
@@ -46,69 +33,65 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Authenticate to Google Cloud
-        id: auth
+      - name: Authenticate to Google Cloud (Service Account Key)
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: nexigrate-api@nexigrate-prod.iam.gserviceaccount.com
-          token_format: access_token
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
 
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: nexigrate-prod
 
-      - name: Configure Docker for Artifact Registry
+      - name: Create Artifact Registry repo if missing
         run: |
-          gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
+          gcloud artifacts repositories describe nexigrate \
+            --location=${{ env.GCP_REGION }} \
+            --project=${{ env.GCP_PROJECT }} 2>/dev/null || \
+          gcloud artifacts repositories create nexigrate \
+            --repository-format=docker \
+            --location=${{ env.GCP_REGION }} \
+            --project=${{ env.GCP_PROJECT }} \
+            --description="Nexigrate container images"
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
 
       - name: Compute image tag
         id: tag
         run: |
           SHA=${GITHUB_SHA::12}
-          echo "tag=${SHA}" >> "$GITHUB_OUTPUT"
-          echo "image=${{ env.GCP_REGION }}-docker.pkg.dev/nexigrate-prod/${{ env.AR_REPO }}/${{ env.IMAGE_BASENAME }}:${SHA}" >> "$GITHUB_OUTPUT"
+          echo "image=${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/nexigrate/api:${SHA}" >> "$GITHUB_OUTPUT"
 
       - name: Build container image
-        run: |
-          docker build \
-            -f apps/api/Dockerfile \
-            -t ${{ steps.tag.outputs.image }} \
-            .
+        run: docker build -f apps/api/Dockerfile -t ${{ steps.tag.outputs.image }} .
 
       - name: Push container image
-        run: |
-          docker push ${{ steps.tag.outputs.image }}
+        run: docker push ${{ steps.tag.outputs.image }}
 
-      - name: Deploy revision to Cloud Run
+      - name: Deploy to Cloud Run
         id: deploy
         run: |
           gcloud run deploy ${{ env.SERVICE }} \
             --image=${{ steps.tag.outputs.image }} \
             --region=${{ env.GCP_REGION }} \
+            --project=${{ env.GCP_PROJECT }} \
             --platform=managed \
             --allow-unauthenticated \
-            --service-account=nexigrate-api@nexigrate-prod.iam.gserviceaccount.com \
+            --service-account=${{ env.SA_EMAIL }} \
             --max-instances=3 \
             --cpu=1 --memory=512Mi \
-            --set-env-vars=NODE_ENV=production,AUTH_MODE=firebase,PERSISTENCE=firestore,LOG_JSON=true,GCP_PROJECT_ID=nexigrate-prod,GCP_PROJECT_NUMBER=505978726927,GCP_REGION=${{ env.GCP_REGION }},GCP_SERVICE_ACCOUNT=nexigrate-api@nexigrate-prod.iam.gserviceaccount.com,CORS_ALLOWED_ORIGINS=https://app.nexigrate.com\,https://admin.nexigrate.com \
+            --set-env-vars="NODE_ENV=production,AUTH_MODE=firebase,PERSISTENCE=firestore,LOG_JSON=true,GCP_PROJECT_ID=nexigrate-prod,GCP_PROJECT_NUMBER=505978726927,GCP_REGION=asia-south1,GCP_SERVICE_ACCOUNT=${{ env.SA_EMAIL }},CORS_ALLOWED_ORIGINS=https://app.nexigrate.com" \
             --quiet
-          URL=$(gcloud run services describe ${{ env.SERVICE }} --region=${{ env.GCP_REGION }} --format='value(status.url)')
+          URL=$(gcloud run services describe ${{ env.SERVICE }} --region=${{ env.GCP_REGION }} --project=${{ env.GCP_PROJECT }} --format='value(status.url)')
           echo "url=${URL}" >> "$GITHUB_OUTPUT"
-          echo "::notice::Deployed ${{ env.SERVICE }} at ${URL}"
+          echo "::notice::Deployed at ${URL}"
 
       - name: Smoke-test /healthz
         run: |
-          set -e
           for i in 1 2 3 4 5; do
             STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${{ steps.deploy.outputs.url }}/healthz" || true)
-            if [ "$STATUS" = "200" ]; then
-              echo "Healthz OK on attempt $i"
-              exit 0
-            fi
-            echo "Attempt $i: status=$STATUS, retrying in 5s..."
-            sleep 5
+            [ "$STATUS" = "200" ] && echo "OK on attempt $i" && exit 0
+            echo "Attempt $i: $STATUS"; sleep 5
           done
-          echo "::error::Healthz never returned 200"
           exit 1
