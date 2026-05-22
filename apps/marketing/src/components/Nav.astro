@@ -1,0 +1,21 @@
+---
+import Logo from './Logo.astro';
+---
+
+<header class="sticky top-0 z-40 backdrop-blur-md bg-paper-100/80 border-b border-line">
+  <div class="mx-auto flex max-w-6xl items-center justify-between px-5 py-4">
+    <Logo />
+
+    <nav class="hidden items-center gap-7 md:flex" aria-label="Primary">
+      <a href="#why" class="text-sm font-medium text-ink-800 hover:text-ember-600 transition">Why Nexigrate</a>
+      <a href="#exams" class="text-sm font-medium text-ink-800 hover:text-ember-600 transition">Exams</a>
+      <a href="#how" class="text-sm font-medium text-ink-800 hover:text-ember-600 transition">How it works</a>
+      <a href="#credits" class="text-sm font-medium text-ink-800 hover:text-ember-600 transition">Credits</a>
+      <a href="#faq" class="text-sm font-medium text-ink-800 hover:text-ember-600 transition">FAQ</a>
+    </nav>
+
+    <a href="#waitlist" class="btn-primary text-sm">
+      Get early access
+    </a>
+  </div>
+</header>

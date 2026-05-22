@@ -1,0 +1,35 @@
+---
+import { FAQ } from '~/data/faq';
+---
+
+<section id="faq" class="section">
+  <div class="mx-auto max-w-3xl px-5 py-20 sm:py-24">
+    <div>
+      <p class="pill mb-5">Questions</p>
+      <h2 class="font-serif text-3xl font-semibold leading-tight text-ink-900 sm:text-4xl">
+        Things people ask before signing up.
+      </h2>
+    </div>
+
+    <div class="mt-12 divide-y divide-line border-y border-line">
+      {FAQ.map((item, i) => (
+        <details class="group py-5" open={i === 0}>
+          <summary class="flex cursor-pointer list-none items-start justify-between gap-6">
+            <h3 class="font-serif text-lg font-medium leading-snug text-ink-900">
+              {item.q}
+            </h3>
+            <span
+              class="mt-1 grid h-6 w-6 shrink-0 place-items-center rounded-full border border-line text-ink-800 transition group-open:rotate-45 group-open:border-ember-600 group-open:text-ember-600"
+              aria-hidden="true"
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+            </span>
+          </summary>
+          <p class="mt-3 pr-10 leading-relaxed text-ink-800">{item.a}</p>
+        </details>
+      ))}
+    </div>
+  </div>
+</section>

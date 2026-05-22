@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" fill="none">
+  <defs>
+    <linearGradient id="paper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#F8F1DD"/>
+      <stop offset="100%" stop-color="#EFE4C7"/>
+    </linearGradient>
+    <pattern id="grain" x="0" y="0" width="6" height="6" patternUnits="userSpaceOnUse">
+      <circle cx="1" cy="1" r="0.4" fill="#2A241A" fill-opacity="0.04"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="630" fill="url(#paper)"/>
+  <rect width="1200" height="630" fill="url(#grain)"/>
+  <rect x="60" y="60" width="1080" height="510" rx="20" stroke="#2A241A" stroke-opacity="0.15" stroke-width="2" fill="none"/>
+  <text x="120" y="200" font-family="Georgia, serif" font-size="56" font-weight="700" fill="#2A241A">Nexigrate</text>
+  <text x="120" y="320" font-family="Georgia, serif" font-size="80" font-weight="700" fill="#2A241A">Study smart.</text>
+  <text x="120" y="410" font-family="Georgia, serif" font-size="80" font-weight="700" fill="#2A241A">Verified facts.</text>
+  <text x="120" y="500" font-family="Georgia, serif" font-size="80" font-weight="700" fill="#8B2E1A">Zero distractions.</text>
+  <text x="120" y="560" font-family="system-ui, sans-serif" font-size="22" fill="#2A241A" fill-opacity="0.7">The free study OS for Indian students  \u00b7  Class 11 to UPSC</text>
+</svg>
