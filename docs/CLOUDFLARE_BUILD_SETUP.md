@@ -32,7 +32,7 @@ Copy-paste these into the matching fields:
 | Setting | Value |
 |---|---|
 | **Production branch** | `main` *(set this after merging PR #1; for now it can stay on whatever branch you already configured)* |
-| **Root directory** | `/` *(leave it as the repo root \u2014 do **not** set it to `apps/marketing`)* |
+| **Root directory** | **leave empty / blank** *(do **not** type `/`, `.`, or `apps/marketing` \u2014 the field expects a relative path or empty for the repo root; a literal `/` makes Cloudflare look for a folder *named* `/` and fail with "root directory not found")* |
 | **Build command** | `pnpm install --frozen-lockfile=false && pnpm --filter @nexigrate/marketing build` |
 | **Build output directory** | `apps/marketing/dist` |
 | **Deploy command** *(if the field is shown)* | leave empty \u2014 Cloudflare auto-detects the Pages-style output |
@@ -101,6 +101,7 @@ So you understand the moving parts:
 | `npm error ERESOLVE` or `npm install` complaining about lockfile | Wrong package manager. Confirm pnpm is selected; ours is auto-detected from `pnpm-lock.yaml`. |
 | `command not found: pnpm` | Set the build image to one that includes corepack \u2014 Cloudflare's default node-22 image already does. Or prefix the build command with `corepack enable && `. |
 | `failed in 0s` (the previous failure) | Build settings missing. This page fixes it. |
+| `Failed: root directory not found` | The "Root directory" field has a value like `/` or `apps/marketing`. **Clear the field completely** \u2014 it must be empty for builds to run from the repo root. |
 | `Error: Invalid binding name 'REPLACE_WITH_KV_NAMESPACE_ID'` | Old wrangler.toml committed. The current commit removes that placeholder \u2014 just make sure you're building the latest commit. |
 | `404` on the live site | The build succeeded but the output directory is wrong. Confirm **Build output directory = `apps/marketing/dist`** (not `dist`, not `./dist`). |
 | Form submits but says "Storage error" | KV binding is missing or misnamed. Must be exactly `WAITLIST_KV`. |
