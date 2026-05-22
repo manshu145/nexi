@@ -52,20 +52,33 @@ class StubTokenVerifier implements TokenVerifier {
 }
 
 class FirebaseTokenVerifier implements TokenVerifier {
-  // Lazy-init the Admin SDK so a missing GCP_PROJECT_ID only blows up when
-  // the verifier is actually used (not at module load).
-  // The real impl will be wired in apps/api Phase 2.2 once the GCP project
-  // exists and a service-account key is mounted via Cloud Run secrets.
-  async verify(_token: string): Promise<AuthPrincipal> {
-    throw new HTTPException(501, {
-      message:
-        "Firebase auth verifier is not yet wired. Set AUTH_MODE='stub' for local dev or wait until Phase 2.2 lands the Admin SDK init.",
-    });
+  constructor(private readonly env: Env) {}
+
+  async verify(token: string): Promise<AuthPrincipal> {
+    // Lazy-import so the firebase-admin SDK only loads when this branch
+    // actually runs (matters for stub-mode tests in CI).
+    const { getFirebaseAuth } = await import('./lib/firebaseAdmin.js');
+    const auth = getFirebaseAuth(this.env);
+
+    let decoded: Awaited<ReturnType<typeof auth.verifyIdToken>>;
+    try {
+      decoded = await auth.verifyIdToken(token, /* checkRevoked */ true);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'token verification failed';
+      throw unauthorized(`firebase: ${message}`);
+    }
+
+    return {
+      userId: asUserId(decoded.uid),
+      // Admins are flagged via Firebase custom claim {admin: true}.
+      isAdmin: decoded['admin'] === true,
+      source: 'firebase',
+    };
   }
 }
 
-export function makeVerifier(env: Pick<Env, 'AUTH_MODE'>): TokenVerifier {
-  return env.AUTH_MODE === 'firebase' ? new FirebaseTokenVerifier() : new StubTokenVerifier();
+export function makeVerifier(env: Env): TokenVerifier {
+  return env.AUTH_MODE === 'firebase' ? new FirebaseTokenVerifier(env) : new StubTokenVerifier();
 }
 
 /**
