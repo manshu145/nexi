@@ -1,0 +1,27 @@
+# Cloudflare Pages configuration for the Nexigrate marketing site.
+# This file is consumed by `wrangler pages deploy` and the Astro Cloudflare adapter.
+#
+# Bindings configured here are available on the `runtime.env` object inside
+# Astro endpoints (e.g. src/pages/api/waitlist.ts).
+
+name = "nexigrate-marketing"
+compatibility_date = "2025-01-15"
+compatibility_flags = ["nodejs_compat"]
+
+pages_build_output_dir = "./dist"
+
+# KV namespace for the waitlist signup store.
+# Create this in the Cloudflare dashboard (Workers & Pages -> KV -> Create) and
+# replace the id below, OR set it via dashboard binding (Pages -> Settings ->
+# Functions -> KV namespace bindings) which overrides this file. The dashboard
+# binding is the recommended approach for production.
+#
+# Variable name expected by the code: WAITLIST_KV
+[[kv_namespaces]]
+binding = "WAITLIST_KV"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+# Public, non-secret environment variables.
+[vars]
+PUBLIC_SITE_URL = "https://nexigrate.com"
+PUBLIC_CONTACT_EMAIL = "hello@nexigrate.com"

@@ -1,0 +1,170 @@
+---
+import { EXAMS } from '~/data/exams';
+
+interface Props {
+  variant?: 'hero' | 'bottom';
+  id?: string;
+}
+
+const { variant = 'hero', id = 'waitlist-form' } = Astro.props;
+
+// Group exams by category for nicer optgroups in the dropdown.
+const groups: Record<string, typeof EXAMS[number][]> = {};
+for (const exam of EXAMS) {
+  (groups[exam.category] ??= []).push(exam);
+}
+const categoryLabels: Record<string, string> = {
+  school: 'School (Class 8\u201312)',
+  engineering: 'Engineering entrance',
+  medical: 'Medical entrance',
+  'civil-services': 'Civil services & SSC',
+  banking: 'Banking',
+  defence: 'Defence',
+  state: 'State exams',
+};
+---
+
+<form
+  id={id}
+  class={`paper-card p-5 sm:p-6 ${variant === 'hero' ? 'mt-8' : 'mt-10'}`}
+  data-waitlist-form
+  novalidate
+>
+  <fieldset class="space-y-4">
+    <legend class="sr-only">Join the Nexigrate waitlist</legend>
+
+    <div class="grid gap-3 sm:grid-cols-2">
+      <label class="block">
+        <span class="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-500">Email</span>
+        <input
+          type="email"
+          name="email"
+          required
+          autocomplete="email"
+          inputmode="email"
+          placeholder="you@example.com"
+          class="input-paper"
+          aria-describedby={`${id}-status`}
+        />
+      </label>
+
+      <label class="block">
+        <span class="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-500">Target exam</span>
+        <select name="exam" required class="input-paper appearance-none pr-9 cursor-pointer">
+          <option value="" disabled selected>Choose your exam</option>
+          <option value="undecided">Still deciding</option>
+          {Object.entries(groups).map(([category, list]) => (
+            <optgroup label={categoryLabels[category] ?? category}>
+              {list.map((exam) => (
+                <option value={exam.id}>
+                  {exam.name}{exam.status === 'soon' ? ' (coming soon)' : ''}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      </label>
+    </div>
+
+    {/* Honeypot \u2014 real users never fill this; bots usually do. */}
+    <div class="hidden" aria-hidden="true">
+      <label>
+        Don't fill this out if you're a human:
+        <input type="text" name="company" tabindex="-1" autocomplete="off" />
+      </label>
+    </div>
+
+    <div class="flex flex-col gap-3 pt-1 sm:flex-row sm:items-center sm:justify-between">
+      <p class="text-xs text-muted-500">
+        Free forever. No spam. We email you only when there's something real.
+      </p>
+      <button type="submit" class="btn-primary w-full sm:w-auto" data-submit>
+        <span data-label-default>Get early access</span>
+        <span class="hidden" data-label-loading>Saving\u2026</span>
+      </button>
+    </div>
+
+    <p
+      id={`${id}-status`}
+      class="hidden text-sm"
+      role="status"
+      aria-live="polite"
+      data-status
+    ></p>
+  </fieldset>
+</form>
+
+<script>
+  // Progressive enhancement \u2014 if JS doesn't load, the form still POSTs to /api/waitlist
+  // and a server-rendered redirect will handle it. With JS, we get inline feedback.
+  type Status = 'success' | 'error' | 'duplicate';
+
+  function attach(form: HTMLFormElement) {
+    const statusEl = form.querySelector<HTMLParagraphElement>('[data-status]');
+    const submitBtn = form.querySelector<HTMLButtonElement>('[data-submit]');
+    const labelDefault = form.querySelector<HTMLSpanElement>('[data-label-default]');
+    const labelLoading = form.querySelector<HTMLSpanElement>('[data-label-loading]');
+
+    function setStatus(kind: Status, message: string) {
+      if (!statusEl) return;
+      statusEl.textContent = message;
+      statusEl.classList.remove('hidden', 'text-ember-600', 'text-ink-700');
+      statusEl.classList.add(kind === 'error' ? 'text-ember-600' : 'text-ink-700');
+    }
+
+    function setLoading(loading: boolean) {
+      if (!submitBtn) return;
+      submitBtn.disabled = loading;
+      labelDefault?.classList.toggle('hidden', loading);
+      labelLoading?.classList.toggle('hidden', !loading);
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(form);
+      const payload = {
+        email: String(fd.get('email') ?? '').trim().toLowerCase(),
+        exam: String(fd.get('exam') ?? ''),
+        company: String(fd.get('company') ?? ''), // honeypot
+      };
+
+      if (!payload.email || !payload.exam) {
+        setStatus('error', 'Please fill in both email and target exam.');
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const res = await fetch('/api/waitlist', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          ok?: boolean;
+          duplicate?: boolean;
+          error?: string;
+        };
+
+        if (res.ok && data.ok) {
+          if (data.duplicate) {
+            setStatus('duplicate', "You're already on the list. We'll be in touch soon.");
+          } else {
+            setStatus('success', "You're on the list. Watch your inbox.");
+            form.reset();
+          }
+        } else {
+          setStatus('error', data.error ?? 'Something went wrong. Please try again.');
+        }
+      } catch {
+        setStatus('error', 'Network error. Please try again.');
+      } finally {
+        setLoading(false);
+      }
+    });
+  }
+
+  document
+    .querySelectorAll<HTMLFormElement>('[data-waitlist-form]')
+    .forEach(attach);
+</script>

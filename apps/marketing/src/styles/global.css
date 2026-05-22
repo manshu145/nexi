@@ -1,0 +1,202 @@
+@import 'tailwindcss';
+@import '@fontsource/lora/400.css';
+@import '@fontsource/lora/500.css';
+@import '@fontsource/lora/600.css';
+@import '@fontsource/lora/700.css';
+@import '@fontsource/lora/400-italic.css';
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+
+/*
+ * Nexigrate brand tokens \u2014 Kindle-inspired warm-paper palette.
+ *
+ *   paper   : main background, evokes parchment / e-ink page
+ *   ink     : primary text, deep warm black
+ *   ember   : accent for emphasis / CTAs (book-cover red)
+ *   gold    : highlights and trust accents
+ *   muted   : secondary text on paper
+ *   line    : hairline borders that feel printed, not digital
+ */
+@theme {
+  --color-paper-50: #FBF6E8;
+  --color-paper-100: #F8F1DD;
+  --color-paper-200: #F5ECD7;
+  --color-paper-300: #EFE4C7;
+  --color-paper-400: #E5D6AE;
+
+  --color-ink-700: #4A3F30;
+  --color-ink-800: #3A3225;
+  --color-ink-900: #2A241A;
+  --color-ink-950: #1A1610;
+
+  --color-ember-500: #B3461F;
+  --color-ember-600: #8B2E1A;
+  --color-ember-700: #6E2414;
+
+  --color-gold-500: #B8862F;
+  --color-gold-600: #8E6720;
+
+  --color-muted-500: #7A6F5C;
+  --color-muted-400: #9A8E78;
+
+  --color-line: #D9CDB0;
+
+  --font-serif: 'Lora', 'Georgia', 'Cambria', 'Times New Roman', serif;
+  --font-sans:  'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+  --radius-card: 0.75rem;
+  --radius-pill: 999px;
+}
+
+/* ---------- base ---------- */
+
+html {
+  background-color: var(--color-paper-100);
+  color: var(--color-ink-900);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  scroll-behavior: smooth;
+  scroll-padding-top: 5rem;
+}
+
+body {
+  background-color: var(--color-paper-100);
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(42, 36, 26, 0.04) 1px, transparent 0);
+  background-size: 24px 24px;
+  min-height: 100vh;
+}
+
+::selection {
+  background-color: var(--color-ember-500);
+  color: var(--color-paper-50);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-serif);
+  letter-spacing: -0.015em;
+  color: var(--color-ink-900);
+}
+
+p {
+  color: var(--color-ink-800);
+}
+
+/* ---------- reusable utilities ---------- */
+
+.paper-card {
+  background-color: var(--color-paper-50);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+  box-shadow:
+    0 1px 0 rgba(42, 36, 26, 0.02),
+    0 8px 24px -12px rgba(42, 36, 26, 0.08);
+}
+
+.divider-rule {
+  height: 1px;
+  background-image: linear-gradient(
+    to right,
+    transparent,
+    var(--color-line) 20%,
+    var(--color-line) 80%,
+    transparent
+  );
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  border-radius: var(--radius-pill);
+  background-color: var(--color-ink-900);
+  color: var(--color-paper-100);
+  font-weight: 500;
+  font-size: 0.95rem;
+  letter-spacing: 0.01em;
+  transition: transform 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.1) inset, 0 4px 12px -4px rgba(42, 36, 26, 0.4);
+}
+
+.btn-primary:hover {
+  background-color: var(--color-ember-600);
+  transform: translateY(-1px);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  border-radius: var(--radius-pill);
+  color: var(--color-ink-900);
+  font-weight: 500;
+  font-size: 0.95rem;
+  border: 1px solid var(--color-line);
+  background-color: transparent;
+  transition: background-color 120ms ease;
+}
+
+.btn-ghost:hover {
+  background-color: var(--color-paper-200);
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: var(--radius-pill);
+  background-color: var(--color-paper-200);
+  color: var(--color-ink-800);
+  font-size: 0.8rem;
+  font-weight: 500;
+  border: 1px solid var(--color-line);
+}
+
+.pill-soon {
+  background-color: transparent;
+  color: var(--color-muted-500);
+  border-style: dashed;
+}
+
+.input-paper {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  background-color: var(--color-paper-50);
+  border: 1px solid var(--color-line);
+  color: var(--color-ink-900);
+  font-size: 0.95rem;
+  font-family: var(--font-sans);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.input-paper:focus {
+  outline: none;
+  border-color: var(--color-ember-600);
+  box-shadow: 0 0 0 3px rgba(139, 46, 26, 0.12);
+}
+
+.section {
+  scroll-margin-top: 4rem;
+}
+
+/* keep the page calm: dial down motion if the user prefers */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

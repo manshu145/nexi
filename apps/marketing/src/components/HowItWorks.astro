@@ -1,0 +1,49 @@
+---
+const steps = [
+  {
+    n: '01',
+    title: 'Sign in. Verify you study.',
+    body: 'Sign in with Google in five seconds. Upload your school ID, admit card, or any marksheet so we know you are a real student. We never share these documents with anyone.',
+  },
+  {
+    n: '02',
+    title: 'Pick your exam, get your map.',
+    body: 'JEE, NEET, or Class 11/12 boards. Nexigrate maps your full syllabus into chapters, concepts, and milestones, with a calm progress view that never nags.',
+  },
+  {
+    n: '03',
+    title: 'Take the daily MCQ. Earn credits.',
+    body: 'Ten questions a day, calibrated to your level. Pass and earn 50 credits. Even a failed attempt earns 5. Your seven-day streak quietly compounds into bigger rewards.',
+  },
+  {
+    n: '04',
+    title: 'Read. Learn. Repeat.',
+    body: 'Spend credits on chapters, mock tests, and the AI tutor. No ads. No upsells in the middle of a chapter. Just you and the page.',
+  },
+] as const;
+---
+
+<section id="how" class="section border-y border-line bg-paper-50/60">
+  <div class="mx-auto max-w-6xl px-5 py-20 sm:py-24">
+    <div class="max-w-2xl">
+      <p class="pill mb-5">How it works</p>
+      <h2 class="font-serif text-3xl font-semibold leading-tight text-ink-900 sm:text-4xl">
+        Four steps. No surprises.
+      </h2>
+    </div>
+
+    <ol class="mt-14 grid gap-px overflow-hidden rounded-card border border-line bg-line md:grid-cols-2 lg:grid-cols-4">
+      {steps.map((step) => (
+        <li class="flex flex-col bg-paper-50 p-7">
+          <span class="font-serif text-sm font-semibold tracking-[0.2em] text-ember-600">
+            {step.n}
+          </span>
+          <h3 class="mt-4 font-serif text-xl font-semibold leading-snug text-ink-900">
+            {step.title}
+          </h3>
+          <p class="mt-3 leading-relaxed text-ink-800">{step.body}</p>
+        </li>
+      ))}
+    </ol>
+  </div>
+</section>
