@@ -7,7 +7,7 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "deploy": "wrangler deploy",
+    "deploy": "wrangler pages deploy ./dist --project-name=nexigrate-marketing --commit-dirty=true",
     "astro": "astro",
     "typecheck": "astro check",
     "lint": "astro check",
