@@ -75,7 +75,7 @@ See [`docs/PHASE_1_SETUP.md`](./docs/PHASE_1_SETUP.md) for the current phase\u20
 | Web app | Next.js 15 \u2192 Cloud Run (Mumbai) |
 | Mobile | React Native + Expo (iOS + Android) |
 | Backend API | Node.js + Hono \u2192 Cloud Run |
-| Auth | Firebase Auth (Google primary, Phone OTP fallback via MSG91) |
+| Auth | Firebase Auth (Google sign-in primary; Firebase Phone OTP fallback) |
 | Database | Firestore |
 | Object storage | Cloud Storage (GCS) |
 | Background jobs | Cloud Functions 2nd gen + Cloud Scheduler |

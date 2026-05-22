@@ -44,13 +44,13 @@ Swap the in-memory ledger and stub auth for production implementations. The HTTP
 - ⬜ `apps/api/src/routes/users.ts` — `POST /v1/users/me/onboarding`, `GET /v1/users/me`
 - ⬜ `apps/api/src/routes/verifications.ts` — `POST /v1/verifications/start` (signed Cloud Storage URL), `POST /v1/verifications/complete`
 - ⬜ Cloud Function `onVerificationFileUploaded` — runs Cloud Vision OCR + Gemini check, sets `Verification.ai`, auto-approves above 0.85 confidence, otherwise `queued`
-- ⬜ Parental-consent flow for under-18 users (verifiable via parent OTP from MSG91)
+- ⬜ Parental-consent flow for under-18 users (verifiable via parent OTP from Firebase Phone Auth)
 - ⬜ Audit log entries on every admin decision
 
 ## Phase 2.4 — Web app shell (`apps/web`)
 
 - ⬜ Next.js 15 (App Router) on Cloud Run, deployed at `app.nexigrate.com`
-- ⬜ Firebase Auth client — Google sign-in primary, phone OTP fallback (via MSG91 custom token, NOT Firebase Phone — see `docs/PHASE_2_SETUP.md`)
+- ⬜ Firebase Auth client — Google sign-in primary, Firebase Phone OTP fallback (with reCAPTCHA on web, Play Integrity on Android)
 - ⬜ Onboarding flow (target exam, school, optional class, optional parent contact)
 - ⬜ Verification upload UI with progress, approval polling, retry on rejection
 - ⬜ Kindle-style dashboard: today's plan, streak, credits balance, "resume where you left off"

@@ -3,7 +3,7 @@
 Student-facing web application (PWA). Phase 2.
 
 - **Stack**: Next.js 15 (App Router), TypeScript, Tailwind, shadcn/ui
-- **Auth**: Firebase Auth (Google + Phone OTP via MSG91)
+- **Auth**: Firebase Auth (Google sign-in primary; Firebase Phone OTP fallback for users without Gmail)
 - **Data**: Firestore via `@nexigrate/api-client`
 - **Deploy target**: Cloud Run (region `asia-south1`, Mumbai)
 - **Domain**: `app.nexigrate.com`

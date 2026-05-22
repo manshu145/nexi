@@ -15,7 +15,7 @@ You don't have to do all of this before Phase 2.1 lands — `apps/api` boots on 
 - Firestore (Native mode, Mumbai region)
 - Cloud Storage bucket for verification uploads
 - A service account the API uses to talk to Firestore and Storage
-- API keys for OpenAI, Gemini, Groq, Resend, MSG91, Razorpay
+- API keys for OpenAI, Gemini, Groq, Resend, Razorpay
 - A workload-identity-federation pool for GitHub Actions to deploy without long-lived keys
 
 We'll add each of these to GitHub Secrets so the deploy workflow picks them up automatically.
@@ -53,7 +53,7 @@ We'll add each of these to GitHub Secrets so the deploy workflow picks them up a
 2. Enable Google Analytics for Firebase if prompted (optional).
 3. **Build → Authentication → Get started** → enable:
    - **Google** sign-in (primary)
-   - **Phone** sign-in (will only be used for sub-flows; we route most OTPs through MSG91 for cost — see § 7)
+   - **Phone** sign-in (the user opted to handle phone OTP entirely via Firebase rather than a third-party SMS provider; cost is ~₹4–5 per OTP in India and is paid for by the Firebase Blaze plan attached to this project)
 4. **Build → Firestore Database → Create database**:
    - Mode: **Start in production mode**
    - Location: `asia-south1` (Mumbai)
@@ -123,15 +123,25 @@ Go to each provider, create a key, and copy it.
 | Sentry | [sentry.io](https://sentry.io) → **Create project → Node** for api, **Astro** for marketing, **Next.js** for web later | 5k events/mo |
 | PostHog | [posthog.com](https://posthog.com) → New project → keep the project API key | 1M events/mo |
 
-## 7. Phone OTP (MSG91)
+## 7. Phone OTP
 
-We use MSG91 for phone OTP rather than Firebase Phone Auth because Firebase Phone Auth bills per verification in India (~₹4–5 per OTP). MSG91 is ~₹0.15 per OTP.
+Phone OTP is delivered by **Firebase Phone Auth**, not a third-party SMS provider. Trade-off: Firebase Phone Auth charges ~₹4–5 per India OTP whereas a provider like MSG91 charges ~₹0.15. We accept the higher per-message cost in exchange for:
 
-1. Sign up at [msg91.com](https://msg91.com)
-2. Buy 100 messages (₹15 minimum) to get past the test threshold
-3. **Auth Key**: Dashboard → API → AuthKey → copy
-4. **Sender ID**: Apply for one (e.g. `NEXGRT`). Approval takes 1–2 business days.
-5. **OTP template ID**: Dashboard → SMS → Template → create a template like `Your Nexigrate code is ##OTP##. Valid for 5 minutes. Do not share.` and copy the template id.
+- One fewer KYC, one fewer external account, one fewer secret to rotate
+- Native Firebase Auth integration (custom claims, ID tokens, the `auth().verifyIdToken()` path) without writing a custom-token bridge
+- Built-in abuse protection (reCAPTCHA on web, Play Integrity on Android)
+
+To keep costs predictable:
+
+- **Google sign-in is the default** on every client; phone OTP is offered only when the user has no Gmail. This typically routes 90%+ of signups through the free path.
+- A daily-OTP-volume circuit breaker will be added in Phase 2.5 (in `apps/api`) so a runaway script can't drain the Blaze budget. Default cap: 500 OTPs/day; configurable from the admin panel.
+- Re-evaluate at 1k DAU: if OTP volume drives Firebase Auth costs above ~₹2k/mo, the existing pluggable verifier interface (`TokenVerifier` in `apps/api/src/auth.ts`) makes it a 1-day swap to MSG91 or 2Factor without changing route handlers.
+
+Phase 2.4 wires the actual flow:
+
+- Web: `getAuth().signInWithPhoneNumber(phone, recaptchaVerifier)` + `confirmationResult.confirm(code)`
+- Mobile: `@react-native-firebase/auth` `signInWithPhoneNumber()`
+- Server: `firebase-admin` `auth().verifyIdToken(idToken)`
 
 ## 8. Razorpay
 
@@ -175,9 +185,9 @@ In `manshu145/nexi` → **Settings → Secrets and variables → Actions → New
 
 - `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`
 
-### Required for Phase 2.9 (sms otp)
+### Phone OTP
 
-- `MSG91_AUTH_KEY`, `MSG91_SENDER_ID`, `MSG91_OTP_TEMPLATE_ID`
+No additional secrets needed beyond the standard Firebase setup -- Phone Auth is enabled in the Firebase console (§ 2) and verified by `firebase-admin` on the server using the same service account we use for Firestore.
 
 ---
 
