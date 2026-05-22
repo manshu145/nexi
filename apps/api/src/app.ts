@@ -1,54 +1,80 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { HTTPException } from 'hono/http-exception';
+import { asExamSlug, type ExamSlug, type UserId } from '@nexigrate/shared';
 import { authMiddleware, makeVerifier } from './auth.js';
 import type { Env } from './env.js';
 import { getFirebaseFirestore } from './lib/firebaseAdmin.js';
 import { FirestoreLedgerStore } from './lib/firestoreLedger.js';
+import { FirestoreMcqStore, InMemoryMcqStore, type McqStore } from './lib/mcqStore.js';
+import { FirestoreUserStore, InMemoryUserStore, type UserStore } from './lib/userStore.js';
 import type { Logger } from './logger.js';
-import { makeCreditsRoutes, defaultEngineDeps, InMemoryLedgerStore, type LedgerStore } from './routes/credits.js';
+import {
+  defaultEngineDeps,
+  InMemoryLedgerStore,
+  makeCreditsRoutes,
+  type LedgerStore,
+} from './routes/credits.js';
 import { makeHealthRoutes } from './routes/health.js';
+import { makeMcqsRoutes, makeMcqSessionsRoutes } from './routes/mcqs.js';
+import { makeUsersRoutes } from './routes/users.js';
 
 /**
  * Build the Hono app.
  *
  * Pure factory: no listeners, no I/O. The composition root lives in
- * `server.ts` (Node) and will eventually live in a Cloud Run-friendly entry
- * point that imports this builder.
+ * `server.ts` (Node) and starts an HTTP listener around the returned app.
  *
- * Tests construct a fresh app per test via this factory, injecting an
- * in-memory ledger and a stub auth verifier.
+ * Tests construct a fresh app per test via this factory, injecting the
+ * in-memory stores and a stub auth verifier.
  */
 export interface AppDeps {
   env: Env;
   logger: Logger;
   ledger?: LedgerStore;
+  mcqs?: McqStore;
+  users?: UserStore;
 }
 
 export function buildApp(deps: AppDeps): Hono {
   const { env, logger } = deps;
+  const useFirestore = env.PERSISTENCE === 'firestore';
+  const fs = useFirestore ? getFirebaseFirestore(env) : null;
+
   const ledger =
-    deps.ledger ??
-    (env.PERSISTENCE === 'firestore'
-      ? new FirestoreLedgerStore(getFirebaseFirestore(env))
-      : new InMemoryLedgerStore());
+    deps.ledger ?? (fs ? new FirestoreLedgerStore(fs) : new InMemoryLedgerStore());
+  const mcqs = deps.mcqs ?? (fs ? new FirestoreMcqStore(fs) : new InMemoryMcqStore());
+  const users = deps.users ?? (fs ? new FirestoreUserStore(fs) : new InMemoryUserStore());
+
   const verifier = makeVerifier(env);
+  const engineDeps = defaultEngineDeps();
+
+  const getTargetExam = async (userId: UserId): Promise<ExamSlug> => {
+    const u = await users.get(userId);
+    return u?.targetExam ?? asExamSlug('jee-main');
+  };
 
   const app = new Hono();
 
-  // CORS for browser clients (web app, admin panel).
   app.use(
     '*',
     cors({
       origin: (origin) => (env.CORS_ALLOWED_ORIGINS.includes(origin) ? origin : null),
       allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowHeaders: ['Authorization', 'Content-Type', 'X-Idempotency-Key'],
+      allowHeaders: [
+        'Authorization',
+        'Content-Type',
+        'X-Idempotency-Key',
+        'X-User-Email',
+        'X-User-Name',
+        'X-User-Photo',
+        'X-User-Provider',
+      ],
       maxAge: 600,
       credentials: true,
     }),
   );
 
-  // Per-request log binding.
   app.use('*', async (c, next) => {
     const start = performance.now();
     const requestId = c.req.header('x-request-id') ?? cryptoRandom();
@@ -64,7 +90,6 @@ export function buildApp(deps: AppDeps): Hono {
     });
   });
 
-  // Public, unauthenticated routes.
   app.route('/', makeHealthRoutes(env));
 
   app.get('/', (c) =>
@@ -75,13 +100,17 @@ export function buildApp(deps: AppDeps): Hono {
     }),
   );
 
-  // Authenticated v1 surface.
   const v1 = new Hono();
   v1.use('*', authMiddleware(verifier));
-  v1.route('/credits', makeCreditsRoutes({ ledger, logger, ...defaultEngineDeps() }));
+  v1.route('/credits', makeCreditsRoutes({ ledger, logger, ...engineDeps }));
+  v1.route('/users', makeUsersRoutes({ users, logger }));
+  v1.route('/mcqs', makeMcqsRoutes({ mcqs, ledger, logger, ...engineDeps, getTargetExam }));
+  v1.route(
+    '/mcq-sessions',
+    makeMcqSessionsRoutes({ mcqs, ledger, logger, ...engineDeps, getTargetExam }),
+  );
   app.route('/v1', v1);
 
-  // Centralised error mapping.
   app.onError((err, c) => {
     if (err instanceof HTTPException) {
       logger.warn('http.error', {
