@@ -1,198 +1,136 @@
-# Phase 1 Setup \u2014 Go Live with the Landing Page
+# Phase 1 Setup — Go Live with the Landing Page
 
 > **Goal of Phase 1:** Get https://nexigrate.com live, collecting waitlist signups, before we write a single line of app code.
 >
-> **Time required:** ~30 minutes of clicking, mostly waiting for DNS to propagate.
+> **Time required:** ~10 minutes of clicking.
 >
-> **Cost:** \u20b90.
+> **Cost:** ₹0.
 
 ---
 
-## Big picture
+## TL;DR — what you do in the dashboard
 
-The marketing site you see in `apps/marketing` is a fully-built Astro site that builds to a static `dist/` plus a single Cloudflare Pages Function (`/api/waitlist`). Every push to `main` runs the GitHub Actions workflow at `.github/workflows/deploy-marketing.yml`, which builds the site and deploys it to Cloudflare Pages.
-
-To go live, you need to do four things:
-
-1. Create a Cloudflare account and add `nexigrate.com` to it.
-2. Update the nameservers at your domain registrar to point to Cloudflare.
-3. Create a Cloudflare Pages project and a KV namespace.
-4. Add three secrets to the GitHub repository.
-
-Then every push to `main` ships to production.
+Create a fresh **Cloudflare Pages** project (NOT a Worker) connected to this repo with these exact settings, and add one binding. That's it. Cloudflare auto-builds on every push.
 
 ---
 
-## Prerequisites
+## Step 1 — DNS (only if you haven't already)
 
-- [ ] Access to the GitHub repository (`manshu145/nexi`).
-- [ ] Access to the email/account you used to register `nexigrate.com`.
-- [ ] A free Cloudflare account.
+If `nexigrate.com` is not yet on Cloudflare:
 
----
+1. Sign up free at [dash.cloudflare.com](https://dash.cloudflare.com)
+2. **Add a domain** → `nexigrate.com` → Free plan
+3. Cloudflare gives you 2 nameservers — copy them
+4. Log in to your domain registrar and replace the existing nameservers with the two from Cloudflare
+5. Wait 5 min – 24 h for DNS to propagate
 
-## Step 1 \u2014 Add `nexigrate.com` to Cloudflare
-
-1. Sign up at [dash.cloudflare.com/sign-up](https://dash.cloudflare.com/sign-up). Use your founder email; we'll use this account for production for years.
-2. On the home page, click **"Add a domain"**.
-3. Enter `nexigrate.com` and proceed.
-4. Choose the **Free** plan when prompted.
-5. Cloudflare will show you two nameservers, like:
-   ```
-   ns1.somename.cloudflare.com
-   ns2.somename.cloudflare.com
-   ```
-   Copy both \u2014 you'll need them in the next step.
-
-Cloudflare will also auto-import your existing DNS records. Take a quick look; if you have any existing email (MX) records pointing to your registrar's email forwarding, leave them as-is.
+If you've already done this from earlier attempts, skip this step.
 
 ---
 
-## Step 2 \u2014 Point your domain at Cloudflare
+## Step 2 — KV namespace (only if you haven't already)
 
-Log in to wherever you bought `nexigrate.com` (GoDaddy, Namecheap, Hostinger, etc.) and replace the existing nameservers with the two from Cloudflare.
+The waitlist form writes signups to a Cloudflare KV namespace.
 
-Quick links for the most common registrars:
+1. Cloudflare Dashboard → **Workers & Pages** → **KV** → **Create a namespace**
+2. Name: `nexigrate-waitlist`
+3. Click **Add**
 
-- **GoDaddy:** Domain settings \u2192 Nameservers \u2192 Change \u2192 "I'll use my own nameservers"
-- **Namecheap:** Domain List \u2192 Manage \u2192 Nameservers dropdown \u2192 Custom DNS
-- **Hostinger:** Domains \u2192 your domain \u2192 DNS / Nameservers \u2192 Change Nameservers
-- **BigRock:** Manage Domain \u2192 Name Servers \u2192 Modify Name Servers
-
-Save the change. Cloudflare will email you the moment it detects the change (usually within 5 minutes; sometimes up to 24 hours).
-
-You don't have to wait \u2014 you can do Steps 3 and 4 right now.
+If you already have it from earlier attempts, skip this step. (KV namespaces survive project deletes.)
 
 ---
 
-## Step 3 \u2014 Create the Cloudflare Pages project + KV namespace
+## Step 3 — Create the **Pages** project
 
-### 3a. Create the KV namespace (for the waitlist)
+This is the critical part. You must create a **Pages** project, not a Worker.
 
-1. In the Cloudflare dashboard, go to **Workers & Pages \u2192 KV** in the left sidebar.
-2. Click **Create a namespace**.
-3. Name it `nexigrate-waitlist`.
-4. Click **Add**.
-5. Copy the namespace **ID** that appears \u2014 you'll need it later if you ever want to query the data via wrangler.
+1. Cloudflare Dashboard → **Workers & Pages** → **Create application**
+2. Click the **Pages** tab (NOT Workers)
+3. **Connect to Git** → authorize → select repo `manshu145/nexi`
+4. **Project name:** `nexigrate-marketing`
+5. **Production branch:** `main` (or `phase-1/marketing-landing` if PR #1 isn't merged yet)
 
-### 3b. Create the Pages project
+### Build settings (copy-paste exactly)
 
-1. Go to **Workers & Pages \u2192 Overview**.
-2. Click **Create application \u2192 Pages \u2192 Connect to Git**.
-3. Authorize Cloudflare to read your GitHub repo (`manshu145/nexi`).
-4. Pick the `nexi` repo.
-5. **Project name:** `nexigrate-marketing` (this **must** match the value of `CLOUDFLARE_PROJECT` in `.github/workflows/deploy-marketing.yml`).
-6. **Production branch:** `main`.
+| Field | Value |
+|---|---|
+| **Framework preset** | `Astro` |
+| **Build command** | `pnpm install --frozen-lockfile=false && pnpm --filter @nexigrate/marketing build` |
+| **Build output directory** | `apps/marketing/dist` |
+| **Root directory** | *(leave default — repo root)* |
+| **Environment variables** | none required |
 
-#### Build settings (set these even though we'll override via Actions)
+6. Click **Save and Deploy**
 
-- **Framework preset:** Astro
-- **Build command:** `pnpm install --frozen-lockfile=false && pnpm --filter @nexigrate/marketing build`
-- **Build output directory:** `apps/marketing/dist`
-- **Root directory:** `/`
-
-These settings are only used if Cloudflare ever builds the site directly (e.g. for preview branches). Our GitHub Actions workflow does the real production build.
-
-7. Click **Save and Deploy**. The first deploy may fail until you add the KV binding \u2014 that's fine; do step 3c, then redeploy.
-
-### 3c. Bind the KV namespace to the Pages project
-
-1. Open the `nexigrate-marketing` Pages project you just created.
-2. Go to **Settings \u2192 Functions \u2192 KV namespace bindings**.
-3. Click **Add binding**.
-   - **Variable name:** `WAITLIST_KV` (must be exactly this; the code reads it by this name).
-   - **KV namespace:** select `nexigrate-waitlist` from Step 3a.
-4. Save.
-
-### 3d. Add custom domains
-
-1. Go to **Custom domains** tab on the Pages project.
-2. Click **Set up a custom domain** \u2192 enter `nexigrate.com` \u2192 confirm.
-3. Repeat for `www.nexigrate.com` \u2014 Cloudflare will offer to redirect www \u2192 apex; accept.
-
-Cloudflare will automatically create the DNS records for you in the zone created in Step 1. SSL certificates are issued automatically (usually within minutes).
+The first deploy will likely fail at the runtime step because the KV binding isn't attached yet — that's fine. Continue to Step 4.
 
 ---
 
-## Step 4 \u2014 Add GitHub Actions secrets
+## Step 4 — Bind the KV namespace
 
-These let our CI/CD pipeline deploy to Cloudflare on every push to `main`.
-
-### 4a. Get a Cloudflare API token
-
-1. In the Cloudflare dashboard, top-right user menu \u2192 **My Profile \u2192 API Tokens**.
-2. Click **Create Token**.
-3. Use the **"Edit Cloudflare Workers"** template (it's the right scope).
-4. Restrict it to your account (optional but recommended).
-5. Click **Create Token**.
-6. Copy the token \u2014 it's shown only once.
-
-### 4b. Get your Cloudflare account ID
-
-In the Cloudflare dashboard, the account ID is shown on the right-hand side of the **Workers & Pages \u2192 Overview** page.
-
-### 4c. Add the secrets to GitHub
-
-In the `manshu145/nexi` repo:
-
-1. **Settings \u2192 Secrets and variables \u2192 Actions \u2192 New repository secret**.
-2. Add two secrets:
-   - `CLOUDFLARE_API_TOKEN` = the token from Step 4a.
-   - `CLOUDFLARE_ACCOUNT_ID` = the account id from Step 4b.
-
-Both are required. The deploy workflow won't run without them.
+1. Same project → **Settings** → **Functions** → **KV namespace bindings** (or **Bindings** on newer UI)
+2. Click **Add binding**
+   - **Variable name:** `WAITLIST_KV` (must be exactly this — the code reads it by this name)
+   - **KV namespace:** select `nexigrate-waitlist`
+3. **Save**
 
 ---
 
-## Step 5 \u2014 Trigger the first deploy
+## Step 5 — Custom domain
 
-Once Steps 1\u20134 are done:
+1. Same project → **Custom domains** → **Set up a custom domain**
+2. Enter `nexigrate.com` → confirm
+3. Repeat for `www.nexigrate.com` → accept the suggested www-to-apex redirect
 
-```bash
-git checkout main
-git pull
-git commit --allow-empty -m "ci: kick off first deploy"
-git push
-```
-
-Or use **Actions \u2192 Deploy marketing site \u2192 Run workflow** on GitHub for a manual run.
-
-Watch the run at `https://github.com/manshu145/nexi/actions`. It typically completes in under 3 minutes. Once green, hit `https://nexigrate.com` \u2014 you should see the landing page.
-
-The first signup on the form will write a key to your KV namespace. You can verify by going to **Workers & Pages \u2192 KV \u2192 nexigrate-waitlist \u2192 View** in the Cloudflare dashboard.
+Cloudflare auto-creates the DNS records and issues an SSL certificate (5–15 min).
 
 ---
 
-## Verification checklist
+## Step 6 — Trigger a fresh build
 
-After everything is set up, please confirm:
+After steps 4 and 5:
 
-- [ ] `https://nexigrate.com` loads the landing page.
-- [ ] `https://www.nexigrate.com` redirects to the apex (or also loads correctly).
-- [ ] The lock icon in the browser shows a valid SSL certificate.
-- [ ] Submitting the waitlist form returns success (and a duplicate submission says "you're already on the list").
-- [ ] Cloudflare KV shows entries under `waitlist:*`.
-- [ ] GitHub Actions has a green check on the deploy run.
-- [ ] `https://nexigrate.com/privacy` and `https://nexigrate.com/terms` both load.
+- **Deployments** tab → on the latest run → **⋮** → **Retry deployment**
+
+OR push any commit to the production branch and Cloudflare auto-builds.
 
 ---
 
-## Troubleshooting
+## Step 7 — Verify
 
-**Form returns "Storage error"**
-The KV binding name does not match. Confirm it's exactly `WAITLIST_KV` in **Pages \u2192 Settings \u2192 Functions \u2192 KV namespace bindings**.
+After the green build:
 
-**Deploy fails with "project not found"**
-The Cloudflare Pages project name doesn't match `nexigrate-marketing`. Either rename the project on Cloudflare or update `CLOUDFLARE_PROJECT` in `.github/workflows/deploy-marketing.yml`.
+- [ ] `https://nexigrate.com` loads the landing page (warm paper background, "Study smart. Verified facts. Zero distractions.")
+- [ ] `https://www.nexigrate.com` redirects to apex (or also loads correctly)
+- [ ] The lock icon in the browser shows a valid SSL certificate
+- [ ] Submit a test waitlist signup → "You're on the list."
+- [ ] Cloudflare → **Workers & Pages → KV → nexigrate-waitlist → View** shows a key starting with `waitlist:`
+- [ ] `https://nexigrate.com/privacy` and `https://nexigrate.com/terms` both load
 
-**"DNS_PROBE_FINISHED_NXDOMAIN" in browser**
-Nameservers haven't propagated yet. Wait up to 24 hours. Check with `dig nexigrate.com NS +short` or [whatsmydns.net](https://whatsmydns.net).
+---
 
-**SSL "Not secure" warning**
-Cloudflare's universal SSL takes 5\u201315 minutes to issue after a custom domain is added. If still failing after an hour, in the zone settings set **SSL/TLS \u2192 Overview** to **Full (strict)**.
+## Why this works (short version)
 
-**"Invalid binding SESSION" in build logs**
-This is informational, not an error. Astro's Cloudflare adapter assumes a SESSION KV binding may exist. Our code does not use sessions; you can safely ignore the message.
+Cloudflare has two product paths that both deploy from a Git repo:
+
+- **Pages** — designed for static sites and SSR-with-static-assets frameworks like Astro, Next.js, SvelteKit. Auto-detects framework presets. Auto-deploys after every successful build.
+- **Workers (via Workers Builds)** — designed for code-first Workers. Newer, but rougher around the edges for monorepos and Astro's output format.
+
+Astro's `@astrojs/cloudflare` adapter emits the exact directory structure that Pages expects (`dist/_worker.js/`, `dist/_routes.json`, prerendered HTML, static assets). Pages handles SSR routing automatically using `_routes.json`.
+
+The earlier attempt used Workers Builds, which kept fighting our pnpm monorepo layout, asset format, and Pages-vs-Workers project type detection. Pages eliminates all of those failure modes by being the framework we're actually targeting.
+
+---
+
+## Common failure modes (and the fix)
+
+| Symptom | Fix |
+|---|---|
+| `npm error ERESOLVE` or lockfile complaints | Ensure pnpm is auto-detected (it should be — we have `pnpm-lock.yaml`). If not, prefix the build command with `corepack enable && `. |
+| `404` on the live site | Build output directory is wrong — must be exactly `apps/marketing/dist`. |
+| Waitlist form returns "Storage error" | KV binding name is wrong or missing. Must be exactly `WAITLIST_KV`. |
+| `Not secure` SSL warning persists for >1 hour | In zone settings: **SSL/TLS → Overview** → set to **Full (strict)**. |
+| Build succeeds but site shows "Hello world" | The custom domain is still attached to the old Worker project. Detach it from the Worker (or delete the Worker), then re-attach to the new Pages project. |
 
 ---
 
@@ -201,7 +139,7 @@ This is informational, not an error. Astro's Cloudflare adapter assumes a SESSIO
 Once the landing page is live, the next phase begins:
 
 1. Create the GCP project + Firebase project (we'll walk through this when you're ready).
-2. Add the rest of the GitHub secrets (OpenAI, Gemini, Groq, Razorpay, Resend, MSG91).
+2. Add the rest of the API keys (OpenAI, Gemini, Groq, Razorpay, Resend, MSG91).
 3. Scaffold `apps/web`, `apps/api`, and the shared `packages/*`.
 4. Build auth, onboarding, the credits engine, and the daily MCQ flow.
 5. Build the manual document-verification queue in the admin panel.
