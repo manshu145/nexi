@@ -24,13 +24,15 @@ COPY apps/api/package.json          apps/api/package.json
 
 RUN pnpm install --frozen-lockfile
 
-# Copy sources and build.
+# Copy sources and build workspace packages first, then the api.
 COPY packages/shared  packages/shared
 COPY packages/credits packages/credits
 COPY apps/api         apps/api
 
-WORKDIR /repo/apps/api
-RUN pnpm build
+# Build shared + credits BEFORE the api (api imports their dist/ output)
+RUN pnpm --filter @nexigrate/shared build && \
+    pnpm --filter @nexigrate/credits build && \
+    pnpm --filter @nexigrate/api build
 
 # ---------- Stage 2: runner ----------
 FROM node:22-alpine AS runner
