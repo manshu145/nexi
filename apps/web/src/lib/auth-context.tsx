@@ -3,6 +3,7 @@
 import {
   GoogleAuthProvider,
   onAuthStateChanged,
+  signInWithEmailAndPassword as fbSignInWithEmailAndPassword,
   signInWithPopup,
   signOut as firebaseSignOut,
   type User as FirebaseUser,
@@ -23,12 +24,23 @@ import { getFirebaseAuthClient } from './firebase';
  *
  * Wraps Firebase Auth onAuthStateChanged so any client component can read
  * the current Firebase user via `useAuth()` without prop-drilling.
+ *
+ * Three sign-in surfaces share this context:
+ *   - student Google sign-in           -> signInWithGoogle
+ *   - student phone OTP                -> handled inline in /signin (Firebase
+ *                                         signInWithPhoneNumber + RecaptchaVerifier)
+ *   - admin email + password sign-in   -> signInWithEmailAndPassword
  */
 
 interface AuthState {
   user: FirebaseUser | null;
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
+  /**
+   * Email + password sign-in for the admin login page only. Throws on
+   * invalid credentials so the caller can surface a friendly message.
+   */
+  signInWithEmailAndPassword: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   /** Latest ID token, refreshed on demand. Throws if not signed in. */
   getIdToken: (forceRefresh?: boolean) => Promise<string>;
@@ -56,24 +68,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await signInWithPopup(auth, provider);
   }, []);
 
+  const signInWithEmailAndPassword = useCallback(
+    async (email: string, password: string) => {
+      const auth = getFirebaseAuthClient();
+      await fbSignInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
+    },
+    [],
+  );
+
   const signOut = useCallback(async () => {
     const auth = getFirebaseAuthClient();
     await firebaseSignOut(auth);
   }, []);
 
-  const getIdToken = useCallback(
-    async (forceRefresh = false) => {
-      const auth = getFirebaseAuthClient();
-      const current = auth.currentUser;
-      if (!current) throw new Error('not signed in');
-      return current.getIdToken(forceRefresh);
-    },
-    [],
-  );
+  const getIdToken = useCallback(async (forceRefresh = false) => {
+    const auth = getFirebaseAuthClient();
+    const current = auth.currentUser;
+    if (!current) throw new Error('not signed in');
+    return current.getIdToken(forceRefresh);
+  }, []);
 
   const value = useMemo<AuthState>(
-    () => ({ user, loading, signInWithGoogle, signOut, getIdToken }),
-    [user, loading, signInWithGoogle, signOut, getIdToken],
+    () => ({
+      user,
+      loading,
+      signInWithGoogle,
+      signInWithEmailAndPassword,
+      signOut,
+      getIdToken,
+    }),
+    [user, loading, signInWithGoogle, signInWithEmailAndPassword, signOut, getIdToken],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

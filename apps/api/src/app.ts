@@ -4,6 +4,11 @@ import { HTTPException } from 'hono/http-exception';
 import { asExamSlug, type ExamSlug, type UserId } from '@nexigrate/shared';
 import { authMiddleware, makeVerifier } from './auth.js';
 import type { Env } from './env.js';
+import {
+  FirestoreAdminUserStore,
+  InMemoryAdminUserStore,
+  type AdminUserStore,
+} from './lib/adminUserStore.js';
 import { getFirebaseFirestore } from './lib/firebaseAdmin.js';
 import { FirestoreLedgerStore } from './lib/firestoreLedger.js';
 import {
@@ -29,6 +34,7 @@ import {
 import { FirestoreUserStore, InMemoryUserStore, type UserStore } from './lib/userStore.js';
 import type { Logger } from './logger.js';
 import { makeAdminRoutes } from './routes/admin.js';
+import { makeAdminAuthRoutes } from './routes/admin-auth.js';
 import { makeBillingRoutes } from './routes/billing.js';
 import {
   defaultEngineDeps,
@@ -63,6 +69,7 @@ export interface AppDeps {
   drafts?: McqDraftStore;
   mockTests?: MockTestStore;
   mockTestSessions?: MockTestSessionStore;
+  admins?: AdminUserStore;
 }
 
 export function buildApp(deps: AppDeps): Hono {
@@ -84,6 +91,8 @@ export function buildApp(deps: AppDeps): Hono {
   const mockTestSessions =
     deps.mockTestSessions ??
     (fs ? new FirestoreMockTestSessionStore(fs) : new InMemoryMockTestSessionStore());
+  const admins =
+    deps.admins ?? (fs ? new FirestoreAdminUserStore(fs) : new InMemoryAdminUserStore());
 
   const verifier = makeVerifier(env);
   const engineDeps = defaultEngineDeps();
@@ -192,7 +201,11 @@ export function buildApp(deps: AppDeps): Hono {
     }),
   );
   v1.route('/billing', makeBillingRoutes({ env, subscriptions, logger }));
-  v1.route('/admin', makeAdminRoutes({ env, drafts, mcqs, logger }));
+  // Phase 6: RBAC bootstrap routes. /admin/auth/* MUST be mounted BEFORE
+  // /admin/* so its specific paths win over the generic admin route's
+  // catch-all (Hono matches in registration order).
+  v1.route('/admin/auth', makeAdminAuthRoutes({ env, admins, logger }));
+  v1.route('/admin', makeAdminRoutes({ env, drafts, mcqs, admins, logger }));
   app.route('/v1', v1);
 
   app.onError((err, c) => {

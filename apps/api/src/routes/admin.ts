@@ -10,8 +10,9 @@ import {
   type McqDraft,
   type McqDraftStatus,
 } from '@nexigrate/shared';
-import { requireAdmin } from '../auth.js';
+import { requireAnyAdmin } from '../auth.js';
 import type { Env } from '../env.js';
+import type { AdminUserStore } from '../lib/adminUserStore.js';
 import type { McqDraftStore } from '../lib/mcqDraftStore.js';
 import type { McqStore } from '../lib/mcqStore.js';
 import { GeminiClient } from '../lib/llm/gemini.js';
@@ -29,13 +30,15 @@ import type { Logger } from '../logger.js';
  *   POST /v1/admin/mcq-drafts/:id/approve publish to mcqs collection
  *   POST /v1/admin/mcq-drafts/:id/reject  drop with a reason
  *
- * All gated by Firebase custom claim {admin: true}, enforced via
- * requireAdmin() inside each handler.
+ * All gated by `requireAnyAdmin(c, env, admins, 'content_admin')` -- so
+ * super_admin, admin, and content_admin can use these. support_admin is
+ * locked out (read-only role).
  */
 export interface AdminRoutesDeps {
   env: Env;
   drafts: McqDraftStore;
   mcqs: McqStore;
+  admins: AdminUserStore;
   logger: Logger;
 }
 
@@ -65,10 +68,10 @@ const examNameByMappingSlug: Record<string, string> = {
 
 export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
   const app = new Hono();
-  const { env, drafts, mcqs, logger } = deps;
+  const { env, drafts, mcqs, admins, logger } = deps;
 
   app.post('/mcq-drafts/generate', async (c) => {
-    requireAdmin(c);
+    await requireAnyAdmin(c, env, admins, 'content_admin');
     const body = await c.req.json().catch(() => null);
     const parsed = generateSchema.safeParse(body);
     if (!parsed.success) {
@@ -132,7 +135,7 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
   });
 
   app.get('/mcq-drafts', async (c) => {
-    requireAdmin(c);
+    await requireAnyAdmin(c, env, admins, 'content_admin');
     const status = c.req.query('status') as McqDraftStatus | undefined;
     const examQ = c.req.query('exam');
     const exam = examQ && isExamSlug(examQ) ? (examQ as ExamSlug) : undefined;
@@ -142,14 +145,14 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
   });
 
   app.get('/mcq-drafts/:id', async (c) => {
-    requireAdmin(c);
+    await requireAnyAdmin(c, env, admins, 'content_admin');
     const draft = await drafts.get(asMcqId(c.req.param('id')));
     if (!draft) throw new HTTPException(404, { message: 'draft not found' });
     return c.json({ draft });
   });
 
   app.post('/mcq-drafts/:id/approve', async (c) => {
-    const principal = requireAdmin(c);
+    const { principal } = await requireAnyAdmin(c, env, admins, 'content_admin');
     const id = asMcqId(c.req.param('id'));
     const draft = await drafts.get(id);
     if (!draft) throw new HTTPException(404, { message: 'draft not found' });
@@ -196,7 +199,7 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
   });
 
   app.post('/mcq-drafts/:id/reject', async (c) => {
-    const principal = requireAdmin(c);
+    const { principal } = await requireAnyAdmin(c, env, admins, 'content_admin');
     const id = asMcqId(c.req.param('id'));
     const body = await c.req.json().catch(() => ({}));
     const parsed = reviewSchema.safeParse(body);
