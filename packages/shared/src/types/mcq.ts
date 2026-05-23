@@ -77,3 +77,89 @@ export interface MockTest {
   isPublished: boolean;
   createdAt: ISODateTime;
 }
+
+/**
+ * A draft MCQ produced by the 3-AI generation pipeline awaiting SME review.
+ *
+ * Lifecycle:
+ *   1. Generator model emits a draft  (status: 'pending')
+ *   2. Two verifier models score it   (status: 'pending', verifiers populated)
+ *   3. SME approves or rejects        (status: 'approved' | 'rejected')
+ *   4. On approve, the corresponding MCQ is published into `mcqs`.
+ */
+export type McqDraftStatus = 'pending' | 'approved' | 'rejected';
+
+export interface McqDraft {
+  id: McqId;
+  exam: ExamSlug;
+  subject: SubjectId;
+  chapter: ChapterId;
+  question: string;
+  options: { key: 'A' | 'B' | 'C' | 'D'; text: string }[];
+  correctOption: 'A' | 'B' | 'C' | 'D';
+  explanation: string;
+  difficulty: McqDifficulty;
+  source: string;
+  /** Verifier scores from the second + third LLM passes. */
+  verifiers: McqVerifierScore[];
+  /** Combined verification score in [0, 1]. >= 0.66 = both verifiers agree. */
+  verificationScore: number;
+  /** Which model originally generated the draft. */
+  generatedBy: string;
+  status: McqDraftStatus;
+  /** Filled when status moves out of 'pending'. */
+  reviewedBy: string | null;
+  reviewedAt: ISODateTime | null;
+  /** Free-form rejection reason supplied by the SME. */
+  rejectionReason: string | null;
+  createdAt: ISODateTime;
+  updatedAt: ISODateTime;
+}
+
+/**
+ * A user's session of a timed mock test.
+ *
+ * Created when the user clicks "Start" -- credits are charged immediately.
+ * Closed when the user either submits or runs out of time. Idempotent on
+ * (userId, mockTestId, day) so a user cannot start the same mock twice on
+ * the same day without paying again, but they can retry tomorrow.
+ */
+export type MockTestSessionStatus = 'in_progress' | 'submitted' | 'expired';
+
+export interface MockTestSession {
+  /** `mts:${userId}:${mockTestId}:${YYYY-MM-DD-IST}`. */
+  id: string;
+  userId: UserId;
+  mockTest: MockTestId;
+  startedAt: ISODateTime;
+  /** Server-computed deadline = startedAt + mockTest.durationMinutes. */
+  expiresAt: ISODateTime;
+  submittedAt: ISODateTime | null;
+  status: MockTestSessionStatus;
+  /** Score after submit. -1 while in_progress. */
+  score: number;
+  total: number;
+  /** Answers indexed by mcq id, populated on submit. */
+  answers: Record<string, 'A' | 'B' | 'C' | 'D' | null>;
+  /** Credits spent to start. */
+  costCredits: number;
+  createdAt: ISODateTime;
+}
+
+/**
+ * Streak-milestone badge awarded for hitting a sustained daily streak.
+ *
+ * Pure data: the engine in shared/credits awards a credit bonus and the
+ * badge value gets pushed onto `User.streakBadges` so the UI can light up
+ * a trophy without re-deriving the milestone every render.
+ */
+export type StreakBadgeKind = 'streak_3' | 'streak_7' | 'streak_30' | 'streak_100' | 'streak_365';
+
+export interface StreakBadge {
+  kind: StreakBadgeKind;
+  /** Streak value at the moment the badge was earned. */
+  streak: number;
+  /** Bonus credits awarded with this badge. */
+  bonusCredits: number;
+  earnedAt: ISODateTime;
+}

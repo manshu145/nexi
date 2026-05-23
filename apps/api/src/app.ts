@@ -6,15 +6,29 @@ import { authMiddleware, makeVerifier } from './auth.js';
 import type { Env } from './env.js';
 import { getFirebaseFirestore } from './lib/firebaseAdmin.js';
 import { FirestoreLedgerStore } from './lib/firestoreLedger.js';
+import {
+  FirestoreMcqDraftStore,
+  InMemoryMcqDraftStore,
+  type McqDraftStore,
+} from './lib/mcqDraftStore.js';
 import { FirestoreMcqStore, InMemoryMcqStore, type McqStore } from './lib/mcqStore.js';
+import {
+  FirestoreMockTestSessionStore,
+  FirestoreMockTestStore,
+  InMemoryMockTestSessionStore,
+  InMemoryMockTestStore,
+  type MockTestSessionStore,
+  type MockTestStore,
+} from './lib/mockTestStore.js';
+import { makeRateLimitMiddleware } from './lib/rateLimit.js';
 import {
   FirestoreSubscriptionStore,
   InMemorySubscriptionStore,
   type SubscriptionStore,
 } from './lib/subscriptionStore.js';
 import { FirestoreUserStore, InMemoryUserStore, type UserStore } from './lib/userStore.js';
-import { makeRateLimitMiddleware } from './lib/rateLimit.js';
 import type { Logger } from './logger.js';
+import { makeAdminRoutes } from './routes/admin.js';
 import { makeBillingRoutes } from './routes/billing.js';
 import {
   defaultEngineDeps,
@@ -24,6 +38,10 @@ import {
 } from './routes/credits.js';
 import { makeHealthRoutes } from './routes/health.js';
 import { makeMcqsRoutes, makeMcqSessionsRoutes } from './routes/mcqs.js';
+import {
+  makeMockTestSessionsRoutes,
+  makeMockTestsRoutes,
+} from './routes/mockTests.js';
 import { makeUsersRoutes } from './routes/users.js';
 
 /**
@@ -42,6 +60,9 @@ export interface AppDeps {
   mcqs?: McqStore;
   users?: UserStore;
   subscriptions?: SubscriptionStore;
+  drafts?: McqDraftStore;
+  mockTests?: MockTestStore;
+  mockTestSessions?: MockTestSessionStore;
 }
 
 export function buildApp(deps: AppDeps): Hono {
@@ -56,6 +77,13 @@ export function buildApp(deps: AppDeps): Hono {
   const subscriptions =
     deps.subscriptions ??
     (fs ? new FirestoreSubscriptionStore(fs) : new InMemorySubscriptionStore());
+  const drafts =
+    deps.drafts ?? (fs ? new FirestoreMcqDraftStore(fs) : new InMemoryMcqDraftStore());
+  const mockTests =
+    deps.mockTests ?? (fs ? new FirestoreMockTestStore(fs) : new InMemoryMockTestStore());
+  const mockTestSessions =
+    deps.mockTestSessions ??
+    (fs ? new FirestoreMockTestSessionStore(fs) : new InMemoryMockTestSessionStore());
 
   const verifier = makeVerifier(env);
   const engineDeps = defaultEngineDeps();
@@ -86,15 +114,14 @@ export function buildApp(deps: AppDeps): Hono {
     }),
   );
 
-  // Per-IP rate limit guarding the whole API. Tuned generously enough that
-  // a normal classroom on shared NAT won't trip; see lib/rateLimit.ts.
-  // Skips Cloud Run health probes and Razorpay webhooks (which legitimately
-  // burst during payment reconciliation).
+  // Per-IP rate limit guarding the whole API. Skips Cloud Run health
+  // probes and Razorpay webhooks (which legitimately burst during
+  // payment reconciliation).
   app.use(
     '*',
     makeRateLimitMiddleware({
       burst: 30,
-      refillRatePerSecond: 2, // 120 req / minute sustained
+      refillRatePerSecond: 2,
       logger,
       skip: (path) =>
         path === '/healthz' ||
@@ -140,7 +167,32 @@ export function buildApp(deps: AppDeps): Hono {
     '/mcq-sessions',
     makeMcqSessionsRoutes({ mcqs, ledger, users, logger, ...engineDeps, getTargetExam }),
   );
+  v1.route(
+    '/mock-tests',
+    makeMockTestsRoutes({
+      mockTests,
+      sessions: mockTestSessions,
+      mcqs,
+      ledger,
+      logger,
+      ...engineDeps,
+      getTargetExam,
+    }),
+  );
+  v1.route(
+    '/mock-test-sessions',
+    makeMockTestSessionsRoutes({
+      mockTests,
+      sessions: mockTestSessions,
+      mcqs,
+      ledger,
+      logger,
+      ...engineDeps,
+      getTargetExam,
+    }),
+  );
   v1.route('/billing', makeBillingRoutes({ env, subscriptions, logger }));
+  v1.route('/admin', makeAdminRoutes({ env, drafts, mcqs, logger }));
   app.route('/v1', v1);
 
   app.onError((err, c) => {

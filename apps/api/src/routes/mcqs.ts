@@ -9,11 +9,13 @@ import {
   type ISODateTime,
   type MCQ,
   type McqId,
+  type StreakBadge,
   type UserId,
 } from '@nexigrate/shared';
 import { award, computeBalance } from '@nexigrate/credits';
 import { requireAuth } from '../auth.js';
 import type { McqStore } from '../lib/mcqStore.js';
+import { awardStreakBadges } from '../lib/streakBadges.js';
 import type { UserStore } from '../lib/userStore.js';
 import type { Logger } from '../logger.js';
 import type { LedgerStore } from './credits.js';
@@ -31,8 +33,10 @@ import type { LedgerStore } from './credits.js';
  *     Records the score, awards credits idempotently:
  *       score >= 7/10  ->  +50  via 'mcq_pass'
  *       any attempt    ->  +5   via 'mcq_fail_attempted'
- *     Bumps the daily-streak counter once per IST day.
- *     Returns: { score, total, explanations, creditsAwarded, balance }
+ *     Bumps the daily-streak counter once per IST day, and awards any
+ *     newly-crossed milestone badges (3/7/30/100/365 day) with bonus credits.
+ *     Returns: { score, total, explanations, creditsAwarded, balance,
+ *                newBadges }
  */
 const DAILY_COUNT = 10;
 const PASS_THRESHOLD = 7;
@@ -60,7 +64,6 @@ const completeSchema = z.object({
 });
 
 function todayKey(now: ISODateTime): string {
-  // YYYY-MM-DD in IST so the daily reset feels right for Indian students.
   const utc = new Date(now);
   const ist = new Date(utc.getTime() + 5.5 * 60 * 60 * 1000);
   const y = ist.getUTCFullYear();
@@ -70,8 +73,6 @@ function todayKey(now: ISODateTime): string {
 }
 
 function publicMcq(mcq: MCQ): Omit<MCQ, 'correctOption' | 'explanation'> {
-  // Strip the answer + explanation before sending to the client; we send
-  // them back in the result response after the session is graded.
   const { correctOption: _c, explanation: _e, ...rest } = mcq;
   void _c;
   void _e;
@@ -154,18 +155,31 @@ export function makeMcqSessionsRoutes(deps: McqsRoutesDeps): Hono {
     let balance = computeBalance(events, principal.userId, deps.now()).total;
     let creditsAwarded = 0;
     let streakBumped = false;
+    let newBadges: StreakBadge[] = [];
     if (result.kind === 'awarded') {
       await deps.ledger.append(result.event);
       creditsAwarded = result.event.amount;
       balance = result.newBalance;
-      // Only bump streak when we know this is the first completion for the
-      // session; ledger idempotency is our "first time" signal.
+      // Only bump streak on the first completion of the IST day; the
+      // ledger's awarded-vs-duplicate result is our "first time" signal.
       try {
         const before = (await deps.users.get(principal.userId))?.currentStreak ?? 0;
         const after = await deps.users.bumpStreak(principal.userId, deps.now());
         streakBumped = (after.currentStreak ?? 0) !== before;
+        if (streakBumped) {
+          const awarded = await awardStreakBadges(after, {
+            users: deps.users,
+            ledger: deps.ledger,
+            logger: deps.logger,
+            newId: deps.newId,
+            now: deps.now,
+          });
+          newBadges = awarded.map((a) => a.badge);
+          if (awarded.length > 0) {
+            balance = awarded[awarded.length - 1]!.newBalance;
+          }
+        }
       } catch (e) {
-        // The streak is best-effort; don't fail the session-complete on it.
         deps.logger.warn('mcq.streak.bump_failed', {
           userId: principal.userId,
           error: e instanceof Error ? e.message : String(e),
@@ -183,6 +197,7 @@ export function makeMcqSessionsRoutes(deps: McqsRoutesDeps): Hono {
       total,
       creditsAwarded,
       streakBumped,
+      newBadges: newBadges.length,
     });
 
     return c.json({
@@ -194,6 +209,7 @@ export function makeMcqSessionsRoutes(deps: McqsRoutesDeps): Hono {
       explanations,
       creditsAwarded,
       balance,
+      newBadges,
     });
   });
 
