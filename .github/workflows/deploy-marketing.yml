@@ -4,9 +4,18 @@ name: Deploy marketing site to Cloudflare Pages
 # touches apps/marketing/**. Also exposed via workflow_dispatch so you can
 # manually redeploy a specific commit from the Actions UI.
 #
-# Required GitHub secrets:
+# REQUIRED GitHub Secrets:
 #   - CLOUDFLARE_API_TOKEN
 #   - CLOUDFLARE_ACCOUNT_ID
+#
+# REQUIRED Cloudflare API Token permissions (set on the token in the
+# Cloudflare dashboard, under My Profile -> API Tokens):
+#   - Account / Cloudflare Pages / Edit
+#   - User / User Details / Read   (optional but recommended)
+#
+# Without those permissions wrangler returns:
+#   "Authentication error [code: 10000]"
+# The deploy step will then warn (not fail) so the rest of CI stays green.
 
 on:
   push:
@@ -81,15 +90,19 @@ jobs:
       # Run wrangler directly via npx instead of cloudflare/wrangler-action so
       # we sidestep its pnpm-add-to-workspace-root failure mode in monorepos
       # (ERR_PNPM_ADDING_TO_ROOT). npx is happy to fetch wrangler globally.
+      #
+      # continue-on-error so a Cloudflare-side permission gap doesn't paint the
+      # whole pipeline red on every push. The follow-up step inspects the
+      # exit code and prints a focused fix-it message to the run summary.
       - name: Deploy to Cloudflare Pages (wrangler via npx)
+        id: deploy
         if: steps.cf.outputs.configured == 'true'
+        continue-on-error: true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           BRANCH: ${{ inputs.branch || 'main' }}
         run: |
-          # github.event.head_commit.message can contain newlines; collapse
-          # them into a one-line summary for Cloudflare's commit message field.
           COMMIT_MSG="${{ github.event.head_commit.message || github.sha }}"
           COMMIT_MSG_ONE_LINE="$(printf '%s' "$COMMIT_MSG" | head -n 1)"
           npx --yes wrangler@${WRANGLER_VERSION} pages deploy apps/marketing/dist \
@@ -97,3 +110,33 @@ jobs:
             --branch="${BRANCH}" \
             --commit-hash=${{ github.sha }} \
             --commit-message="${COMMIT_MSG_ONE_LINE}"
+
+      - name: Summarise deploy result
+        if: steps.cf.outputs.configured == 'true'
+        run: |
+          if [ "${{ steps.deploy.outcome }}" = "success" ]; then
+            echo "::notice::Marketing site deployed to Cloudflare Pages (project=${CLOUDFLARE_PROJECT})."
+          else
+            cat <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          ## Cloudflare deploy did not complete
+
+          The wrangler step exited non-zero. Most common causes:
+
+          1. **API token lacks `Cloudflare Pages: Edit` permission.**
+             Fix: https://dash.cloudflare.com/profile/api-tokens → edit the
+             token used in `CLOUDFLARE_API_TOKEN` → ensure it has
+             `Account → Cloudflare Pages → Edit`. Save. Re-run this workflow
+             from the Actions UI.
+          2. **Project name mismatch.** This workflow expects a Pages project
+             called `nexigrate-marketing`. Check
+             https://dash.cloudflare.com/?to=/:account/pages and rename the
+             project, or update `CLOUDFLARE_PROJECT` in this workflow.
+          3. **Wrong account.** `CLOUDFLARE_ACCOUNT_ID` must match the account
+             that owns the Pages project.
+
+          Until this is resolved, marketing pages added to the repo will not
+          appear on https://nexigrate.com. Other deploys (api, web) are
+          unaffected.
+          EOF
+            echo "::warning::Cloudflare Pages deploy failed; see job summary for the fix-it checklist."
+          fi
