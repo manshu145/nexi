@@ -3,6 +3,7 @@ import {
   asISODateTime,
   type ExamSlug,
   type ISODateTime,
+  type StreakBadge,
   type User,
   type UserId,
 } from '@nexigrate/shared';
@@ -49,6 +50,11 @@ export interface UserStore {
    * unchanged. Resets to 1 if the previous bump was not yesterday.
    */
   bumpStreak(uid: UserId, now: ISODateTime): Promise<StoredUser>;
+  /**
+   * Append a streak-milestone badge to `streakBadges`. Idempotent on
+   * `kind` -- if the user already has the same kind, this is a no-op.
+   */
+  addStreakBadge(uid: UserId, badge: StreakBadge): Promise<StoredUser>;
 }
 
 function newUser(uid: UserId, init: UserStoreInit, now: string): StoredUser {
@@ -161,6 +167,20 @@ export class InMemoryUserStore implements UserStore {
     this.users.set(uid, updated);
     return updated;
   }
+
+  async addStreakBadge(uid: UserId, badge: StreakBadge): Promise<StoredUser> {
+    const u = this.users.get(uid);
+    if (!u) throw new Error(`user ${uid} not found`);
+    const existing = u.streakBadges ?? [];
+    if (existing.some((b) => b.kind === badge.kind)) return u;
+    const updated: StoredUser = {
+      ...u,
+      streakBadges: [...existing, badge],
+      updatedAt: badge.earnedAt,
+    };
+    this.users.set(uid, updated);
+    return updated;
+  }
 }
 
 // ---------- firestore ------------------------------------------------------
@@ -207,6 +227,24 @@ export class FirestoreUserStore implements UserStore {
         ...cur,
         ...next,
         updatedAt: now,
+      };
+      tx.set(ref, updated, { merge: true });
+      return updated;
+    });
+  }
+
+  async addStreakBadge(uid: UserId, badge: StreakBadge): Promise<StoredUser> {
+    const ref = this.db.collection(COLLECTION).doc(uid);
+    return this.db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new Error(`user ${uid} not found`);
+      const cur = snap.data() as StoredUser;
+      const existing = cur.streakBadges ?? [];
+      if (existing.some((b) => b.kind === badge.kind)) return cur;
+      const updated: StoredUser = {
+        ...cur,
+        streakBadges: [...existing, badge],
+        updatedAt: badge.earnedAt,
       };
       tx.set(ref, updated, { merge: true });
       return updated;

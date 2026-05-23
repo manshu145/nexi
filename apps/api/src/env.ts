@@ -76,6 +76,22 @@ const schema = z.object({
   RAZORPAY_KEY_ID: z.string().default(''),
   RAZORPAY_KEY_SECRET: z.string().default(''),
   RAZORPAY_WEBHOOK_SECRET: z.string().default(''),
+
+  /**
+   * LLM API keys for the 3-AI MCQ generation pipeline.
+   *
+   * Phase 5 (admin-only):
+   *   - OPENAI_API_KEY  -- generator (gpt-4o-mini)
+   *   - GEMINI_API_KEY  -- verifier 1 (gemini-2.5-flash)
+   *   - GROQ_API_KEY    -- verifier 2 (llama-3.3-70b-versatile)
+   *
+   * All default to empty so the rest of the API runs without them; the
+   * admin /v1/admin/mcq-drafts/generate endpoint refuses to start a run
+   * when any are missing.
+   */
+  OPENAI_API_KEY: z.string().default(''),
+  GEMINI_API_KEY: z.string().default(''),
+  GROQ_API_KEY: z.string().default(''),
 });
 
 export type Env = z.output<typeof schema>;

@@ -17,6 +17,12 @@ import { SEED_MCQS } from '../data/seed-mcqs.js';
 export interface McqStore {
   pickDaily(exam: ExamSlug, count: number, seed: string): Promise<MCQ[]>;
   get(id: McqId): Promise<MCQ | null>;
+  /**
+   * Publish a freshly-approved MCQ. Used by the admin draft-approval flow.
+   * The InMemory store is read-only seeded data so put() is a no-op there;
+   * the Firestore store appends to the `mcqs` collection.
+   */
+  put(mcq: MCQ): Promise<void>;
 }
 
 /**
@@ -65,6 +71,13 @@ export class InMemoryMcqStore implements McqStore {
   async get(id: McqId): Promise<MCQ | null> {
     return SEED_MCQS.find((m) => m.id === id) ?? null;
   }
+
+  async put(_mcq: MCQ): Promise<void> {
+    // The seed bank is read-only at runtime. In dev/test this just means
+    // approved drafts won't show up in pickDaily until the API is running
+    // against Firestore.
+    return;
+  }
 }
 
 const COLLECTION = 'mcqs';
@@ -93,5 +106,9 @@ export class FirestoreMcqStore implements McqStore {
     const doc = await this.db.collection(COLLECTION).doc(id).get();
     if (!doc.exists) return this.fallback.get(id);
     return doc.data() as MCQ;
+  }
+
+  async put(mcq: MCQ): Promise<void> {
+    await this.db.collection(COLLECTION).doc(mcq.id).set(mcq);
   }
 }
