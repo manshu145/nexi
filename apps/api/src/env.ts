@@ -91,7 +91,7 @@ const schema = z.object({
    * The email of the founder / fixed super admin. This identity:
    *   - Is granted role 'super_admin' on every request, regardless of any
    *     Firestore admin_users record. Cannot be locked out.
-   *   - Is the only identity that can mint other admins (Phase 6.2).
+   *   - Is the only identity that can mint other admins.
    *
    * Stored as an env var (not a GitHub Secret) because emails aren't really
    * secret, and we want it visible in the deploy workflow for auditability.
@@ -113,10 +113,8 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   if (!parsed.success) {
     const issues = parsed.error.issues
       .map((i) => `  - ${i.path.join('.')}: ${i.message}`)
-      .join('
-');
-    throw new Error(`Invalid environment configuration:
-${issues}`);
+      .join('\n');
+    throw new Error(`Invalid environment configuration:\n${issues}`);
   }
   if (parsed.data.NODE_ENV === 'production' && parsed.data.AUTH_MODE === 'stub') {
     throw new Error("AUTH_MODE='stub' is not allowed in production. Set AUTH_MODE='firebase'.");
