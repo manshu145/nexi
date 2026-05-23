@@ -263,7 +263,7 @@ function GenerateDraftForm({
 }: {
   onSuccess: (draft: AdminMcqDraft) => void;
 }) {
-  const [exam, setExam] = useState<ExamSlug | string>(LIVE_EXAMS[0]?.slug ?? 'jee-main');
+  const [exam, setExam] = useState<ExamSlug | string>(LIVE_EXAMS[0]?.id ?? 'jee-main');
   const [subject, setSubject] = useState('');
   const [chapter, setChapter] = useState('');
   const [sourceText, setSourceText] = useState('');
@@ -274,8 +274,8 @@ function GenerateDraftForm({
 
   const examChoices = useMemo(
     () => [
-      ...LIVE_EXAMS.map((e) => ({ slug: e.slug, name: `${e.name} (live)` })),
-      ...SOON_EXAMS.map((e) => ({ slug: e.slug, name: `${e.name} (coming soon)` })),
+      ...LIVE_EXAMS.map((e) => ({ slug: e.id, name: `${e.name} (live)` })),
+      ...SOON_EXAMS.map((e) => ({ slug: e.id, name: `${e.name} (coming soon)` })),
     ],
     [],
   );
