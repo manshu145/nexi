@@ -23,6 +23,12 @@ import {
  *   bestStreak     -- all-time max
  *   lastDailyAt    -- ISO datetime of the last bump (used to detect
  *                     same-day idempotence and broken streaks)
+ *
+ * Phase 8 adds the multi-step onboarding survey. The `StudentProfile`
+ * schema in @nexigrate/shared has had these fields for a while; we just
+ * never persisted them. For now they live denormalised on the user doc
+ * (alongside the auth identity) -- splitting into a `students/{uid}`
+ * collection is a separate refactor when we have more student-only data.
  */
 
 export interface UserStoreInit {
@@ -32,18 +38,74 @@ export interface UserStoreInit {
   primaryProvider: 'google' | 'phone';
 }
 
+/**
+ * The complete onboarding-survey payload as persisted on the user doc.
+ * Mirrors `OnboardingRequest` in @nexigrate/shared exactly minus the
+ * fields that already live on `User` (name, phone) -- those are merged
+ * in separately below.
+ */
+export interface OnboardingPayload {
+  targetExam: ExamSlug;
+  classLevel: StoredUser['classLevel'];
+  board: StoredUser['board'];
+  schoolName: string | null;
+  district: string | null;
+  state: string | null;
+  dateOfBirth: string | null;
+  examDate: string | null;
+  studyHoursPerDay: number | null;
+  weakSubjects: string[];
+  phone: string | null;
+  parentEmail: string | null;
+  parentPhone: string | null;
+  referralCode: string | null;
+  /** Optional name override -- mostly a no-op since the auth provider supplies one. */
+  name?: string;
+}
+
 /** A `User` with the additional per-user app fields stored on the same doc. */
 export type StoredUser = User & {
   targetExam?: ExamSlug | null;
   currentStreak?: number;
   bestStreak?: number;
   lastDailyAt?: ISODateTime | null;
+
+  // Phase 8 -- onboarding survey
+  classLevel?:
+    | 'class-8'
+    | 'class-9'
+    | 'class-10'
+    | 'class-11'
+    | 'class-12'
+    | 'graduation'
+    | 'post-graduation'
+    | null;
+  board?: 'cbse' | 'icse' | 'state' | 'other' | null;
+  schoolName?: string | null;
+  district?: string | null;
+  state?: string | null;
+  dateOfBirth?: string | null;
+  examDate?: string | null;
+  studyHoursPerDay?: number | null;
+  weakSubjects?: string[];
+  parentEmail?: string | null;
+  parentPhone?: string | null;
+  referralCode?: string | null;
+  /** ISO datetime when the user finished the multi-step survey. */
+  onboardingCompletedAt?: ISODateTime | null;
 };
 
 export interface UserStore {
   getOrCreate(uid: UserId, init: UserStoreInit): Promise<StoredUser>;
   get(uid: UserId): Promise<StoredUser | null>;
+  /** Set the target exam in isolation (e.g. settings page later). */
   setTargetExam(uid: UserId, exam: ExamSlug): Promise<StoredUser>;
+  /**
+   * Persist the full onboarding-survey payload. Always sets
+   * `onboardingCompletedAt` so the dashboard knows the survey is done.
+   * Auto-derives `isMinor` from `dateOfBirth` when present.
+   */
+  applyOnboarding(uid: UserId, payload: OnboardingPayload): Promise<StoredUser>;
   /**
    * Bump the streak counter on `uid` based on `now`. Idempotent within a
    * single IST day -- repeated calls on the same day return the user
@@ -125,6 +187,56 @@ export function nextStreak(
   return { currentStreak: current, bestStreak: best, lastDailyAt: now };
 }
 
+/**
+ * Compute whether a user is a minor (<18) at `now` based on their
+ * birth date in YYYY-MM-DD form. Returns false if `dateOfBirth` is null
+ * or unparseable so callers don't accidentally minor-flag adults.
+ */
+export function computeIsMinor(dateOfBirth: string | null, now: Date = new Date()): boolean {
+  if (!dateOfBirth) return false;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateOfBirth);
+  if (!m) return false;
+  const [, ys, ms, ds] = m;
+  const year = Number(ys);
+  const month = Number(ms);
+  const day = Number(ds);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return false;
+  const eighteenth = new Date(Date.UTC(year + 18, month - 1, day));
+  return now.getTime() < eighteenth.getTime();
+}
+
+/**
+ * Build the field set merged onto the user doc by `applyOnboarding`.
+ * Pulled out so both store implementations stay in sync.
+ */
+function onboardingPatch(
+  payload: OnboardingPayload,
+  now: ISODateTime,
+): Partial<StoredUser> {
+  const isMinor = computeIsMinor(payload.dateOfBirth);
+  const patch: Partial<StoredUser> = {
+    targetExam: payload.targetExam,
+    classLevel: payload.classLevel,
+    board: payload.board,
+    schoolName: payload.schoolName,
+    district: payload.district,
+    state: payload.state,
+    dateOfBirth: payload.dateOfBirth,
+    examDate: payload.examDate,
+    studyHoursPerDay: payload.studyHoursPerDay,
+    weakSubjects: payload.weakSubjects,
+    phone: payload.phone,
+    parentEmail: payload.parentEmail,
+    parentPhone: payload.parentPhone,
+    referralCode: payload.referralCode,
+    isMinor,
+    onboardingCompletedAt: now,
+    updatedAt: now,
+  };
+  if (payload.name && payload.name.trim()) patch.name = payload.name.trim();
+  return patch;
+}
+
 // ---------- in-memory ------------------------------------------------------
 
 export class InMemoryUserStore implements UserStore {
@@ -149,6 +261,18 @@ export class InMemoryUserStore implements UserStore {
       ...u,
       targetExam: exam,
       updatedAt: asISODateTime(new Date().toISOString()),
+    };
+    this.users.set(uid, updated);
+    return updated;
+  }
+
+  async applyOnboarding(uid: UserId, payload: OnboardingPayload): Promise<StoredUser> {
+    const u = this.users.get(uid);
+    if (!u) throw new Error(`user ${uid} not found`);
+    const now = asISODateTime(new Date().toISOString());
+    const updated: StoredUser = {
+      ...u,
+      ...onboardingPatch(payload, now),
     };
     this.users.set(uid, updated);
     return updated;
@@ -211,6 +335,14 @@ export class FirestoreUserStore implements UserStore {
       { targetExam: exam, updatedAt: new Date().toISOString() },
       { merge: true },
     );
+    const snap = await ref.get();
+    return snap.data() as StoredUser;
+  }
+
+  async applyOnboarding(uid: UserId, payload: OnboardingPayload): Promise<StoredUser> {
+    const ref = this.db.collection(COLLECTION).doc(uid);
+    const now = asISODateTime(new Date().toISOString());
+    await ref.set(onboardingPatch(payload, now), { merge: true });
     const snap = await ref.get();
     return snap.data() as StoredUser;
   }
