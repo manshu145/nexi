@@ -47,10 +47,10 @@ jobs:
         with:
           project_id: nexigrate-prod
 
-      - name: Deploy Firestore + Storage rules and indexes
+      - name: Deploy Firestore rules + indexes
         working-directory: infra/firebase
         run: |
           firebase deploy \
-            --only firestore:rules,firestore:indexes,storage:rules \
+            --only firestore:rules,firestore:indexes \
             --project nexigrate-prod \
             --non-interactive
