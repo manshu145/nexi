@@ -3,11 +3,34 @@
 # Multi-stage Dockerfile for the Nexigrate student web app on Cloud Run.
 #
 # Build from the repo root:
-#   docker build -f apps/web/Dockerfile -t nexigrate-web:local .
+#   docker build -f apps/web/Dockerfile -t nexigrate-web:local \
+#     --build-arg NEXT_PUBLIC_API_BASE_URL=https://api.nexigrate.com \
+#     .
+#
+# IMPORTANT: NEXT_PUBLIC_* values are baked into the JS bundle at BUILD time
+# (Next.js standalone mode). Setting them at `gcloud run deploy --set-env-vars`
+# has NO effect on the browser bundle. They MUST be passed as --build-arg.
 
 FROM node:22-alpine AS builder
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 WORKDIR /repo
+
+# ---- public env (baked into the client bundle) -----------------------------
+ARG NEXT_PUBLIC_API_BASE_URL=https://api.nexigrate.com
+ARG NEXT_PUBLIC_FIREBASE_API_KEY=AIzaSyBQuLPo3N9PMWov9sUrp7czVzBix4lPj8M
+ARG NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=nexigrate-prod.firebaseapp.com
+ARG NEXT_PUBLIC_FIREBASE_PROJECT_ID=nexigrate-prod
+ARG NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=nexigrate-prod.firebasestorage.app
+ARG NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=505978726927
+ARG NEXT_PUBLIC_FIREBASE_APP_ID=1:505978726927:web:066fb77f927442d1e3117a
+
+ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL \
+    NEXT_PUBLIC_FIREBASE_API_KEY=$NEXT_PUBLIC_FIREBASE_API_KEY \
+    NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=$NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN \
+    NEXT_PUBLIC_FIREBASE_PROJECT_ID=$NEXT_PUBLIC_FIREBASE_PROJECT_ID \
+    NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=$NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET \
+    NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=$NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID \
+    NEXT_PUBLIC_FIREBASE_APP_ID=$NEXT_PUBLIC_FIREBASE_APP_ID
 
 # Resolve workspace deps first, for layer cache.
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json turbo.json ./
