@@ -139,14 +139,11 @@ export default function AdminMcqDraftsPage() {
       </section>
 
       {toast ? (
-        <div
-          className="paper-card mt-4 border-l-4 border-ember-600 px-4 py-3 text-sm text-ink-800"
-          role="status"
-        >
-          {toast}
+        <div className="banner banner-success mt-4" role="status">
+          <span className="flex-1">{toast}</span>
           <button
             type="button"
-            className="ml-3 text-xs text-muted-500 underline"
+            className="text-xs text-muted-500 underline"
             onClick={() => setToast(null)}
           >
             dismiss
@@ -156,9 +153,16 @@ export default function AdminMcqDraftsPage() {
 
       <section className="mt-6 space-y-3">
         {listError ? (
-          <p className="text-sm text-ember-600" role="alert">
-            {listError}
-          </p>
+          <div className="banner banner-error" role="alert">
+            <span className="flex-1">{listError}</span>
+            <button
+              type="button"
+              className="text-xs underline"
+              onClick={() => void refreshDrafts()}
+            >
+              retry
+            </button>
+          </div>
         ) : null}
 
         {drafts.length === 0 && !listLoading && !listError ? (
@@ -420,24 +424,12 @@ function DraftRow({
 
 function StatusPill({ status }: { status: McqDraftStatus }) {
   if (status === 'approved') {
-    return (
-      <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800">
-        approved
-      </span>
-    );
+    return <span className="pill pill-success">approved</span>;
   }
   if (status === 'rejected') {
-    return (
-      <span className="rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-medium text-rose-800">
-        rejected
-      </span>
-    );
+    return <span className="pill pill-warn">rejected</span>;
   }
-  return (
-    <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
-      pending
-    </span>
-  );
+  return <span className="pill pill-neutral">pending</span>;
 }
 
 function DraftDetail({
@@ -493,13 +485,15 @@ function DraftDetail({
               key={opt.key}
               className={
                 opt.key === draft.correctOption
-                  ? 'rounded border border-emerald-300 bg-emerald-50 px-3 py-2 text-emerald-900'
-                  : 'rounded border border-ink-900/10 bg-paper-100 px-3 py-2 text-ink-800'
+                  ? 'rounded border-2 border-ember-600 bg-paper-300 px-3 py-2 text-ink-900'
+                  : 'rounded border border-line bg-paper-50 px-3 py-2 text-ink-800'
               }
             >
               <span className="font-medium">{opt.key}.</span> {opt.text}
               {opt.key === draft.correctOption ? (
-                <span className="ml-2 text-xs font-medium text-emerald-700">correct</span>
+                <span className="ml-2 text-xs font-semibold uppercase tracking-wider text-ember-600">
+                  ✓ correct
+                </span>
               ) : null}
             </li>
           ))}
@@ -539,8 +533,10 @@ function DraftDetail({
 
       {/* Rejection reason if already rejected */}
       {draft.status === 'rejected' && draft.rejectionReason ? (
-        <div className="rounded border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-900">
-          <span className="font-medium">Rejected:</span> {draft.rejectionReason}
+        <div className="banner banner-error">
+          <span>
+            <span className="font-medium">Rejected:</span> {draft.rejectionReason}
+          </span>
         </div>
       ) : null}
 
