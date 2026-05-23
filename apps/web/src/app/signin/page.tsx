@@ -38,7 +38,7 @@ export default function SignInPage() {
           Sign in to Nexigrate
         </h1>
         <p className="mt-3 text-ink-800">
-          Verified students only. Free forever. No ads.
+          Free forever. No ads. No distractions.
         </p>
 
         <button

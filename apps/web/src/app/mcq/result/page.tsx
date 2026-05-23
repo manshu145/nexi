@@ -39,7 +39,7 @@ export default function McqResultPage() {
             No recent result
           </h1>
           <p className="mt-3 text-ink-800">
-            We don\u2019t have a recent MCQ session in this browser. Take today\u2019s MCQ first.
+            We don’t have a recent MCQ session in this browser. Take today’s MCQ first.
           </p>
           <button
             type="button"
@@ -56,7 +56,10 @@ export default function McqResultPage() {
   if (!stored) {
     return (
       <main className="flex min-h-[60vh] items-center justify-center px-6">
-        <p className="text-muted-500 text-sm">Loading result\u2026</p>
+        <span className="inline-flex items-center gap-2 text-sm text-muted-500">
+          <span className="spinner" aria-hidden="true" />
+          Loading result…
+        </span>
       </main>
     );
   }
@@ -71,7 +74,7 @@ export default function McqResultPage() {
         <button
           type="button"
           onClick={() => router.replace('/dashboard')}
-          className="btn-ghost text-sm"
+          className="btn-ghost-sm"
         >
           Done
         </button>
@@ -91,7 +94,7 @@ export default function McqResultPage() {
         <p className="mt-3 inline-flex items-center gap-2 text-sm text-ember-600">
           +{result.creditsAwarded} credits
           <span className="text-muted-500">
-            \u00b7 balance now <span className="font-medium text-ink-900">{result.balance}</span>
+            · balance now <span className="font-medium text-ink-900">{result.balance}</span>
           </span>
         </p>
       </section>
@@ -104,21 +107,25 @@ export default function McqResultPage() {
             const pick = picks[m.id] ?? null;
             const correct = exp?.correctOption ?? null;
             const isRight = pick && correct && pick === correct;
+            const status = isRight ? 'correct' : pick ? 'incorrect' : 'skipped';
+            const pillClass =
+              status === 'correct'
+                ? 'pill pill-success'
+                : status === 'incorrect'
+                  ? 'pill pill-warn'
+                  : 'pill pill-neutral';
             return (
               <article key={m.id} className="paper-card p-5 sm:p-6">
                 <div className="flex items-start justify-between gap-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-500">
-                    Q{i + 1} \u00b7 {m.subject}
+                    Q{i + 1} · {m.subject}
                   </p>
-                  <span
-                    className={`pill ${isRight ? '' : ''}`}
-                    style={
-                      isRight
-                        ? { backgroundColor: 'var(--color-paper-300)' }
-                        : { backgroundColor: '#F3D8C9' }
-                    }
-                  >
-                    {isRight ? 'Correct' : pick ? 'Incorrect' : 'Skipped'}
+                  <span className={pillClass}>
+                    {status === 'correct'
+                      ? 'Correct'
+                      : status === 'incorrect'
+                        ? 'Incorrect'
+                        : 'Skipped'}
                   </span>
                 </div>
                 <p className="font-serif mt-3 text-base font-semibold leading-snug text-ink-900">
@@ -133,7 +140,7 @@ export default function McqResultPage() {
                         key={opt.key}
                         className={`rounded border px-3 py-2 text-sm ${
                           isCorrect
-                            ? 'border-ember-600 bg-paper-200 text-ink-900'
+                            ? 'border-2 border-ember-600 bg-paper-300 text-ink-900'
                             : isPick
                               ? 'border-line bg-paper-50 text-ink-800'
                               : 'border-line bg-transparent text-ink-800'
@@ -141,6 +148,11 @@ export default function McqResultPage() {
                       >
                         <span className="font-serif font-semibold text-ember-600">{opt.key}.</span>{' '}
                         {opt.text}
+                        {isCorrect ? (
+                          <span className="ml-2 text-xs font-semibold uppercase tracking-wider text-ember-600">
+                            ✓ correct
+                          </span>
+                        ) : null}
                       </li>
                     );
                   })}

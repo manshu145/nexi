@@ -3,7 +3,7 @@ export type FaqItem = { q: string; a: string };
 export const FAQ: readonly FaqItem[] = [
   {
     q: 'Is Nexigrate really free?',
-    a: 'Yes. The credits engine lets you study free forever \u2014 take a daily 10-question MCQ, refer friends, or maintain a streak, and you accumulate enough credits to read chapters, run mock tests, and ask the AI tutor. We also offer optional paid plans (\u20b999 to \u20b9599/month) for students who want unlimited access without the daily MCQ habit.',
+    a: 'Yes. The credits engine lets you study free forever — take a daily 10-question MCQ, refer friends, or maintain a streak, and you accumulate enough credits to read chapters, run mock tests, and ask the AI tutor. We also offer optional paid plans (₹99 to ₹599/month) for students who want unlimited access without the daily MCQ habit.',
   },
   {
     q: 'How do credits work?',
@@ -11,11 +11,11 @@ export const FAQ: readonly FaqItem[] = [
   },
   {
     q: 'Which exams are covered now?',
-    a: 'For the v0.1 launch we are focused on Class 11\u201312 CBSE, JEE Main, JEE Advanced, and NEET UG. Class 8\u201310 boards are next, followed by SSC and banking, then UPSC and State PSCs. We would rather do five exams flawlessly than fifty mediocrely.',
+    a: 'For the v0.1 launch we are focused on Class 11–12 CBSE, JEE Main, JEE Advanced, and NEET UG. Class 8–10 boards are next, followed by SSC and banking, then UPSC and State PSCs. We would rather do five exams flawlessly than fifty mediocrely.',
   },
   {
     q: 'How do you make sure the content is correct?',
-    a: 'Every chapter, MCQ, and explanation goes through a 3-AI verification pipeline (OpenAI, Gemini, and Groq Llama, from three different model families) and is then reviewed by a human subject-matter expert before it is shown to a student. Every fact is traceable back to its primary source \u2014 NCERT, UPSC PYQs, or an official Government of India publication.',
+    a: 'Every chapter, MCQ, and explanation goes through a 3-AI verification pipeline (OpenAI, Gemini, and Groq Llama, from three different model families) and is then reviewed by a human subject-matter expert before it is shown to a student. Every fact is traceable back to its primary source — NCERT, UPSC PYQs, or an official Government of India publication.',
   },
   {
     q: 'When does the mobile app launch?',

@@ -10,11 +10,11 @@ const earn = [
 ] as const;
 
 const spend = [
-  { label: 'Read a chapter',          value: '\u22125'  },
-  { label: '1-hour focus session',    value: '\u221210' },
-  { label: 'Mock test',               value: '\u221220' },
-  { label: 'Question to AI tutor',    value: '\u22125'  },
-  { label: 'Concept video',           value: '\u22125'  },
+  { label: 'Read a chapter',          value: '−5'  },
+  { label: '1-hour focus session',    value: '−10' },
+  { label: 'Mock test',               value: '−20' },
+  { label: 'Question to AI tutor',    value: '−5'  },
+  { label: 'Concept video',           value: '−5'  },
 ] as const;
 ---
 
@@ -28,7 +28,7 @@ const spend = [
       <p class="mt-4 text-lg leading-relaxed text-ink-800">
         A serious daily student earns more credits than they spend. That is the
         whole point. Subscriptions exist for those who would rather pay than
-        take the daily MCQ \u2014 they don't unlock anything credits can't.
+        take the daily MCQ — they don't unlock anything credits can't.
       </p>
     </div>
 
@@ -40,7 +40,7 @@ const spend = [
             <li class="flex items-baseline justify-between gap-4 py-3">
               <span class="text-ink-800">
                 {row.label}
-                <span class="ml-2 text-xs text-muted-500">\u00b7 {row.note}</span>
+                <span class="ml-2 text-xs text-muted-500">· {row.note}</span>
               </span>
               <span class="font-serif text-lg font-semibold text-ember-600 tabular-nums">
                 {row.value}
@@ -68,9 +68,9 @@ const spend = [
             Optional subscriptions
           </p>
           <ul class="mt-2 space-y-1 text-sm text-ink-800">
-            <li><span class="font-medium">Scholar</span> \u2014 \u20b999/mo \u00b7 Class 8\u201310</li>
-            <li><span class="font-medium">Aspirant</span> \u2014 \u20b9299/mo \u00b7 Class 11\u201312, JEE, NEET</li>
-            <li><span class="font-medium">Achiever</span> \u2014 \u20b9599/mo \u00b7 UPSC, SSC, State PSCs</li>
+            <li><span class="font-medium">Scholar</span> — ₹99/mo · Class 8–10</li>
+            <li><span class="font-medium">Aspirant</span> — ₹299/mo · Class 11–12, JEE, NEET</li>
+            <li><span class="font-medium">Achiever</span> — ₹599/mo · UPSC, SSC, State PSCs</li>
           </ul>
           <p class="mt-2 text-xs text-muted-500">Annual plans are 40% cheaper. Available at launch.</p>
         </div>

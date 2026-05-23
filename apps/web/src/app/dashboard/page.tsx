@@ -55,7 +55,10 @@ export default function DashboardPage() {
   if (loading || !user) {
     return (
       <main className="flex min-h-[60vh] items-center justify-center px-6">
-        <p className="text-muted-500 text-sm">Loading\u2026</p>
+        <span className="inline-flex items-center gap-2 text-sm text-muted-500">
+          <span className="spinner" aria-hidden="true" />
+          Loading…
+        </span>
       </main>
     );
   }
@@ -66,13 +69,22 @@ export default function DashboardPage() {
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col px-6 pt-8 pb-16">
       <header className="flex items-start justify-between">
         <Logo />
-        <button
-          type="button"
-          onClick={() => signOut().then(() => router.replace('/signin'))}
-          className="btn-ghost text-sm"
-        >
-          Sign out
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => router.push('/upgrade')}
+            className="btn-ghost-sm"
+          >
+            Upgrade
+          </button>
+          <button
+            type="button"
+            onClick={() => signOut().then(() => router.replace('/signin'))}
+            className="btn-ghost-sm"
+          >
+            Sign out
+          </button>
+        </div>
       </header>
 
       <section className="mt-10">
@@ -80,7 +92,7 @@ export default function DashboardPage() {
           {greeting()}, {firstName(me?.name ?? user.displayName ?? 'student')}
         </p>
         <h1 className="font-serif mt-1 text-3xl font-semibold leading-tight text-ink-900 sm:text-4xl">
-          Today\u2019s study slate
+          Today’s study slate
         </h1>
         {examName ? (
           <p className="mt-2 text-sm text-muted-500">
@@ -91,14 +103,14 @@ export default function DashboardPage() {
 
       <section className="paper-card mt-8 p-6 sm:p-8">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ember-600">
-          Daily MCQ \u00b7 10 questions
+          Daily MCQ · 10 questions
         </p>
         <h2 className="font-serif mt-3 text-2xl font-semibold leading-snug text-ink-900">
-          Take today\u2019s questions, earn credits.
+          Take today’s questions, earn credits.
         </h2>
         <p className="mt-3 text-ink-800">
           Pass with 7/10 or more to earn <span className="font-medium">+50 credits</span>.
-          Even a failed attempt earns +5 \u2014 nobody gets locked out.
+          Even a failed attempt earns +5 — nobody gets locked out.
         </p>
         <button
           type="button"
@@ -130,7 +142,9 @@ export default function DashboardPage() {
             Verification
           </p>
           <p className="mt-2 text-ink-800">
-            {me?.isVerified ? 'You\u2019re verified.' : 'Beta access. Verification flow coming soon.'}
+            {me?.isVerified
+              ? 'You\u2019re verified.'
+              : 'You\u2019re in our private beta. Identity verification arrives by end of June.'}
           </p>
         </div>
       </section>

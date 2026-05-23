@@ -1,6 +1,6 @@
 ---
 const sources = [
-  { label: 'NCERT',          note: 'Class 6\u201312 textbooks' },
+  { label: 'NCERT',          note: 'Class 6–12 textbooks' },
   { label: 'UPSC',           note: 'previous-year papers, official syllabus' },
   { label: 'CBSE',           note: 'sample papers, marking schemes' },
   { label: 'JEE / NEET',     note: 'NTA released papers' },
@@ -9,9 +9,9 @@ const sources = [
 ] as const;
 
 const verifiers = [
-  { name: 'OpenAI',  note: 'GPT-4o-mini \u2014 generation' },
-  { name: 'Google',  note: 'Gemini 2.5 Flash \u2014 verifier 1' },
-  { name: 'Groq',    note: 'Llama 3.3 70B \u2014 verifier 2' },
+  { name: 'OpenAI',  note: 'GPT-4o-mini — generation' },
+  { name: 'Google',  note: 'Gemini 2.5 Flash — verifier 1' },
+  { name: 'Groq',    note: 'Llama 3.3 70B — verifier 2' },
   { name: 'Human SME', note: 'final review on flagged content' },
 ] as const;
 ---
@@ -43,7 +43,7 @@ const verifiers = [
                 <span class="mt-1 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-ember-600"></span>
                 <span class="text-sm text-ink-800">
                   <span class="font-medium">{s.label}</span>
-                  <span class="text-muted-500"> \u2014 {s.note}</span>
+                  <span class="text-muted-500"> — {s.note}</span>
                 </span>
               </li>
             ))}
@@ -60,7 +60,7 @@ const verifiers = [
                 </span>
                 <span class="text-sm text-ink-800">
                   <span class="font-medium">{v.name}</span>
-                  <span class="text-muted-500"> \u2014 {v.note}</span>
+                  <span class="text-muted-500"> — {v.note}</span>
                 </span>
               </li>
             ))}

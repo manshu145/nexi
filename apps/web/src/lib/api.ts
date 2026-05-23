@@ -125,6 +125,50 @@ export const api = {
     );
     return res.json() as Promise<CompleteSessionResponse>;
   },
+
+  async createBillingOrder(input: {
+    plan: 'scholar' | 'aspirant' | 'achiever';
+    interval: 'monthly' | 'yearly';
+  }): Promise<{
+    orderId: string;
+    amount: number;
+    currency: 'INR';
+    keyId: string;
+    plan: string;
+    interval: string;
+  }> {
+    const res = await authedFetch('/v1/billing/create-order', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return res.json() as Promise<{
+      orderId: string;
+      amount: number;
+      currency: 'INR';
+      keyId: string;
+      plan: string;
+      interval: string;
+    }>;
+  },
+
+  async verifyBilling(input: {
+    razorpay_order_id: string;
+    razorpay_payment_id: string;
+    razorpay_signature: string;
+    plan: 'scholar' | 'aspirant' | 'achiever';
+    interval: 'monthly' | 'yearly';
+  }): Promise<{ subscription: unknown }> {
+    const res = await authedFetch('/v1/billing/verify', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return res.json() as Promise<{ subscription: unknown }>;
+  },
+
+  async getSubscription(): Promise<{ subscription: unknown | null }> {
+    const res = await authedFetch('/v1/billing/subscription');
+    return res.json() as Promise<{ subscription: unknown | null }>;
+  },
 };
 
 export { ApiError };

@@ -10,13 +10,13 @@
  *
  * Behaviour:
  *   - 200  on new signup (`ok: true, duplicate: false`)
- *   - 200  on existing signup (`ok: true, duplicate: true`) \u2014 we still tell
+ *   - 200  on existing signup (`ok: true, duplicate: true`) — we still tell
  *          the user it succeeded so we don't leak email enumeration
  *   - 400  on invalid input
  *   - 429  on rate limit
  *   - 500  on KV failure (degrades to an in-memory log so dev still works)
  *
- * The endpoint is intentionally tiny and self-contained \u2014 no external network
+ * The endpoint is intentionally tiny and self-contained — no external network
  * calls, so it stays well inside Cloudflare's free CPU budget.
  */
 import type { APIContext, APIRoute } from 'astro';

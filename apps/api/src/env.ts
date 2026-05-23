@@ -64,6 +64,18 @@ const schema = z.object({
 
   /** Toggle structured JSON logging vs human-readable lines. JSON in production. */
   LOG_JSON: stringBool.default('false'),
+
+  /**
+   * Razorpay credentials (test or live mode).
+   * KEY_ID is publishable and may be exposed via NEXT_PUBLIC_*.
+   * KEY_SECRET and WEBHOOK_SECRET are server-only.
+   *
+   * In Phase 3 these default to empty so dev environments can run without
+   * billing wired; the billing routes refuse to handle requests when missing.
+   */
+  RAZORPAY_KEY_ID: z.string().default(''),
+  RAZORPAY_KEY_SECRET: z.string().default(''),
+  RAZORPAY_WEBHOOK_SECRET: z.string().default(''),
 });
 
 export type Env = z.output<typeof schema>;
