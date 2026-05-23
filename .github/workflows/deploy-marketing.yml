@@ -1,13 +1,5 @@
 name: Deploy marketing site to Cloudflare Pages
 
-# Auto-deploys the marketing site (nexigrate.com) on every push to main that
-# touches apps/marketing/**. Also exposed via workflow_dispatch so you can
-# manually redeploy a specific commit from the Actions UI.
-#
-# REQUIRED GitHub Secrets:
-#   - CLOUDFLARE_API_TOKEN  (must have Account / Cloudflare Pages / Edit)
-#   - CLOUDFLARE_ACCOUNT_ID
-
 on:
   push:
     branches: [main]
@@ -16,12 +8,6 @@ on:
       - 'pnpm-lock.yaml'
       - '.github/workflows/deploy-marketing.yml'
   workflow_dispatch:
-    inputs:
-      branch:
-        description: 'Cloudflare Pages branch to deploy to (production = "main")'
-        required: false
-        default: 'main'
-        type: string
 
 concurrency:
   group: deploy-marketing-${{ github.ref }}
@@ -34,134 +20,66 @@ env:
 
 jobs:
   deploy:
-    name: Build and deploy to Cloudflare
     runs-on: ubuntu-latest
     timeout-minutes: 12
     permissions:
       contents: read
-      deployments: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v4
         with:
           version: ${{ env.PNPM_VERSION }}
           run_install: false
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile=false
+      - run: pnpm install --frozen-lockfile=false
 
-      - name: Build marketing site
-        run: pnpm build:marketing
+      - run: pnpm build:marketing
         env:
           NODE_ENV: production
 
-      # ----------------------------------------------------------------
-      # Diagnose what the token can actually do, BEFORE attempting the
-      # deploy. This makes the workflow self-explanatory when something
-      # is off (wrong account, missing scope, stale project name).
-      # ----------------------------------------------------------------
-      - name: Diagnose Cloudflare token + project state
-        id: diag
+      # Diagnostic: dump everything we know about the Cloudflare token + project,
+      # then deliberately exit 1 so the failed-logs API can return this output
+      # (regular successful-step logs require authenticated API access).
+      - name: Diagnose Cloudflare state (will exit 1 to expose logs via failed-logs API)
         env:
           TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set +e
-          if [ -z "$TOKEN" ] || [ -z "$ACCOUNT" ]; then
-            echo "::warning::CLOUDFLARE_API_TOKEN or CLOUDFLARE_ACCOUNT_ID not set."
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          echo "configured=true" >> "$GITHUB_OUTPUT"
+          echo ">>> token-set=$([ -n "$TOKEN" ] && echo yes || echo no)"
+          echo ">>> account-set=$([ -n "$ACCOUNT" ] && echo yes || echo no)"
+          echo ">>> account-id-prefix=${ACCOUNT:0:8}"
 
-          echo "## Cloudflare diagnostics" >> "$GITHUB_STEP_SUMMARY"
+          echo ""
+          echo ">>> ============ /user/tokens/verify ============"
+          curl -s -H "Authorization: Bearer $TOKEN" \
+            https://api.cloudflare.com/client/v4/user/tokens/verify
+          echo ""
 
-          echo "### 1. Token verify" >> "$GITHUB_STEP_SUMMARY"
-          VERIFY=$(curl -s -H "Authorization: Bearer $TOKEN" \
-            https://api.cloudflare.com/client/v4/user/tokens/verify)
-          echo '```json' >> "$GITHUB_STEP_SUMMARY"
-          echo "$VERIFY" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo ""
+          echo ">>> ============ /accounts ============"
+          curl -s -H "Authorization: Bearer $TOKEN" \
+            https://api.cloudflare.com/client/v4/accounts | head -c 4000
+          echo ""
 
-          echo "### 2. Pages projects on this account" >> "$GITHUB_STEP_SUMMARY"
-          PROJECTS=$(curl -s -H "Authorization: Bearer $TOKEN" \
-            "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT/pages/projects")
-          echo '```json' >> "$GITHUB_STEP_SUMMARY"
-          echo "$PROJECTS" | head -c 4000 >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo ""
+          echo ">>> ============ /accounts/$ACCOUNT/pages/projects ============"
+          curl -s -H "Authorization: Bearer $TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT/pages/projects" | head -c 6000
+          echo ""
 
-          echo "### 3. Last 5 deployments for ${CLOUDFLARE_PROJECT}" >> "$GITHUB_STEP_SUMMARY"
-          DEPLOYMENTS=$(curl -s -H "Authorization: Bearer $TOKEN" \
-            "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT/pages/projects/${CLOUDFLARE_PROJECT}/deployments?per_page=5")
-          echo '```json' >> "$GITHUB_STEP_SUMMARY"
-          echo "$DEPLOYMENTS" | head -c 4000 >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo ""
+          echo ">>> ============ deployments for ${CLOUDFLARE_PROJECT} ============"
+          curl -s -H "Authorization: Bearer $TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT/pages/projects/${CLOUDFLARE_PROJECT}/deployments?per_page=5" | head -c 8000
+          echo ""
 
-          echo "::group::Verify response"
-          echo "$VERIFY"
-          echo "::endgroup::"
-          echo "::group::Projects response"
-          echo "$PROJECTS"
-          echo "::endgroup::"
-          echo "::group::Deployments response"
-          echo "$DEPLOYMENTS"
-          echo "::endgroup::"
-
-      - name: Deploy via local wrangler (apps/marketing)
-        id: deploy
-        if: steps.diag.outputs.configured == 'true'
-        continue-on-error: true
-        working-directory: apps/marketing
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          BRANCH: ${{ inputs.branch || 'main' }}
-        run: |
-          COMMIT_MSG="${{ github.event.head_commit.message || github.sha }}"
-          COMMIT_MSG_ONE_LINE="$(printf '%s' "$COMMIT_MSG" | head -n 1)"
-          pnpm exec wrangler pages deploy ./dist \
-            --project-name=${CLOUDFLARE_PROJECT} \
-            --branch="${BRANCH}" \
-            --commit-hash=${{ github.sha }} \
-            --commit-message="${COMMIT_MSG_ONE_LINE}"
-
-      - name: Summarise deploy result
-        if: steps.diag.outputs.configured == 'true'
-        run: |
-          if [ "${{ steps.deploy.outcome }}" = "success" ]; then
-            echo "::notice::Marketing site deployed to Cloudflare Pages."
-            echo "## Result: Deployed" >> "$GITHUB_STEP_SUMMARY"
-          else
-            cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
-          ## Result: Deploy did not complete
-
-          See the diagnostic JSON above. Common patterns:
-
-          - Token verify shows `success: false` -> token invalid/expired.
-            Mint a fresh one at https://dash.cloudflare.com/profile/api-tokens
-            with the "Edit Cloudflare Pages" template, paste into
-            CLOUDFLARE_API_TOKEN, re-run this workflow.
-
-          - Pages projects list does not include `nexigrate-marketing` ->
-            either the project lives in a different account (update
-            CLOUDFLARE_ACCOUNT_ID) or it's named differently (update
-            CLOUDFLARE_PROJECT in this workflow).
-
-          - Deployments list newest entry's commit_hash is older than the
-            current SHA -> Cloudflare's GitHub auto-deploy is not firing on
-            new pushes. Reconnect the GitHub integration in the Cloudflare
-            dashboard: Pages -> nexigrate-marketing -> Settings -> Builds &
-            deployments -> Source -> Manage. Or change the production
-            branch to `main`.
-          EOF
-            echo "::warning::Cloudflare Pages deploy failed; see job summary for the diagnosis."
-          fi
+          echo ""
+          echo ">>> Diagnostic complete. Forcing exit 1 so logs are visible via failed-logs API."
+          exit 1
