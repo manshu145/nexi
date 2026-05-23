@@ -146,23 +146,25 @@ jobs:
       - name: Deploy to Cloud Run
         id: deploy
         run: |
-          BASE_ENV="NODE_ENV=production,AUTH_MODE=firebase,PERSISTENCE=firestore,LOG_JSON=true,GCP_PROJECT_ID=nexigrate-prod,GCP_PROJECT_NUMBER=505978726927,GCP_REGION=asia-south1,GCP_SERVICE_ACCOUNT=${{ env.SA_EMAIL }},CORS_ALLOWED_ORIGINS=https://app.nexigrate.com,https://nexigrate.com"
-          DEPLOY_ARGS=( \
-            run deploy ${{ env.SERVICE }} \
-            --image=${{ steps.tag.outputs.image }} \
-            --region=${{ env.GCP_REGION }} \
-            --project=${{ env.GCP_PROJECT }} \
-            --platform=managed \
-            --allow-unauthenticated \
-            --service-account=${{ env.SA_EMAIL }} \
-            --max-instances=3 \
-            --min-instances=1 \
-            --cpu=1 --memory=512Mi \
-            --quiet \
+          # Use the ^|^ delimiter override so commas inside values
+          # (notably CORS_ALLOWED_ORIGINS) don't get parsed as separators.
+          BASE_ENV="^|^NODE_ENV=production|AUTH_MODE=firebase|PERSISTENCE=firestore|LOG_JSON=true|GCP_PROJECT_ID=nexigrate-prod|GCP_PROJECT_NUMBER=505978726927|GCP_REGION=asia-south1|GCP_SERVICE_ACCOUNT=${{ env.SA_EMAIL }}|CORS_ALLOWED_ORIGINS=https://app.nexigrate.com,https://nexigrate.com"
+          DEPLOY_ARGS=(
+            run deploy ${{ env.SERVICE }}
+            --image=${{ steps.tag.outputs.image }}
+            --region=${{ env.GCP_REGION }}
+            --project=${{ env.GCP_PROJECT }}
+            --platform=managed
+            --allow-unauthenticated
+            --service-account=${{ env.SA_EMAIL }}
+            --max-instances=3
+            --min-instances=1
+            --cpu=1 --memory=512Mi
+            --quiet
           )
           if [ "${{ steps.razorpay.outputs.enabled }}" = "true" ]; then
             gcloud "${DEPLOY_ARGS[@]}" \
-              --set-env-vars="${BASE_ENV},RAZORPAY_KEY_ID=rzp_test_SsPfzbJUMaK7Ow" \
+              --set-env-vars="${BASE_ENV}|RAZORPAY_KEY_ID=rzp_test_SsPfzbJUMaK7Ow" \
               --set-secrets="RAZORPAY_KEY_SECRET=razorpay-key-secret:latest,RAZORPAY_WEBHOOK_SECRET=razorpay-webhook-secret:latest"
           else
             gcloud "${DEPLOY_ARGS[@]}" \
@@ -186,6 +188,6 @@ jobs:
         run: |
           npm install -g firebase-tools@latest --silent
           firebase deploy \
-            --only firestore:rules,firestore:indexes,storage:rules \
+            --only firestore:rules,firestore:indexes \
             --project nexigrate-prod \
             --non-interactive
