@@ -31,6 +31,7 @@ env:
   NODE_VERSION: '22'
   PNPM_VERSION: '9.15.0'
   CLOUDFLARE_PROJECT: nexigrate-marketing
+  WRANGLER_VERSION: '3.90.0'
 
 jobs:
   deploy:
@@ -77,15 +78,22 @@ jobs:
             echo "configured=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Deploy to Cloudflare Pages
+      # Run wrangler directly via npx instead of cloudflare/wrangler-action so
+      # we sidestep its pnpm-add-to-workspace-root failure mode in monorepos
+      # (ERR_PNPM_ADDING_TO_ROOT). npx is happy to fetch wrangler globally.
+      - name: Deploy to Cloudflare Pages (wrangler via npx)
         if: steps.cf.outputs.configured == 'true'
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: >-
-            pages deploy apps/marketing/dist
-            --project-name=${{ env.CLOUDFLARE_PROJECT }}
-            --branch=${{ inputs.branch || 'main' }}
-            --commit-hash=${{ github.sha }}
-            --commit-message=${{ github.event.head_commit.message || github.sha }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          BRANCH: ${{ inputs.branch || 'main' }}
+        run: |
+          # github.event.head_commit.message can contain newlines; collapse
+          # them into a one-line summary for Cloudflare's commit message field.
+          COMMIT_MSG="${{ github.event.head_commit.message || github.sha }}"
+          COMMIT_MSG_ONE_LINE="$(printf '%s' "$COMMIT_MSG" | head -n 1)"
+          npx --yes wrangler@${WRANGLER_VERSION} pages deploy apps/marketing/dist \
+            --project-name=${CLOUDFLARE_PROJECT} \
+            --branch="${BRANCH}" \
+            --commit-hash=${{ github.sha }} \
+            --commit-message="${COMMIT_MSG_ONE_LINE}"
