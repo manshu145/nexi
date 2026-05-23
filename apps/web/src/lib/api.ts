@@ -1,6 +1,13 @@
 'use client';
 
-import type { CreditBalance, ExamSlug, MCQ } from '@nexigrate/shared';
+import type {
+  CreditBalance,
+  ExamSlug,
+  MCQ,
+  McqDraft,
+  McqDraftStatus,
+  McqDifficulty,
+} from '@nexigrate/shared';
 import { getFirebaseAuthClient } from './firebase';
 
 /**
@@ -94,79 +101,55 @@ export interface CompleteSessionResponse {
 }
 
 // ============================================================================
-// Admin / MCQ-draft types (Phase 4 M5 + Phase 5)
+// Admin RBAC types
 // ============================================================================
 
-export type DraftStatus = 'pending' | 'approved' | 'rejected';
-export type Difficulty = 'easy' | 'medium' | 'hard';
+export type AdminRole = 'super_admin' | 'admin' | 'content_admin' | 'support_admin';
 
-export interface AdminMcqDraft {
-  id: string;
-  prompt?: {
-    exam: string;
-    subject: string;
-    chapter: string;
-    sourceText?: string;
-    sourceCitation?: string;
-    requestedDifficulty?: Difficulty;
-  };
-  generationContext?: {
-    exam: string;
-    subject: string;
-    chapter: string;
-    sourceText?: string;
-    sourceCitation?: string;
-    requestedDifficulty?: Difficulty;
-  };
-  candidates?: Array<{
-    modelId?: string;
-    providerId?: string;
-    output: {
-      question: string;
-      options: { key: AnswerKey; text: string }[];
-      correctOption: AnswerKey;
-      explanation: string;
-    } | null;
-    errorMessage?: string | null;
-    durationMs?: number;
-  }>;
-  content?: {
-    question: string;
-    options: { key: AnswerKey; text: string }[];
-    correctOption: AnswerKey;
-    explanation: string;
-  };
-  verifier?: {
-    approved: boolean;
-    confidence: number;
-    reasoning?: string;
-    issues?: string[];
-    modelId?: string;
-  } | null;
-  verifications?: Array<{
-    modelId?: string;
-    providerId?: string;
-    agreesCorrect?: boolean;
-    score?: number;
-    reasoning?: string;
-  }>;
-  chosenCandidateIndex?: number | null;
-  status: DraftStatus;
-  publishedMcqId?: string | null;
-  requestedBy?: string;
-  requestedAt?: string;
-  reviewedBy?: string | null;
-  reviewedAt?: string | null;
-  reviewNote?: string | null;
+export interface AdminMeResponse {
+  uid: string;
+  email: string | null;
+  role: AdminRole | null;
 }
+
+export interface AdminUserRecord {
+  uid: string;
+  email: string;
+  role: AdminRole;
+  isActive: boolean;
+  createdBy: string | null;
+  createdAt: string;
+  lastSeenAt: string | null;
+}
+
+export interface AdminRoleDescriptor {
+  id: AdminRole;
+  name: string;
+  description: string;
+}
+
+// ============================================================================
+// Admin / MCQ-draft types -- match the backend's flat McqDraft shape
+// ============================================================================
+
+export type DraftStatus = McqDraftStatus;
+export type Difficulty = McqDifficulty;
+
+export type AdminMcqDraft = McqDraft;
 
 export interface GenerateDraftRequest {
   exam: ExamSlug | string;
   subject: string;
   chapter: string;
-  sourceText: string;
-  sourceCitation: string;
-  difficulty?: Difficulty;
+  classLevel: string;
+  difficulty: Difficulty;
+  count?: number;
+  sourceHint?: string;
+}
+
+export interface GenerateDraftResponse {
+  created: AdminMcqDraft[];
+  errors: { index: number; error: string }[];
 }
 
 // ============================================================================
@@ -255,11 +238,53 @@ export const api = {
 
   // ----- admin
   admin: {
-    async listDrafts(opts: { status?: DraftStatus; limit?: number } = {}): Promise<{
-      drafts: AdminMcqDraft[];
-    }> {
+    auth: {
+      async me(): Promise<AdminMeResponse> {
+        const res = await authedFetch('/v1/admin/auth/me');
+        return res.json() as Promise<AdminMeResponse>;
+      },
+
+      async listAdmins(): Promise<{ admins: AdminUserRecord[] }> {
+        const res = await authedFetch('/v1/admin/auth/admins');
+        return res.json() as Promise<{ admins: AdminUserRecord[] }>;
+      },
+
+      async addAdmin(input: {
+        email: string;
+        role: 'admin' | 'content_admin' | 'support_admin';
+      }): Promise<{ admin: AdminUserRecord; resetLink: string | null }> {
+        const res = await authedFetch('/v1/admin/auth/admins', {
+          method: 'POST',
+          body: JSON.stringify(input),
+        });
+        return res.json() as Promise<{
+          admin: AdminUserRecord;
+          resetLink: string | null;
+        }>;
+      },
+
+      async revokeAdmin(uid: string): Promise<{ admin: AdminUserRecord }> {
+        const res = await authedFetch(
+          `/v1/admin/auth/admins/${encodeURIComponent(uid)}`,
+          { method: 'DELETE' },
+        );
+        return res.json() as Promise<{ admin: AdminUserRecord }>;
+      },
+
+      async listRoles(): Promise<{ roles: AdminRoleDescriptor[] }> {
+        const res = await authedFetch('/v1/admin/auth/roles');
+        return res.json() as Promise<{ roles: AdminRoleDescriptor[] }>;
+      },
+    },
+
+    async listDrafts(opts: {
+      status?: DraftStatus;
+      exam?: ExamSlug | string;
+      limit?: number;
+    } = {}): Promise<{ drafts: AdminMcqDraft[] }> {
       const params = new URLSearchParams();
       if (opts.status) params.set('status', opts.status);
+      if (opts.exam) params.set('exam', String(opts.exam));
       if (opts.limit) params.set('limit', String(opts.limit));
       const qs = params.toString() ? `?${params.toString()}` : '';
       const res = await authedFetch(`/v1/admin/mcq-drafts${qs}`);
@@ -273,32 +298,31 @@ export const api = {
       return res.json() as Promise<{ draft: AdminMcqDraft }>;
     },
 
-    async generateDraft(input: GenerateDraftRequest): Promise<{ draft: AdminMcqDraft }> {
+    async generateDrafts(input: GenerateDraftRequest): Promise<GenerateDraftResponse> {
       const res = await authedFetch('/v1/admin/mcq-drafts/generate', {
         method: 'POST',
-        body: JSON.stringify(input),
+        body: JSON.stringify({ count: 1, ...input }),
       });
-      return res.json() as Promise<{ draft: AdminMcqDraft }>;
+      return res.json() as Promise<GenerateDraftResponse>;
     },
 
-    async approveDraft(id: string, note?: string): Promise<{ mcq: unknown }> {
+    async approveDraft(
+      id: string,
+    ): Promise<{ draft: AdminMcqDraft; mcq?: MCQ }> {
       const res = await authedFetch(
         `/v1/admin/mcq-drafts/${encodeURIComponent(id)}/approve`,
-        {
-          method: 'POST',
-          body: JSON.stringify({ note: note ?? '' }),
-        },
+        { method: 'POST', body: JSON.stringify({}) },
       );
-      return res.json() as Promise<{ mcq: unknown }>;
+      return res.json() as Promise<{ draft: AdminMcqDraft; mcq?: MCQ }>;
     },
 
-    async rejectDraft(id: string, note: string): Promise<{ draft: AdminMcqDraft }> {
+    async rejectDraft(
+      id: string,
+      rejectionReason: string,
+    ): Promise<{ draft: AdminMcqDraft }> {
       const res = await authedFetch(
         `/v1/admin/mcq-drafts/${encodeURIComponent(id)}/reject`,
-        {
-          method: 'POST',
-          body: JSON.stringify({ note }),
-        },
+        { method: 'POST', body: JSON.stringify({ rejectionReason }) },
       );
       return res.json() as Promise<{ draft: AdminMcqDraft }>;
     },
