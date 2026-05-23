@@ -19,6 +19,15 @@ env:
   GCP_PROJECT: nexigrate-prod
   SERVICE: nexigrate-web
   SA_EMAIL: nexigrate-api@nexigrate-prod.iam.gserviceaccount.com
+  # NEXT_PUBLIC_* values are baked into the client JS at BUILD time.
+  # Updating these requires a new docker build, not just a Cloud Run env update.
+  PUBLIC_API_BASE_URL: https://api.nexigrate.com
+  PUBLIC_FIREBASE_API_KEY: AIzaSyBQuLPo3N9PMWov9sUrp7czVzBix4lPj8M
+  PUBLIC_FIREBASE_AUTH_DOMAIN: nexigrate-prod.firebaseapp.com
+  PUBLIC_FIREBASE_PROJECT_ID: nexigrate-prod
+  PUBLIC_FIREBASE_STORAGE_BUCKET: nexigrate-prod.firebasestorage.app
+  PUBLIC_FIREBASE_MESSAGING_SENDER_ID: '505978726927'
+  PUBLIC_FIREBASE_APP_ID: '1:505978726927:web:066fb77f927442d1e3117a'
 
 permissions:
   contents: read
@@ -26,7 +35,7 @@ permissions:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -62,8 +71,18 @@ jobs:
           SHA=${GITHUB_SHA::12}
           echo "image=${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/nexigrate/web:${SHA}" >> "$GITHUB_OUTPUT"
 
-      - name: Build container image
-        run: docker build -f apps/web/Dockerfile -t ${{ steps.tag.outputs.image }} .
+      - name: Build container image (with NEXT_PUBLIC_* baked in)
+        run: |
+          docker build -f apps/web/Dockerfile \
+            --build-arg NEXT_PUBLIC_API_BASE_URL=${{ env.PUBLIC_API_BASE_URL }} \
+            --build-arg NEXT_PUBLIC_FIREBASE_API_KEY=${{ env.PUBLIC_FIREBASE_API_KEY }} \
+            --build-arg NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${{ env.PUBLIC_FIREBASE_AUTH_DOMAIN }} \
+            --build-arg NEXT_PUBLIC_FIREBASE_PROJECT_ID=${{ env.PUBLIC_FIREBASE_PROJECT_ID }} \
+            --build-arg NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=${{ env.PUBLIC_FIREBASE_STORAGE_BUCKET }} \
+            --build-arg NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=${{ env.PUBLIC_FIREBASE_MESSAGING_SENDER_ID }} \
+            --build-arg NEXT_PUBLIC_FIREBASE_APP_ID=${{ env.PUBLIC_FIREBASE_APP_ID }} \
+            -t ${{ steps.tag.outputs.image }} \
+            .
 
       - name: Push container image
         run: docker push ${{ steps.tag.outputs.image }}
@@ -79,8 +98,9 @@ jobs:
             --allow-unauthenticated \
             --service-account=${{ env.SA_EMAIL }} \
             --max-instances=3 \
+            --min-instances=1 \
             --cpu=1 --memory=512Mi \
-            --set-env-vars="NODE_ENV=production,NEXT_PUBLIC_API_BASE_URL=https://api.nexigrate.com,NEXT_PUBLIC_FIREBASE_API_KEY=AIzaSyBQuLPo3N9PMWov9sUrp7czVzBix4lPj8M,NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=nexigrate-prod.firebaseapp.com,NEXT_PUBLIC_FIREBASE_PROJECT_ID=nexigrate-prod,NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=nexigrate-prod.firebasestorage.app,NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=505978726927,NEXT_PUBLIC_FIREBASE_APP_ID=1:505978726927:web:066fb77f927442d1e3117a" \
+            --set-env-vars="NODE_ENV=production" \
             --quiet
           URL=$(gcloud run services describe ${{ env.SERVICE }} --region=${{ env.GCP_REGION }} --project=${{ env.GCP_PROJECT }} --format='value(status.url)')
           echo "url=${URL}" >> "$GITHUB_OUTPUT"
