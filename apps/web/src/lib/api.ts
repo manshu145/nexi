@@ -7,6 +7,7 @@ import type {
   McqDraft,
   McqDraftStatus,
   McqDifficulty,
+  OnboardingRequest,
 } from '@nexigrate/shared';
 import { getFirebaseAuthClient } from './firebase';
 
@@ -67,9 +68,31 @@ export interface MeResponse {
     id: string;
     email: string;
     name: string;
+    phone?: string | null;
     photoPath: string | null;
     isVerified: boolean;
+    isMinor?: boolean;
     targetExam?: ExamSlug | null;
+    classLevel?:
+      | 'class-8'
+      | 'class-9'
+      | 'class-10'
+      | 'class-11'
+      | 'class-12'
+      | 'graduation'
+      | 'post-graduation'
+      | null;
+    board?: 'cbse' | 'icse' | 'state' | 'other' | null;
+    schoolName?: string | null;
+    district?: string | null;
+    state?: string | null;
+    dateOfBirth?: string | null;
+    examDate?: string | null;
+    studyHoursPerDay?: number | null;
+    weakSubjects?: string[];
+    parentEmail?: string | null;
+    parentPhone?: string | null;
+    onboardingCompletedAt?: string | null;
     currentStreak?: number;
     bestStreak?: number;
     lastDailyAt?: string | null;
@@ -163,10 +186,10 @@ export const api = {
     return res.json() as Promise<MeResponse>;
   },
 
-  async setOnboarding(targetExam: ExamSlug): Promise<MeResponse> {
+  async setOnboarding(payload: OnboardingRequest): Promise<MeResponse> {
     const res = await authedFetch('/v1/users/me/onboarding', {
       method: 'POST',
-      body: JSON.stringify({ targetExam }),
+      body: JSON.stringify(payload),
     });
     return res.json() as Promise<MeResponse>;
   },
