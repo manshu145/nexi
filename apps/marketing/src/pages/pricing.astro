@@ -1,0 +1,211 @@
+---
+import Layout from '~/layouts/Layout.astro';
+import Nav from '~/components/Nav.astro';
+import Footer from '~/components/Footer.astro';
+
+export const prerender = true;
+
+const APP_UPGRADE_URL = 'https://app.nexigrate.com/upgrade';
+
+// Plan data is inlined here (rather than imported from @nexigrate/shared) so
+// the marketing site stays statically buildable without the workspace
+// type graph. Keep these in sync with packages/shared/src/constants/subscriptions.ts.
+interface PlanConfig {
+  slug: 'scholar' | 'aspirant' | 'achiever';
+  label: string;
+  description: string;
+  monthlyInr: number;
+  yearlyInr: number;
+}
+
+const plans: PlanConfig[] = [
+  {
+    slug: 'scholar',
+    label: 'Scholar',
+    description: 'Class 5-10 boards. Unlimited credits, ad-free.',
+    monthlyInr: 99,
+    yearlyInr: 999,
+  },
+  {
+    slug: 'aspirant',
+    label: 'Aspirant',
+    description: 'Class 11-12, JEE, NEET. + Mock tests, PYQ vault, AI tutor.',
+    monthlyInr: 299,
+    yearlyInr: 2999,
+  },
+  {
+    slug: 'achiever',
+    label: 'Achiever',
+    description: 'UPSC, SSC, State PSC. + Daily current affairs, essay grading, expert AMAs.',
+    monthlyInr: 599,
+    yearlyInr: 5999,
+  },
+];
+
+interface FeatureRow {
+  label: string;
+  notes?: string;
+  values: { scholar: string; aspirant: string; achiever: string };
+}
+
+const featureRows: FeatureRow[] = [
+  {
+    label: 'Daily MCQ',
+    values: { scholar: '10 / day', aspirant: '25 / day', achiever: 'Unlimited' },
+  },
+  {
+    label: 'NCERT-grounded explanations',
+    values: { scholar: '✓', aspirant: '✓', achiever: '✓' },
+  },
+  {
+    label: 'Mock tests',
+    values: { scholar: '0 / mo', aspirant: '4 / mo', achiever: 'Unlimited' },
+  },
+  {
+    label: 'Previous-year question vault',
+    values: { scholar: '—', aspirant: '✓', achiever: '✓' },
+  },
+  {
+    label: 'AI tutor (Q&A)',
+    values: { scholar: '—', aspirant: '50 / mo', achiever: 'Unlimited' },
+  },
+  {
+    label: 'Daily current affairs digest',
+    values: { scholar: '—', aspirant: '—', achiever: '✓' },
+  },
+  {
+    label: 'Essay & answer grading',
+    values: { scholar: '—', aspirant: '—', achiever: '✓' },
+  },
+  {
+    label: 'Ad-free, no distractions',
+    values: { scholar: '✓', aspirant: '✓', achiever: '✓' },
+  },
+  {
+    label: 'Cancel any time',
+    notes: 'No auto-renewal. See refund policy below.',
+    values: { scholar: '✓', aspirant: '✓', achiever: '✓' },
+  },
+];
+---
+
+<Layout
+  title="Pricing — Nexigrate"
+  description="Plans built for Indian students. Free forever for the daily MCQ. Upgrade for mock tests, AI tutoring, and current affairs."
+  pathname="/pricing"
+>
+  <Nav />
+  <main id="main" class="mx-auto max-w-5xl px-5 py-16 sm:py-20">
+    <div class="max-w-2xl">
+      <p class="pill mb-5">Pricing</p>
+      <h1 class="font-serif text-4xl font-semibold leading-tight text-ink-900 sm:text-5xl">
+        Plans built for Indian students
+      </h1>
+      <p class="mt-4 text-lg leading-relaxed text-ink-800">
+        The daily MCQ is free forever. Upgrade when you want unlimited
+        attempts, mock tests, and an AI tutor that doesn't waste your time.
+        Pay in ₹ via Razorpay. Cancel any time.
+      </p>
+    </div>
+
+    <section class="mt-12 grid gap-4 sm:grid-cols-3">
+      {plans.map((plan) => (
+        <article class="paper-card flex flex-col p-6">
+          <h2 class="font-serif text-xl font-semibold text-ink-900">{plan.label}</h2>
+          <p class="mt-2 text-sm text-ink-800">{plan.description}</p>
+          <p class="font-serif mt-5 text-3xl font-semibold tabular-nums text-ink-900">
+            ₹{plan.monthlyInr}
+            <span class="ml-1 text-sm font-normal text-muted-500">/mo</span>
+          </p>
+          <p class="mt-1 text-xs text-muted-500">
+            or ₹{plan.yearlyInr}/yr · save ~{Math.round(
+              ((plan.monthlyInr * 12 - plan.yearlyInr) / (plan.monthlyInr * 12)) * 100,
+            )}%
+          </p>
+          <a href={APP_UPGRADE_URL} class="btn-primary mt-6 w-full" rel="noopener">
+            Choose {plan.label}
+          </a>
+        </article>
+      ))}
+    </section>
+
+    <p class="mt-6 text-sm text-muted-500">
+      Beta pricing while we onboard the first 1,000 students. Locked in for
+      the lifetime of your subscription.
+    </p>
+
+    <section class="mt-16">
+      <h2 class="font-serif text-2xl font-semibold text-ink-900">What you get on each plan</h2>
+      <div class="paper-card mt-5 overflow-x-auto">
+        <table class="w-full text-left text-sm">
+          <thead>
+            <tr class="border-b border-line text-xs font-semibold uppercase tracking-[0.18em] text-muted-500">
+              <th class="px-4 py-3">Feature</th>
+              <th class="px-4 py-3">Scholar</th>
+              <th class="px-4 py-3">Aspirant</th>
+              <th class="px-4 py-3">Achiever</th>
+            </tr>
+          </thead>
+          <tbody>
+            {featureRows.map((row) => (
+              <tr class="border-b border-line last:border-0">
+                <td class="px-4 py-3 font-medium text-ink-900">
+                  {row.label}
+                  {row.notes ? (
+                    <span class="block text-xs font-normal text-muted-500">{row.notes}</span>
+                  ) : null}
+                </td>
+                <td class="px-4 py-3 text-ink-800">{row.values.scholar}</td>
+                <td class="px-4 py-3 text-ink-800">{row.values.aspirant}</td>
+                <td class="px-4 py-3 text-ink-800">{row.values.achiever}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="mt-14 grid gap-6 sm:grid-cols-2">
+      <div class="paper-card p-6">
+        <h3 class="font-serif text-lg font-semibold text-ink-900">Free forever</h3>
+        <p class="mt-2 text-sm text-ink-800">
+          The daily 10-question MCQ for your target exam stays free. Earn
+          credits each day. No card on file, no ads, no nags to upgrade.
+        </p>
+      </div>
+      <div class="paper-card p-6">
+        <h3 class="font-serif text-lg font-semibold text-ink-900">Refunds</h3>
+        <p class="mt-2 text-sm text-ink-800">
+          Full refund within 7 days of purchase, no questions asked, subject
+          to our <a class="text-ember-600 underline" href="/refund">refund
+          policy</a>. Yearly plans pro-rate after that window.
+        </p>
+      </div>
+      <div class="paper-card p-6">
+        <h3 class="font-serif text-lg font-semibold text-ink-900">No auto-renewal</h3>
+        <p class="mt-2 text-sm text-ink-800">
+          Subscriptions don't auto-renew. When the period ends you simply
+          drop back to the free plan unless you actively renew.
+        </p>
+      </div>
+      <div class="paper-card p-6">
+        <h3 class="font-serif text-lg font-semibold text-ink-900">Indian payments, INR billing</h3>
+        <p class="mt-2 text-sm text-ink-800">
+          Pay with UPI, cards, netbanking, or wallets via
+          <a class="text-ember-600 underline" href="https://razorpay.com" rel="noopener">Razorpay</a>.
+          GST invoices on request to <a class="text-ember-600 underline" href="mailto:hello@nexigrate.com">hello@nexigrate.com</a>.
+        </p>
+      </div>
+    </section>
+
+    <div class="mt-14 flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <p class="text-sm text-muted-500">
+        Questions about a plan? <a class="text-ember-600 underline" href="mailto:hello@nexigrate.com">hello@nexigrate.com</a>
+      </p>
+      <a href={APP_UPGRADE_URL} class="btn-primary" rel="noopener">
+        Sign in and choose a plan
+      </a>
+    </div>
+  </main>
+  <Footer />
+</Layout>

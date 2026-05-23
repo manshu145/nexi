@@ -1,0 +1,128 @@
+---
+import Layout from '~/layouts/Layout.astro';
+import Nav from '~/components/Nav.astro';
+import Footer from '~/components/Footer.astro';
+
+export const prerender = true;
+---
+
+<Layout title="Refund and Cancellation — Nexigrate" description="Nexigrate's refund and cancellation policy." pathname="/refund">
+  <Nav />
+  <main id="main" class="mx-auto max-w-3xl px-5 py-16 sm:py-20">
+    <p class="pill mb-5">Refund</p>
+    <h1 class="font-serif text-4xl font-semibold leading-tight text-ink-900 sm:text-5xl">
+      Refund and Cancellation Policy
+    </h1>
+    <p class="mt-3 text-sm text-muted-500">
+      Effective date: 23 May 2026 · Currency: Indian Rupee (₹).
+    </p>
+
+    <div class="mt-10 space-y-8 leading-relaxed text-ink-800">
+      <p>
+        We want every paying student to feel that the upgrade was worth it.
+        If you don’t, we will refund you. Read the rules below before you pay
+        so we’re both on the same page.
+      </p>
+
+      <section>
+        <h2 class="font-serif text-2xl font-semibold text-ink-900">1. Free plan</h2>
+        <p class="mt-3">
+          The Nexigrate free plan stays free. No charge, no refund needed.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="font-serif text-2xl font-semibold text-ink-900">2. 7-day refund window</h2>
+        <p class="mt-3">
+          For our paid plans (Scholar, Aspirant, Achiever — monthly or yearly),
+          you can request a full refund within <strong>7 calendar days</strong>
+          of the payment date for any reason, no questions asked, as long as:
+        </p>
+        <ul class="mt-3 list-disc space-y-1 pl-6">
+          <li>You have not consumed more than 25% of the plan’s included
+              mock tests; and</li>
+          <li>You have not exported or shared more than 100 MCQ
+              explanations.</li>
+        </ul>
+        <p class="mt-3">
+          The thresholds exist so the refund window cannot be used as a free
+          one-week trial of the paid tier.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="font-serif text-2xl font-semibold text-ink-900">3. Pro-rated refunds for yearly plans</h2>
+        <p class="mt-3">
+          If you cancel a yearly subscription after the 7-day window, you can
+          ask for a pro-rated refund of the unused months, minus a 10%
+          processing fee. We do not pro-rate monthly subscriptions; they end
+          at the close of the period you paid for.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="font-serif text-2xl font-semibold text-ink-900">4. Service issues</h2>
+        <p class="mt-3">
+          If the Service is materially broken — extended outages, persistent
+          incorrect content, or a feature you specifically paid for stops
+          working — we will refund the affected period in full regardless of
+          the timing rules above. Email us with the date and a short
+          description of the problem.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="font-serif text-2xl font-semibold text-ink-900">5. How to request a refund</h2>
+        <ol class="mt-3 list-decimal space-y-2 pl-6">
+          <li>
+            Email <a class="text-ember-600 underline" href="mailto:hello@nexigrate.com">hello@nexigrate.com</a>
+            from the email address registered on the account.
+          </li>
+          <li>
+            Include the Razorpay <em>payment ID</em> from your receipt
+            (starts with <code>pay_</code>).
+          </li>
+          <li>
+            One line on what went wrong (helps us improve, and is mandatory
+            for service-issue refunds).
+          </li>
+        </ol>
+        <p class="mt-3">
+          We acknowledge within 2 working days and process eligible refunds
+          within 5–7 working days. The refund returns to the same payment
+          method (UPI, card, netbanking) used for the original charge. Bank
+          processing times may add another 3–5 business days.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="font-serif text-2xl font-semibold text-ink-900">6. Cancellation</h2>
+        <p class="mt-3">
+          Subscriptions do not auto-renew. You don’t need to cancel to stop
+          being billed; you simply don’t renew. To delete your account
+          entirely, see the deletion section of our
+          <a class="text-ember-600 underline" href="/privacy">Privacy Policy</a>.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="font-serif text-2xl font-semibold text-ink-900">7. Disputes</h2>
+        <p class="mt-3">
+          If we can’t agree on a refund, the <a class="text-ember-600 underline" href="/terms">Terms of Service</a>
+          dispute and jurisdiction clauses apply. Please raise a chargeback
+          only as a last resort — chargebacks cost both of us money and time
+          we’d rather spend on the product.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="font-serif text-2xl font-semibold text-ink-900">8. Contact</h2>
+        <p class="mt-3">
+          Questions about a refund or cancellation:
+          <a class="text-ember-600 underline" href="mailto:hello@nexigrate.com">hello@nexigrate.com</a>.
+        </p>
+      </section>
+    </div>
+  </main>
+  <Footer />
+</Layout>

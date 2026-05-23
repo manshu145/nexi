@@ -121,7 +121,7 @@ export default function DashboardPage() {
         </button>
       </section>
 
-      <section className="mt-6 grid gap-4 sm:grid-cols-2">
+      <section className="mt-6 grid gap-4 sm:grid-cols-3">
         <div className="paper-card p-5">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-500">
             Credits balance
@@ -136,6 +136,26 @@ export default function DashboardPage() {
           ) : (
             <p className="mt-1 text-xs text-muted-500">Earn more by taking the daily MCQ</p>
           )}
+        </div>
+        <div className="paper-card p-5">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-500">
+            Daily streak
+          </p>
+          <p className="font-serif mt-2 text-3xl font-semibold tabular-nums text-ink-900">
+            {(me?.currentStreak ?? 0) > 0 ? (
+              <>
+                {me?.currentStreak}
+                <span className="ml-1 text-base text-muted-500">days</span>
+              </>
+            ) : (
+              <span className="text-muted-500">—</span>
+            )}
+          </p>
+          <p className="mt-1 text-xs text-muted-500">
+            {(me?.bestStreak ?? 0) > 0
+              ? `Best: ${me?.bestStreak} days`
+              : 'Take today\u2019s MCQ to start a streak'}
+          </p>
         </div>
         <div className="paper-card p-5">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-500">
