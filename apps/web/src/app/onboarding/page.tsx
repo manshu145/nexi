@@ -43,7 +43,10 @@ export default function OnboardingPage() {
   if (loading || !user) {
     return (
       <main className="flex min-h-[60vh] items-center justify-center px-6">
-        <p className="text-muted-500 text-sm">Loading\u2026</p>
+        <span className="inline-flex items-center gap-2 text-sm text-muted-500">
+          <span className="spinner" aria-hidden="true" />
+          Loading…
+        </span>
       </main>
     );
   }

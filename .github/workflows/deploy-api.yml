@@ -54,6 +54,80 @@ jobs:
             --project=${{ env.GCP_PROJECT }} \
             --description="Nexigrate container images"
 
+      - name: Enable required GCP APIs (idempotent)
+        run: |
+          gcloud services enable \
+            firestore.googleapis.com \
+            run.googleapis.com \
+            artifactregistry.googleapis.com \
+            cloudbuild.googleapis.com \
+            iam.googleapis.com \
+            iamcredentials.googleapis.com \
+            clouderrorreporting.googleapis.com \
+            logging.googleapis.com \
+            monitoring.googleapis.com \
+            secretmanager.googleapis.com \
+            --project=${{ env.GCP_PROJECT }}
+
+      - name: Ensure Firestore database exists (Native mode, asia-south1)
+        run: |
+          if gcloud firestore databases describe \
+              --database='(default)' \
+              --project=${{ env.GCP_PROJECT }} >/dev/null 2>&1; then
+            echo "Firestore (default) database already present."
+          else
+            echo "Creating Firestore (default) database in ${{ env.GCP_REGION }}..."
+            gcloud firestore databases create \
+              --database='(default)' \
+              --location=${{ env.GCP_REGION }} \
+              --type=firestore-native \
+              --project=${{ env.GCP_PROJECT }}
+          fi
+
+      - name: Grant runtime SA access to Firestore + logging (idempotent)
+        run: |
+          for ROLE in roles/datastore.user roles/logging.logWriter roles/monitoring.metricWriter roles/errorreporting.writer roles/secretmanager.secretAccessor; do
+            gcloud projects add-iam-policy-binding ${{ env.GCP_PROJECT }} \
+              --member="serviceAccount:${{ env.SA_EMAIL }}" \
+              --role="$ROLE" \
+              --condition=None \
+              --quiet >/dev/null
+            echo "Granted $ROLE to ${{ env.SA_EMAIL }}"
+          done
+
+      - name: Bootstrap Razorpay secrets in Secret Manager (if GH secret present)
+        id: razorpay
+        env:
+          RZ_KEY_SECRET: ${{ secrets.RAZORPAY_KEY_SECRET }}
+          RZ_WEBHOOK_SECRET: ${{ secrets.RAZORPAY_WEBHOOK_SECRET }}
+        run: |
+          if [ -z "$RZ_KEY_SECRET" ]; then
+            echo "RAZORPAY_KEY_SECRET not set in GitHub Secrets; skipping billing wiring."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # razorpay-key-secret
+          if ! gcloud secrets describe razorpay-key-secret --project=${{ env.GCP_PROJECT }} >/dev/null 2>&1; then
+            gcloud secrets create razorpay-key-secret \
+              --replication-policy=automatic \
+              --project=${{ env.GCP_PROJECT }}
+          fi
+          printf '%s' "$RZ_KEY_SECRET" | gcloud secrets versions add razorpay-key-secret \
+            --data-file=- --project=${{ env.GCP_PROJECT }} >/dev/null
+
+          # razorpay-webhook-secret (optional; falls back to empty if not provided)
+          if ! gcloud secrets describe razorpay-webhook-secret --project=${{ env.GCP_PROJECT }} >/dev/null 2>&1; then
+            gcloud secrets create razorpay-webhook-secret \
+              --replication-policy=automatic \
+              --project=${{ env.GCP_PROJECT }}
+          fi
+          printf '%s' "${RZ_WEBHOOK_SECRET:-not_set}" | gcloud secrets versions add razorpay-webhook-secret \
+            --data-file=- --project=${{ env.GCP_PROJECT }} >/dev/null
+
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+          echo "Razorpay secrets present in Secret Manager."
+
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
 
@@ -72,7 +146,9 @@ jobs:
       - name: Deploy to Cloud Run
         id: deploy
         run: |
-          gcloud run deploy ${{ env.SERVICE }} \
+          BASE_ENV="NODE_ENV=production,AUTH_MODE=firebase,PERSISTENCE=firestore,LOG_JSON=true,GCP_PROJECT_ID=nexigrate-prod,GCP_PROJECT_NUMBER=505978726927,GCP_REGION=asia-south1,GCP_SERVICE_ACCOUNT=${{ env.SA_EMAIL }},CORS_ALLOWED_ORIGINS=https://app.nexigrate.com,https://nexigrate.com"
+          DEPLOY_ARGS=( \
+            run deploy ${{ env.SERVICE }} \
             --image=${{ steps.tag.outputs.image }} \
             --region=${{ env.GCP_REGION }} \
             --project=${{ env.GCP_PROJECT }} \
@@ -80,9 +156,18 @@ jobs:
             --allow-unauthenticated \
             --service-account=${{ env.SA_EMAIL }} \
             --max-instances=3 \
+            --min-instances=1 \
             --cpu=1 --memory=512Mi \
-            --set-env-vars="NODE_ENV=production,AUTH_MODE=firebase,PERSISTENCE=firestore,LOG_JSON=true,GCP_PROJECT_ID=nexigrate-prod,GCP_PROJECT_NUMBER=505978726927,GCP_REGION=asia-south1,GCP_SERVICE_ACCOUNT=${{ env.SA_EMAIL }},CORS_ALLOWED_ORIGINS=https://app.nexigrate.com" \
-            --quiet
+            --quiet \
+          )
+          if [ "${{ steps.razorpay.outputs.enabled }}" = "true" ]; then
+            gcloud "${DEPLOY_ARGS[@]}" \
+              --set-env-vars="${BASE_ENV},RAZORPAY_KEY_ID=rzp_test_SsPfzbJUMaK7Ow" \
+              --set-secrets="RAZORPAY_KEY_SECRET=razorpay-key-secret:latest,RAZORPAY_WEBHOOK_SECRET=razorpay-webhook-secret:latest"
+          else
+            gcloud "${DEPLOY_ARGS[@]}" \
+              --set-env-vars="${BASE_ENV}"
+          fi
           URL=$(gcloud run services describe ${{ env.SERVICE }} --region=${{ env.GCP_REGION }} --project=${{ env.GCP_PROJECT }} --format='value(status.url)')
           echo "url=${URL}" >> "$GITHUB_OUTPUT"
           echo "::notice::Deployed at ${URL}"
@@ -95,3 +180,12 @@ jobs:
             echo "Attempt $i: $STATUS"; sleep 5
           done
           exit 1
+
+      - name: Deploy Firestore rules + indexes (idempotent)
+        working-directory: infra/firebase
+        run: |
+          npm install -g firebase-tools@latest --silent
+          firebase deploy \
+            --only firestore:rules,firestore:indexes,storage:rules \
+            --project nexigrate-prod \
+            --non-interactive

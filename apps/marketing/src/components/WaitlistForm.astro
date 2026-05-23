@@ -14,7 +14,7 @@ for (const exam of EXAMS) {
   (groups[exam.category] ??= []).push(exam);
 }
 const categoryLabels: Record<string, string> = {
-  school: 'School (Class 8\u201312)',
+  school: 'School (Class 8–12)',
   engineering: 'Engineering entrance',
   medical: 'Medical entrance',
   'civil-services': 'Civil services & SSC',
@@ -66,7 +66,7 @@ const categoryLabels: Record<string, string> = {
       </label>
     </div>
 
-    {/* Honeypot \u2014 real users never fill this; bots usually do. */}
+    {/* Honeypot — real users never fill this; bots usually do. */}
     <div class="hidden" aria-hidden="true">
       <label>
         Don't fill this out if you're a human:
@@ -80,7 +80,7 @@ const categoryLabels: Record<string, string> = {
       </p>
       <button type="submit" class="btn-primary w-full sm:w-auto" data-submit>
         <span data-label-default>Get early access</span>
-        <span class="hidden" data-label-loading>Saving\u2026</span>
+        <span class="hidden" data-label-loading>Saving…</span>
       </button>
     </div>
 
@@ -95,7 +95,7 @@ const categoryLabels: Record<string, string> = {
 </form>
 
 <script>
-  // Progressive enhancement \u2014 if JS doesn't load, the form still POSTs to /api/waitlist
+  // Progressive enhancement — if JS doesn't load, the form still POSTs to /api/waitlist
   // and a server-rendered redirect will handle it. With JS, we get inline feedback.
   type Status = 'success' | 'error' | 'duplicate';
 

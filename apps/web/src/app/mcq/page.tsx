@@ -99,7 +99,10 @@ export default function McqPage() {
   if (loading || !user || !data || !current) {
     return (
       <main className="flex min-h-[60vh] items-center justify-center px-6">
-        <p className="text-muted-500 text-sm">{error ?? 'Loading today\u2019s MCQ\u2026'}</p>
+        <span className="inline-flex items-center gap-2 text-sm text-muted-500">
+          <span className="spinner" aria-hidden="true" />
+          {error ?? 'Loading today\u2019s MCQ\u2026'}
+        </span>
       </main>
     );
   }
@@ -196,14 +199,22 @@ function ProgressDots({
         return (
           <span
             key={i}
-            className={`h-2 flex-1 rounded-full ${
+            className={`h-2 flex-1 rounded-full transition-colors ${
               isCurrent
                 ? 'bg-ember-600'
                 : answered
                   ? 'bg-ink-900'
-                  : 'bg-line'
+                  : 'bg-paper-300 border border-line'
             }`}
             style={{ minWidth: 16 }}
+            aria-current={isCurrent ? 'step' : undefined}
+            aria-label={
+              isCurrent
+                ? `Question ${i + 1}, current`
+                : answered
+                  ? `Question ${i + 1}, answered`
+                  : `Question ${i + 1}, unanswered`
+            }
           />
         );
       })}

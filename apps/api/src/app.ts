@@ -7,8 +7,14 @@ import type { Env } from './env.js';
 import { getFirebaseFirestore } from './lib/firebaseAdmin.js';
 import { FirestoreLedgerStore } from './lib/firestoreLedger.js';
 import { FirestoreMcqStore, InMemoryMcqStore, type McqStore } from './lib/mcqStore.js';
+import {
+  FirestoreSubscriptionStore,
+  InMemorySubscriptionStore,
+  type SubscriptionStore,
+} from './lib/subscriptionStore.js';
 import { FirestoreUserStore, InMemoryUserStore, type UserStore } from './lib/userStore.js';
 import type { Logger } from './logger.js';
+import { makeBillingRoutes } from './routes/billing.js';
 import {
   defaultEngineDeps,
   InMemoryLedgerStore,
@@ -34,6 +40,7 @@ export interface AppDeps {
   ledger?: LedgerStore;
   mcqs?: McqStore;
   users?: UserStore;
+  subscriptions?: SubscriptionStore;
 }
 
 export function buildApp(deps: AppDeps): Hono {
@@ -45,6 +52,9 @@ export function buildApp(deps: AppDeps): Hono {
     deps.ledger ?? (fs ? new FirestoreLedgerStore(fs) : new InMemoryLedgerStore());
   const mcqs = deps.mcqs ?? (fs ? new FirestoreMcqStore(fs) : new InMemoryMcqStore());
   const users = deps.users ?? (fs ? new FirestoreUserStore(fs) : new InMemoryUserStore());
+  const subscriptions =
+    deps.subscriptions ??
+    (fs ? new FirestoreSubscriptionStore(fs) : new InMemorySubscriptionStore());
 
   const verifier = makeVerifier(env);
   const engineDeps = defaultEngineDeps();
@@ -109,6 +119,7 @@ export function buildApp(deps: AppDeps): Hono {
     '/mcq-sessions',
     makeMcqSessionsRoutes({ mcqs, ledger, logger, ...engineDeps, getTargetExam }),
   );
+  v1.route('/billing', makeBillingRoutes({ env, subscriptions, logger }));
   app.route('/v1', v1);
 
   app.onError((err, c) => {

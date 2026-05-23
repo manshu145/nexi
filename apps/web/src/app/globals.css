@@ -114,6 +114,27 @@ h1, h2, h3, h4, h5, h6 {
 }
 .btn-ghost:hover { background-color: var(--color-paper-200); }
 
+/* Smaller variant for inline secondary actions (sign out, "Done", etc.). */
+.btn-ghost-sm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.85rem;
+  border-radius: 999px;
+  color: var(--color-ink-800);
+  font-weight: 500;
+  font-size: 0.82rem;
+  border: 1px solid var(--color-line);
+  background-color: transparent;
+  transition: background-color 120ms ease, color 120ms ease;
+  cursor: pointer;
+}
+.btn-ghost-sm:hover {
+  background-color: var(--color-paper-200);
+  color: var(--color-ink-900);
+}
+
 .pill {
   display: inline-flex;
   align-items: center;
@@ -125,6 +146,38 @@ h1, h2, h3, h4, h5, h6 {
   font-size: 0.8rem;
   font-weight: 500;
   border: 1px solid var(--color-line);
+}
+
+/* Pill state variants used in MCQ result review cards. */
+.pill-success {
+  background-color: var(--color-paper-300);
+  color: var(--color-ink-900);
+  border-color: var(--color-gold-500);
+}
+.pill-warn {
+  background-color: #F3D8C9;
+  color: var(--color-ember-700);
+  border-color: var(--color-ember-500);
+}
+.pill-neutral {
+  background-color: var(--color-paper-200);
+  color: var(--color-muted-500);
+  border-color: var(--color-line);
+  border-style: dashed;
+}
+
+/* Tiny inline spinner used by buttons + loading states. */
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--color-paper-300);
+  border-top-color: var(--color-ink-900);
+  border-radius: 50%;
+  animation: spin 720ms linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 @media (prefers-reduced-motion: reduce) {
