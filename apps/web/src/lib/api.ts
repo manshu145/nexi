@@ -62,6 +62,9 @@ export interface MeResponse {
     photoPath: string | null;
     isVerified: boolean;
     targetExam?: ExamSlug | null;
+    currentStreak?: number;
+    bestStreak?: number;
+    lastDailyAt?: string | null;
   };
 }
 

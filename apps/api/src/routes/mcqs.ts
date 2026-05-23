@@ -14,6 +14,7 @@ import {
 import { award, computeBalance } from '@nexigrate/credits';
 import { requireAuth } from '../auth.js';
 import type { McqStore } from '../lib/mcqStore.js';
+import type { UserStore } from '../lib/userStore.js';
 import type { Logger } from '../logger.js';
 import type { LedgerStore } from './credits.js';
 
@@ -30,6 +31,7 @@ import type { LedgerStore } from './credits.js';
  *     Records the score, awards credits idempotently:
  *       score >= 7/10  ->  +50  via 'mcq_pass'
  *       any attempt    ->  +5   via 'mcq_fail_attempted'
+ *     Bumps the daily-streak counter once per IST day.
  *     Returns: { score, total, explanations, creditsAwarded, balance }
  */
 const DAILY_COUNT = 10;
@@ -38,6 +40,7 @@ const PASS_THRESHOLD = 7;
 export interface McqsRoutesDeps {
   mcqs: McqStore;
   ledger: LedgerStore;
+  users: UserStore;
   logger: Logger;
   newId: () => CreditEventId;
   now: () => ISODateTime;
@@ -150,10 +153,24 @@ export function makeMcqSessionsRoutes(deps: McqsRoutesDeps): Hono {
     );
     let balance = computeBalance(events, principal.userId, deps.now()).total;
     let creditsAwarded = 0;
+    let streakBumped = false;
     if (result.kind === 'awarded') {
       await deps.ledger.append(result.event);
       creditsAwarded = result.event.amount;
       balance = result.newBalance;
+      // Only bump streak when we know this is the first completion for the
+      // session; ledger idempotency is our "first time" signal.
+      try {
+        const before = (await deps.users.get(principal.userId))?.currentStreak ?? 0;
+        const after = await deps.users.bumpStreak(principal.userId, deps.now());
+        streakBumped = (after.currentStreak ?? 0) !== before;
+      } catch (e) {
+        // The streak is best-effort; don't fail the session-complete on it.
+        deps.logger.warn('mcq.streak.bump_failed', {
+          userId: principal.userId,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
     } else if (result.kind === 'duplicate') {
       creditsAwarded = result.event.amount;
       balance = result.balance;
@@ -165,6 +182,7 @@ export function makeMcqSessionsRoutes(deps: McqsRoutesDeps): Hono {
       score: correct,
       total,
       creditsAwarded,
+      streakBumped,
     });
 
     return c.json({

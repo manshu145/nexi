@@ -6,57 +6,187 @@ import Footer from '~/components/Footer.astro';
 export const prerender = true;
 ---
 
-<Layout title="Privacy — Nexigrate" description="How Nexigrate handles your data." pathname="/privacy">
+<Layout title="Privacy Policy — Nexigrate" description="How Nexigrate collects, uses, and protects your data." pathname="/privacy">
   <Nav />
   <main id="main" class="mx-auto max-w-3xl px-5 py-16 sm:py-20">
     <p class="pill mb-5">Privacy</p>
     <h1 class="font-serif text-4xl font-semibold leading-tight text-ink-900 sm:text-5xl">
-      Privacy policy
+      Privacy Policy
     </h1>
-    <p class="mt-3 text-sm text-muted-500">Effective date: this is a placeholder pre-launch draft.</p>
+    <p class="mt-3 text-sm text-muted-500">
+      Effective date: 23 May 2026 · Compliant with the Digital Personal Data Protection Act, 2023 (India).
+    </p>
 
-    <div class="mt-10 space-y-6 leading-relaxed text-ink-800">
+    <div class="mt-10 space-y-8 leading-relaxed text-ink-800">
       <p>
-        Nexigrate is being built to comply with the Digital Personal Data
-        Protection Act, 2023 (India). This page summarises our approach during
-        the pre-launch phase. The full legal policy will replace this document
-        before public sign-ups open.
+        This policy explains what personal data Nexigrate (“we”, “us”) collects
+        about you, why we collect it, how we use and protect it, and the rights
+        you have under the Digital Personal Data Protection Act, 2023 (the
+        “DPDP Act”). It applies to
+        <a class="text-ember-600 underline" href="https://nexigrate.com">nexigrate.com</a>,
+        <a class="text-ember-600 underline" href="https://app.nexigrate.com">app.nexigrate.com</a>,
+        and our APIs.
       </p>
 
-      <h2 class="font-serif text-2xl font-semibold text-ink-900">What we collect during the waitlist</h2>
-      <ul class="list-disc space-y-2 pl-6">
-        <li>The email address you give us.</li>
-        <li>The exam you say you are preparing for.</li>
-        <li>Anonymous, aggregated visit metrics (no third-party trackers).</li>
-      </ul>
+      <section>
+        <h2 class="font-serif text-2xl font-semibold text-ink-900">1. Data we collect</h2>
 
-      <h2 class="font-serif text-2xl font-semibold text-ink-900">What we do with it</h2>
-      <ul class="list-disc space-y-2 pl-6">
-        <li>Tell you when Nexigrate is ready for you to sign up.</li>
-        <li>Decide which exams to prioritise based on aggregate demand.</li>
-        <li>Nothing else. We do not sell, rent, or share your data.</li>
-      </ul>
+        <h3 class="font-serif mt-5 text-lg font-semibold text-ink-900">When you join the waitlist</h3>
+        <ul class="mt-2 list-disc space-y-1 pl-6">
+          <li>Email address.</li>
+          <li>Exam you are preparing for.</li>
+          <li>Anonymous, aggregated visit metrics (no third-party trackers).</li>
+        </ul>
 
-      <h2 class="font-serif text-2xl font-semibold text-ink-900">Where it lives</h2>
-      <p>
-        Waitlist data is stored in Cloudflare KV in our India region. Production
-        student data will be stored in Firestore in Mumbai (asia-south1) and
-        encrypted in transit and at rest.
-      </p>
+        <h3 class="font-serif mt-5 text-lg font-semibold text-ink-900">When you sign in to the app</h3>
+        <ul class="mt-2 list-disc space-y-1 pl-6">
+          <li>Authoritative identifiers from your Google account: name, email,
+              profile photo URL.</li>
+          <li>Phone number, if you sign in via OTP.</li>
+          <li>Sign-in timestamps and the auth provider used.</li>
+        </ul>
 
-      <h2 class="font-serif text-2xl font-semibold text-ink-900">Minors</h2>
-      <p>
-        Students under 18 will require verifiable parental consent before any
-        personal data is processed at full launch. The waitlist itself is open
-        to anyone who can give a working email address.
-      </p>
+        <h3 class="font-serif mt-5 text-lg font-semibold text-ink-900">As you use the app</h3>
+        <ul class="mt-2 list-disc space-y-1 pl-6">
+          <li>The exam, class, and board you choose during onboarding.</li>
+          <li>MCQ sessions: the questions shown, the answers you picked,
+              your score, and the timestamp of each attempt.</li>
+          <li>Credit ledger entries (awards and spends) that drive your
+              balance.</li>
+          <li>Feedback and bug reports you send us, with the technical
+              context attached (browser, page, time).</li>
+        </ul>
 
-      <h2 class="font-serif text-2xl font-semibold text-ink-900">Removing your data</h2>
-      <p>
-        Email <a class="text-ember-600 underline" href="mailto:hello@nexigrate.com">hello@nexigrate.com</a>
-        and we will delete your record from the waitlist. There are no dark
-        patterns; we just unsubscribe you and move on.
-      </p>
+        <h3 class="font-serif mt-5 text-lg font-semibold text-ink-900">When you pay</h3>
+        <ul class="mt-2 list-disc space-y-1 pl-6">
+          <li>Subscription plan, billing interval, and amount.</li>
+          <li>Razorpay order ID, payment ID, and signature for verification.</li>
+          <li>We do <em>not</em> store full card numbers, CVVs, UPI VPAs, or
+              bank account numbers. Razorpay handles those directly.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2 class="font-serif text-2xl font-semibold text-ink-900">2. Why we collect it (the “purposes”)</h2>
+        <ul class="mt-3 list-disc space-y-1 pl-6">
+          <li>To create your account and let you sign in across devices.</li>
+          <li>To pick a daily MCQ set tailored to your target exam.</li>
+          <li>To award and spend credits, run the streak counter, and
+              compute your progress.</li>
+          <li>To process payments and provide receipts.</li>
+          <li>To prevent abuse, fraud, and harm to other users.</li>
+          <li>To improve the product, including by aggregating anonymous
+              accuracy data per chapter.</li>
+          <li>To meet our legal obligations (tax records, lawful requests
+              from authorities).</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2 class="font-serif text-2xl font-semibold text-ink-900">3. Where data is stored</h2>
+        <p class="mt-3">
+          Your account, MCQ sessions, and credit ledger live in
+          <strong>Cloud Firestore in the asia-south1 (Mumbai) region</strong>.
+          Authentication is handled by Firebase Auth. Static assets are
+          delivered from Cloudflare’s global CDN. Waitlist emails are stored in
+          Cloudflare KV in the India region. Payments are processed by Razorpay
+          under their <a class="text-ember-600 underline" href="https://razorpay.com/privacy/">privacy policy</a>.
+          All data in transit is encrypted with TLS 1.2+; at rest, Firestore
+          encrypts data with Google-managed keys.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="font-serif text-2xl font-semibold text-ink-900">4. Who we share data with</h2>
+        <p class="mt-3">
+          We share the minimum data necessary with the following processors:
+        </p>
+        <ul class="mt-3 list-disc space-y-1 pl-6">
+          <li><strong>Google Cloud</strong> — Firestore database and Firebase
+              Auth, in the Mumbai region.</li>
+          <li><strong>Cloudflare</strong> — DNS, CDN, marketing site hosting,
+              waitlist KV.</li>
+          <li><strong>Razorpay</strong> — payment processing only.</li>
+          <li><strong>Resend</strong> — transactional email delivery (waitlist,
+              receipts).</li>
+        </ul>
+        <p class="mt-3">
+          We do <strong>not</strong> sell, rent, or trade your personal data.
+          We do not run third-party advertising trackers on this site.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="font-serif text-2xl font-semibold text-ink-900">5. How long we keep data</h2>
+        <ul class="mt-3 list-disc space-y-1 pl-6">
+          <li>Account profile: while your account is active, plus 90 days
+              after deletion to allow account-recovery requests.</li>
+          <li>MCQ sessions and credit ledger: as long as your account is
+              active. After deletion, we keep an anonymised copy for
+              aggregate analytics.</li>
+          <li>Payment records: 8 years, as required by Indian tax law.</li>
+          <li>Waitlist emails: until you ask us to remove them.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2 class="font-serif text-2xl font-semibold text-ink-900">6. Your rights under the DPDP Act</h2>
+        <ul class="mt-3 list-disc space-y-1 pl-6">
+          <li><strong>Access</strong>: ask us for a copy of the personal data
+              we hold about you.</li>
+          <li><strong>Correction</strong>: ask us to fix data that is wrong or
+              incomplete.</li>
+          <li><strong>Erasure</strong>: ask us to delete your account and the
+              data attached to it (we will explain what we are required to
+              keep for legal reasons).</li>
+          <li><strong>Grievance redressal</strong>: write to us if you feel
+              your rights have been violated. We will respond within 30 days.</li>
+          <li><strong>Nominate</strong>: in case of incapacitation or death,
+              you can nominate another individual to exercise your rights.
+              Email us if you want to register a nomination.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2 class="font-serif text-2xl font-semibold text-ink-900">7. Children</h2>
+        <p class="mt-3">
+          Many of our users are minors. We require verifiable parental consent
+          before processing personal data of a user we know to be under 18.
+          We do not run behavioural advertising or tracking on minors. If you
+          are a parent and believe we hold data about your child without your
+          consent, please email us and we will delete it.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="font-serif text-2xl font-semibold text-ink-900">8. Cookies</h2>
+        <p class="mt-3">
+          We use a small number of strictly necessary cookies and localStorage
+          entries to keep you signed in and to remember your last result. We
+          do not run advertising or third-party tracking cookies.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="font-serif text-2xl font-semibold text-ink-900">9. Changes</h2>
+        <p class="mt-3">
+          We may update this policy from time to time. Material changes will
+          be announced on this page and, where relevant, by email at least 7
+          days before they take effect.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="font-serif text-2xl font-semibold text-ink-900">10. Contact and grievance officer</h2>
+        <p class="mt-3">
+          Privacy questions and DPDP requests:
+          <a class="text-ember-600 underline" href="mailto:hello@nexigrate.com">hello@nexigrate.com</a>.
+          We will acknowledge within 3 working days and resolve within 30 days
+          where possible. Until we appoint a separate Data Protection Officer,
+          the founder serves as the grievance officer reachable at the same
+          address.
+        </p>
+      </section>
     </div>
   </main>
   <Footer />

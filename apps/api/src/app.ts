@@ -13,6 +13,7 @@ import {
   type SubscriptionStore,
 } from './lib/subscriptionStore.js';
 import { FirestoreUserStore, InMemoryUserStore, type UserStore } from './lib/userStore.js';
+import { makeRateLimitMiddleware } from './lib/rateLimit.js';
 import type { Logger } from './logger.js';
 import { makeBillingRoutes } from './routes/billing.js';
 import {
@@ -85,6 +86,23 @@ export function buildApp(deps: AppDeps): Hono {
     }),
   );
 
+  // Per-IP rate limit guarding the whole API. Tuned generously enough that
+  // a normal classroom on shared NAT won't trip; see lib/rateLimit.ts.
+  // Skips Cloud Run health probes and Razorpay webhooks (which legitimately
+  // burst during payment reconciliation).
+  app.use(
+    '*',
+    makeRateLimitMiddleware({
+      burst: 30,
+      refillRatePerSecond: 2, // 120 req / minute sustained
+      logger,
+      skip: (path) =>
+        path === '/healthz' ||
+        path === '/readyz' ||
+        path === '/v1/billing/webhook',
+    }),
+  );
+
   app.use('*', async (c, next) => {
     const start = performance.now();
     const requestId = c.req.header('x-request-id') ?? cryptoRandom();
@@ -114,10 +132,13 @@ export function buildApp(deps: AppDeps): Hono {
   v1.use('*', authMiddleware(verifier));
   v1.route('/credits', makeCreditsRoutes({ ledger, logger, ...engineDeps }));
   v1.route('/users', makeUsersRoutes({ users, logger }));
-  v1.route('/mcqs', makeMcqsRoutes({ mcqs, ledger, logger, ...engineDeps, getTargetExam }));
+  v1.route(
+    '/mcqs',
+    makeMcqsRoutes({ mcqs, ledger, users, logger, ...engineDeps, getTargetExam }),
+  );
   v1.route(
     '/mcq-sessions',
-    makeMcqSessionsRoutes({ mcqs, ledger, logger, ...engineDeps, getTargetExam }),
+    makeMcqSessionsRoutes({ mcqs, ledger, users, logger, ...engineDeps, getTargetExam }),
   );
   v1.route('/billing', makeBillingRoutes({ env, subscriptions, logger }));
   app.route('/v1', v1);
