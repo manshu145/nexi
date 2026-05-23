@@ -112,14 +112,11 @@ export default function AdminTeamPage() {
       </section>
 
       {toast ? (
-        <div
-          className="paper-card mt-6 border-l-4 border-emerald-500 px-4 py-3 text-sm text-ink-800"
-          role="status"
-        >
-          {toast}
+        <div className="banner banner-success mt-6" role="status">
+          <span className="flex-1">{toast}</span>
           <button
             type="button"
-            className="ml-3 text-xs text-muted-500 underline"
+            className="text-xs text-muted-500 underline"
             onClick={() => setToast(null)}
           >
             dismiss
@@ -128,7 +125,7 @@ export default function AdminTeamPage() {
       ) : null}
 
       {pendingResetLink ? (
-        <div className="paper-card mt-6 border-l-4 border-ember-600 p-4">
+        <div className="paper-card mt-6 p-5">
           <p className="text-xs font-semibold uppercase tracking-wide text-ember-600">
             Hand this to {pendingResetLink.email}
           </p>
@@ -373,7 +370,7 @@ function AdminRow({
               type="button"
               onClick={onRevoke}
               disabled={busy}
-              className="btn-ghost-sm text-ember-600 hover:bg-ember-50"
+              className="btn-ghost-sm text-ember-600 hover:bg-paper-200"
             >
               {busy ? 'Revoking...' : 'Revoke'}
             </button>
