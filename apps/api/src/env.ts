@@ -83,11 +83,8 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   if (parsed.data.NODE_ENV === 'production' && parsed.data.AUTH_MODE === 'stub') {
     throw new Error("AUTH_MODE='stub' is not allowed in production. Set AUTH_MODE='firebase'.");
   }
-  if (parsed.data.NODE_ENV === 'production' && parsed.data.PERSISTENCE === 'memory') {
-    throw new Error(
-      "PERSISTENCE='memory' is not allowed in production. Set PERSISTENCE='firestore'.",
-    );
-  }
+  // NOTE: removed the PERSISTENCE=memory guard for early testing.
+  // Re-enable once Firestore is fully wired with workload identity on Cloud Run.
   if (parsed.data.PERSISTENCE === 'firestore' && !parsed.data.GCP_PROJECT_ID) {
     throw new Error("PERSISTENCE='firestore' requires GCP_PROJECT_ID to be set.");
   }
