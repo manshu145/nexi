@@ -166,6 +166,91 @@ h1, h2, h3, h4, h5, h6 {
   border-style: dashed;
 }
 
+/* ----------------------------------------------------------------------------
+ * Form controls (inputs, selects, textareas).
+ * Used everywhere -- onboarding, signin (phone/OTP), admin login, admin team,
+ * admin mcq-drafts generate form. Keeps native chrome out and brand tokens in.
+ * -------------------------------------------------------------------------- */
+.input {
+  display: block;
+  width: 100%;
+  padding: 0.55rem 0.85rem;
+  border-radius: 0.5rem;
+  background-color: var(--color-paper-50);
+  color: var(--color-ink-900);
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  line-height: 1.4;
+  border: 1px solid var(--color-line);
+  box-shadow: 0 1px 0 rgba(42, 36, 26, 0.02);
+  transition: border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.input::placeholder {
+  color: var(--color-muted-400);
+}
+.input:hover:not(:disabled) {
+  border-color: var(--color-muted-400);
+}
+.input:focus,
+.input:focus-visible {
+  outline: none;
+  border-color: var(--color-ember-500);
+  box-shadow: 0 0 0 3px rgba(179, 70, 31, 0.18);
+  background-color: var(--color-paper-50);
+}
+.input:disabled {
+  background-color: var(--color-paper-200);
+  color: var(--color-muted-500);
+  cursor: not-allowed;
+}
+/* Native select chevron, drawn in ink to stay on-brand. */
+select.input {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='none' stroke='%232A241A' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round' d='M1.5 1.75 6 6.25l4.5-4.5'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 0.85rem center;
+  padding-right: 2.25rem;
+}
+textarea.input {
+  resize: vertical;
+  min-height: 4.5rem;
+  line-height: 1.55;
+}
+
+/* ----------------------------------------------------------------------------
+ * Status banner (callouts for non-blocking errors / info / success).
+ * Replaces the inline `<p className="text-sm text-ember-600">` patterns that
+ * left errors looking like body text.
+ * -------------------------------------------------------------------------- */
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.75rem 0.95rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--color-line);
+  background-color: var(--color-paper-50);
+  color: var(--color-ink-800);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+.banner-error {
+  border-color: var(--color-ember-500);
+  background-color: #F5E1D6;
+  color: var(--color-ember-700);
+}
+.banner-success {
+  border-color: var(--color-gold-500);
+  background-color: var(--color-paper-300);
+  color: var(--color-ink-900);
+}
+.banner-info {
+  border-color: var(--color-line);
+  background-color: var(--color-paper-200);
+  color: var(--color-ink-800);
+}
+
 /* Tiny inline spinner used by buttons + loading states. */
 .spinner {
   display: inline-block;
