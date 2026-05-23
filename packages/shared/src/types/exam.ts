@@ -1,4 +1,4 @@
-import type { ChapterId, ExamSlug, SubjectId } from './brand.js';
+import type { ExamSlug, SubjectId } from './brand.js';
 
 /**
  * Curriculum and target-exam types.
@@ -47,18 +47,4 @@ export interface Subject {
   name: string;
   /** Display order within the exam. */
   order: number;
-}
-
-/** A chapter inside a subject (e.g. "Kinematics" under Physics). */
-export interface Chapter {
-  id: ChapterId;
-  subject: SubjectId;
-  exam: ExamSlug;
-  name: string;
-  /** Display order within the subject. */
-  order: number;
-  /** Source citation, e.g. "NCERT Class 11 Physics Ch. 3". */
-  source: string;
-  /** Approximate study time in minutes, used for credit cost calculation. */
-  estimatedMinutes: number;
 }

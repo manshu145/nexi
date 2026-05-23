@@ -1,6 +1,8 @@
 'use client';
 
 import type {
+  Chapter,
+  ChapterUpsertRequest,
   CreditBalance,
   ExamSlug,
   MCQ,
@@ -259,6 +261,46 @@ export const api = {
     return res.json() as Promise<{ subscription: unknown | null }>;
   },
 
+  // ----- chapters (student)
+  chapters: {
+    async list(opts: { exam?: ExamSlug | string; subject?: string; limit?: number } = {}): Promise<{
+      exam: ExamSlug;
+      subject?: string;
+      chapters: (Chapter & { isRead: boolean })[];
+    }> {
+      const params = new URLSearchParams();
+      if (opts.exam) params.set('exam', String(opts.exam));
+      if (opts.subject) params.set('subject', opts.subject);
+      if (opts.limit) params.set('limit', String(opts.limit));
+      const qs = params.toString() ? `?${params.toString()}` : '';
+      const res = await authedFetch(`/v1/chapters${qs}`);
+      return res.json() as Promise<{
+        exam: ExamSlug;
+        subject?: string;
+        chapters: (Chapter & { isRead: boolean })[];
+      }>;
+    },
+
+    async get(id: string): Promise<{ chapter: Chapter; isRead: boolean }> {
+      const res = await authedFetch(`/v1/chapters/${encodeURIComponent(id)}`);
+      return res.json() as Promise<{ chapter: Chapter; isRead: boolean }>;
+    },
+
+    async markRead(
+      id: string,
+    ): Promise<{ chapterId: string; readAt: string; totalChaptersRead: number }> {
+      const res = await authedFetch(`/v1/chapters/${encodeURIComponent(id)}/read`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
+      return res.json() as Promise<{
+        chapterId: string;
+        readAt: string;
+        totalChaptersRead: number;
+      }>;
+    },
+  },
+
   // ----- admin
   admin: {
     auth: {
@@ -348,6 +390,61 @@ export const api = {
         { method: 'POST', body: JSON.stringify({ rejectionReason }) },
       );
       return res.json() as Promise<{ draft: AdminMcqDraft }>;
+    },
+
+    chapters: {
+      async list(opts: {
+        exam?: ExamSlug | string;
+        subject?: string;
+        status?: 'draft' | 'published' | 'archived';
+        limit?: number;
+      } = {}): Promise<{ chapters: Chapter[] }> {
+        const params = new URLSearchParams();
+        if (opts.exam) params.set('exam', String(opts.exam));
+        if (opts.subject) params.set('subject', opts.subject);
+        if (opts.status) params.set('status', opts.status);
+        if (opts.limit) params.set('limit', String(opts.limit));
+        const qs = params.toString() ? `?${params.toString()}` : '';
+        const res = await authedFetch(`/v1/admin/chapters${qs}`);
+        return res.json() as Promise<{ chapters: Chapter[] }>;
+      },
+
+      async get(id: string): Promise<{ chapter: Chapter }> {
+        const res = await authedFetch(`/v1/admin/chapters/${encodeURIComponent(id)}`);
+        return res.json() as Promise<{ chapter: Chapter }>;
+      },
+
+      async create(payload: ChapterUpsertRequest): Promise<{ chapter: Chapter }> {
+        const res = await authedFetch('/v1/admin/chapters', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+        return res.json() as Promise<{ chapter: Chapter }>;
+      },
+
+      async update(id: string, payload: ChapterUpsertRequest): Promise<{ chapter: Chapter }> {
+        const res = await authedFetch(`/v1/admin/chapters/${encodeURIComponent(id)}`, {
+          method: 'PATCH',
+          body: JSON.stringify(payload),
+        });
+        return res.json() as Promise<{ chapter: Chapter }>;
+      },
+
+      async publish(id: string): Promise<{ chapter: Chapter }> {
+        const res = await authedFetch(
+          `/v1/admin/chapters/${encodeURIComponent(id)}/publish`,
+          { method: 'POST', body: JSON.stringify({}) },
+        );
+        return res.json() as Promise<{ chapter: Chapter }>;
+      },
+
+      async archive(id: string): Promise<{ chapter: Chapter }> {
+        const res = await authedFetch(
+          `/v1/admin/chapters/${encodeURIComponent(id)}/archive`,
+          { method: 'POST', body: JSON.stringify({}) },
+        );
+        return res.json() as Promise<{ chapter: Chapter }>;
+      },
     },
   },
 };

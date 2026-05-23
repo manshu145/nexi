@@ -34,6 +34,8 @@ export type ISODateTime = Brand<string, 'ISODateTime'>;
 /** Helpers to construct branded values when you genuinely have a raw string. */
 export const asUserId = (s: string): UserId => s as UserId;
 export const asExamSlug = (s: string): ExamSlug => s as ExamSlug;
+export const asSubjectId = (s: string): SubjectId => s as SubjectId;
+export const asChapterId = (s: string): ChapterId => s as ChapterId;
 export const asMcqId = (s: string): McqId => s as McqId;
 export const asISODateTime = (s: string): ISODateTime => s as ISODateTime;
 export const nowIso = (): ISODateTime => new Date().toISOString() as ISODateTime;

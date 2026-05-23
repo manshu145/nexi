@@ -1,6 +1,7 @@
 import { Firestore } from 'firebase-admin/firestore';
 import {
   asISODateTime,
+  type ChapterReadRecord,
   type ExamSlug,
   type ISODateTime,
   type StreakBadge,
@@ -93,6 +94,13 @@ export type StoredUser = User & {
   referralCode?: string | null;
   /** ISO datetime when the user finished the multi-step survey. */
   onboardingCompletedAt?: ISODateTime | null;
+
+  /**
+   * Phase 9 -- per-user "I've read this chapter" log. Denormalised on
+   * the user doc rather than a sub-collection so dashboard reads stay a
+   * single document. Each record is idempotent on `chapterId`.
+   */
+  chaptersRead?: ChapterReadRecord[];
 };
 
 export interface UserStore {
@@ -117,6 +125,14 @@ export interface UserStore {
    * `kind` -- if the user already has the same kind, this is a no-op.
    */
   addStreakBadge(uid: UserId, badge: StreakBadge): Promise<StoredUser>;
+  /**
+   * Phase 9 -- record that the user has read a chapter.
+   *
+   * Idempotent on `chapterId`: a second call with the same id is a
+   * no-op (the original `readAt` is preserved). Returns the updated
+   * user doc.
+   */
+  markChapterRead(uid: UserId, chapterId: string, now: ISODateTime): Promise<StoredUser>;
 }
 
 function newUser(uid: UserId, init: UserStoreInit, now: string): StoredUser {
@@ -305,6 +321,24 @@ export class InMemoryUserStore implements UserStore {
     this.users.set(uid, updated);
     return updated;
   }
+
+  async markChapterRead(
+    uid: UserId,
+    chapterId: string,
+    now: ISODateTime,
+  ): Promise<StoredUser> {
+    const u = this.users.get(uid);
+    if (!u) throw new Error(`user ${uid} not found`);
+    const existing = u.chaptersRead ?? [];
+    if (existing.some((r) => r.chapterId === chapterId)) return u;
+    const updated: StoredUser = {
+      ...u,
+      chaptersRead: [...existing, { chapterId, readAt: now }],
+      updatedAt: now,
+    };
+    this.users.set(uid, updated);
+    return updated;
+  }
 }
 
 // ---------- firestore ------------------------------------------------------
@@ -377,6 +411,28 @@ export class FirestoreUserStore implements UserStore {
         ...cur,
         streakBadges: [...existing, badge],
         updatedAt: badge.earnedAt,
+      };
+      tx.set(ref, updated, { merge: true });
+      return updated;
+    });
+  }
+
+  async markChapterRead(
+    uid: UserId,
+    chapterId: string,
+    now: ISODateTime,
+  ): Promise<StoredUser> {
+    const ref = this.db.collection(COLLECTION).doc(uid);
+    return this.db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new Error(`user ${uid} not found`);
+      const cur = snap.data() as StoredUser;
+      const existing = cur.chaptersRead ?? [];
+      if (existing.some((r) => r.chapterId === chapterId)) return cur;
+      const updated: StoredUser = {
+        ...cur,
+        chaptersRead: [...existing, { chapterId, readAt: now }],
+        updatedAt: now,
       };
       tx.set(ref, updated, { merge: true });
       return updated;

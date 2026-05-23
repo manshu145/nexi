@@ -96,6 +96,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               <NavLink href="/admin/mcq-drafts" current={pathname.startsWith('/admin/mcq-drafts')}>
                 MCQ drafts
               </NavLink>
+              <NavLink href="/admin/chapters" current={pathname.startsWith('/admin/chapters')}>
+                Chapters
+              </NavLink>
               {me.role === 'super_admin' ? (
                 <NavLink href="/admin/team" current={pathname.startsWith('/admin/team')}>
                   Team
@@ -130,6 +133,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         <nav className="flex items-center gap-2 overflow-x-auto px-6 pb-3 sm:hidden">
           <NavLink href="/admin/mcq-drafts" current={pathname.startsWith('/admin/mcq-drafts')}>
             MCQ drafts
+          </NavLink>
+          <NavLink href="/admin/chapters" current={pathname.startsWith('/admin/chapters')}>
+            Chapters
           </NavLink>
           {me.role === 'super_admin' ? (
             <NavLink href="/admin/team" current={pathname.startsWith('/admin/team')}>

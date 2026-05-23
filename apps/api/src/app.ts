@@ -9,6 +9,11 @@ import {
   InMemoryAdminUserStore,
   type AdminUserStore,
 } from './lib/adminUserStore.js';
+import {
+  FirestoreChapterStore,
+  InMemoryChapterStore,
+  type ChapterStore,
+} from './lib/chapterStore.js';
 import { getFirebaseFirestore } from './lib/firebaseAdmin.js';
 import { FirestoreLedgerStore } from './lib/firestoreLedger.js';
 import {
@@ -35,7 +40,9 @@ import { FirestoreUserStore, InMemoryUserStore, type UserStore } from './lib/use
 import type { Logger } from './logger.js';
 import { makeAdminRoutes } from './routes/admin.js';
 import { makeAdminAuthRoutes } from './routes/admin-auth.js';
+import { makeAdminChaptersRoutes } from './routes/admin-chapters.js';
 import { makeBillingRoutes } from './routes/billing.js';
+import { makeChaptersRoutes } from './routes/chapters.js';
 import {
   defaultEngineDeps,
   InMemoryLedgerStore,
@@ -70,6 +77,7 @@ export interface AppDeps {
   mockTests?: MockTestStore;
   mockTestSessions?: MockTestSessionStore;
   admins?: AdminUserStore;
+  chapters?: ChapterStore;
 }
 
 export function buildApp(deps: AppDeps): Hono {
@@ -93,6 +101,8 @@ export function buildApp(deps: AppDeps): Hono {
     (fs ? new FirestoreMockTestSessionStore(fs) : new InMemoryMockTestSessionStore());
   const admins =
     deps.admins ?? (fs ? new FirestoreAdminUserStore(fs) : new InMemoryAdminUserStore());
+  const chapters =
+    deps.chapters ?? (fs ? new FirestoreChapterStore(fs) : new InMemoryChapterStore());
 
   const verifier = makeVerifier(env);
   const engineDeps = defaultEngineDeps();
@@ -201,10 +211,15 @@ export function buildApp(deps: AppDeps): Hono {
     }),
   );
   v1.route('/billing', makeBillingRoutes({ env, subscriptions, logger }));
+  v1.route(
+    '/chapters',
+    makeChaptersRoutes({ chapters, users, logger, getTargetExam }),
+  );
   // Phase 6: RBAC bootstrap routes. /admin/auth/* MUST be mounted BEFORE
   // /admin/* so its specific paths win over the generic admin route's
   // catch-all (Hono matches in registration order).
   v1.route('/admin/auth', makeAdminAuthRoutes({ env, admins, logger }));
+  v1.route('/admin/chapters', makeAdminChaptersRoutes({ env, chapters, admins, logger }));
   v1.route('/admin', makeAdminRoutes({ env, drafts, mcqs, admins, logger }));
   app.route('/v1', v1);
 
