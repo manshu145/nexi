@@ -60,3 +60,17 @@ export function makeLogger(env: Pick<Env, 'LOG_JSON' | 'NODE_ENV'>): Logger {
 
   return build({});
 }
+
+
+/**
+ * No-op logger for tests. Drops every record on the floor so vitest output
+ * stays clean. Use makeLogger() in production code; this is for unit tests
+ * that want to assert behaviour without log spam.
+ */
+export const silentLogger: Logger = {
+  debug: () => undefined,
+  info: () => undefined,
+  warn: () => undefined,
+  error: () => undefined,
+  child: () => silentLogger,
+};

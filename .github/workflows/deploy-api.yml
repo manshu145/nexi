@@ -128,6 +128,49 @@ jobs:
           echo "enabled=true" >> "$GITHUB_OUTPUT"
           echo "Razorpay secrets present in Secret Manager."
 
+      - name: Bootstrap AI provider secrets in Secret Manager (Phase 4 M5)
+        id: ai
+        env:
+          OAI: ${{ secrets.OPENAI_API_KEY }}
+          GEM: ${{ secrets.GEMINI_API_KEY }}
+          GRQ: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          # Helper: create-or-update a secret if the value is non-empty.
+          upsert_secret () {
+            local NAME="$1"
+            local VALUE="$2"
+            if [ -z "$VALUE" ]; then
+              echo "  $NAME: GitHub secret empty, skipping"
+              return
+            fi
+            if ! gcloud secrets describe "$NAME" --project=${{ env.GCP_PROJECT }} >/dev/null 2>&1; then
+              gcloud secrets create "$NAME" \
+                --replication-policy=automatic \
+                --project=${{ env.GCP_PROJECT }} >/dev/null
+            fi
+            printf '%s' "$VALUE" | gcloud secrets versions add "$NAME" \
+              --data-file=- --project=${{ env.GCP_PROJECT }} >/dev/null
+            echo "  $NAME: upserted"
+          }
+
+          upsert_secret openai-api-key  "$OAI"
+          upsert_secret gemini-api-key  "$GEM"
+          upsert_secret groq-api-key    "$GRQ"
+
+          # Build the comma-separated --set-secrets fragment using only the
+          # keys that are present, so missing ones don't break the deploy.
+          AI_SECRETS=""
+          [ -n "$OAI" ] && AI_SECRETS="${AI_SECRETS}OPENAI_API_KEY=openai-api-key:latest,"
+          [ -n "$GEM" ] && AI_SECRETS="${AI_SECRETS}GEMINI_API_KEY=gemini-api-key:latest,"
+          [ -n "$GRQ" ] && AI_SECRETS="${AI_SECRETS}GROQ_API_KEY=groq-api-key:latest,"
+          AI_SECRETS="${AI_SECRETS%,}"
+          echo "secrets=${AI_SECRETS}" >> "$GITHUB_OUTPUT"
+          if [ -n "$AI_SECRETS" ]; then
+            echo "AI providers wired: ${AI_SECRETS}"
+          else
+            echo "::warning::No AI provider keys present; admin /v1/admin/mcq-drafts/generate will return 503"
+          fi
+
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
 
@@ -163,12 +206,22 @@ jobs:
             --quiet
           )
           if [ "${{ steps.razorpay.outputs.enabled }}" = "true" ]; then
+            SECRETS_ARG="RAZORPAY_KEY_SECRET=razorpay-key-secret:latest,RAZORPAY_WEBHOOK_SECRET=razorpay-webhook-secret:latest"
+            if [ -n "${{ steps.ai.outputs.secrets }}" ]; then
+              SECRETS_ARG="${SECRETS_ARG},${{ steps.ai.outputs.secrets }}"
+            fi
             gcloud "${DEPLOY_ARGS[@]}" \
               --set-env-vars="${BASE_ENV}|RAZORPAY_KEY_ID=rzp_test_SsPfzbJUMaK7Ow" \
-              --set-secrets="RAZORPAY_KEY_SECRET=razorpay-key-secret:latest,RAZORPAY_WEBHOOK_SECRET=razorpay-webhook-secret:latest"
+              --set-secrets="${SECRETS_ARG}"
           else
-            gcloud "${DEPLOY_ARGS[@]}" \
-              --set-env-vars="${BASE_ENV}"
+            if [ -n "${{ steps.ai.outputs.secrets }}" ]; then
+              gcloud "${DEPLOY_ARGS[@]}" \
+                --set-env-vars="${BASE_ENV}" \
+                --set-secrets="${{ steps.ai.outputs.secrets }}"
+            else
+              gcloud "${DEPLOY_ARGS[@]}" \
+                --set-env-vars="${BASE_ENV}"
+            fi
           fi
           URL=$(gcloud run services describe ${{ env.SERVICE }} --region=${{ env.GCP_REGION }} --project=${{ env.GCP_PROJECT }} --format='value(status.url)')
           echo "url=${URL}" >> "$GITHUB_OUTPUT"

@@ -76,6 +76,16 @@ const schema = z.object({
   RAZORPAY_KEY_ID: z.string().default(''),
   RAZORPAY_KEY_SECRET: z.string().default(''),
   RAZORPAY_WEBHOOK_SECRET: z.string().default(''),
+
+  /**
+   * AI provider API keys for the 3-AI MCQ generation + verification
+   * pipeline (Phase 4 M5). All optional in dev so a fresh checkout boots
+   * with stub LLMs that throw on use; missing keys in production make the
+   * admin generation endpoints return 503 instead of crashing the server.
+   */
+  OPENAI_API_KEY: z.string().default(''),
+  GEMINI_API_KEY: z.string().default(''),
+  GROQ_API_KEY: z.string().default(''),
 });
 
 export type Env = z.output<typeof schema>;

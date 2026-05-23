@@ -80,22 +80,49 @@ In-memory bucket is fine for the single-instance min=1 / max=3 setup; a
 distributed bucket can come later if we shard. Returns 429 with
 `Retry-After`.
 
-### M5 — AI MCQ generation scaffold (1-2 days)
+### M5 — AI MCQ generation scaffold (1-2 days) ✅ shipped
 
 Lay the foundation; actual generation hits production in Phase 4.5.
 
-- New `apps/api/src/lib/llm/` directory: thin clients for OpenAI, Gemini,
-  Groq behind a common `LLMClient` interface
-- New `apps/api/src/lib/mcqGen/`: orchestrator that asks all three to
-  generate the same MCQ from a chapter section, then a verifier model that
-  checks they agree
-- New `mcq_drafts` Firestore collection: `{ id, draft, verifierResults[],
-  status: 'pending' | 'approved' | 'rejected' }`
-- New admin-only endpoints (require `admin` claim):
+**Status: shipped in PR #3 (`phase-4/m5-ai-scaffold`).**
+
+What landed:
+
+- `apps/api/src/lib/llm/` — thin `LLMClient` interface + 3 production
+  clients (OpenAI gpt-4o-mini, Gemini 2.5 flash, Groq Llama 3.3 70B) using
+  raw `fetch` so the Docker image stays lean, plus a `StubLLMClient` for
+  tests. `makeLLMTriadFromEnv()` wires all three from env vars and
+  gracefully falls back to throwing stubs when keys are missing.
+- `apps/api/src/lib/mcqGen/` — orchestrator that fans the same prompt
+  across 3 primaries in parallel, picks the consensus answer (best 2-of-3
+  by `correctOption`, falls back to first non-null), then runs an
+  OpenAI gpt-4o verifier. Result is a `McqDraft` with provenance for
+  every model call. `InMemoryMcqDraftStore` (tests) and
+  `FirestoreMcqDraftStore` (prod) implement the same interface; approve
+  publishes the chosen candidate to the live `mcqs` collection inside a
+  Firestore transaction.
+- `apps/api/src/routes/admin.ts` — admin-gated routes:
   - `POST /v1/admin/mcq-drafts/generate` — kicks off a generation run
-  - `GET  /v1/admin/mcq-drafts` — lists pending drafts for SME review
-  - `POST /v1/admin/mcq-drafts/:id/approve` — moves to `mcqs` collection
-  - `POST /v1/admin/mcq-drafts/:id/reject`
+  - `GET  /v1/admin/mcq-drafts` — lists drafts (filter by status)
+  - `GET  /v1/admin/mcq-drafts/:id` — fetch one draft
+  - `POST /v1/admin/mcq-drafts/:id/approve` — publish to `mcqs`
+  - `POST /v1/admin/mcq-drafts/:id/reject` — mark rejected (note required)
+- `packages/shared` — new `McqDraft`, `DraftCandidate`, `VerifierResult`,
+  `DraftStatus`, `McqGenerationOutput` types exported from the barrel.
+- `apps/api/src/__tests__/{mcqGen,admin.routes}.test.ts` — 18 tests using
+  stub LLM clients; covers happy path, single-provider failure, all-three
+  failure, verifier failure, idempotent state guards, and full HTTP
+  contract (401/403/400/503/200) for every admin route.
+- `.github/workflows/deploy-api.yml` — bootstraps `openai-api-key`,
+  `gemini-api-key`, `groq-api-key` into Secret Manager (only if the
+  corresponding GH Secret is present) and `--set-secrets` them into the
+  Cloud Run revision. No keys in env-var land or workflow logs.
+
+What's NOT in this PR (deferred to Phase 4.5):
+- A scheduler that auto-generates MCQ drafts overnight.
+- Any client surface (the admin panel in apps/admin consumes these
+  endpoints; until that ships, an admin user with a Firebase admin claim
+  drives the flow via curl).
 
 ### M6 — Ship + verify (½ day)
 

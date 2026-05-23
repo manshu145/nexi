@@ -4,6 +4,7 @@ export * from './user.js';
 export * from './verification.js';
 export * from './credit.js';
 export * from './mcq.js';
+export * from './mcqDraft.js';
 export * from './subscription.js';
 export * from './referral.js';
 export * from './audit.js';

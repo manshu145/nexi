@@ -14,7 +14,14 @@ import {
 } from './lib/subscriptionStore.js';
 import { FirestoreUserStore, InMemoryUserStore, type UserStore } from './lib/userStore.js';
 import { makeRateLimitMiddleware } from './lib/rateLimit.js';
+import { makeLLMTriadFromEnv, type LLMTriad } from './lib/llm/index.js';
+import {
+  FirestoreMcqDraftStore,
+  InMemoryMcqDraftStore,
+  type McqDraftStore,
+} from './lib/mcqGen/index.js';
 import type { Logger } from './logger.js';
+import { makeAdminRoutes } from './routes/admin.js';
 import { makeBillingRoutes } from './routes/billing.js';
 import {
   defaultEngineDeps,
@@ -42,6 +49,9 @@ export interface AppDeps {
   mcqs?: McqStore;
   users?: UserStore;
   subscriptions?: SubscriptionStore;
+  /** Phase 4 M5: AI MCQ generation. Defaulted from env when not injected. */
+  drafts?: McqDraftStore;
+  triad?: LLMTriad;
 }
 
 export function buildApp(deps: AppDeps): Hono {
@@ -56,6 +66,9 @@ export function buildApp(deps: AppDeps): Hono {
   const subscriptions =
     deps.subscriptions ??
     (fs ? new FirestoreSubscriptionStore(fs) : new InMemorySubscriptionStore());
+  const drafts =
+    deps.drafts ?? (fs ? new FirestoreMcqDraftStore(fs) : new InMemoryMcqDraftStore());
+  const triad = deps.triad ?? makeLLMTriadFromEnv(env);
 
   const verifier = makeVerifier(env);
   const engineDeps = defaultEngineDeps();
@@ -141,6 +154,7 @@ export function buildApp(deps: AppDeps): Hono {
     makeMcqSessionsRoutes({ mcqs, ledger, users, logger, ...engineDeps, getTargetExam }),
   );
   v1.route('/billing', makeBillingRoutes({ env, subscriptions, logger }));
+  v1.route('/admin', makeAdminRoutes({ drafts, triad, logger }));
   app.route('/v1', v1);
 
   app.onError((err, c) => {
