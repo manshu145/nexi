@@ -6,7 +6,6 @@ import { EXAM_BY_SLUG, type CreditBalance } from '@nexigrate/shared';
 import { Logo } from '~/components/Logo';
 import { useAuth } from '~/lib/auth-context';
 import { api, type MeResponse } from '~/lib/api';
-
 /**
  * Student dashboard.
  *
@@ -64,6 +63,9 @@ export default function DashboardPage() {
   }
 
   const examName = me?.targetExam ? EXAM_BY_SLUG.get(me.targetExam)?.name : null;
+  const daysToExam = me?.examDate ? daysUntil(me.examDate) : null;
+  const board = me?.board ? prettyBoard(me.board) : null;
+  const classLabel = me?.classLevel ? prettyClass(me.classLevel) : null;
 
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col px-6 pt-8 pb-16">
@@ -95,8 +97,30 @@ export default function DashboardPage() {
           Today’s study slate
         </h1>
         {examName ? (
-          <p className="mt-2 text-sm text-muted-500">
+          <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-500">
             Tracking <span className="font-medium text-ink-800">{examName}</span>
+            {classLabel ? (
+              <>
+                <span aria-hidden="true">·</span>
+                <span>{classLabel}</span>
+              </>
+            ) : null}
+            {board ? (
+              <>
+                <span aria-hidden="true">·</span>
+                <span>{board}</span>
+              </>
+            ) : null}
+            {daysToExam !== null ? (
+              <>
+                <span aria-hidden="true">·</span>
+                <span className="font-medium text-ember-600">
+                  {daysToExam <= 0
+                    ? 'Exam day or sooner'
+                    : `${daysToExam} day${daysToExam === 1 ? '' : 's'} to exam`}
+                </span>
+              </>
+            ) : null}
           </p>
         ) : null}
       </section>
@@ -190,4 +214,48 @@ function greeting(): string {
   if (istHour < 12) return 'Good morning';
   if (istHour < 17) return 'Good afternoon';
   return 'Good evening';
+}
+
+function daysUntil(isoDate: string): number | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return null;
+  const target = new Date(`${isoDate}T00:00:00.000Z`).getTime();
+  const today = new Date();
+  const todayUtc = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+  return Math.round((target - todayUtc) / 86400000);
+}
+
+function prettyClass(c: NonNullable<MeResponse['user']['classLevel']>): string {
+  switch (c) {
+    case 'class-8':
+      return 'Class 8';
+    case 'class-9':
+      return 'Class 9';
+    case 'class-10':
+      return 'Class 10';
+    case 'class-11':
+      return 'Class 11';
+    case 'class-12':
+      return 'Class 12';
+    case 'graduation':
+      return 'Graduation';
+    case 'post-graduation':
+      return 'Post-graduation';
+    default:
+      return c;
+  }
+}
+
+function prettyBoard(b: NonNullable<MeResponse['user']['board']>): string {
+  switch (b) {
+    case 'cbse':
+      return 'CBSE';
+    case 'icse':
+      return 'ICSE';
+    case 'state':
+      return 'State board';
+    case 'other':
+      return 'Other board';
+    default:
+      return b;
+  }
 }

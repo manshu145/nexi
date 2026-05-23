@@ -1,7 +1,10 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { z } from 'zod';
-import { asExamSlug, isExamSlug } from '@nexigrate/shared';
+import {
+  asExamSlug,
+  onboardingRequestSchema,
+  type OnboardingRequest,
+} from '@nexigrate/shared';
 import { requireAuth } from '../auth.js';
 import type { Logger } from '../logger.js';
 import type { UserStore } from '../lib/userStore.js';
@@ -10,16 +13,19 @@ import type { UserStore } from '../lib/userStore.js';
  *   GET  /v1/users/me                 -- returns or auto-creates the user doc
  *                                        from Firebase token claims forwarded
  *                                        by the client as headers
- *   POST /v1/users/me/onboarding      -- set target exam (and other onboarding fields)
+ *   POST /v1/users/me/onboarding      -- multi-step survey: target exam,
+ *                                        class + board, school info, exam
+ *                                        date, study habits, weak subjects,
+ *                                        and (if minor) parent contact.
+ *                                        Validated by the shared
+ *                                        `onboardingRequestSchema` so the web
+ *                                        + mobile clients can reuse the same
+ *                                        Zod definition.
  */
 export interface UsersRoutesDeps {
   users: UserStore;
   logger: Logger;
 }
-
-const onboardingSchema = z.object({
-  targetExam: z.string().refine(isExamSlug, { message: 'unknown exam slug' }),
-});
 
 export function makeUsersRoutes(deps: UsersRoutesDeps): Hono {
   const app = new Hono();
@@ -42,19 +48,38 @@ export function makeUsersRoutes(deps: UsersRoutesDeps): Hono {
   app.post('/me/onboarding', async (c) => {
     const principal = requireAuth(c);
     const body = await c.req.json().catch(() => null);
-    const parsed = onboardingSchema.safeParse(body);
+    const parsed = onboardingRequestSchema.safeParse(body);
     if (!parsed.success) {
       throw new HTTPException(400, {
         message: parsed.error.issues[0]?.message ?? 'invalid body',
       });
     }
-    const user = await deps.users.setTargetExam(
-      principal.userId,
-      asExamSlug(parsed.data.targetExam),
-    );
+    const data: OnboardingRequest = parsed.data;
+    const user = await deps.users.applyOnboarding(principal.userId, {
+      targetExam: asExamSlug(data.targetExam),
+      classLevel: data.classLevel,
+      board: data.board,
+      schoolName: data.schoolName,
+      district: data.district,
+      state: data.state,
+      dateOfBirth: data.dateOfBirth,
+      examDate: data.examDate,
+      studyHoursPerDay: data.studyHoursPerDay,
+      weakSubjects: data.weakSubjects,
+      phone: data.phone,
+      parentEmail: data.parentEmail,
+      parentPhone: data.parentPhone,
+      referralCode: data.referralCode,
+      ...(data.name ? { name: data.name } : {}),
+    });
     deps.logger.info('users.onboarding', {
       userId: principal.userId,
-      targetExam: parsed.data.targetExam,
+      targetExam: data.targetExam,
+      classLevel: data.classLevel,
+      board: data.board,
+      hasExamDate: data.examDate !== null,
+      hasParentContact: data.parentEmail !== null || data.parentPhone !== null,
+      weakSubjectsCount: data.weakSubjects.length,
     });
     return c.json({ user });
   });
