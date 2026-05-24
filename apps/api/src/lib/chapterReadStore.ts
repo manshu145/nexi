@@ -66,10 +66,17 @@ export class FirestoreChapterReadStore implements ChapterReadStore {
   }
 
   async list(userId: UserId, exam?: ExamSlug): Promise<ChapterRead[]> {
-    let q = this.subcol(userId).orderBy('readAt', 'desc') as FirebaseFirestore.Query;
-    if (exam) q = q.where('exam', '==', exam);
-    const snap = await q.get();
-    return snap.docs.map((d) => d.data() as ChapterRead);
+    // Fetch the subcollection without combining `where` and `orderBy`
+    // on different fields -- that combination needs a composite
+    // subcollection index. The set of chapter_reads for a single user
+    // is small (bounded by chapters published), so we sort/filter
+    // client-side to keep this endpoint working without a manual
+    // index deploy. See the same pattern in FirestoreChapterStore.list.
+    const snap = await this.subcol(userId).get();
+    let rows = snap.docs.map((d) => d.data() as ChapterRead);
+    if (exam) rows = rows.filter((r) => r.exam === exam);
+    rows.sort((a, b) => (a.readAt < b.readAt ? 1 : -1));
+    return rows;
   }
 }
 
