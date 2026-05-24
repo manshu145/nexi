@@ -143,6 +143,11 @@ import { makeAdminAuditRoutes } from './routes/admin-audit.js';
 import { makeAdminAnalyticsRoutes } from './routes/admin-analytics.js';
 import { makeAdminCommsRoutes } from './routes/admin-comms.js';
 import { makeStudentCommsRoutes } from './routes/student-comms.js';
+import { makeCurrentAffairsQuizRoutes } from './routes/currentAffairsQuiz.js';
+import {
+  FirestoreCurrentAffairsQuizStore,
+  InMemoryCurrentAffairsQuizStore,
+} from './lib/currentAffairsQuizStore.js';
 import { makeProgressRoutes } from './routes/progress.js';
 import { makeUsersRoutes } from './routes/users.js';
 
@@ -182,6 +187,7 @@ export interface AppDeps {
   announcements?: AnnouncementStore;
   broadcasts?: BroadcastStore;
   tickets?: TicketStore;
+  caQuiz?: import('./lib/currentAffairsQuizStore.js').CurrentAffairsQuizStore;
 }
 
 export function buildApp(deps: AppDeps): Hono {
@@ -257,6 +263,8 @@ export function buildApp(deps: AppDeps): Hono {
     deps.broadcasts ?? (fs ? new FirestoreBroadcastStore(fs) : new InMemoryBroadcastStore());
   const ticketsStore =
     deps.tickets ?? (fs ? new FirestoreTicketStore(fs) : new InMemoryTicketStore());
+  const caQuizStore =
+    deps.caQuiz ?? (fs ? new FirestoreCurrentAffairsQuizStore(fs) : new InMemoryCurrentAffairsQuizStore());
 
   const verifier = makeVerifier(env);
   const engineDeps = defaultEngineDeps();
@@ -430,6 +438,17 @@ export function buildApp(deps: AppDeps): Hono {
     makeStudentCurrentAffairsRoutes({
       digests: currentAffairsDigests,
       logger,
+      now: engineDeps.now,
+    }),
+  );
+  // Phase F: Current affairs daily quiz — 20 MCQs, timer, leaderboard.
+  v1.route(
+    '/current-affairs-quiz',
+    makeCurrentAffairsQuizRoutes({
+      quizStore: caQuizStore,
+      users,
+      logger,
+      newId: () => globalThis.crypto.randomUUID().replace(/-/g, '').slice(0, 16),
       now: engineDeps.now,
     }),
   );
