@@ -8,12 +8,14 @@ import {
   type ExamSlug,
   type ISODateTime,
   type MCQ,
+  type McqAttemptRow,
   type McqId,
   type StreakBadge,
   type UserId,
 } from '@nexigrate/shared';
 import { award, computeBalance } from '@nexigrate/credits';
 import { requireAuth } from '../auth.js';
+import type { McqAttemptStore } from '../lib/mcqAttemptStore.js';
 import type { McqStore } from '../lib/mcqStore.js';
 import { awardStreakBadges } from '../lib/streakBadges.js';
 import type { UserStore } from '../lib/userStore.js';
@@ -55,6 +57,7 @@ const CHAPTER_TEST_DEFAULT_COUNT = 10;
 
 export interface McqsRoutesDeps {
   mcqs: McqStore;
+  attempts: McqAttemptStore;
   ledger: LedgerStore;
   users: UserStore;
   logger: Logger;
@@ -191,6 +194,8 @@ export function makeMcqSessionsRoutes(deps: McqsRoutesDeps): Hono {
     let correct = 0;
     const correctMcqIds: McqId[] = [];
     const explanations: { mcqId: string; correctOption: string; explanation: string }[] = [];
+    const attempts: McqAttemptRow[] = [];
+    const attemptedAt = deps.now();
     for (const a of parsed.data.answers) {
       const mcq = await deps.mcqs.get(asMcqId(a.mcqId));
       if (!mcq) continue;
@@ -199,10 +204,24 @@ export function makeMcqSessionsRoutes(deps: McqsRoutesDeps): Hono {
         correctOption: mcq.correctOption,
         explanation: mcq.explanation,
       });
-      if (a.chosen === mcq.correctOption) {
+      const isCorrect = a.chosen === mcq.correctOption;
+      if (isCorrect) {
         correct += 1;
         correctMcqIds.push(mcq.id);
       }
+      attempts.push({
+        id: `${sessionId}:${mcq.id}`,
+        userId: principal.userId,
+        mcqId: mcq.id,
+        sessionId,
+        sessionKind: isDaily ? 'daily' : 'chapter',
+        exam: mcq.exam,
+        subject: String(mcq.subject),
+        chapter: String(mcq.chapter),
+        chosen: a.chosen,
+        isCorrect,
+        attemptedAt,
+      });
     }
 
     const total = parsed.data.answers.length;
@@ -257,6 +276,22 @@ export function makeMcqSessionsRoutes(deps: McqsRoutesDeps): Hono {
     } else if (result.kind === 'duplicate') {
       creditsAwarded = result.event.amount;
       balance = result.balance;
+    }
+
+    // Persist per-MCQ attempts AFTER scoring so a 5xx halfway through
+    // scoring doesn't leave the analytics in a partial state. The
+    // attempt id is `${sessionId}:${mcqId}` so a retry of this whole
+    // POST overwrites cleanly.
+    if (attempts.length > 0) {
+      try {
+        await deps.attempts.putBatch(attempts);
+      } catch (e) {
+        deps.logger.warn('mcq.attempts.persist_failed', {
+          userId: principal.userId,
+          sessionId,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
     }
 
     deps.logger.info('mcq.session.complete', {

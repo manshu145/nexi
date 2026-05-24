@@ -4,12 +4,15 @@ import type {
   Chapter,
   ChapterDraft,
   ChapterDraftStatus,
+  ChapterRead,
   CreditBalance,
+  ExamDate,
   ExamSlug,
   MCQ,
   McqDraft,
   McqDraftStatus,
   McqDifficulty,
+  ProgressSnapshot,
 } from '@nexigrate/shared';
 import { getFirebaseAuthClient } from './firebase';
 
@@ -171,6 +174,8 @@ export interface ChapterSummary {
   estimatedReadMinutes: number;
   source: string;
   sectionCount: number;
+  /** Phase 12: true if the student has tapped "Mark as read". */
+  isRead?: boolean;
 }
 
 export type AdminChapterDraftStatus = ChapterDraftStatus;
@@ -496,12 +501,45 @@ export const api = {
       exam: string,
       subject: string,
       slug: string,
-    ): Promise<{ chapter: PublishedChapter }> {
+    ): Promise<{ chapter: PublishedChapter; isRead: boolean; readAt: string | null }> {
       const res = await authedFetch(
         `/v1/chapters/${encodeURIComponent(exam)}/${encodeURIComponent(subject)}/${encodeURIComponent(slug)}`,
       );
-      return res.json() as Promise<{ chapter: PublishedChapter }>;
+      return res.json() as Promise<{
+        chapter: PublishedChapter;
+        isRead: boolean;
+        readAt: string | null;
+      }>;
     },
+
+    async markRead(
+      exam: string,
+      subject: string,
+      slug: string,
+    ): Promise<{ read: ChapterRead }> {
+      const res = await authedFetch(
+        `/v1/chapters/${encodeURIComponent(exam)}/${encodeURIComponent(subject)}/${encodeURIComponent(slug)}/mark-read`,
+        { method: 'POST', body: JSON.stringify({}) },
+      );
+      return res.json() as Promise<{ read: ChapterRead }>;
+    },
+  },
+
+  // ----- exam dates (Phase 12)
+  async listExamDates(exam: ExamSlug | string): Promise<{ exam: string; dates: ExamDate[] }> {
+    const res = await authedFetch(
+      `/v1/exam-dates?exam=${encodeURIComponent(String(exam))}`,
+    );
+    return res.json() as Promise<{ exam: string; dates: ExamDate[] }>;
+  },
+
+  // ----- progress snapshot (Phase 12)
+  async getProgress(
+    exam?: ExamSlug | string,
+  ): Promise<ProgressSnapshot> {
+    const qs = exam ? `?exam=${encodeURIComponent(String(exam))}` : '';
+    const res = await authedFetch(`/v1/users/me/progress${qs}`);
+    return res.json() as Promise<ProgressSnapshot>;
   },
 
   // ----- chapter MCQ test (Phase 11)
