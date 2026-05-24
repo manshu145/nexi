@@ -8,6 +8,7 @@ on:
       - 'packages/shared/**'
       - 'pnpm-lock.yaml'
       - '.github/workflows/deploy-web.yml'
+      - '.github/workflows/deploy-trigger.txt'
   workflow_dispatch:
 
 concurrency:
