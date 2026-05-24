@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { AuthProvider } from '~/lib/auth-context';
 import { ThemeProvider } from '~/lib/theme-context';
 import { MobileNav } from '~/components/MobileNav';
+import { ChatWidget } from '~/components/ChatWidget';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -26,6 +27,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <AuthProvider>
             {children}
             <MobileNav />
+            <ChatWidget />
           </AuthProvider>
         </ThemeProvider>
       </body>
