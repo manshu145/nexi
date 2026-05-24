@@ -402,30 +402,31 @@ textarea.input {
   background-color: var(--color-paper-50);
   border: 1px solid var(--color-line);
   border-bottom: none;
-  border-radius: 0.5rem 0.5rem 0 0;
-  padding: 2rem 1.25rem 3rem;
+  border-radius: 0.75rem 0.75rem 0 0;
+  padding: 2.5rem 1.5rem 3.5rem;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  /* Book shadow — gives depth */
+  /* Book shadow — realistic depth with page edge effect */
   box-shadow:
-    0 0 0 1px rgba(42, 36, 26, 0.03),
-    4px 0 8px -2px rgba(42, 36, 26, 0.06),
-    -4px 0 8px -2px rgba(42, 36, 26, 0.06),
-    0 -2px 12px -4px rgba(42, 36, 26, 0.08);
+    0 0 0 1px rgba(42, 36, 26, 0.04),
+    6px 0 12px -3px rgba(42, 36, 26, 0.1),
+    -6px 0 12px -3px rgba(42, 36, 26, 0.1),
+    0 -4px 16px -4px rgba(42, 36, 26, 0.12),
+    inset 0 0 80px -40px rgba(42, 36, 26, 0.03);
 }
 @media (min-width: 720px) {
   .kindle-page {
-    padding: 3rem 3rem 4rem;
-    border-radius: 0.75rem 0.75rem 0 0;
+    padding: 3.5rem 3.5rem 4.5rem;
     box-shadow:
-      0 0 0 1px rgba(42, 36, 26, 0.04),
-      8px 0 16px -4px rgba(42, 36, 26, 0.08),
-      -8px 0 16px -4px rgba(42, 36, 26, 0.08),
-      0 -4px 20px -6px rgba(42, 36, 26, 0.1);
+      0 0 0 1px rgba(42, 36, 26, 0.05),
+      10px 0 20px -5px rgba(42, 36, 26, 0.12),
+      -10px 0 20px -5px rgba(42, 36, 26, 0.12),
+      0 -6px 24px -6px rgba(42, 36, 26, 0.14),
+      inset 0 0 120px -60px rgba(42, 36, 26, 0.02);
   }
 }
 @media (min-width: 1024px) {
-  .kindle-page { padding: 3.5rem 4rem 4rem; }
+  .kindle-page { padding: 4rem 4.5rem 5rem; }
 }
 
 /* Cover page (page 1): centered hero with title + summary + source. */
@@ -595,28 +596,31 @@ html.dark ::selection {
   position: relative;
   border: 1px solid var(--color-line);
   border-radius: 0.75rem;
-  padding: 1.5rem;
-  margin: 1.5rem 0;
-  background: var(--color-paper-50);
-  overflow: hidden;
+  padding: 2rem 1.5rem;
+  margin: 2rem 0;
+  background: var(--color-paper-100);
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 .viz-container::after {
-  content: 'nexigrate';
+  content: 'NEXIGRATE';
   position: absolute;
   bottom: 0.5rem;
   right: 0.75rem;
   font-family: var(--font-sans);
-  font-size: 0.65rem;
-  font-weight: 600;
-  letter-spacing: 0.1em;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
   text-transform: uppercase;
   color: var(--color-muted-400);
-  opacity: 0.6;
+  opacity: 0.5;
 }
 .viz-container svg {
   width: 100%;
   height: auto;
-  max-height: 400px;
+  max-height: 500px;
+  display: block;
+  margin: 0 auto;
 }
 
 /* ----- Text-to-Speech button (Phase I) ----- */
@@ -681,6 +685,23 @@ html.dark ::selection {
   .kindle-toolbar {
     padding: 0.4rem 0.75rem;
   }
+  /* Make content full width on mobile — no wasted margins */
+  .mx-auto {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+  /* Larger touch targets for mobile */
+  .btn-primary, .btn-ghost {
+    padding: 0.85rem 1.25rem;
+    font-size: 0.9rem;
+  }
+  .btn-ghost-sm {
+    padding: 0.5rem 0.9rem;
+  }
+  /* Better spacing for grid cards */
+  .paper-card {
+    padding: 1rem;
+  }
 }
 
 /* ----- Bottom mobile navigation bar ----- */
@@ -693,11 +714,11 @@ html.dark ::selection {
   display: flex;
   align-items: center;
   justify-content: space-around;
-  padding: 0.5rem 0;
+  padding: 0.5rem 0 calc(0.5rem + env(safe-area-inset-bottom, 0px));
   background-color: var(--color-paper-50);
   border-top: 1px solid var(--color-line);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 html.dark .mobile-nav {
   background-color: rgba(28, 26, 23, 0.95);
