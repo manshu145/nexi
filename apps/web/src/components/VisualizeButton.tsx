@@ -39,15 +39,37 @@ export function VisualizeButton({ text, title }: Props) {
           startOnLoad: false,
           theme: 'neutral',
           fontFamily: 'Inter, system-ui, sans-serif',
-          securityLevel: 'strict',
+          securityLevel: 'loose',
+          flowchart: { curve: 'basis', padding: 15 },
+          themeVariables: {
+            primaryColor: '#F5ECD7',
+            primaryBorderColor: '#D9CDB0',
+            primaryTextColor: '#2A241A',
+            lineColor: '#9A8E78',
+            secondaryColor: '#EFE4C7',
+            tertiaryColor: '#FBF6E8',
+          },
         });
-        const { svg } = await mermaid.render(`mermaid-${uid}`, mermaidCode!);
+        // Clean up common AI-generated mermaid syntax issues
+        let code = mermaidCode!.trim();
+        // Remove markdown code fences if present
+        code = code.replace(/^```mermaid\n?/i, '').replace(/\n?```$/i, '');
+        // Fix common issues: trailing semicolons, invalid chars
+        code = code.replace(/;\s*$/gm, '');
+
+        const { svg } = await mermaid.render(`mermaid-${uid}`, code);
         if (!cancelled && containerRef.current) {
           containerRef.current.innerHTML = svg;
         }
-      } catch {
+      } catch (err) {
         if (!cancelled && containerRef.current) {
-          containerRef.current.innerHTML = `<pre class="text-xs text-ink-800 overflow-x-auto whitespace-pre-wrap font-mono leading-relaxed">${mermaidCode}</pre>`;
+          // Show a friendly fallback with the raw code
+          const errMsg = err instanceof Error ? err.message : 'Diagram syntax error';
+          containerRef.current.innerHTML = `
+            <div class="space-y-3">
+              <p class="text-xs text-ember-600 font-medium">${errMsg}</p>
+              <pre class="text-xs text-ink-800 overflow-x-auto whitespace-pre-wrap font-mono leading-relaxed p-3 bg-paper-200 rounded-lg border border-line">${mermaidCode}</pre>
+            </div>`;
         }
       }
     }

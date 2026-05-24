@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { api } from '~/lib/api';
+import { useAuth } from '~/lib/auth-context';
 
 interface SchedulerStatus {
   paused: boolean;
@@ -15,10 +16,13 @@ interface SchedulerStatus {
 }
 
 export default function AdminSchedulerPage() {
+  const { getIdToken } = useAuth();
   const [status, setStatus] = useState<SchedulerStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [triggering, setTriggering] = useState(false);
+  const [ingesting, setIngesting] = useState(false);
   const [lastTriggerResult, setLastTriggerResult] = useState<string | null>(null);
+  const [lastIngestResult, setLastIngestResult] = useState<string | null>(null);
 
   useEffect(() => { loadStatus(); }, []);
 
@@ -43,6 +47,28 @@ export default function AdminSchedulerPage() {
     setTriggering(false);
   }
 
+  async function ingestNews() {
+    setIngesting(true);
+    setLastIngestResult(null);
+    try {
+      const API_BASE = process.env['NEXT_PUBLIC_API_BASE_URL'] ?? 'https://api.nexigrate.com';
+      const token = await getIdToken();
+      const res = await fetch(`${API_BASE}/v1/admin/scheduler/ingest-news`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: res.statusText })) as { error?: string };
+        throw new Error(body.error ?? `${res.status} ${res.statusText}`);
+      }
+      const data = await res.json() as { filteredItems?: number; feedsSucceeded?: number; sources?: string[] };
+      setLastIngestResult(`Ingested: ${data.filteredItems ?? 0} items from ${data.feedsSucceeded ?? 0} feeds (${data.sources?.length ?? 0} sources)`);
+    } catch (e) {
+      setLastIngestResult(`Error: ${e instanceof Error ? e.message : 'Failed to fetch'}`);
+    }
+    setIngesting(false);
+  }
+
   async function togglePause() {
     if (!status) return;
     try {
@@ -60,7 +86,7 @@ export default function AdminSchedulerPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-4xl">
       <div className="flex items-center justify-between">
         <h1 className="font-serif text-2xl font-semibold text-ink-900">Content Scheduler</h1>
         <span className={`pill ${status?.paused ? 'pill-warn' : 'pill-success'}`}>
@@ -73,7 +99,7 @@ export default function AdminSchedulerPage() {
       </p>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="paper-card p-4 text-center">
           <p className="text-2xl font-bold text-ink-900">{status?.totalGenerated ?? 0}</p>
           <p className="text-xs text-muted-500">Total generated</p>
@@ -87,9 +113,7 @@ export default function AdminSchedulerPage() {
           <p className="text-xs text-muted-500">Failed</p>
         </div>
         <div className="paper-card p-4 text-center">
-          <p className="text-sm font-medium text-ink-900">
-            {status?.openaiConfigured ? 'Yes' : 'No'}
-          </p>
+          <p className="text-sm font-medium text-ink-900">{status?.openaiConfigured ? 'Yes' : 'No'}</p>
           <p className="text-xs text-muted-500">OpenAI configured</p>
         </div>
       </div>
@@ -102,12 +126,8 @@ export default function AdminSchedulerPage() {
       )}
 
       {/* Actions */}
-      <div className="flex gap-3">
-        <button
-          className="btn-primary"
-          onClick={triggerDaily}
-          disabled={triggering || status?.paused}
-        >
+      <div className="flex flex-wrap gap-3">
+        <button className="btn-primary" onClick={triggerDaily} disabled={triggering || status?.paused}>
           {triggering ? <><span className="spinner" /> Running...</> : 'Trigger Daily Generation'}
         </button>
         <button className="btn-ghost" onClick={togglePause}>
@@ -115,14 +135,12 @@ export default function AdminSchedulerPage() {
         </button>
       </div>
 
-      {lastTriggerResult && (
-        <div className="banner banner-success">{lastTriggerResult}</div>
-      )}
+      {lastTriggerResult && <div className="banner banner-success">{lastTriggerResult}</div>}
 
       {/* Next run */}
-      <div className="text-xs text-muted-500">
+      <p className="text-xs text-muted-500">
         Next scheduled run: {status?.nextScheduledRun ? new Date(status.nextScheduledRun).toLocaleString() : 'N/A'}
-      </div>
+      </p>
 
       {/* RSS News Ingestion */}
       <hr className="border-line" />
@@ -132,27 +150,10 @@ export default function AdminSchedulerPage() {
           Fetches from 30 official government + news publication RSS feeds (PIB, RBI, I&B, The Hindu, Indian Express, etc.).
           AI fact-checks and verifies before publishing as current affairs.
         </p>
-        <button
-          className="btn-ghost"
-          onClick={async () => {
-            setLastTriggerResult(null);
-            setTriggering(true);
-            try {
-              const res = await fetch(`${process.env['NEXT_PUBLIC_API_BASE_URL'] ?? 'https://api.nexigrate.com'}/v1/admin/scheduler/ingest-news`, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${await (await import('~/lib/firebase')).getFirebaseAuthClient().currentUser?.getIdToken()}` },
-              });
-              const data = await res.json() as any;
-              setLastTriggerResult(`RSS Ingested: ${data.filteredItems ?? 0} items from ${data.feedsSucceeded ?? 0} feeds (${data.sources?.length ?? 0} unique sources)`);
-            } catch (e) {
-              setLastTriggerResult(`RSS Error: ${e instanceof Error ? e.message : 'unknown'}`);
-            }
-            setTriggering(false);
-          }}
-          disabled={triggering}
-        >
-          Ingest News Feeds (30 sources)
+        <button className="btn-ghost" onClick={ingestNews} disabled={ingesting}>
+          {ingesting ? <><span className="spinner" /> Ingesting...</> : 'Ingest News Feeds (30 sources)'}
         </button>
+        {lastIngestResult && <div className="banner banner-info">{lastIngestResult}</div>}
       </div>
     </div>
   );
