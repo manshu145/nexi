@@ -16,6 +16,19 @@ import { SEED_MCQS } from '../data/seed-mcqs.js';
 
 export interface McqStore {
   pickDaily(exam: ExamSlug, count: number, seed: string): Promise<MCQ[]>;
+  /**
+   * Phase 11: pick MCQs scoped to a single chapter, used by the chapter-
+   * specific test the student takes after reading. The chapter slug is
+   * matched against `mcq.chapter` after slugifying both sides so seed
+   * banks (which use kebab-case already) and AI-generated MCQs (which
+   * may use the human-readable chapter title) both work.
+   */
+  pickByChapter(
+    exam: ExamSlug,
+    chapterSlug: string,
+    count: number,
+    seed: string,
+  ): Promise<MCQ[]>;
   get(id: McqId): Promise<MCQ | null>;
   /**
    * Publish a freshly-approved MCQ. Used by the admin draft-approval flow.
@@ -23,6 +36,14 @@ export interface McqStore {
    * the Firestore store appends to the `mcqs` collection.
    */
   put(mcq: MCQ): Promise<void>;
+}
+
+/** Convert a chapter title or slug into the canonical kebab-case slug. */
+function slugify(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
 }
 
 /**
@@ -68,6 +89,20 @@ export class InMemoryMcqStore implements McqStore {
     return seededShuffle(pool, seed).slice(0, count);
   }
 
+  async pickByChapter(
+    exam: ExamSlug,
+    chapterSlug: string,
+    count: number,
+    seed: string,
+  ): Promise<MCQ[]> {
+    const target = slugify(chapterSlug);
+    const pool = SEED_MCQS.filter(
+      (m) =>
+        m.exam === exam && m.isPublished && slugify(String(m.chapter)) === target,
+    );
+    return seededShuffle(pool, seed).slice(0, count);
+  }
+
   async get(id: McqId): Promise<MCQ | null> {
     return SEED_MCQS.find((m) => m.id === id) ?? null;
   }
@@ -100,6 +135,31 @@ export class FirestoreMcqStore implements McqStore {
     }
     const pool = snap.docs.map((d) => d.data() as MCQ);
     return seededShuffle(pool, seed).slice(0, count);
+  }
+
+  async pickByChapter(
+    exam: ExamSlug,
+    chapterSlug: string,
+    count: number,
+    seed: string,
+  ): Promise<MCQ[]> {
+    // We can't push the slugified comparison down into Firestore (it would
+    // need a denormalized field) so we filter client-side. With <=200 docs
+    // per exam this is cheap. If the prod corpus grows past that we'll
+    // backfill an explicit `chapterSlug` field and add an index.
+    const target = slugify(chapterSlug);
+    const snap = await this.db
+      .collection(COLLECTION)
+      .where('exam', '==', exam)
+      .where('isPublished', '==', true)
+      .limit(500)
+      .get();
+    const all = snap.docs.map((d) => d.data() as MCQ);
+    const filtered = all.filter((m) => slugify(String(m.chapter)) === target);
+    if (filtered.length === 0) {
+      return this.fallback.pickByChapter(exam, chapterSlug, count, seed);
+    }
+    return seededShuffle(filtered, seed).slice(0, count);
   }
 
   async get(id: McqId): Promise<MCQ | null> {

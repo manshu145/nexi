@@ -207,6 +207,22 @@ export interface ChapterEditPayload {
 }
 
 // ============================================================================
+// Chapter MCQ test (Phase 11)
+// ============================================================================
+
+export interface ChapterTestStartResponse {
+  sessionId: string;
+  day: string;
+  exam: ExamSlug;
+  subject: string;
+  chapterSlug: string;
+  /** Total time budget in seconds (count * seconds-per-question). */
+  durationSeconds: number;
+  /** Same shape as DailyMcqResponse.mcqs (no answers / explanations). */
+  mcqs: Omit<MCQ, 'correctOption' | 'explanation'>[];
+}
+
+// ============================================================================
 // Public api object
 // ============================================================================
 
@@ -486,6 +502,20 @@ export const api = {
       );
       return res.json() as Promise<{ chapter: PublishedChapter }>;
     },
+  },
+
+  // ----- chapter MCQ test (Phase 11)
+  async startChapterTest(input: {
+    exam: ExamSlug | string;
+    subject: string;
+    chapterSlug: string;
+    count?: number;
+  }): Promise<ChapterTestStartResponse> {
+    const res = await authedFetch('/v1/mcqs/chapter-test/start', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return res.json() as Promise<ChapterTestStartResponse>;
   },
 };
 
