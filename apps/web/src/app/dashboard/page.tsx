@@ -13,15 +13,14 @@ import { useAuth } from '~/lib/auth-context';
 import { api, type MeResponse } from '~/lib/api';
 
 /**
- * Student dashboard.
+ * Student dashboard — redesigned.
  *
- * Three things on screen, always:
- *   1. Today's MCQ card -- one tap to start
- *   2. Credits balance, plus an "expiring soon" hint when relevant
- *   3. Sign out (small, in the top-right)
+ * Layout hierarchy:
+ *   1. Top stats strip (4 KPIs)
+ *   2. Hero MCQ card
+ *   3. Numbered sections: Practice / Library / Daily / Earn
  *
- * No nav, no notifications, no algorithmic feed. The whole product
- * principle is to keep this page calm.
+ * Wider container (max-w-5xl), proper grouping, less visual noise.
  */
 export default function DashboardPage() {
   const { user, loading, signOut } = useAuth();
@@ -50,50 +49,33 @@ export default function DashboardPage() {
           router.replace('/onboarding');
           return;
         }
-        // Fire-and-forget the progress + dates loads; the cards render
-        // their own placeholder until they arrive, so the dashboard
-        // doesn't block on them.
         api
           .getProgress(meRes.user.targetExam)
           .then((p) => {
             if (!cancelled) setProgress(p);
           })
-          .catch(() => {
-            /* dashboard tolerates a missing progress card */
-          });
+          .catch(() => {});
         api
           .listExamDates(meRes.user.targetExam)
           .then((d) => {
             if (!cancelled) setExamDates(d.dates ?? []);
           })
-          .catch(() => {
-            /* same -- countdown is a nice-to-have */
-          });
+          .catch(() => {});
 
-        // Phase 16: apply a stashed referral code from /signin?ref=CODE.
-        // Self-referral, unknown-code, and already-attributed are all
-        // handled server-side; we just fire-and-forget and clear the
-        // sessionStorage key on either success or terminal failure so we
-        // don't keep retrying on every dashboard load.
+        // Phase 16: apply stashed referral code
         try {
           const refCode = sessionStorage.getItem('nexigrate.refCode');
           if (refCode) {
             api.referrals
               .attribute(refCode)
-              .catch(() => {
-                /* surfaced server-side; user UX shouldn't block on this */
-              })
+              .catch(() => {})
               .finally(() => {
                 try {
                   sessionStorage.removeItem('nexigrate.refCode');
-                } catch {
-                  /* best-effort */
-                }
+                } catch {}
               });
           }
-        } catch {
-          /* sessionStorage blocked */
-        }
+        } catch {}
       } catch (e) {
         if (cancelled) return;
         setError(e instanceof Error ? e.message : 'failed to load');
@@ -104,10 +86,7 @@ export default function DashboardPage() {
     };
   }, [user, router]);
 
-  // IMPORTANT: all hooks must be called on every render in the same order.
-  // Keep these useMemos ABOVE any early return (the loading/!user guard
-  // below) -- otherwise React throws error #310 ("Rendered more hooks
-  // than during the previous render") on the first authenticated render.
+  // Keep all hooks above early returns (React #310 fix)
   const upcoming = useMemo(() => examDates[0] ?? null, [examDates]);
   const daysToEvent = useMemo(() => daysUntil(upcoming?.eventDate ?? null), [upcoming]);
   const last7Accuracy = useMemo(() => last7DaysAccuracy(progress), [progress]);
@@ -130,22 +109,15 @@ export default function DashboardPage() {
   const examName = me?.targetExam ? EXAM_BY_SLUG.get(me.targetExam)?.name : null;
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col px-6 pt-8 pb-16">
+    <main className="mx-auto flex min-h-screen max-w-5xl flex-col px-4 pt-8 pb-16 sm:px-6">
+      {/* ─── Header ─── */}
       <header className="flex items-start justify-between">
         <Logo />
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => router.push('/progress')}
-            className="btn-ghost-sm"
-          >
+          <button type="button" onClick={() => router.push('/progress')} className="btn-ghost-sm">
             Progress
           </button>
-          <button
-            type="button"
-            onClick={() => router.push('/upgrade')}
-            className="btn-ghost-sm"
-          >
+          <button type="button" onClick={() => router.push('/upgrade')} className="btn-ghost-sm">
             Upgrade
           </button>
           <button
@@ -158,12 +130,13 @@ export default function DashboardPage() {
         </div>
       </header>
 
+      {/* ─── Greeting ─── */}
       <section className="mt-10">
         <p className="text-sm text-muted-500">
           {greeting()}, {firstName(me?.name ?? user.displayName ?? 'student')}
         </p>
         <h1 className="font-serif mt-1 text-3xl font-semibold leading-tight text-ink-900 sm:text-4xl">
-          Today’s study slate
+          Today&apos;s study slate
         </h1>
         {examName ? (
           <p className="mt-2 text-sm text-muted-500">
@@ -172,309 +145,222 @@ export default function DashboardPage() {
         ) : null}
       </section>
 
-      <section className="paper-card mt-8 p-6 sm:p-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ember-600">
-          Daily MCQ · 10 questions
-        </p>
-        <h2 className="font-serif mt-3 text-2xl font-semibold leading-snug text-ink-900">
-          Take today’s questions, earn credits.
-        </h2>
-        <p className="mt-3 text-ink-800">
-          Pass with 7/10 or more to earn <span className="font-medium">+50 credits</span>.
-          Even a failed attempt earns +5 — nobody gets locked out.
-        </p>
-        <button
-          type="button"
-          onClick={() => router.push('/mcq')}
-          className="btn-primary mt-6"
-        >
-          Start daily MCQ
-        </button>
-      </section>
-
-      <section className="paper-card mt-6 p-6 sm:p-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gold-600">
-          Library · read first
-        </p>
-        <h2 className="font-serif mt-3 text-xl font-semibold leading-snug text-ink-900">
-          Chapters, verified by 3 AIs.
-        </h2>
-        <p className="mt-3 text-ink-800">
-          Every chapter is generated and verified by OpenAI, Gemini, and
-          Groq. Read calmly, then take the test.
-        </p>
-        <button
-          type="button"
-          onClick={() => router.push('/chapters')}
-          className="btn-ghost mt-6"
-        >
-          Open library
-        </button>
-      </section>
-
-      <section className="paper-card mt-6 p-6 sm:p-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ember-600">
-          Mock tests · timed
-        </p>
-        <h2 className="font-serif mt-3 text-xl font-semibold leading-snug text-ink-900">
-          Pressure-test yourself before exam day.
-        </h2>
-        <p className="mt-3 text-ink-800">
-          Full-length mocks priced in credits. Score 60% or more and we
-          refund the cost plus a bonus.
-        </p>
-        <button
-          type="button"
-          onClick={() => router.push('/mock-tests')}
-          className="btn-ghost mt-6"
-        >
-          Browse mock tests
-        </button>
-      </section>
-
-      <section className="paper-card mt-6 p-6 sm:p-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gold-600">
-          Nexipedia · verified knowledge
-        </p>
-        <h2 className="font-serif mt-3 text-xl font-semibold leading-snug text-ink-900">
-          Wikipedia, but only verified facts.
-        </h2>
-        <p className="mt-3 text-ink-800">
-          Encyclopedia articles for Indian students. Three AIs generate and
-          cross-check every claim, an editor approves, then it lands here.
-          Cited from NCERT and Government of India sources.
-        </p>
-        <button
-          type="button"
-          onClick={() => router.push('/nexipedia')}
-          className="btn-ghost mt-6"
-        >
-          Open Nexipedia
-        </button>
-      </section>
-
-      <section className="paper-card mt-6 p-6 sm:p-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ember-600">
-          Exam guides · how to crack it
-        </p>
-        <h2 className="font-serif mt-3 text-xl font-semibold leading-snug text-ink-900">
-          Practical, no-noise exam preparation.
-        </h2>
-        <p className="mt-3 text-ink-800">
-          Step-by-step guides for JEE, NEET, UPSC, SSC and CBSE boards.
-          Every claim about syllabus, pattern, and marks is cited to the
-          issuing authority. No coaching ads, no YouTube hype.
-        </p>
-        <button
-          type="button"
-          onClick={() => router.push('/guides')}
-          className="btn-ghost mt-6"
-        >
-          Browse exam guides
-        </button>
-      </section>
-
-      <section className="paper-card mt-6 p-6 sm:p-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gold-600">
-          Learning tips · evidence-backed
-        </p>
-        <h2 className="font-serif mt-3 text-xl font-semibold leading-snug text-ink-900">
-          Study techniques that actually work.
-        </h2>
-        <p className="mt-3 text-ink-800">
-          Spaced repetition, retrieval practice, interleaving -- each
-          technique is backed by published cognitive-science research, not
-          motivation tropes. Read once, apply forever.
-        </p>
-        <button
-          type="button"
-          onClick={() => router.push('/learn')}
-          className="btn-ghost mt-6"
-        >
-          Open learning tips
-        </button>
-      </section>
-
-      <section className="paper-card mt-6 p-6 sm:p-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ember-600">
-          Today&apos;s current affairs
-        </p>
-        <h2 className="font-serif mt-3 text-xl font-semibold leading-snug text-ink-900">
-          The day&apos;s news, exam-ready.
-        </h2>
-        <p className="mt-3 text-ink-800">
-          Editor-approved daily digest. Sourced from PIB, RBI, Ministry
-          press releases, and reputable mainstream press. No partisan
-          spin, no opinion -- just what UPSC / SSC / Banking aspirants
-          need to know.
-        </p>
-        <button
-          type="button"
-          onClick={() => router.push('/today')}
-          className="btn-ghost mt-6"
-        >
-          Read today&apos;s digest
-        </button>
-      </section>
-
-      <section className="paper-card mt-6 p-6 sm:p-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gold-600">
-          Long-form practice · AI graded
-        </p>
-        <h2 className="font-serif mt-3 text-xl font-semibold leading-snug text-ink-900">
-          Write descriptive answers, get marked.
-        </h2>
-        <p className="mt-3 text-ink-800">
-          Real exam questions, AI-graded on a 5-axis rubric (relevance,
-          structure, content, clarity, examples) with concrete feedback you
-          can act on. 30 credits per submission.
-        </p>
-        <button
-          type="button"
-          onClick={() => router.push('/long-answers')}
-          className="btn-ghost mt-6"
-        >
-          Browse questions
-        </button>
-      </section>
-
-      <section className="paper-card mt-6 p-6 sm:p-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ember-600">
-          Refer a friend · earn credits
-        </p>
-        <h2 className="font-serif mt-3 text-xl font-semibold leading-snug text-ink-900">
-          Bring someone you study with.
-        </h2>
-        <p className="mt-3 text-ink-800">
-          Both of you get bonus credits when they sign up with your code.
-          Earn another bonus once they{'\u2019'}re still around 7 days later.
-        </p>
-        <button
-          type="button"
-          onClick={() => router.push('/refer')}
-          className="btn-ghost mt-6"
-        >
-          Get my referral code
-        </button>
-      </section>
-
-      <section className="mt-6 grid gap-4 sm:grid-cols-3">
-        <div className="paper-card p-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-500">
-            Credits balance
+      {/* ─── Stats strip ─── */}
+      <section className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="paper-card p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-500">
+            Credits
           </p>
-          <p className="font-serif mt-2 text-3xl font-semibold tabular-nums text-ink-900">
-            {balance ? balance.total : '\u2014'}
+          <p className="font-serif mt-1.5 text-2xl font-semibold tabular-nums text-ink-900">
+            {balance ? fmtNum(balance.total) : '\u2014'}
           </p>
           {balance && balance.expiringSoon > 0 ? (
-            <p className="mt-1 text-xs text-ember-600">
-              {balance.expiringSoon} expiring within 7 days
+            <p className="mt-0.5 text-[11px] text-ember-600">
+              {fmtNum(balance.expiringSoon)} expiring soon
             </p>
-          ) : (
-            <p className="mt-1 text-xs text-muted-500">Earn more by taking the daily MCQ</p>
-          )}
+          ) : null}
         </div>
-        <div className="paper-card p-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-500">
-            Daily streak
+        <div className="paper-card p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-500">
+            Streak
           </p>
-          <p className="font-serif mt-2 text-3xl font-semibold tabular-nums text-ink-900">
+          <p className="font-serif mt-1.5 text-2xl font-semibold tabular-nums text-ink-900">
             {(me?.currentStreak ?? 0) > 0 ? (
               <>
                 {me?.currentStreak}
-                <span className="ml-1 text-base text-muted-500">days</span>
+                <span className="ml-0.5 text-sm text-muted-500">d</span>
               </>
             ) : (
-              <span className="text-muted-500">—</span>
+              '\u2014'
             )}
           </p>
-          <p className="mt-1 text-xs text-muted-500">
-            {(me?.bestStreak ?? 0) > 0
-              ? `Best: ${me?.bestStreak} days`
-              : 'Take today\u2019s MCQ to start a streak'}
-          </p>
+          {(me?.bestStreak ?? 0) > 0 ? (
+            <p className="mt-0.5 text-[11px] text-muted-500">Best: {me?.bestStreak}d</p>
+          ) : null}
         </div>
-        <div className="paper-card p-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-500">
-            Verification
-          </p>
-          <p className="mt-2 text-ink-800">
-            {me?.isVerified
-              ? 'You\u2019re verified.'
-              : 'You\u2019re in our private beta. Identity verification arrives by end of June.'}
-          </p>
-        </div>
-      </section>
-
-      {/* Phase 12: progress glance + exam date countdown. Both are
-          tolerant of missing data -- the dashboard doesn't block on
-          their loads. */}
-      <section className="mt-6 grid gap-4 sm:grid-cols-3">
         <button
           type="button"
           onClick={() => router.push('/progress')}
-          className="paper-card p-5 text-left transition hover:bg-paper-200/40"
+          className="paper-card p-4 text-left transition hover:bg-paper-200/40"
         >
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-500">
-            Last 7d accuracy
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-500">
+            7d accuracy
           </p>
-          <p className="font-serif mt-2 text-3xl font-semibold tabular-nums text-ink-900">
-            {last7Accuracy === null ? (
-              <span className="text-muted-500">—</span>
-            ) : (
+          <p className="font-serif mt-1.5 text-2xl font-semibold tabular-nums text-ink-900">
+            {last7Accuracy !== null ? (
               <>
                 {last7Accuracy}
-                <span className="ml-1 text-base text-muted-500">%</span>
+                <span className="ml-0.5 text-sm text-muted-500">%</span>
               </>
+            ) : (
+              '\u2014'
             )}
           </p>
-          <p className="mt-1 text-xs text-muted-500">Tap for full progress</p>
+          {topSubject ? (
+            <p className="mt-0.5 truncate text-[11px] text-muted-500">
+              Top: {prettySubject(topSubject.subject)}
+            </p>
+          ) : null}
         </button>
-        <button
-          type="button"
-          onClick={() => router.push('/progress')}
-          className="paper-card p-5 text-left transition hover:bg-paper-200/40"
-        >
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-500">
-            Top subject
-          </p>
-          <p className="font-serif mt-2 text-2xl font-semibold leading-tight text-ink-900">
-            {topSubject ? prettySubject(topSubject.subject) : (
-              <span className="text-muted-500">—</span>
-            )}
-          </p>
-          <p className="mt-1 text-xs text-muted-500">
-            {topSubject
-              ? `${topSubject.masteryPct}% across ${topSubject.mcqsAttempted} MCQs`
-              : 'Attempt MCQs to see mastery'}
-          </p>
-        </button>
-        <div className="paper-card p-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-500">
+        <div className="paper-card p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-500">
             Next exam
           </p>
           {upcoming ? (
             <>
-              <p className="font-serif mt-2 text-3xl font-semibold tabular-nums text-ink-900">
+              <p className="font-serif mt-1.5 text-2xl font-semibold tabular-nums text-ink-900">
                 {daysToEvent ?? '\u2014'}
-                <span className="ml-1 text-base text-muted-500">
+                <span className="ml-0.5 text-sm text-muted-500">
                   {daysToEvent === 1 ? 'day' : 'days'}
                 </span>
               </p>
-              <p className="mt-1 truncate text-xs text-muted-500">
+              <p className="mt-0.5 truncate text-[11px] text-muted-500">
                 {upcoming.eventName}
-                {upcoming.isOfficial ? '' : ' (tentative)'}
+                {upcoming.isOfficial ? '' : ' (tent.)'}
               </p>
             </>
           ) : (
-            <>
-              <p className="font-serif mt-2 text-3xl font-semibold text-muted-500">—</p>
-              <p className="mt-1 text-xs text-muted-500">No date set yet</p>
-            </>
+            <p className="font-serif mt-1.5 text-2xl font-semibold text-muted-500">&mdash;</p>
           )}
         </div>
       </section>
 
+      {/* ─── 01 · Practice ─── */}
+      <section className="mt-10">
+        <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-500">
+          01 &middot; Practice
+        </h2>
+
+        {/* Hero MCQ */}
+        <div className="paper-card mt-4 flex flex-col justify-between gap-4 p-6 sm:flex-row sm:items-center sm:p-8">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ember-600">
+              Daily MCQ &middot; 10 questions
+            </p>
+            <h3 className="font-serif mt-2 text-2xl font-semibold leading-snug text-ink-900">
+              Take today&apos;s questions, earn credits.
+            </h3>
+            <p className="mt-2 text-sm text-ink-800">
+              Pass 7/10+ → <span className="font-medium">+50 credits</span>. Even a failed attempt → +5.
+            </p>
+          </div>
+          <button type="button" onClick={() => router.push('/mcq')} className="btn-primary shrink-0">
+            Start daily MCQ
+          </button>
+        </div>
+
+        {/* Practice tiles */}
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <Tile
+            label="Mock tests"
+            color="ember"
+            desc="Full-length timed mocks. Score 60%+ and get credits refunded + bonus."
+            onClick={() => router.push('/mock-tests')}
+            cta="Browse mocks"
+          />
+          <Tile
+            label="Long-form practice"
+            color="gold"
+            desc="Write descriptive answers. AI grades on 5-axis rubric — 30 credits/submission."
+            onClick={() => router.push('/long-answers')}
+            cta="Browse questions"
+          />
+        </div>
+      </section>
+
+      {/* ─── 02 · Library & reference ─── */}
+      <section className="mt-10">
+        <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-500">
+          02 &middot; Library &amp; reference
+        </h2>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Tile
+            label="Chapters"
+            color="gold"
+            desc="3-AI verified study material."
+            onClick={() => router.push('/chapters')}
+            cta="Open library"
+          />
+          <Tile
+            label="Nexipedia"
+            color="gold"
+            desc="Encyclopedia for Indian students."
+            onClick={() => router.push('/nexipedia')}
+            cta="Browse"
+          />
+          <Tile
+            label="Exam guides"
+            color="ember"
+            desc="Cited prep how-tos for JEE, NEET, UPSC."
+            onClick={() => router.push('/guides')}
+            cta="Browse guides"
+          />
+          <Tile
+            label="Learning tips"
+            color="gold"
+            desc="Evidence-backed study techniques."
+            onClick={() => router.push('/learn')}
+            cta="Read tips"
+          />
+        </div>
+      </section>
+
+      {/* ─── 03 · Daily ─── */}
+      <section className="mt-10">
+        <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-500">
+          03 &middot; Daily
+        </h2>
+        <div className="paper-card mt-4 flex flex-col justify-between gap-4 p-6 sm:flex-row sm:items-center sm:p-8">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ember-600">
+              Today&apos;s current affairs
+            </p>
+            <h3 className="font-serif mt-2 text-xl font-semibold leading-snug text-ink-900">
+              The day&apos;s news, exam-ready.
+            </h3>
+            <p className="mt-2 text-sm text-ink-800">
+              PIB, RBI &amp; Ministry sources. No partisan spin — just facts UPSC/SSC/Banking
+              aspirants need.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => router.push('/today')}
+            className="btn-ghost shrink-0"
+          >
+            Read today&apos;s digest
+          </button>
+        </div>
+      </section>
+
+      {/* ─── 04 · Earn credits ─── */}
+      <section className="mt-10">
+        <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-500">
+          04 &middot; Earn credits
+        </h2>
+        <div className="paper-card mt-4 flex flex-col justify-between gap-4 p-6 sm:flex-row sm:items-center sm:p-8">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ember-600">
+              Refer a friend
+            </p>
+            <h3 className="font-serif mt-2 text-xl font-semibold leading-snug text-ink-900">
+              Bring someone you study with.
+            </h3>
+            <p className="mt-2 text-sm text-ink-800">
+              Both of you get bonus credits on sign-up + another bonus 7 days later.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => router.push('/refer')}
+            className="btn-ghost shrink-0"
+          >
+            Get referral code
+          </button>
+        </div>
+      </section>
+
+      {/* ─── Error ─── */}
       {error ? (
         <p className="mt-8 text-sm text-ember-600" role="alert">
           {error}
@@ -484,6 +370,46 @@ export default function DashboardPage() {
   );
 }
 
+/* ─── Tile component ─── */
+function Tile({
+  label,
+  color,
+  desc,
+  onClick,
+  cta,
+}: {
+  label: string;
+  color: 'ember' | 'gold';
+  desc: string;
+  onClick: () => void;
+  cta: string;
+}) {
+  const colorCls = color === 'ember' ? 'text-ember-600' : 'text-gold-600';
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="paper-card flex flex-col justify-between p-5 text-left transition hover:bg-paper-200/40"
+    >
+      <div>
+        <p className={`text-[11px] font-semibold uppercase tracking-[0.16em] ${colorCls}`}>
+          {label}
+        </p>
+        <p className="mt-2 text-sm text-ink-800">{desc}</p>
+      </div>
+      <p className="mt-4 text-xs font-medium text-ink-900 underline decoration-ink-900/20 underline-offset-2">
+        {cta} &rarr;
+      </p>
+    </button>
+  );
+}
+
+/* ─── Utility fns ─── */
+
+function fmtNum(n: number): string {
+  return n.toLocaleString('en-IN');
+}
+
 function firstName(full: string): string {
   const trimmed = full.trim();
   const space = trimmed.indexOf(' ');
@@ -491,7 +417,6 @@ function firstName(full: string): string {
 }
 
 function greeting(): string {
-  // IST hour (rough)
   const istHour = (new Date().getUTCHours() + 5.5) % 24;
   if (istHour < 12) return 'Good morning';
   if (istHour < 17) return 'Good afternoon';
@@ -505,25 +430,16 @@ function prettySubject(s: string): string {
     .join(' ');
 }
 
-/** Days from today (UTC) until eventDate (YYYY-MM-DD). null if past or missing. */
 function daysUntil(eventDate: string | null): number | null {
   if (!eventDate) return null;
   const today = new Date();
-  const todayMs = Date.UTC(
-    today.getUTCFullYear(),
-    today.getUTCMonth(),
-    today.getUTCDate(),
-  );
+  const todayMs = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
   const eventMs = new Date(`${eventDate}T00:00:00.000Z`).getTime();
   if (Number.isNaN(eventMs)) return null;
   const days = Math.round((eventMs - todayMs) / 86400000);
   return days < 0 ? null : days;
 }
 
-/**
- * Compute "last 7 days accuracy" from a 30-bucket trend.
- * Returns null if no MCQs were attempted in the last 7 days.
- */
 function last7DaysAccuracy(p: ProgressSnapshot | null): number | null {
   if (!p) return null;
   const last7 = p.accuracyTrend30d.slice(-7);
