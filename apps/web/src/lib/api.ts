@@ -1228,6 +1228,21 @@ export const api = {
     },
   },
 
+  // ----- AI chatbot (Phase J)
+  chat: {
+    async message(message: string) {
+      const res = await authedFetch('/v1/chat/message', {
+        method: 'POST',
+        body: JSON.stringify({ message }),
+      });
+      return res.json() as Promise<{ response: string; escalated: boolean; timestamp: string }>;
+    },
+    async history() {
+      const res = await authedFetch('/v1/chat/history');
+      return res.json() as Promise<{ messages: Array<{ role: string; content: string; timestamp: string }> }>;
+    },
+  },
+
   // ----- referrals (Phase 16)
   referrals: {
     async me(): Promise<ReferralMeResponse> {
