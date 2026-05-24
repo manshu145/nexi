@@ -2,11 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { t } from '~/lib/i18n';
 
 const NAV_ITEMS = [
   {
     href: '/dashboard',
-    label: 'Home',
+    labelKey: 'nav.home',
+    fallback: 'Home',
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
@@ -16,7 +18,8 @@ const NAV_ITEMS = [
   },
   {
     href: '/mcq',
-    label: 'MCQ',
+    labelKey: 'nav.mcq',
+    fallback: 'MCQ',
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M9 11l3 3L22 4" />
@@ -26,7 +29,8 @@ const NAV_ITEMS = [
   },
   {
     href: '/chapters',
-    label: 'Library',
+    labelKey: 'nav.library',
+    fallback: 'Library',
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
@@ -36,7 +40,8 @@ const NAV_ITEMS = [
   },
   {
     href: '/today',
-    label: 'Today',
+    labelKey: 'nav.today',
+    fallback: 'Today',
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
@@ -48,7 +53,8 @@ const NAV_ITEMS = [
   },
   {
     href: '/progress',
-    label: 'Progress',
+    labelKey: 'nav.progress',
+    fallback: 'Progress',
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <line x1="18" y1="20" x2="18" y2="10" />
@@ -83,7 +89,7 @@ export function MobileNav() {
             className={`mobile-nav-item ${isActive ? 'active' : ''}`}
           >
             {item.icon}
-            <span>{item.label}</span>
+            <span>{t(item.labelKey, item.fallback)}</span>
           </Link>
         );
       })}
