@@ -218,21 +218,33 @@ export default function ChapterReadPage() {
         </Link>
       </header>
 
-      {/* Tap zones for mobile / non-keyboard flipping. */}
-      <button
-        type="button"
-        aria-label="Previous page"
-        className="kindle-tap kindle-tap-left"
-        onClick={goPrev}
-        tabIndex={-1}
-      />
-      <button
-        type="button"
-        aria-label="Next page"
-        className="kindle-tap kindle-tap-right"
-        onClick={goNext}
-        tabIndex={-1}
-      />
+      {/*
+       * Tap zones for mobile / non-keyboard flipping.
+       *
+       * Rendered ONLY on cover + section pages. The end page has CTAs
+       * (Take chapter test / Daily MCQ / Library) inside the article body,
+       * and a fixed-positioned tap zone would intercept those clicks.
+       * Header is cleared via `top: 4rem` in CSS so the "Library" link
+       * in the top-right header stays clickable on every page.
+       */}
+      {!isEnd ? (
+        <>
+          <button
+            type="button"
+            aria-label="Previous page"
+            className="kindle-tap kindle-tap-left"
+            onClick={goPrev}
+            tabIndex={-1}
+          />
+          <button
+            type="button"
+            aria-label="Next page"
+            className="kindle-tap kindle-tap-right"
+            onClick={goNext}
+            tabIndex={-1}
+          />
+        </>
+      ) : null}
 
       {/* The reading column. */}
       <article
