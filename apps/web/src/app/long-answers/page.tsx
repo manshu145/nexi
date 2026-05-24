@@ -154,17 +154,25 @@ export default function LongAnswersPage() {
       ) : null}
 
       {questions && questions.length === 0 ? (
-        <section className="paper-card mt-8 p-6 sm:p-8">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-500">
-            Coming soon
+        <section className="paper-card mt-8 p-6 sm:p-8 border-l-4 border-l-ember-600">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ember-600">
+            AI Practice — Auto-generated
           </p>
           <h2 className="font-serif mt-2 text-xl font-semibold text-ink-900">
-            No questions for your exam yet
+            AI is preparing questions for your exam
           </h2>
           <p className="mt-2 text-ink-800">
-            Our editors are seeding the first batch of long-form questions.
-            Check back soon.
+            The platform generates practice questions based on your skill level automatically.
+            Use Daily MCQ or AI Library in the meantime.
           </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Link href="/mcq" className="btn-primary">
+              Start Daily MCQ
+            </Link>
+            <Link href="/chapters" className="btn-ghost">
+              Study Chapters
+            </Link>
+          </div>
         </section>
       ) : null}
 
