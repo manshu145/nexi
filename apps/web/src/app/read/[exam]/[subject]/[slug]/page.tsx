@@ -262,15 +262,21 @@ export default function ChapterReadPage() {
               {chapter.title}
             </h2>
             <p className="mt-4 max-w-md text-ink-800">
-              You&apos;ve finished reading. Take today&apos;s daily MCQ to
-              earn credits, or head back to the library for the next chapter.
+              You&apos;ve finished reading. Take the chapter test now to lock
+              this in -- {countSuggestion(chapter.estimatedReadMinutes)}.
             </p>
             <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-              <Link href="/mcq" className="btn-primary">
-                Take today&apos;s MCQ
+              <Link
+                href={`/test/${encodeURIComponent(chapter.exam)}/${encodeURIComponent(chapter.subject)}/${encodeURIComponent(chapter.slug)}`}
+                className="btn-primary"
+              >
+                Take chapter test
+              </Link>
+              <Link href="/mcq" className="btn-ghost">
+                Daily MCQ
               </Link>
               <Link href="/chapters" className="btn-ghost">
-                Back to library
+                Library
               </Link>
             </div>
           </div>
@@ -322,6 +328,17 @@ function prettySubject(s: string): string {
     .split('-')
     .map((w) => (w[0]?.toUpperCase() ?? '') + w.slice(1))
     .join(' ');
+}
+
+/**
+ * Tiny helper for the end-of-chapter outro that suggests a question count.
+ * Read time isn't a perfect signal but it's the only chapter-level metric
+ * we have today; longer chapter -> longer test in the student's mind.
+ */
+function countSuggestion(estReadMinutes: number): string {
+  if (estReadMinutes <= 6) return '10 questions, 10 minutes';
+  if (estReadMinutes <= 12) return '10 questions, 10 minutes';
+  return '10-15 questions, ~15 minutes';
 }
 
 /**
