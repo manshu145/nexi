@@ -93,7 +93,7 @@ export default function LongAnswersPage() {
   const examName = me?.targetExam ? EXAM_BY_SLUG.get(me.targetExam)?.name : null;
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col px-6 pt-8 pb-16">
+    <main className="mx-auto flex min-h-screen max-w-3xl flex-col px-4 pt-6 pb-24 sm:px-6 sm:pt-8 sm:pb-16">
       <header className="flex items-start justify-between">
         <Logo />
         <Link href="/dashboard" className="btn-ghost-sm">

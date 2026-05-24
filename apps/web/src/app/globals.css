@@ -644,3 +644,149 @@ html.dark ::selection {
   border-color: var(--color-ember-500);
 }
 }
+
+/* ----- Selection state for cards/buttons (onboarding, quiz, etc.) ----- */
+.card-selected {
+  border-color: var(--color-ember-500) !important;
+  box-shadow: 0 0 0 2px var(--color-ember-500), 0 0 0 4px rgba(179, 70, 31, 0.15);
+  background-color: var(--color-paper-200);
+}
+.card-selectable {
+  cursor: pointer;
+  transition: border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+}
+.card-selectable:hover:not(.card-selected) {
+  border-color: var(--color-muted-400);
+  background-color: var(--color-paper-100);
+}
+
+/* ----- Global button improvements ----- */
+.btn-primary:focus-visible,
+.btn-ghost:focus-visible,
+.btn-ghost-sm:focus-visible {
+  outline: 2px solid var(--color-ember-500);
+  outline-offset: 2px;
+}
+
+/* Loading state for buttons */
+.btn-loading {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* ----- Mobile responsive utilities ----- */
+@media (max-width: 639px) {
+  .paper-card {
+    border-radius: 0.5rem;
+  }
+  h1 {
+    font-size: 1.5rem !important;
+  }
+  .kindle-toolbar {
+    padding: 0.4rem 0.75rem;
+  }
+}
+
+/* ----- Bottom mobile navigation bar ----- */
+.mobile-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 0.5rem 0;
+  background-color: var(--color-paper-50);
+  border-top: 1px solid var(--color-line);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+html.dark .mobile-nav {
+  background-color: rgba(28, 26, 23, 0.95);
+}
+.mobile-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: var(--color-muted-500);
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.5rem;
+  transition: color 120ms ease;
+}
+.mobile-nav-item.active {
+  color: var(--color-ember-500);
+}
+.mobile-nav-item:hover {
+  color: var(--color-ink-900);
+}
+@media (min-width: 768px) {
+  .mobile-nav {
+    display: none;
+  }
+}
+
+/* ----- Responsive grid container ----- */
+.container-responsive {
+  width: 100%;
+  max-width: 80rem;
+  margin: 0 auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+@media (min-width: 640px) {
+  .container-responsive { padding-left: 1.5rem; padding-right: 1.5rem; }
+}
+@media (min-width: 1024px) {
+  .container-responsive { padding-left: 2rem; padding-right: 2rem; }
+}
+
+/* ----- Interactive card hover state (used in MCQ options, dashboard tiles) ----- */
+.paper-card {
+  transition: border-color 150ms ease, box-shadow 150ms ease, transform 100ms ease;
+}
+.paper-card:hover {
+  border-color: var(--color-muted-400);
+}
+.paper-card:active {
+  transform: scale(0.98);
+}
+
+/* ----- Link-card (clickable cards in dashboard, library etc.) ----- */
+a.paper-card:hover,
+button.paper-card:hover {
+  border-color: var(--color-ember-500);
+  box-shadow: 0 2px 8px -2px rgba(179, 70, 31, 0.12);
+}
+
+/* ----- Pill hover/active ----- */
+.pill {
+  transition: background-color 120ms ease, border-color 120ms ease, transform 80ms ease;
+}
+.pill:hover {
+  background-color: var(--color-paper-300);
+}
+.pill:active {
+  transform: scale(0.95);
+}
+
+/* ----- Disabled state for all custom buttons ----- */
+.btn-ghost:disabled,
+.btn-ghost-sm:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ----- Active/pressed feedback ----- */
+.btn-ghost:active:not(:disabled) {
+  transform: scale(0.97);
+  background-color: var(--color-paper-300);
+}
+.btn-ghost-sm:active:not(:disabled) {
+  transform: scale(0.95);
+}

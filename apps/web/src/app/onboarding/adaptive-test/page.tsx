@@ -101,7 +101,7 @@ export default function AdaptiveTestPage() {
 
   if (phase === 'result' && result) {
     return (
-      <main className="mx-auto flex min-h-screen max-w-2xl flex-col px-6 pt-10 pb-16">
+      <main className="mx-auto flex min-h-screen max-w-3xl flex-col px-4 pt-8 pb-24 sm:px-6 sm:pb-16">
         <Logo />
         <section className="mt-12 text-center">
           <h1 className="font-serif text-3xl font-semibold text-ink-900">
@@ -127,7 +127,7 @@ export default function AdaptiveTestPage() {
               Your Personalized Study Plan
             </h2>
             <div className="space-y-3 text-sm text-ink-800">
-              <p><strong>Recommended daily study:</strong> {(result.studyPlan as Record<string, unknown>).dailyHours} hours</p>
+              <p><strong>Recommended daily study:</strong> {String((result.studyPlan as Record<string, unknown>).dailyHours)} hours</p>
               <div>
                 <strong>Focus areas:</strong>
                 <ul className="mt-1 list-disc pl-5">
@@ -160,7 +160,7 @@ export default function AdaptiveTestPage() {
   const answered = answers.filter((a) => a !== null).length;
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col px-6 pt-10 pb-16">
+    <main className="mx-auto flex min-h-screen max-w-3xl flex-col px-4 pt-8 pb-24 sm:px-6 sm:pb-16">
       <div className="flex items-center justify-between">
         <Logo />
         <span className="pill">{answered}/{mcqs.length} answered</span>
@@ -192,8 +192,8 @@ export default function AdaptiveTestPage() {
                 onClick={() => selectAnswer(i)}
                 className={`w-full text-left px-4 py-3 rounded-lg border transition-all ${
                   answers[currentQ] === i
-                    ? 'border-ember-500 bg-paper-200 ring-2 ring-ember-500/30'
-                    : 'border-line hover:border-muted-400'
+                    ? 'card-selected'
+                    : 'border-line card-selectable'
                 }`}
               >
                 <span className="text-sm text-ink-900">{opt}</span>
