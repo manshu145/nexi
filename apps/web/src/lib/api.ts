@@ -1214,6 +1214,26 @@ export const api = {
     return res.json() as Promise<ProgressSnapshot>;
   },
 
+  // ----- personalized recommendations (AI as teacher)
+  async getRecommendations(): Promise<{
+    greeting: string;
+    skillLevel: string;
+    focusAreas: string[];
+    recommendations: Array<{
+      type: string;
+      title: string;
+      description: string;
+      action: string;
+      priority: string;
+      reason: string;
+    }>;
+    dailyGoal: { mcqs: number; readMinutes: number; mockTests: number };
+    motivationalMessage: string;
+  }> {
+    const res = await authedFetch('/v1/users/me/recommendations');
+    return res.json() as Promise<any>;
+  },
+
   // ----- chapter MCQ test (Phase 11)
   async startChapterTest(input: {
     exam: ExamSlug | string;

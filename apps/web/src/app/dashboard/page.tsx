@@ -32,6 +32,13 @@ export default function DashboardPage() {
   const [progress, setProgress] = useState<ProgressSnapshot | null>(null);
   const [examDates, setExamDates] = useState<ExamDate[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [recs, setRecs] = useState<{
+    skillLevel: string;
+    focusAreas: string[];
+    recommendations: Array<{ type: string; title: string; description: string; action: string; priority: string; reason: string }>;
+    dailyGoal: { mcqs: number; readMinutes: number; mockTests: number };
+    motivationalMessage: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!loading && !user) router.replace('/signin');
@@ -60,6 +67,13 @@ export default function DashboardPage() {
           .listExamDates(meRes.user.targetExam)
           .then((d) => {
             if (!cancelled) setExamDates(d.dates ?? []);
+          })
+          .catch(() => {});
+        // Fetch personalized recommendations (AI as teacher)
+        api
+          .getRecommendations()
+          .then((r) => {
+            if (!cancelled) setRecs(r);
           })
           .catch(() => {});
 
@@ -227,6 +241,55 @@ export default function DashboardPage() {
           )}
         </div>
       </section>
+
+      {/* ─── AI Recommendations (Personalized) ─── */}
+      {recs && recs.recommendations.length > 0 && (
+        <section className="mt-8">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-ember-600">
+              Recommended for you
+            </h2>
+            {recs.skillLevel !== 'new' && (
+              <span className="pill text-[10px]">
+                {recs.skillLevel} level
+              </span>
+            )}
+          </div>
+          {recs.motivationalMessage && (
+            <p className="mt-2 text-sm text-ink-800 italic">{recs.motivationalMessage}</p>
+          )}
+          {recs.focusAreas.length > 0 && (
+            <p className="mt-1 text-xs text-muted-500">
+              Focus: {recs.focusAreas.join(' · ')}
+            </p>
+          )}
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {recs.recommendations.slice(0, 4).map((rec, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => router.push(rec.action)}
+                className="paper-card p-4 text-left hover:border-ember-500 transition"
+              >
+                <p className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${
+                  rec.priority === 'high' ? 'text-ember-600' : 'text-muted-500'
+                }`}>
+                  {rec.type === 'chapter' ? '📖' : rec.type === 'mcq' ? '✏️' : rec.type === 'mock_test' ? '📝' : '💡'} {rec.type}
+                </p>
+                <p className="mt-1 text-sm font-medium text-ink-900">{rec.title}</p>
+                <p className="mt-0.5 text-xs text-muted-500 line-clamp-2">{rec.reason}</p>
+              </button>
+            ))}
+          </div>
+          {/* Daily goal */}
+          <div className="mt-3 flex items-center gap-4 text-xs text-muted-500">
+            <span>Daily goal: {recs.dailyGoal.mcqs} MCQs</span>
+            <span>·</span>
+            <span>{recs.dailyGoal.readMinutes} min reading</span>
+            {recs.dailyGoal.mockTests > 0 && <><span>·</span><span>{recs.dailyGoal.mockTests} mock test</span></>}
+          </div>
+        </section>
+      )}
 
       {/* ─── 01 · Practice ─── */}
       <section className="mt-10">
