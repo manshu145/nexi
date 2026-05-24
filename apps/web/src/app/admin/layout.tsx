@@ -111,6 +111,12 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               >
                 Current affairs
               </NavLink>
+              <NavLink
+                href="/admin/long-answers"
+                current={pathname.startsWith('/admin/long-answers')}
+              >
+                Long-form
+              </NavLink>
               {me.role === 'super_admin' ? (
                 <NavLink href="/admin/team" current={pathname.startsWith('/admin/team')}>
                   Team
@@ -157,6 +163,12 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             current={pathname.startsWith('/admin/current-affairs')}
           >
             Current affairs
+          </NavLink>
+          <NavLink
+            href="/admin/long-answers"
+            current={pathname.startsWith('/admin/long-answers')}
+          >
+            Long-form
           </NavLink>
           {me.role === 'super_admin' ? (
             <NavLink href="/admin/team" current={pathname.startsWith('/admin/team')}>

@@ -318,6 +318,27 @@ export default function DashboardPage() {
       </section>
 
       <section className="paper-card mt-6 p-6 sm:p-8">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gold-600">
+          Long-form practice · AI graded
+        </p>
+        <h2 className="font-serif mt-3 text-xl font-semibold leading-snug text-ink-900">
+          Write descriptive answers, get marked.
+        </h2>
+        <p className="mt-3 text-ink-800">
+          Real exam questions, AI-graded on a 5-axis rubric (relevance,
+          structure, content, clarity, examples) with concrete feedback you
+          can act on. 30 credits per submission.
+        </p>
+        <button
+          type="button"
+          onClick={() => router.push('/long-answers')}
+          className="btn-ghost mt-6"
+        >
+          Browse questions
+        </button>
+      </section>
+
+      <section className="paper-card mt-6 p-6 sm:p-8">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ember-600">
           Refer a friend · earn credits
         </p>
