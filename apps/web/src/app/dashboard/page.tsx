@@ -297,6 +297,28 @@ export default function DashboardPage() {
 
       <section className="paper-card mt-6 p-6 sm:p-8">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ember-600">
+          Today&apos;s current affairs
+        </p>
+        <h2 className="font-serif mt-3 text-xl font-semibold leading-snug text-ink-900">
+          The day&apos;s news, exam-ready.
+        </h2>
+        <p className="mt-3 text-ink-800">
+          Editor-approved daily digest. Sourced from PIB, RBI, Ministry
+          press releases, and reputable mainstream press. No partisan
+          spin, no opinion -- just what UPSC / SSC / Banking aspirants
+          need to know.
+        </p>
+        <button
+          type="button"
+          onClick={() => router.push('/today')}
+          className="btn-ghost mt-6"
+        >
+          Read today&apos;s digest
+        </button>
+      </section>
+
+      <section className="paper-card mt-6 p-6 sm:p-8">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ember-600">
           Refer a friend · earn credits
         </p>
         <h2 className="font-serif mt-3 text-xl font-semibold leading-snug text-ink-900">
