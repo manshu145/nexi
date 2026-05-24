@@ -67,6 +67,8 @@ export interface UserStore {
   getOrCreate(uid: UserId, init: UserStoreInit): Promise<StoredUser>;
   get(uid: UserId): Promise<StoredUser | null>;
   setTargetExam(uid: UserId, exam: ExamSlug): Promise<StoredUser>;
+  /** Update arbitrary profile fields on the user document. */
+  updateProfile(uid: UserId, fields: Record<string, unknown>): Promise<void>;
   /**
    * Phase 20 -- admin paginated list. Sorted by createdAt desc.
    */
@@ -197,6 +199,17 @@ export class InMemoryUserStore implements UserStore {
     return updated;
   }
 
+  async updateProfile(uid: UserId, fields: Record<string, unknown>): Promise<void> {
+    const u = this.users.get(uid);
+    if (!u) throw new Error(`user ${uid} not found`);
+    const updated: StoredUser = {
+      ...u,
+      ...fields,
+      updatedAt: asISODateTime(new Date().toISOString()),
+    } as StoredUser;
+    this.users.set(uid, updated);
+  }
+
   async bumpStreak(uid: UserId, now: ISODateTime): Promise<StoredUser> {
     const u = this.users.get(uid);
     if (!u) throw new Error(`user ${uid} not found`);
@@ -267,6 +280,14 @@ export class FirestoreUserStore implements UserStore {
     );
     const snap = await ref.get();
     return snap.data() as StoredUser;
+  }
+
+  async updateProfile(uid: UserId, fields: Record<string, unknown>): Promise<void> {
+    const ref = this.db.collection(COLLECTION).doc(uid);
+    await ref.set(
+      { ...fields, updatedAt: new Date().toISOString() },
+      { merge: true },
+    );
   }
 
   async bumpStreak(uid: UserId, now: ISODateTime): Promise<StoredUser> {
