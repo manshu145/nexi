@@ -152,6 +152,15 @@ import { makeCaQuizRoutes } from './routes/caQuiz.js';
 import { makeVisualizeRoutes } from './routes/visualize.js';
 import { makePersonalizedRoutes } from './routes/personalized.js';
 import { createAIEngine } from './lib/aiEngine.js';
+import {
+  InMemoryStudentProgressStore,
+  InMemoryChatHistoryStore,
+  FirestoreStudentProgressStore,
+  FirestoreChatHistoryStore,
+  type StudentProgressStore,
+  type ChatHistoryStore,
+} from './lib/chapterStore.js';
+import { makeAIRoutes } from './routes/ai.js';
 import { makeTtsRoutes } from './routes/tts.js';
 import { makeRecommendationsRoutes } from './routes/recommendations.js';
 
@@ -490,7 +499,14 @@ export function buildApp(deps: AppDeps): Hono {
 
   // On-demand personalized AI content generation (no admin needed)
   const aiEngine = createAIEngine({ openaiApiKey: env.OPENAI_API_KEY, geminiApiKey: env.GEMINI_API_KEY, groqApiKey: env.GROQ_API_KEY });
+  const studentProgressStore: StudentProgressStore = fs
+    ? new FirestoreStudentProgressStore(fs)
+    : new InMemoryStudentProgressStore();
+  const chatHistoryStore: ChatHistoryStore = fs
+    ? new FirestoreChatHistoryStore(fs)
+    : new InMemoryChatHistoryStore();
   v1.route('/ai', makePersonalizedRoutes({ ai: aiEngine, users, logger, openaiApiKey: env.OPENAI_API_KEY }));
+  v1.route('/ai', makeAIRoutes({ ai: aiEngine, users, progressStore: studentProgressStore, chatStore: chatHistoryStore, logger }));
 
   // /admin/* so its specific paths win over the generic admin route's
   // catch-all (Hono matches in registration order).

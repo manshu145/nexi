@@ -116,7 +116,103 @@ export function createAIEngine(config: AIEngineConfig) {
     },
 
     callGemini,
+
+    /**
+     * Generate syllabus for exam — returns subjects with ordered topics.
+     */
+    async generateSyllabus(ctx: StudentContext, exam?: string): Promise<SyllabusItem[]> {
+      const targetExam = exam ?? ctx.exam;
+      const lang = ctx.language === 'hi' ? 'Hindi' : 'English';
+      const prompt = `Generate the syllabus for "${targetExam}" exam.\nBreak into subjects, each with ordered topics.\nReturn JSON: { "syllabus": [{ "subject": "...", "topics": [{ "id": "topic-slug", "title": "Topic Name in ${lang}", "order": 1 }] }] }\nMinimum 4 topics per subject. Cover ALL major subjects.`;
+      const systemPrompt = `You are an expert Indian competitive exam syllabus designer. Return ONLY valid JSON.`;
+      const raw = await callOpenAI(prompt, systemPrompt);
+      const parsed = JSON.parse(raw) as { syllabus?: SyllabusItem[] };
+      return parsed.syllabus ?? [];
+    },
+
+    /**
+     * Generate assessment MCQs to evaluate student level.
+     */
+    async generateAssessmentMcqs(exam: string, count: number, language: 'en' | 'hi'): Promise<GeneratedMcq[]> {
+      const lang = language === 'hi' ? 'Hindi' : 'English';
+      const prompt = `Generate ${count} MCQs to assess a student for "${exam}" exam.\nMix of easy, medium, hard across all subjects.\nLanguage: ${lang}\nReturn JSON: { "mcqs": [{ "question": "...", "options": [{"key": "A", "text": "..."}, {"key": "B", "text": "..."}, {"key": "C", "text": "..."}, {"key": "D", "text": "..."}], "correctOption": "A|B|C|D", "explanation": "...", "subject": "...", "difficulty": "easy|medium|hard" }] }`;
+      const systemPrompt = `Generate factual MCQs for Indian competitive exam assessment. Return ONLY valid JSON.`;
+      const raw = await callOpenAI(prompt, systemPrompt);
+      const parsed = JSON.parse(raw) as { mcqs?: GeneratedMcq[] };
+      return parsed.mcqs ?? [];
+    },
+
+    /**
+     * Assess student answers and compute skill level.
+     */
+    assessStudent(mcqs: GeneratedMcq[], answers: (string | null)[]): AssessmentResult {
+      let correct = 0;
+      const subjectScores: Record<string, { correct: number; total: number }> = {};
+
+      for (let i = 0; i < mcqs.length; i++) {
+        const mcq = mcqs[i]!;
+        const answer = answers[i];
+        if (!subjectScores[mcq.subject]) subjectScores[mcq.subject] = { correct: 0, total: 0 };
+        subjectScores[mcq.subject]!.total++;
+        if (answer === mcq.correctOption) {
+          correct++;
+          subjectScores[mcq.subject]!.correct++;
+        }
+      }
+
+      const total = mcqs.length;
+      const percentage = total > 0 ? (correct / total) * 100 : 0;
+      let skillLevel: 'beginner' | 'intermediate' | 'advanced';
+      if (percentage >= 70) skillLevel = 'advanced';
+      else if (percentage >= 40) skillLevel = 'intermediate';
+      else skillLevel = 'beginner';
+
+      const weakSubjects: string[] = [];
+      const strongSubjects: string[] = [];
+      for (const [subject, scores] of Object.entries(subjectScores)) {
+        const pct = (scores.correct / scores.total) * 100;
+        if (pct >= 60) strongSubjects.push(subject);
+        else weakSubjects.push(subject);
+      }
+
+      const recommendations: string[] = [];
+      if (weakSubjects.length > 0) recommendations.push(`Focus on: ${weakSubjects.join(', ')}`);
+      if (skillLevel === 'beginner') recommendations.push('Start with fundamentals');
+      else if (skillLevel === 'advanced') recommendations.push('Practice previous year papers');
+
+      return { score: correct, total, skillLevel, weakSubjects, strongSubjects, recommendations };
+    },
+
+    /** Exposed for routes that need the raw key (e.g. chat). */
+    __openaiKey: config.openaiApiKey,
   };
+}
+
+export interface SyllabusItem {
+  subject: string;
+  topics: { id: string; title: string; order: number }[];
+}
+
+export interface AssessmentResult {
+  score: number;
+  total: number;
+  skillLevel: 'beginner' | 'intermediate' | 'advanced';
+  weakSubjects: string[];
+  strongSubjects: string[];
+  recommendations: string[];
+}
+
+export interface CurrentAffairsItem {
+  title: string;
+  summary: string;
+  category: string;
+  date: string;
+  examRelevance: string;
+}
+
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
 }
 
 export type AIEngine = ReturnType<typeof createAIEngine>;
