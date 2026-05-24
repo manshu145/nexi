@@ -510,3 +510,93 @@ textarea.input {
   .kindle-tap { cursor: default; }
 }
 
+
+
+/* ----- Page flip animation (Phase G) ----- */
+@keyframes page-flip-forward {
+  0% { transform: perspective(1200px) rotateY(0deg); opacity: 1; }
+  50% { transform: perspective(1200px) rotateY(-90deg); opacity: 0.6; }
+  100% { transform: perspective(1200px) rotateY(0deg); opacity: 1; }
+}
+@keyframes page-flip-back {
+  0% { transform: perspective(1200px) rotateY(0deg); opacity: 1; }
+  50% { transform: perspective(1200px) rotateY(90deg); opacity: 0.6; }
+  100% { transform: perspective(1200px) rotateY(0deg); opacity: 1; }
+}
+.kindle-page-flip-forward {
+  animation: page-flip-forward 400ms ease-out;
+  transform-origin: left center;
+}
+.kindle-page-flip-back {
+  animation: page-flip-back 400ms ease-out;
+  transform-origin: right center;
+}
+
+/* Swipe hint indicator */
+.kindle-swipe-hint {
+  position: fixed;
+  bottom: 4rem;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.75rem;
+  color: var(--color-muted-400);
+  opacity: 0;
+  animation: swipe-hint-fade 3s ease-out 2s forwards;
+}
+@keyframes swipe-hint-fade {
+  0% { opacity: 0; }
+  20% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* ----- AI Visualization watermark (Phase H) ----- */
+.viz-container {
+  position: relative;
+  border: 1px solid var(--color-line);
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  margin: 1.5rem 0;
+  background: var(--color-paper-50);
+  overflow: hidden;
+}
+.viz-container::after {
+  content: 'nexigrate';
+  position: absolute;
+  bottom: 0.5rem;
+  right: 0.75rem;
+  font-family: var(--font-sans);
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-muted-400);
+  opacity: 0.6;
+}
+.viz-container svg {
+  width: 100%;
+  height: auto;
+  max-height: 400px;
+}
+
+/* ----- Text-to-Speech button (Phase I) ----- */
+.tts-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--color-ink-800);
+  background: var(--color-paper-200);
+  border: 1px solid var(--color-line);
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.tts-btn:hover { background: var(--color-paper-300); }
+.tts-btn.playing {
+  background: var(--color-ember-500);
+  color: var(--color-paper-50);
+  border-color: var(--color-ember-500);
+}
