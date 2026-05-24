@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PublishedChapter } from '~/lib/api';
 import { Logo } from '~/components/Logo';
+import { VisualizeButton } from '~/components/AIVisualization';
 import { useAuth } from '~/lib/auth-context';
 import { api } from '~/lib/api';
 
@@ -331,6 +332,10 @@ export default function ChapterReadPage() {
           <section>
             <h2 className="reader-heading font-serif">{currentSection.heading}</h2>
             <div className="reader-body">{renderBody(currentSection.body)}</div>
+            <VisualizeButton
+              sectionText={currentSection.body}
+              sectionHeading={currentSection.heading}
+            />
           </section>
         ) : null}
       </article>
