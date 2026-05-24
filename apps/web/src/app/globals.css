@@ -44,6 +44,32 @@
   --font-sans:  'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
+/* ----- Dark mode overrides ----- */
+html.dark {
+  --color-paper-50: #1C1A17;
+  --color-paper-100: #23201B;
+  --color-paper-200: #2C2822;
+  --color-paper-300: #38332A;
+  --color-paper-400: #4A4336;
+
+  --color-ink-700: #C4B89E;
+  --color-ink-800: #D8CCAD;
+  --color-ink-900: #EDDFBF;
+  --color-ink-950: #F8F1DD;
+
+  --color-ember-500: #E06030;
+  --color-ember-600: #C04A20;
+  --color-ember-700: #A03A18;
+
+  --color-gold-500: #D4A040;
+  --color-gold-600: #B88630;
+
+  --color-muted-500: #9A8E78;
+  --color-muted-400: #7A6F5C;
+
+  --color-line: #3D372D;
+}
+
 html, body {
   background-color: var(--color-paper-100);
   color: var(--color-ink-900);
@@ -56,6 +82,10 @@ body {
   background-image: radial-gradient(circle at 1px 1px, rgba(42, 36, 26, 0.04) 1px, transparent 0);
   background-size: 24px 24px;
   min-height: 100vh;
+}
+
+html.dark body {
+  background-image: radial-gradient(circle at 1px 1px, rgba(237, 223, 191, 0.03) 1px, transparent 0);
 }
 
 ::selection {
@@ -510,3 +540,17 @@ textarea.input {
   .kindle-tap { cursor: default; }
 }
 
+
+
+/* ----- Dark mode component overrides ----- */
+html.dark .kindle-toolbar {
+  background-color: rgba(35, 32, 27, 0.92);
+}
+html.dark .spinner {
+  border-color: var(--color-paper-400);
+  border-top-color: var(--color-ink-900);
+}
+html.dark ::selection {
+  background-color: var(--color-ember-600);
+  color: var(--color-paper-50);
+}
