@@ -171,17 +171,7 @@ export default function ChaptersListPage() {
       {chapters === null ? (
         <p className="mt-8 text-sm text-muted-500">Loading library...</p>
       ) : chapters.length === 0 ? (
-        <div className="paper-card mt-8 p-6 sm:p-8">
-          <p className="text-sm text-muted-500">
-            No chapters published yet for{' '}
-            <span className="font-medium text-ink-900">{me?.targetExam}</span>.
-            New chapters will arrive here as the editorial team approves
-            them. Until then, the daily MCQs draw from a starter bank.
-          </p>
-          <Link href="/dashboard" className="btn-ghost mt-4 inline-flex">
-            Back to dashboard
-          </Link>
-        </div>
+        <AIChapterGenerator exam={me?.targetExam ?? ''} />
       ) : (
         <div className="mt-10 space-y-12">
           {shelves.map(({ subject, chapters: list }) => (
@@ -234,4 +224,166 @@ function prettySubject(s: string): string {
     .split('-')
     .map((w) => (w[0]?.toUpperCase() ?? '') + w.slice(1))
     .join(' ');
+}
+
+/**
+ * When Firestore is empty, show an AI-powered chapter generator.
+ * Student types a topic → AI generates a full chapter at their level.
+ */
+function AIChapterGenerator({ exam }: { exam: string }) {
+  const [topic, setTopic] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [chapter, setChapter] = useState<{
+    title: string;
+    sections: { heading: string; content: string }[];
+    summary: string;
+    keyPoints: string[];
+  } | null>(null);
+  const [genError, setGenError] = useState<string | null>(null);
+
+  async function onGenerate() {
+    if (!topic.trim()) return;
+    setGenerating(true);
+    setGenError(null);
+    setChapter(null);
+    try {
+      const res = await api.ai.generateChapter(topic.trim());
+      setChapter(res.chapter);
+    } catch (e) {
+      setGenError(e instanceof Error ? e.message : 'Failed to generate. Check API keys.');
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  const suggestions = exam.includes('jee')
+    ? ['Kinematics', 'Thermodynamics', 'Organic Chemistry', 'Calculus', 'Electrostatics', 'Optics']
+    : exam.includes('neet')
+    ? ['Human Physiology', 'Genetics', 'Ecology', 'Cell Biology', 'Plant Morphology', 'Organic Chemistry']
+    : exam.includes('upsc')
+    ? ['Indian Polity', 'Indian Economy', 'Modern History', 'Geography', 'Environment', 'Ethics']
+    : ['Photosynthesis', 'Newton\'s Laws', 'Indian Constitution', 'Periodic Table', 'Trigonometry', 'World War II'];
+
+  return (
+    <section className="mt-8">
+      {/* AI Generation Card */}
+      <div className="paper-card p-6 sm:p-8 border-l-4 border-l-ember-600">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ember-600">
+          AI-Powered Library
+        </p>
+        <h2 className="font-serif mt-2 text-xl font-semibold text-ink-900 sm:text-2xl">
+          Type any topic — AI writes a chapter for you
+        </h2>
+        <p className="mt-2 text-sm text-ink-800">
+          Personalized to your exam ({exam}) and skill level. No waiting for editors.
+        </p>
+
+        <div className="mt-5 flex gap-2">
+          <input
+            type="text"
+            value={topic}
+            onChange={(e) => setTopic(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && onGenerate()}
+            placeholder="Enter a topic (e.g., Thermodynamics, Indian Constitution)"
+            className="input flex-1"
+          />
+          <button
+            type="button"
+            onClick={onGenerate}
+            disabled={generating || !topic.trim()}
+            className="btn-primary whitespace-nowrap"
+          >
+            {generating ? (
+              <><span className="spinner" /> Generating...</>
+            ) : (
+              'Generate'
+            )}
+          </button>
+        </div>
+
+        {genError && <p className="mt-3 text-sm text-ember-600">{genError}</p>}
+
+        {/* Suggestions */}
+        {!chapter && !generating && (
+          <div className="mt-4">
+            <p className="text-xs text-muted-500 mb-2">Quick picks:</p>
+            <div className="flex flex-wrap gap-2">
+              {suggestions.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => { setTopic(s); }}
+                  className="pill hover:bg-paper-300 cursor-pointer transition"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Loading indicator */}
+      {generating && (
+        <div className="mt-6 text-center paper-card p-8">
+          <span className="spinner" />
+          <p className="mt-3 text-sm text-muted-500">
+            AI is writing a personalized chapter on &ldquo;{topic}&rdquo; for you...
+          </p>
+          <p className="mt-1 text-xs text-muted-400">This takes 10-20 seconds</p>
+        </div>
+      )}
+
+      {/* Generated chapter — beautiful book-like display */}
+      {chapter && (
+        <article
+          className="mt-6 rounded-r-xl rounded-l border-l-[5px] border-l-ink-900 bg-gradient-to-br from-[#FFFDF5] via-[#FBF6E8] to-[#F8F1DD] p-6 sm:p-10 shadow-xl"
+          style={{ fontFamily: 'var(--font-serif)' }}
+        >
+          <h2 className="text-2xl font-bold text-ink-900 sm:text-3xl leading-tight">
+            {chapter.title}
+          </h2>
+          <p className="mt-4 text-sm italic text-muted-500 leading-relaxed border-b border-line pb-4">
+            {chapter.summary}
+          </p>
+
+          {chapter.sections.map((section, i) => (
+            <div key={i} className="mt-8">
+              <h3 className="text-lg font-semibold text-ink-900">{section.heading}</h3>
+              <p className="mt-3 text-[15px] leading-[1.9] text-ink-800 whitespace-pre-wrap">
+                {section.content}
+              </p>
+            </div>
+          ))}
+
+          {chapter.keyPoints.length > 0 && (
+            <div className="mt-8 border-t border-line pt-6">
+              <h3 className="text-sm font-bold uppercase tracking-wider text-ember-600">
+                Key Points
+              </h3>
+              <ul className="mt-3 space-y-2">
+                {chapter.keyPoints.map((kp, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-ink-800">
+                    <span className="text-ember-600 font-bold mt-0.5">→</span>
+                    <span>{kp}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Generate another */}
+          <div className="mt-8 pt-4 border-t border-line flex gap-3">
+            <button
+              type="button"
+              onClick={() => { setChapter(null); setTopic(''); }}
+              className="btn-ghost"
+            >
+              Generate another chapter
+            </button>
+          </div>
+        </article>
+      )}
+    </section>
+  );
 }

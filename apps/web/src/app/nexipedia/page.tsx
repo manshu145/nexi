@@ -169,42 +169,7 @@ export default function NexipediaListPage() {
       ) : null}
 
       {articles && articles.length === 0 ? (
-        <section className="paper-card mt-6 p-6 sm:p-8">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-500">
-            {debouncedQ || category !== 'all' ? 'No matches' : 'Coming soon'}
-          </p>
-          <h2 className="font-serif mt-2 text-xl font-semibold text-ink-900">
-            {debouncedQ || category !== 'all'
-              ? 'Nothing matches that yet.'
-              : 'No articles published yet'}
-          </h2>
-          <p className="mt-2 text-ink-800">
-            {debouncedQ || category !== 'all'
-              ? 'Try a different search term or category. Our editors are still seeding the library.'
-              : "We're still authoring the first batch of Nexipedia articles. Check back soon."}
-          </p>
-          {debouncedQ || category !== 'all' ? (
-            <button
-              type="button"
-              onClick={() => {
-                setQ('');
-                setCategory('all');
-              }}
-              className="btn-ghost mt-4"
-            >
-              Clear filters
-            </button>
-          ) : (
-            <div className="mt-4 flex gap-2">
-              <Link href="/chapters" className="btn-primary">
-                Open chapter library
-              </Link>
-              <Link href="/mcq" className="btn-ghost">
-                Daily MCQ
-              </Link>
-            </div>
-          )}
-        </section>
+        <AINexipediaSearch />
       ) : null}
 
       {grouped.length > 0 ? (
@@ -244,6 +209,181 @@ export default function NexipediaListPage() {
         </section>
       ) : null}
     </main>
+  );
+}
+
+/**
+ * AI-powered encyclopedia search. Replaces empty Firestore state.
+ * Student types any topic → AI generates a full Wikipedia-like article.
+ */
+function AINexipediaSearch() {
+  const [searchTopic, setSearchTopic] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [article, setArticle] = useState<{
+    title: string;
+    summary: string;
+    sections: { heading: string; content: string; imageQuery?: string }[];
+    relatedTopics: string[];
+    youtubeQuery: string;
+  } | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
+
+  async function onSearch() {
+    if (!searchTopic.trim()) return;
+    setSearching(true);
+    setSearchError(null);
+    setArticle(null);
+    try {
+      const res = await api.ai.searchNexipedia(searchTopic.trim());
+      setArticle(res.article);
+    } catch (e) {
+      setSearchError(e instanceof Error ? e.message : 'Failed to generate article');
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  return (
+    <section className="mt-6">
+      {/* AI Search Card */}
+      <div className="paper-card p-6 sm:p-8 border-l-4 border-l-ember-600">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ember-600">
+          AI Encyclopedia
+        </p>
+        <h2 className="font-serif mt-2 text-xl font-semibold text-ink-900 sm:text-2xl">
+          Search any topic — AI writes a full article
+        </h2>
+        <p className="mt-2 text-sm text-ink-800">
+          Like Wikipedia, but personalized for exam prep. With images, videos, and diagrams.
+        </p>
+
+        <div className="mt-5 flex gap-2">
+          <input
+            type="text"
+            value={searchTopic}
+            onChange={(e) => setSearchTopic(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && onSearch()}
+            placeholder="Search any topic (e.g., Photosynthesis, Indian Constitution)"
+            className="input flex-1"
+          />
+          <button
+            type="button"
+            onClick={onSearch}
+            disabled={searching || !searchTopic.trim()}
+            className="btn-primary whitespace-nowrap"
+          >
+            {searching ? <><span className="spinner" /> Searching...</> : 'Explore'}
+          </button>
+        </div>
+
+        {searchError && <p className="mt-3 text-sm text-ember-600">{searchError}</p>}
+
+        {!article && !searching && (
+          <div className="mt-4">
+            <p className="text-xs text-muted-500 mb-2">Popular topics:</p>
+            <div className="flex flex-wrap gap-2">
+              {['Photosynthesis', 'Indian Constitution', 'Solar System', 'World War II', 'Human Heart', 'Periodic Table', 'French Revolution', 'Quantum Mechanics'].map((t) => (
+                <button key={t} type="button" onClick={() => setSearchTopic(t)} className="pill hover:bg-paper-300 cursor-pointer transition">
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Loading */}
+      {searching && (
+        <div className="mt-6 text-center paper-card p-8">
+          <span className="spinner" />
+          <p className="mt-3 text-sm text-muted-500">
+            AI is writing an article on &ldquo;{searchTopic}&rdquo;...
+          </p>
+          <p className="mt-1 text-xs text-muted-400">This takes 15-30 seconds</p>
+        </div>
+      )}
+
+      {/* Article Display */}
+      {article && (
+        <article className="mt-6 space-y-5">
+          {/* Title + Summary */}
+          <div className="paper-card p-6 sm:p-8">
+            <h2 className="font-serif text-2xl font-bold text-ink-900 sm:text-3xl">
+              {article.title}
+            </h2>
+            <p className="mt-4 text-sm leading-relaxed text-ink-800">
+              {article.summary}
+            </p>
+          </div>
+
+          {/* Sections */}
+          {article.sections.map((section, i) => (
+            <div key={i} className="paper-card p-5 sm:p-6">
+              <h3 className="font-serif text-lg font-semibold text-ink-900">
+                {section.heading}
+              </h3>
+              <p className="mt-3 text-sm leading-[1.8] text-ink-800 whitespace-pre-wrap">
+                {section.content}
+              </p>
+              {section.imageQuery && (
+                <div className="mt-4 overflow-hidden rounded-lg bg-paper-200 p-2">
+                  <img
+                    src={`https://source.unsplash.com/600x300/?${encodeURIComponent(section.imageQuery)}`}
+                    alt={section.imageQuery}
+                    className="w-full rounded object-cover h-40 sm:h-52"
+                    loading="lazy"
+                  />
+                  <p className="mt-1 text-center text-[10px] text-muted-500">
+                    {section.imageQuery}
+                  </p>
+                </div>
+              )}
+            </div>
+          ))}
+
+          {/* YouTube link */}
+          {article.youtubeQuery && (
+            <div className="paper-card p-5">
+              <p className="text-xs font-semibold uppercase text-muted-500">Video</p>
+              <a
+                href={`https://www.youtube.com/results?search_query=${encodeURIComponent(article.youtubeQuery)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-flex items-center gap-2 text-sm text-ember-600 underline hover:text-ember-700"
+              >
+                🎬 Watch on YouTube →
+              </a>
+            </div>
+          )}
+
+          {/* Related topics */}
+          {article.relatedTopics.length > 0 && (
+            <div className="paper-card p-5">
+              <p className="text-xs font-semibold uppercase text-muted-500 mb-2">Related Topics</p>
+              <div className="flex flex-wrap gap-2">
+                {article.relatedTopics.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => { setSearchTopic(t); setArticle(null); }}
+                    className="pill hover:bg-paper-300 cursor-pointer transition"
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Search again */}
+          <div className="text-center">
+            <button type="button" onClick={() => { setArticle(null); setSearchTopic(''); }} className="btn-ghost">
+              Search another topic
+            </button>
+          </div>
+        </article>
+      )}
+    </section>
   );
 }
 

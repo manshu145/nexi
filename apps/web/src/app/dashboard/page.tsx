@@ -320,16 +320,16 @@ export default function DashboardPage() {
           <Tile
             label="Mock tests"
             color="ember"
-            desc="Full-length timed mocks. Score 60%+ and get credits refunded + bonus."
+            desc="Full-length timed mocks. AI generates 30 questions at your level."
             onClick={() => router.push('/mock-tests')}
-            cta="Browse mocks"
+            cta="Start mock test"
           />
           <Tile
-            label="Long-form practice"
+            label="AI Practice"
             color="gold"
-            desc="Write descriptive answers. AI grades on 5-axis rubric — 30 credits/submission."
+            desc="Generate practice questions on any topic — AI grades instantly."
             onClick={() => router.push('/long-answers')}
-            cta="Browse questions"
+            cta="Practice now"
           />
         </div>
       </section>
@@ -341,22 +341,22 @@ export default function DashboardPage() {
         </h2>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Tile
-            label="Chapters"
-            color="gold"
-            desc="3-AI verified study material."
+            label="AI Chapters"
+            color="ember"
+            desc="Type any topic — AI writes a full chapter at your level."
             onClick={() => router.push('/chapters')}
-            cta="Open library"
+            cta="Generate chapter"
           />
           <Tile
-            label="Nexipedia"
-            color="gold"
-            desc="Encyclopedia for Indian students."
+            label="AI Nexipedia"
+            color="ember"
+            desc="Search anything — AI creates a Wikipedia-like article instantly."
             onClick={() => router.push('/nexipedia')}
-            cta="Browse"
+            cta="Explore"
           />
           <Tile
             label="Exam guides"
-            color="ember"
+            color="gold"
             desc="Cited prep how-tos for JEE, NEET, UPSC."
             onClick={() => router.push('/guides')}
             cta="Browse guides"
