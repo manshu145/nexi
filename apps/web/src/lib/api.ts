@@ -1470,6 +1470,34 @@ export const api = {
       return res.json() as Promise<{ id: string }>;
     },
   },
+
+  // ─── On-demand AI content (personalized, no admin needed) ───────────
+  ai: {
+    async generateMcqs(subject?: string, count?: number): Promise<{ mcqs: { question: string; options: { key: string; text: string }[]; correctOption: string; explanation: string; subject: string; difficulty: string }[] }> {
+      const res = await authedFetch('/v1/ai/mcqs', { method: 'POST', body: JSON.stringify({ subject, count }) });
+      return res.json() as Promise<any>;
+    },
+    async generateChapter(topic: string): Promise<{ chapter: { title: string; sections: { heading: string; content: string }[]; summary: string; keyPoints: string[] } }> {
+      const res = await authedFetch('/v1/ai/chapter', { method: 'POST', body: JSON.stringify({ topic }) });
+      return res.json() as Promise<any>;
+    },
+    async generateMockTest(subject?: string): Promise<{ id: string; mcqs: any[]; durationMinutes: number; totalQuestions: number }> {
+      const res = await authedFetch('/v1/ai/mock-test', { method: 'POST', body: JSON.stringify({ subject }) });
+      return res.json() as Promise<any>;
+    },
+    async searchNexipedia(topic: string): Promise<{ article: { title: string; summary: string; sections: { heading: string; content: string; imageQuery?: string }[]; relatedTopics: string[]; youtubeQuery: string; diagramPrompt: string } }> {
+      const res = await authedFetch('/v1/ai/nexipedia', { method: 'POST', body: JSON.stringify({ topic }) });
+      return res.json() as Promise<any>;
+    },
+    async visualize(content: string): Promise<{ diagram: string; title: string }> {
+      const res = await authedFetch('/v1/ai/visualize', { method: 'POST', body: JSON.stringify({ content }) });
+      return res.json() as Promise<any>;
+    },
+    async chat(message: string): Promise<{ reply: string }> {
+      const res = await authedFetch('/v1/ai/chat', { method: 'POST', body: JSON.stringify({ message }) });
+      return res.json() as Promise<any>;
+    },
+  },
 };
 
 export { ApiError };

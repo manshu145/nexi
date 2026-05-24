@@ -199,6 +199,9 @@ export default function NexipediaListPage() {
               <Link href="/chapters" className="btn-primary">
                 Open chapter library
               </Link>
+              <Link href="/library" className="btn-ghost">
+                AI Library (generate any topic)
+              </Link>
               <Link href="/mcq" className="btn-ghost">
                 Daily MCQ
               </Link>
