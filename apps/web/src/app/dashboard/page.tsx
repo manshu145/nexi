@@ -207,6 +207,27 @@ export default function DashboardPage() {
         </button>
       </section>
 
+      <section className="paper-card mt-6 p-6 sm:p-8">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gold-600">
+          Nexipedia · verified knowledge
+        </p>
+        <h2 className="font-serif mt-3 text-xl font-semibold leading-snug text-ink-900">
+          Wikipedia, but only verified facts.
+        </h2>
+        <p className="mt-3 text-ink-800">
+          Encyclopedia articles for Indian students. Three AIs generate and
+          cross-check every claim, an editor approves, then it lands here.
+          Cited from NCERT and Government of India sources.
+        </p>
+        <button
+          type="button"
+          onClick={() => router.push('/nexipedia')}
+          className="btn-ghost mt-6"
+        >
+          Open Nexipedia
+        </button>
+      </section>
+
       <section className="mt-6 grid gap-4 sm:grid-cols-3">
         <div className="paper-card p-5">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-500">
