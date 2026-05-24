@@ -276,6 +276,9 @@ textarea.input {
  * Kindle-style reader (Phase 9-10).
  * Used by /read/<exam>/<subject>/<slug>. Generous serif body, narrow column,
  * page-like cream background, drop cap on first paragraph.
+ *
+ * Phase 10b adds true Kindle pagination: each section becomes its own page,
+ * the student flips with arrow keys / space / tap zones rather than scroll.
  * -------------------------------------------------------------------------- */
 .reader {
   font-family: var(--font-serif);
@@ -300,6 +303,12 @@ textarea.input {
   font-size: 1.075rem;
   line-height: 1.78;
   color: var(--color-ink-900);
+  /* Justified, hyphenated body text matches a real printed book. */
+  text-align: justify;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+  -ms-hyphens: auto;
+  word-spacing: 0.02em;
 }
 .reader-paragraph + .reader-paragraph {
   margin-top: 1rem;
@@ -322,3 +331,168 @@ textarea.input {
   padding: 0.05rem 0.35rem;
   font-size: 0.92em;
 }
+
+/* ----- Paged Kindle frame (Phase 10b) ----- */
+/*
+ * The reader fills the viewport. The header / footer chrome live OUTSIDE
+ * the frame and slide in/out on user activity. The frame body is a single
+ * fixed-height surface; long sections scroll internally rather than
+ * lengthening the document.
+ */
+.kindle-frame {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  /*
+   * 100dvh on mobile keeps the frame inside the visible viewport even when
+   * iOS Safari shows/hides its address bar. svh / dvh fall back to vh on
+   * older browsers.
+   */
+  min-height: 100dvh;
+  background-color: var(--color-paper-100);
+}
+.kindle-page {
+  /* The actual reading column. Width matches a typical print column. */
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: 38rem;
+  margin: 0 auto;
+  padding: 4.5rem 1.5rem 5.5rem;
+  /*
+   * Internal scroll only -- the frame itself doesn't scroll. A long
+   * section gets its own scrollbar within this column instead of
+   * lengthening the page. min-height:0 is required so the flex parent
+   * lets us shrink + scroll.
+   */
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  min-height: 0;
+}
+@media (min-width: 720px) {
+  .kindle-page {
+    padding: 6rem 2rem 6rem;
+  }
+}
+
+/* Cover page (page 1): centered hero with title + summary + source. */
+.kindle-cover {
+  display: flex;
+  min-height: 70vh;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+}
+.kindle-cover-eyebrow {
+  font-family: var(--font-sans);
+  font-size: 0.78rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-muted-500);
+}
+.kindle-cover-title {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--color-ink-900);
+  font-size: 2.4rem;
+  line-height: 1.15;
+  margin-top: 1rem;
+}
+@media (min-width: 720px) {
+  .kindle-cover-title { font-size: 3rem; }
+}
+.kindle-cover-summary {
+  font-family: var(--font-serif);
+  font-size: 1.075rem;
+  line-height: 1.65;
+  color: var(--color-ink-800);
+  margin-top: 1.5rem;
+}
+.kindle-cover-rule {
+  width: 4rem;
+  height: 1px;
+  background-color: var(--color-line);
+  margin: 2rem auto;
+}
+.kindle-cover-meta {
+  font-family: var(--font-sans);
+  font-size: 0.82rem;
+  color: var(--color-muted-500);
+}
+
+/* End page: shown after the last section. */
+.kindle-end {
+  display: flex;
+  min-height: 60vh;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+/* ----- Footer toolbar (page indicator + flip arrows) ----- */
+.kindle-toolbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  border-top: 1px solid var(--color-line);
+  background-color: rgba(248, 241, 221, 0.92);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.55rem 1rem;
+  font-family: var(--font-sans);
+  font-size: 0.82rem;
+  color: var(--color-muted-500);
+}
+.kindle-toolbar button {
+  font-family: var(--font-sans);
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--color-ink-900);
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  background-color: transparent;
+  border: 1px solid var(--color-line);
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.kindle-toolbar button:hover:not(:disabled) {
+  background-color: var(--color-paper-200);
+}
+.kindle-toolbar button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.kindle-progress {
+  position: absolute;
+  top: -2px;
+  left: 0;
+  height: 2px;
+  background-color: var(--color-ember-500);
+  transition: width 240ms ease;
+}
+
+/* Tap zones (mobile / non-keyboard) -- invisible overlays. The toolbar
+   sits above them so its buttons remain clickable. */
+.kindle-tap {
+  position: fixed;
+  top: 0;
+  bottom: 3.4rem;          /* leave room for the toolbar */
+  width: 35%;
+  z-index: 1;
+  cursor: pointer;
+  background: transparent;
+  -webkit-tap-highlight-color: transparent;
+}
+.kindle-tap-left  { left: 0; }
+.kindle-tap-right { right: 0; width: 65%; }
+@media (hover: hover) and (pointer: fine) {
+  /* On desktop, mouse-clicks are flippable too but we don't show a cursor
+     change because keyboard nav is the primary input. */
+  .kindle-tap { cursor: default; }
+}
+

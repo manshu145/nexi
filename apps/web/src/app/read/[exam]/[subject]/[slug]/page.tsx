@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PublishedChapter } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 import { useAuth } from '~/lib/auth-context';
@@ -11,18 +11,28 @@ import { api } from '~/lib/api';
 /**
  * /read/<exam>/<subject>/<slug>
  *
- * Kindle-style reading view for an AI-generated chapter.
+ * True Kindle-style paginated reader (Phase 10b).
  *
- * Design principles (matches the brand "distraction-free" promise):
- *   - Lora serif body type, generous line-height, narrow column.
- *   - Drop cap on the first paragraph of the first section.
- *   - No nav chrome, no sidebars, no pop-ups while reading.
- *   - "Mark as read" surfaces only at the bottom of the chapter so
- *     the student is not nagged before finishing.
+ * Each page is a single section. The student flips with:
+ *   - Keyboard: ArrowLeft / ArrowRight / Space / J / K
+ *   - Tap zones: left third = back, right two-thirds = forward
+ *   - Footer arrows
  *
- * Markdown rendering: deliberately minimal. The verifier prompts allow
- * **bold** and inline math. We render bold and paragraphs; everything
- * else passes through as text. We never inject HTML.
+ * Page sequence is [cover, ...sections, end]. The cover is a typeset
+ * title page (like opening a book), the end is a brief outro that
+ * routes the student to the daily MCQ or back to the library.
+ *
+ * Reading position is persisted to localStorage per-chapter so a refresh
+ * or accidental close lands the student back on the same page.
+ *
+ * Design principles:
+ *   - Lora serif body, generous line-height, narrow column.
+ *   - Drop cap on the first paragraph of every section.
+ *   - Justified text + auto-hyphenation.
+ *   - Internal scroll inside a single page (rather than the document
+ *     itself growing) so flipping always lands at the top of the next page.
+ *   - We never inject HTML from AI output -- a tiny inline markdown renderer
+ *     handles **bold** and `code` only.
  */
 export default function ChapterReadPage() {
   const params = useParams<{ exam: string; subject: string; slug: string }>();
@@ -35,6 +45,8 @@ export default function ChapterReadPage() {
 
   const [chapter, setChapter] = useState<PublishedChapter | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
+  const pageRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!loading && !user) router.replace('/signin');
@@ -54,6 +66,95 @@ export default function ChapterReadPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Number of pages = 1 (cover) + N sections + 1 (end).
+  const totalPages = useMemo(
+    () => (chapter ? 1 + chapter.sections.length + 1 : 0),
+    [chapter],
+  );
+
+  // Storage key for persisting the reading position. Keyed by
+  // (chapter.id) so two devices opened to the same chapter agree.
+  const storageKey = useMemo(
+    () => (chapter ? `nexi.read.${chapter.id}` : null),
+    [chapter],
+  );
+
+  // Restore last page on mount (after chapter loads).
+  useEffect(() => {
+    if (!storageKey || totalPages === 0) return;
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      const idx = raw == null ? 0 : Math.max(0, Math.min(totalPages - 1, Number(raw)));
+      setPage(Number.isFinite(idx) ? idx : 0);
+    } catch {
+      setPage(0);
+    }
+  }, [storageKey, totalPages]);
+
+  // Persist current page whenever it changes.
+  useEffect(() => {
+    if (!storageKey) return;
+    try {
+      window.localStorage.setItem(storageKey, String(page));
+    } catch {
+      /* ignore quota / private-mode failures */
+    }
+  }, [page, storageKey]);
+
+  // Whenever we flip pages, scroll the page container back to the top so
+  // the next section starts at its first line, not where the previous
+  // one was scrolled to.
+  useEffect(() => {
+    pageRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+  }, [page]);
+
+  const goPrev = useCallback(() => {
+    setPage((p) => Math.max(0, p - 1));
+  }, []);
+  const goNext = useCallback(() => {
+    setPage((p) => Math.min(totalPages - 1, p + 1));
+  }, [totalPages]);
+
+  // Keyboard navigation. Don't intercept while the user is typing in
+  // a form (e.g. a future highlight/note editor) -- guard on target.
+  useEffect(() => {
+    if (!chapter) return;
+    function isTyping(t: EventTarget | null): boolean {
+      if (!t) return false;
+      if (!(t instanceof HTMLElement)) return false;
+      const tag = t.tagName.toLowerCase();
+      return tag === 'input' || tag === 'textarea' || t.isContentEditable;
+    }
+    function onKey(ev: KeyboardEvent) {
+      if (isTyping(ev.target)) return;
+      switch (ev.key) {
+        case 'ArrowLeft':
+        case 'k':
+        case 'K':
+          ev.preventDefault();
+          goPrev();
+          break;
+        case 'ArrowRight':
+        case ' ':
+        case 'j':
+        case 'J':
+          ev.preventDefault();
+          goNext();
+          break;
+        case 'Home':
+          ev.preventDefault();
+          setPage(0);
+          break;
+        case 'End':
+          ev.preventDefault();
+          setPage(totalPages - 1);
+          break;
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [chapter, goPrev, goNext, totalPages]);
 
   if (loading || !user) {
     return (
@@ -98,55 +199,121 @@ export default function ChapterReadPage() {
   }
 
   const sortedSections = [...chapter.sections].sort((a, b) => a.order - b.order);
+  const isCover = page === 0;
+  const isEnd = page === totalPages - 1;
+  const sectionIndex = isCover || isEnd ? -1 : page - 1;
+  const currentSection = sectionIndex >= 0 ? sortedSections[sectionIndex] : null;
+
+  // Progress bar fill -- 0% on cover, 100% on the end page.
+  const progressPct = totalPages <= 1 ? 0 : (page / (totalPages - 1)) * 100;
 
   return (
-    <main className="mx-auto flex max-w-prose flex-col px-6 pt-8 pb-24">
-      <header className="flex items-start justify-between">
+    <div className="kindle-frame">
+      {/* Subtle top header. Inside the frame so it scrolls with content
+          on overflow but stays at top on a single-page view. */}
+      <header className="mx-auto flex w-full max-w-prose items-center justify-between px-6 pt-5 sm:px-8">
         <Logo />
         <Link href="/chapters" className="btn-ghost-sm">
           Library
         </Link>
       </header>
 
-      <section className="mt-10">
-        <p className="text-xs uppercase tracking-[0.18em] text-muted-500">
-          {chapter.exam} · {prettySubject(chapter.subject)} · {chapter.classLevel}
-        </p>
-        <h1 className="font-serif mt-2 text-4xl font-semibold leading-tight text-ink-900 sm:text-5xl">
-          {chapter.title}
-        </h1>
-        <p className="mt-3 text-base text-ink-800">{chapter.summary}</p>
-        <p className="mt-3 text-xs text-muted-500">
-          ~{chapter.estimatedReadMinutes} min read · Source: {chapter.source}
-        </p>
-      </section>
+      {/* Tap zones for mobile / non-keyboard flipping. */}
+      <button
+        type="button"
+        aria-label="Previous page"
+        className="kindle-tap kindle-tap-left"
+        onClick={goPrev}
+        tabIndex={-1}
+      />
+      <button
+        type="button"
+        aria-label="Next page"
+        className="kindle-tap kindle-tap-right"
+        onClick={goNext}
+        tabIndex={-1}
+      />
 
-      <article className="reader mt-10">
-        {sortedSections.map((s, i) => (
-          <section key={s.id} className="reader-section">
-            <h2 className="reader-heading font-serif">{s.heading}</h2>
-            <div className={i === 0 ? 'reader-body reader-body-first' : 'reader-body'}>
-              {renderBody(s.body, i === 0)}
+      {/* The reading column. */}
+      <article
+        ref={pageRef}
+        className="kindle-page reader"
+        aria-live="polite"
+      >
+        {isCover ? (
+          <div className="kindle-cover">
+            <p className="kindle-cover-eyebrow">
+              {chapter.exam} · {prettySubject(chapter.subject)} · {chapter.classLevel}
+            </p>
+            <h1 className="kindle-cover-title">{chapter.title}</h1>
+            <p className="kindle-cover-summary">{chapter.summary}</p>
+            <div className="kindle-cover-rule" aria-hidden="true" />
+            <p className="kindle-cover-meta">
+              ~{chapter.estimatedReadMinutes} min read
+            </p>
+            <p className="kindle-cover-meta">Source: {chapter.source}</p>
+          </div>
+        ) : isEnd ? (
+          <div className="kindle-end">
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-500">
+              End of chapter
+            </p>
+            <h2 className="font-serif mt-3 text-3xl font-semibold text-ink-900">
+              {chapter.title}
+            </h2>
+            <p className="mt-4 max-w-md text-ink-800">
+              You&apos;ve finished reading. Take today&apos;s daily MCQ to
+              earn credits, or head back to the library for the next chapter.
+            </p>
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+              <Link href="/mcq" className="btn-primary">
+                Take today&apos;s MCQ
+              </Link>
+              <Link href="/chapters" className="btn-ghost">
+                Back to library
+              </Link>
             </div>
+          </div>
+        ) : currentSection ? (
+          <section>
+            <h2 className="reader-heading font-serif">{currentSection.heading}</h2>
+            <div className="reader-body">{renderBody(currentSection.body)}</div>
           </section>
-        ))}
+        ) : null}
       </article>
 
-      <footer className="mt-12 border-t border-ink-900/10 pt-6">
-        <p className="text-xs text-muted-500">
-          You&apos;ve reached the end. Tomorrow&apos;s daily MCQ will draw on
-          this chapter. Take it from your dashboard to earn credits.
-        </p>
-        <div className="mt-4 flex flex-wrap gap-3">
-          <Link href="/mcq" className="btn-primary">
-            Take today&apos;s MCQ
-          </Link>
-          <Link href="/chapters" className="btn-ghost">
-            Back to library
-          </Link>
-        </div>
-      </footer>
-    </main>
+      {/* Footer toolbar with page indicator + flip arrows + progress bar. */}
+      <div className="kindle-toolbar" role="navigation" aria-label="Reader navigation">
+        <div
+          className="kindle-progress"
+          style={{ width: `${progressPct}%` }}
+          aria-hidden="true"
+        />
+        <button
+          type="button"
+          onClick={goPrev}
+          disabled={page === 0}
+          aria-label="Previous page"
+        >
+          ←
+        </button>
+        <span aria-live="polite">
+          {isCover
+            ? 'Cover'
+            : isEnd
+              ? 'End'
+              : `Page ${page} of ${totalPages - 2}`}
+        </span>
+        <button
+          type="button"
+          onClick={goNext}
+          disabled={page >= totalPages - 1}
+          aria-label="Next page"
+        >
+          →
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -158,18 +325,17 @@ function prettySubject(s: string): string {
 }
 
 /**
- * Lightweight markdown rendering.
+ * Lightweight markdown rendering for a section body.
  *
- * Supports paragraphs (blank lines), **bold**, and inline `code`. Anything
- * else is rendered as plain text. This is deliberate: we never inject HTML
- * from AI output, and we never use a heavy markdown library because the
- * verifier prompts forbid HTML, images, and tables anyway.
+ * Splits on blank lines into paragraphs, renders **bold** and `code`,
+ * and applies a drop cap to the first paragraph of every section.
+ * Intentionally does NOT use a markdown library and never injects HTML.
  */
-function renderBody(body: string, dropCap: boolean): React.ReactNode {
+function renderBody(body: string): React.ReactNode {
   const paragraphs = body.split(/\n\s*\n/).filter((p) => p.trim().length > 0);
   return paragraphs.map((p, i) => {
     const inline = renderInline(p.trim());
-    if (i === 0 && dropCap) {
+    if (i === 0) {
       return (
         <p key={i} className="reader-paragraph reader-dropcap">
           {inline}
@@ -185,16 +351,14 @@ function renderBody(body: string, dropCap: boolean): React.ReactNode {
 }
 
 function renderInline(text: string): React.ReactNode[] {
-  // Tokenize: **bold**, `code`, otherwise plain text.
   const out: React.ReactNode[] = [];
-  let rest = text;
   let key = 0;
   const re = /(\*\*([^*]+)\*\*)|(`([^`]+)`)/g;
   let lastIndex = 0;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(rest))) {
+  while ((m = re.exec(text))) {
     if (m.index > lastIndex) {
-      out.push(rest.slice(lastIndex, m.index));
+      out.push(text.slice(lastIndex, m.index));
     }
     if (m[1]) {
       out.push(<strong key={`b${key++}`}>{m[2]}</strong>);
@@ -210,8 +374,8 @@ function renderInline(text: string): React.ReactNode[] {
     }
     lastIndex = m.index + m[0].length;
   }
-  if (lastIndex < rest.length) {
-    out.push(rest.slice(lastIndex));
+  if (lastIndex < text.length) {
+    out.push(text.slice(lastIndex));
   }
   return out;
 }
