@@ -19,6 +19,17 @@ export interface UsersRoutesDeps {
 
 const onboardingSchema = z.object({
   targetExam: z.string().refine(isExamSlug, { message: 'unknown exam slug' }),
+  /* Phase B: expanded onboarding fields */
+  preferredLanguage: z.string().optional(),
+  surname: z.string().optional(),
+  dateOfBirth: z.string().optional(),
+  classLevel: z.string().optional(),
+  board: z.string().optional(),
+  schoolName: z.string().optional(),
+  district: z.string().optional(),
+  state: z.string().optional(),
+  aim: z.string().optional(),
+  preparingExams: z.array(z.string()).optional(),
 });
 
 export function makeUsersRoutes(deps: UsersRoutesDeps): Hono {
@@ -52,11 +63,25 @@ export function makeUsersRoutes(deps: UsersRoutesDeps): Hono {
       principal.userId,
       asExamSlug(parsed.data.targetExam),
     );
+    // Phase B: save expanded profile fields on the user doc.
+    const profilePatch: Record<string, unknown> = { onboardingVersion: 2 };
+    if (parsed.data.preferredLanguage) profilePatch.preferredLanguage = parsed.data.preferredLanguage;
+    if (parsed.data.surname) profilePatch.surname = parsed.data.surname;
+    if (parsed.data.dateOfBirth) profilePatch.dateOfBirth = parsed.data.dateOfBirth;
+    if (parsed.data.classLevel) profilePatch.classLevel = parsed.data.classLevel;
+    if (parsed.data.board) profilePatch.board = parsed.data.board;
+    if (parsed.data.schoolName) profilePatch.schoolName = parsed.data.schoolName;
+    if (parsed.data.district) profilePatch.district = parsed.data.district;
+    if (parsed.data.state) profilePatch.state = parsed.data.state;
+    if (parsed.data.aim) profilePatch.aim = parsed.data.aim;
+    if (parsed.data.preparingExams) profilePatch.preparingExams = parsed.data.preparingExams;
+    await deps.users.updateProfile(principal.userId, profilePatch);
     deps.logger.info('users.onboarding', {
       userId: principal.userId,
       targetExam: parsed.data.targetExam,
+      version: 2,
     });
-    return c.json({ user });
+    return c.json({ user: { ...user, ...profilePatch } });
   });
 
   return app;

@@ -49,6 +49,11 @@ export default function DashboardPage() {
           router.replace('/onboarding');
           return;
         }
+        // Phase B: Force re-onboarding if profile is incomplete (version < 2)
+        if ((meRes.user.onboardingVersion ?? 0) < 2) {
+          router.replace('/onboarding');
+          return;
+        }
         api
           .getProgress(meRes.user.targetExam)
           .then((p) => {

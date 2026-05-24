@@ -38,6 +38,29 @@ export type StoredUser = User & {
   currentStreak?: number;
   bestStreak?: number;
   lastDailyAt?: ISODateTime | null;
+  /* ─── Phase B: expanded profile fields ─── */
+  /** Preferred platform language (hi, en, hinglish). */
+  preferredLanguage?: string | null;
+  /** Surname / last name. */
+  surname?: string | null;
+  /** Date of birth as YYYY-MM-DD. */
+  dateOfBirth?: string | null;
+  /** Current class level. */
+  classLevel?: string | null;
+  /** Education board. */
+  board?: string | null;
+  /** School or college name. */
+  schoolName?: string | null;
+  /** District. */
+  district?: string | null;
+  /** State. */
+  state?: string | null;
+  /** Career aim / goal (free text). */
+  aim?: string | null;
+  /** Additional exams the student is preparing for. */
+  preparingExams?: string[] | null;
+  /** Onboarding schema version. Force re-onboarding when this is behind CURRENT_ONBOARDING_VERSION. */
+  onboardingVersion?: number | null;
 };
 
 /**
@@ -67,6 +90,8 @@ export interface UserStore {
   getOrCreate(uid: UserId, init: UserStoreInit): Promise<StoredUser>;
   get(uid: UserId): Promise<StoredUser | null>;
   setTargetExam(uid: UserId, exam: ExamSlug): Promise<StoredUser>;
+  /** Phase B: update arbitrary profile fields on the user doc. */
+  updateProfile(uid: UserId, patch: Record<string, unknown>): Promise<void>;
   /**
    * Phase 20 -- admin paginated list. Sorted by createdAt desc.
    */
@@ -197,6 +222,17 @@ export class InMemoryUserStore implements UserStore {
     return updated;
   }
 
+  async updateProfile(uid: UserId, patch: Record<string, unknown>): Promise<void> {
+    const u = this.users.get(uid);
+    if (!u) throw new Error(`user ${uid} not found`);
+    const updated: StoredUser = {
+      ...u,
+      ...patch,
+      updatedAt: asISODateTime(new Date().toISOString()),
+    } as StoredUser;
+    this.users.set(uid, updated);
+  }
+
   async bumpStreak(uid: UserId, now: ISODateTime): Promise<StoredUser> {
     const u = this.users.get(uid);
     if (!u) throw new Error(`user ${uid} not found`);
@@ -267,6 +303,14 @@ export class FirestoreUserStore implements UserStore {
     );
     const snap = await ref.get();
     return snap.data() as StoredUser;
+  }
+
+  async updateProfile(uid: UserId, patch: Record<string, unknown>): Promise<void> {
+    const ref = this.db.collection(COLLECTION).doc(uid);
+    await ref.set(
+      { ...patch, updatedAt: new Date().toISOString() },
+      { merge: true },
+    );
   }
 
   async bumpStreak(uid: UserId, now: ISODateTime): Promise<StoredUser> {
