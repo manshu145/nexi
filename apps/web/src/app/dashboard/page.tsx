@@ -121,6 +121,26 @@ export default function DashboardPage() {
         </button>
       </section>
 
+      <section className="paper-card mt-6 p-6 sm:p-8">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gold-600">
+          Library · read first
+        </p>
+        <h2 className="font-serif mt-3 text-xl font-semibold leading-snug text-ink-900">
+          Chapters, verified by 3 AIs.
+        </h2>
+        <p className="mt-3 text-ink-800">
+          Every chapter is generated and verified by OpenAI, Gemini, and
+          Groq. Read calmly, then take the test.
+        </p>
+        <button
+          type="button"
+          onClick={() => router.push('/chapters')}
+          className="btn-ghost mt-6"
+        >
+          Open library
+        </button>
+      </section>
+
       <section className="mt-6 grid gap-4 sm:grid-cols-3">
         <div className="paper-card p-5">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-500">

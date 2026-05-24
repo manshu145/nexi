@@ -9,6 +9,14 @@ import {
   InMemoryAdminUserStore,
   type AdminUserStore,
 } from './lib/adminUserStore.js';
+import {
+  FirestoreChapterDraftStore,
+  FirestoreChapterStore,
+  InMemoryChapterDraftStore,
+  InMemoryChapterStore,
+  type ChapterDraftStore,
+  type ChapterStore,
+} from './lib/chapterDraftStore.js';
 import { getFirebaseFirestore } from './lib/firebaseAdmin.js';
 import { FirestoreLedgerStore } from './lib/firestoreLedger.js';
 import {
@@ -35,6 +43,10 @@ import { FirestoreUserStore, InMemoryUserStore, type UserStore } from './lib/use
 import type { Logger } from './logger.js';
 import { makeAdminRoutes } from './routes/admin.js';
 import { makeAdminAuthRoutes } from './routes/admin-auth.js';
+import {
+  makeAdminChapterRoutes,
+  makeStudentChapterRoutes,
+} from './routes/admin-chapters.js';
 import { makeBillingRoutes } from './routes/billing.js';
 import {
   defaultEngineDeps,
@@ -70,6 +82,8 @@ export interface AppDeps {
   mockTests?: MockTestStore;
   mockTestSessions?: MockTestSessionStore;
   admins?: AdminUserStore;
+  chapterDrafts?: ChapterDraftStore;
+  chapters?: ChapterStore;
 }
 
 export function buildApp(deps: AppDeps): Hono {
@@ -93,6 +107,11 @@ export function buildApp(deps: AppDeps): Hono {
     (fs ? new FirestoreMockTestSessionStore(fs) : new InMemoryMockTestSessionStore());
   const admins =
     deps.admins ?? (fs ? new FirestoreAdminUserStore(fs) : new InMemoryAdminUserStore());
+  const chapterDrafts =
+    deps.chapterDrafts ??
+    (fs ? new FirestoreChapterDraftStore(fs) : new InMemoryChapterDraftStore());
+  const chapters =
+    deps.chapters ?? (fs ? new FirestoreChapterStore(fs) : new InMemoryChapterStore());
 
   const verifier = makeVerifier(env);
   const engineDeps = defaultEngineDeps();
@@ -201,10 +220,25 @@ export function buildApp(deps: AppDeps): Hono {
     }),
   );
   v1.route('/billing', makeBillingRoutes({ env, subscriptions, logger }));
+  // Phase 9-10: AI-generated chapters. Student-facing list + read endpoints.
+  v1.route('/chapters', makeStudentChapterRoutes({ chapters, logger }));
   // Phase 6: RBAC bootstrap routes. /admin/auth/* MUST be mounted BEFORE
   // /admin/* so its specific paths win over the generic admin route's
   // catch-all (Hono matches in registration order).
   v1.route('/admin/auth', makeAdminAuthRoutes({ env, admins, logger }));
+  // Phase 9-10: admin chapter pipeline (3-AI generation + review + publish).
+  // Mounted BEFORE the generic /admin so /admin/chapters/* and
+  // /admin/chapter-drafts/* paths resolve here first.
+  v1.route(
+    '/admin',
+    makeAdminChapterRoutes({
+      env,
+      drafts: chapterDrafts,
+      chapters,
+      admins,
+      logger,
+    }),
+  );
   v1.route('/admin', makeAdminRoutes({ env, drafts, mcqs, admins, logger }));
   app.route('/v1', v1);
 
