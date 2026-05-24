@@ -143,6 +143,8 @@ import { makeAdminAuditRoutes } from './routes/admin-audit.js';
 import { makeAdminAnalyticsRoutes } from './routes/admin-analytics.js';
 import { makeAdminCommsRoutes } from './routes/admin-comms.js';
 import { makeStudentCommsRoutes } from './routes/student-comms.js';
+import { makeSchedulerRoutes } from './routes/scheduler.js';
+import { OpenAIClient } from './lib/llm/openai.js';
 import { makeProgressRoutes } from './routes/progress.js';
 import { makeUsersRoutes } from './routes/users.js';
 
@@ -569,6 +571,15 @@ export function buildApp(deps: AppDeps): Hono {
       logger,
       newId: () => globalThis.crypto.randomUUID().replace(/-/g, '').slice(0, 16),
       now: engineDeps.now,
+    }),
+  );
+  // Phase E: Content auto-generation scheduler. Admin monitors, AI teaches.
+  v1.route(
+    '/admin',
+    makeSchedulerRoutes({
+      admins,
+      generator: new OpenAIClient(env.OPENAI_API_KEY),
+      logger,
     }),
   );
   v1.route('/admin', makeAdminRoutes({ env, drafts, mcqs, admins, logger }));
