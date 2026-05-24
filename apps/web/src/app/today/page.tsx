@@ -29,6 +29,7 @@ export default function TodayPage() {
     'loading',
   );
   const [error, setError] = useState<string | null>(null);
+  const [yesterdayWinner, setYesterdayWinner] = useState<{ userName: string; score: number; timeTakenSeconds: number } | null>(null);
 
   useEffect(() => {
     if (!loading && !user) router.replace('/signin');
@@ -51,6 +52,14 @@ export default function TodayPage() {
     return () => {
       cancelled = true;
     };
+  }, [user]);
+
+  // Fetch yesterday's quiz winner
+  useEffect(() => {
+    if (!user) return;
+    api.caQuiz.leaderboard()
+      .then((lb) => { if (lb.yesterdayWinner) setYesterdayWinner(lb.yesterdayWinner); })
+      .catch(() => {});
   }, [user]);
 
   if (loading || !user || digest === 'loading') {
@@ -77,6 +86,59 @@ export default function TodayPage() {
           </Link>
         </div>
       </header>
+
+      {/* Yesterday's Winner Banner */}
+      {yesterdayWinner && (
+        <section className="mt-6">
+          <div className="paper-card p-5 border-gold-500 bg-paper-300/40">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gold-600">
+                  Yesterday&apos;s Quiz Champion
+                </p>
+                <p className="font-serif mt-1 text-xl font-semibold text-ink-900">
+                  {yesterdayWinner.userName}
+                </p>
+                <p className="mt-0.5 text-sm text-muted-500">
+                  Score: {yesterdayWinner.score}/20 · Time: {Math.floor(yesterdayWinner.timeTakenSeconds / 60)}m {yesterdayWinner.timeTakenSeconds % 60}s
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-3xl">🏆</p>
+              </div>
+            </div>
+            <div className="mt-3 flex items-center gap-2">
+              <Link href="/today/quiz" className="btn-primary text-sm !py-2 !px-4">
+                It&apos;s YOUR turn →
+              </Link>
+              <Link href="/today/quiz/leaderboard" className="btn-ghost-sm">
+                View leaderboard
+              </Link>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* No winner yet — still show quiz CTA */}
+      {!yesterdayWinner && (
+        <section className="mt-6">
+          <div className="paper-card p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-ember-600">
+                  Daily CA Quiz · 20 questions · 10 min
+                </p>
+                <p className="font-serif mt-1 text-lg font-semibold text-ink-900">
+                  Take today&apos;s quiz — fastest scorer gets featured tomorrow!
+                </p>
+              </div>
+            </div>
+            <Link href="/today/quiz" className="btn-primary mt-3 text-sm !py-2 !px-4">
+              Start Quiz →
+            </Link>
+          </div>
+        </section>
+      )}
 
       <section className="mt-10">
         <p className="pill mb-3">Current affairs · today</p>
