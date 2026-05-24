@@ -76,6 +76,12 @@ const schema = z.object({
   RAZORPAY_KEY_ID: z.string().default(''),
   RAZORPAY_KEY_SECRET: z.string().default(''),
   RAZORPAY_WEBHOOK_SECRET: z.string().default(''),
+
+  /** OpenAI API key for AI content generation. */
+  OPENAI_API_KEY: z.string().default(''),
+
+  /** Google Gemini API key (fallback/secondary AI). */
+  GEMINI_API_KEY: z.string().default(''),
 });
 
 export type Env = z.output<typeof schema>;

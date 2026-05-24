@@ -25,6 +25,13 @@ import {
 import { makeHealthRoutes } from './routes/health.js';
 import { makeMcqsRoutes, makeMcqSessionsRoutes } from './routes/mcqs.js';
 import { makeUsersRoutes } from './routes/users.js';
+import { makeAIRoutes } from './routes/ai.js';
+import { createAIEngine } from './lib/aiEngine.js';
+import {
+  FirestoreChapterStore,
+  InMemoryChapterStore,
+  type ChapterStore,
+} from './lib/chapterStore.js';
 
 /**
  * Build the Hono app.
@@ -56,6 +63,14 @@ export function buildApp(deps: AppDeps): Hono {
   const subscriptions =
     deps.subscriptions ??
     (fs ? new FirestoreSubscriptionStore(fs) : new InMemorySubscriptionStore());
+
+  const chapterStore: ChapterStore =
+    fs ? new FirestoreChapterStore(fs) : new InMemoryChapterStore();
+
+  const aiEngine = createAIEngine({
+    openaiApiKey: (env as any).OPENAI_API_KEY ?? '',
+    geminiApiKey: (env as any).GEMINI_API_KEY ?? '',
+  });
 
   const verifier = makeVerifier(env);
   const engineDeps = defaultEngineDeps();
@@ -141,6 +156,7 @@ export function buildApp(deps: AppDeps): Hono {
     makeMcqSessionsRoutes({ mcqs, ledger, users, logger, ...engineDeps, getTargetExam }),
   );
   v1.route('/billing', makeBillingRoutes({ env, subscriptions, logger }));
+  v1.route('/ai', makeAIRoutes({ ai: aiEngine, chapters: chapterStore, users, logger }));
   app.route('/v1', v1);
 
   app.onError((err, c) => {

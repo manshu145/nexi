@@ -18,24 +18,24 @@ export const EXAMS: readonly Exam[] = [
   { id: asExamSlug('neet-ug'),        name: 'NEET UG',             category: 'medical',        status: 'live' },
 
   // --- Phase 2 expansion ---
-  { id: asExamSlug('class-10-cbse'),  name: 'Class 10 (CBSE)',     category: 'school',         status: 'soon' },
-  { id: asExamSlug('class-9-cbse'),   name: 'Class 9 (CBSE)',      category: 'school',         status: 'soon' },
-  { id: asExamSlug('class-8-cbse'),   name: 'Class 8 (CBSE)',      category: 'school',         status: 'soon' },
+  { id: asExamSlug('class-10-cbse'),  name: 'Class 10 (CBSE)',     category: 'school',         status: 'live' },
+  { id: asExamSlug('class-9-cbse'),   name: 'Class 9 (CBSE)',      category: 'school',         status: 'live' },
+  { id: asExamSlug('class-8-cbse'),   name: 'Class 8 (CBSE)',      category: 'school',         status: 'live' },
 
   // --- Phase 3 ---
-  { id: asExamSlug('ssc-cgl'),        name: 'SSC CGL',             category: 'civil-services', status: 'soon' },
-  { id: asExamSlug('ssc-chsl'),       name: 'SSC CHSL',            category: 'civil-services', status: 'soon' },
-  { id: asExamSlug('ibps-po'),        name: 'IBPS PO / Clerk',     category: 'banking',        status: 'soon' },
-  { id: asExamSlug('sbi-po'),         name: 'SBI PO',              category: 'banking',        status: 'soon' },
-  { id: asExamSlug('rrb-ntpc'),       name: 'RRB NTPC',            category: 'civil-services', status: 'soon' },
+  { id: asExamSlug('ssc-cgl'),        name: 'SSC CGL',             category: 'civil-services', status: 'live' },
+  { id: asExamSlug('ssc-chsl'),       name: 'SSC CHSL',            category: 'civil-services', status: 'live' },
+  { id: asExamSlug('ibps-po'),        name: 'IBPS PO / Clerk',     category: 'banking',        status: 'live' },
+  { id: asExamSlug('sbi-po'),         name: 'SBI PO',              category: 'banking',        status: 'live' },
+  { id: asExamSlug('rrb-ntpc'),       name: 'RRB NTPC',            category: 'civil-services', status: 'live' },
 
   // --- Phase 4 ---
-  { id: asExamSlug('upsc-cse'),       name: 'UPSC CSE',            category: 'civil-services', status: 'soon' },
-  { id: asExamSlug('state-psc'),      name: 'State PSCs',          category: 'state',          status: 'soon' },
-  { id: asExamSlug('nda'),            name: 'NDA',                 category: 'defence',        status: 'soon' },
-  { id: asExamSlug('cds'),            name: 'CDS',                 category: 'defence',        status: 'soon' },
-  { id: asExamSlug('agniveer'),       name: 'Agniveer',            category: 'defence',        status: 'soon' },
-  { id: asExamSlug('capf'),           name: 'CAPF',                category: 'defence',        status: 'soon' },
+  { id: asExamSlug('upsc-cse'),       name: 'UPSC CSE',            category: 'civil-services', status: 'live' },
+  { id: asExamSlug('state-psc'),      name: 'State PSCs',          category: 'state',          status: 'live' },
+  { id: asExamSlug('nda'),            name: 'NDA',                 category: 'defence',        status: 'live' },
+  { id: asExamSlug('cds'),            name: 'CDS',                 category: 'defence',        status: 'live' },
+  { id: asExamSlug('agniveer'),       name: 'Agniveer',            category: 'defence',        status: 'live' },
+  { id: asExamSlug('capf'),           name: 'CAPF',                category: 'defence',        status: 'live' },
 ] as const;
 
 export const LIVE_EXAMS = EXAMS.filter((e) => e.status === 'live');
