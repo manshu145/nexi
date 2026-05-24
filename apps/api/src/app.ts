@@ -143,6 +143,8 @@ import { makeAdminAuditRoutes } from './routes/admin-audit.js';
 import { makeAdminAnalyticsRoutes } from './routes/admin-analytics.js';
 import { makeAdminCommsRoutes } from './routes/admin-comms.js';
 import { makeStudentCommsRoutes } from './routes/student-comms.js';
+import { makeAdaptiveTestRoutes } from './routes/adaptiveTest.js';
+import { OpenAIClient } from './lib/llm/openai.js';
 import { makeProgressRoutes } from './routes/progress.js';
 import { makeUsersRoutes } from './routes/users.js';
 
@@ -458,6 +460,15 @@ export function buildApp(deps: AppDeps): Hono {
       logger,
       newId: () => globalThis.crypto.randomUUID().replace(/-/g, '').slice(0, 16),
       now: engineDeps.now,
+    }),
+  );
+  // Phase C: Adaptive onboarding test — AI generates diagnostic MCQs + study plan.
+  v1.route(
+    '/users',
+    makeAdaptiveTestRoutes({
+      users,
+      generator: new OpenAIClient(env.OPENAI_API_KEY),
+      logger,
     }),
   );
   // Mount caller's "my attempts" history under /v1/users/me/long-answers/*.

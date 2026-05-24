@@ -49,6 +49,15 @@ export default function DashboardPage() {
           router.replace('/onboarding');
           return;
         }
+        // Phase C: If basic onboarding done but adaptive test not taken,
+        // redirect to the diagnostic test.
+        if (
+          (meRes.user as any).onboardingVersion === 2 &&
+          !(meRes.user as any).adaptiveTestCompletedAt
+        ) {
+          router.replace('/onboarding/adaptive-test');
+          return;
+        }
         api
           .getProgress(meRes.user.targetExam)
           .then((p) => {
