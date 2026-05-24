@@ -63,20 +63,9 @@ interface VerifyChapterJson {
   factualErrors?: string[];
 }
 
-function tryParseJson<T>(s: string): T | null {
-  // Defensive: gemini sometimes wraps JSON in ```json fences even with
-  // responseMimeType=application/json. Strip them.
-  const stripped = s
-    .replace(/^\s*```json\s*/i, '')
-    .replace(/^\s*```\s*/i, '')
-    .replace(/\s*```\s*$/i, '')
-    .trim();
-  try {
-    return JSON.parse(stripped) as T;
-  } catch {
-    return null;
-  }
-}
+// Robust JSON parser that handles markdown fences and trailing commentary.
+// See ../llm/parseJson.ts for the failure modes covered.
+import { safeParseLlmJson as tryParseJson } from '../llm/parseJson.js';
 
 function isValidChapterJson(d: unknown): d is RawChapterJson {
   if (typeof d !== 'object' || d === null) return false;
@@ -182,7 +171,12 @@ export async function generateChapter(
           user: chapterVerificationUser(verifyPayload),
           json: true,
           temperature: 0.2,
-          maxTokens: 800,
+          // Bumped from 800 -> 2000. Verifier outputs include a reasoning
+          // string plus a factualErrors array; for a chapter-length input
+          // the verifier often produced more issues than 800 tokens could
+          // serialise, truncating the JSON and triggering a malformed-
+          // output flag on otherwise valid drafts.
+          maxTokens: 2000,
         });
         const parsed = tryParseJson<VerifyChapterJson>(resp.content);
         if (!parsed || !isValidVerifyJson(parsed)) {
