@@ -31,6 +31,7 @@ export const CREDIT_SPEND_AMOUNTS: Readonly<Record<CreditSpendReason, number>> =
   mock_test: 20,
   ai_tutor_question: 5,
   concept_video: 5,
+  long_answer_grading: 30,
   admin_revoke: 0, // supplied per-revoke
 };
 

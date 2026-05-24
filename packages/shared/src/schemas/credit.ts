@@ -25,6 +25,7 @@ export const creditSpendReasonSchema = z.enum([
   'mock_test',
   'ai_tutor_question',
   'concept_video',
+  'long_answer_grading',
   'admin_revoke',
 ]);
 
