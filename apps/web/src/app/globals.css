@@ -476,17 +476,31 @@ textarea.input {
   transition: width 240ms ease;
 }
 
-/* Tap zones (mobile / non-keyboard) -- invisible overlays. The toolbar
-   sits above them so its buttons remain clickable. */
+/* Tap zones (mobile / non-keyboard) -- invisible overlays.
+ *
+ *   - top: 4rem keeps the header (Logo + "Library" pill) clickable on
+ *     every page. Without this offset the fixed-positioned tap zone sits
+ *     above the header and steals every click in that strip.
+ *   - bottom: 3.4rem leaves room for the toolbar.
+ *   - The reader page only mounts these tap zones on cover + section
+ *     pages; the end page has CTAs inside the article and shouldn't be
+ *     intercepted at all.
+ */
 .kindle-tap {
   position: fixed;
-  top: 0;
-  bottom: 3.4rem;          /* leave room for the toolbar */
+  top: 4rem;
+  bottom: 3.4rem;
   width: 35%;
   z-index: 1;
   cursor: pointer;
   background: transparent;
   -webkit-tap-highlight-color: transparent;
+}
+@media (min-width: 720px) {
+  .kindle-tap {
+    /* Header pads more on tablet/desktop. */
+    top: 5rem;
+  }
 }
 .kindle-tap-left  { left: 0; }
 .kindle-tap-right { right: 0; width: 65%; }
