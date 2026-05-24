@@ -145,6 +145,7 @@ import { makeAdminCommsRoutes } from './routes/admin-comms.js';
 import { makeStudentCommsRoutes } from './routes/student-comms.js';
 import { makeProgressRoutes } from './routes/progress.js';
 import { makeUsersRoutes } from './routes/users.js';
+import { makeAdaptiveTestRoutes } from './routes/adaptiveTest.js';
 
 /**
  * Build the Hono app.
@@ -332,6 +333,7 @@ export function buildApp(deps: AppDeps): Hono {
   v1.use('*', authMiddleware(verifier));
   v1.route('/credits', makeCreditsRoutes({ ledger, logger, ...engineDeps }));
   v1.route('/users', makeUsersRoutes({ users, logger }));
+  v1.route('/users/me/adaptive-test', makeAdaptiveTestRoutes({ users, logger, openaiApiKey: env.OPENAI_API_KEY }));
   // Phase 12: progress snapshot for /progress page + dashboard widgets.
   // Mounted on the same /users prefix so the path is /v1/users/me/progress.
   v1.route(
