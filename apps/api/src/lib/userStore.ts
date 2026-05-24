@@ -40,10 +40,37 @@ export type StoredUser = User & {
   lastDailyAt?: ISODateTime | null;
 };
 
+/**
+ * Phase 20 -- options for the admin user-list endpoint.
+ *
+ * Pagination is offset-based for the in-memory store and cursor-based
+ * for Firestore (we order by createdAt desc and pass the last seen
+ * createdAt back as `beforeCreatedAt`). Search is a case-insensitive
+ * substring match on email + name.
+ *
+ * No full-text search at this point. With <10k users a pure prefix
+ * search and a 500-row scan is fine; a real search index (Algolia /
+ * Meilisearch / Firestore full-text extension) is a follow-up.
+ */
+export interface ListUsersOptions {
+  /** Free-form substring; matched case-insensitively against email + name. */
+  q?: string;
+  /** Filter by target exam. */
+  exam?: ExamSlug;
+  /** Default 50, capped at 200. */
+  limit?: number;
+  /** Page back: only return rows older than this createdAt. */
+  beforeCreatedAt?: ISODateTime;
+}
+
 export interface UserStore {
   getOrCreate(uid: UserId, init: UserStoreInit): Promise<StoredUser>;
   get(uid: UserId): Promise<StoredUser | null>;
   setTargetExam(uid: UserId, exam: ExamSlug): Promise<StoredUser>;
+  /**
+   * Phase 20 -- admin paginated list. Sorted by createdAt desc.
+   */
+  list(opts?: ListUsersOptions): Promise<StoredUser[]>;
   /**
    * Bump the streak counter on `uid` based on `now`. Idempotent within a
    * single IST day -- repeated calls on the same day return the user
@@ -55,6 +82,22 @@ export interface UserStore {
    * `kind` -- if the user already has the same kind, this is a no-op.
    */
   addStreakBadge(uid: UserId, badge: StreakBadge): Promise<StoredUser>;
+}
+
+const DEFAULT_LIST_LIMIT = 50;
+const MAX_LIST_LIMIT = 200;
+
+function clampListLimit(n?: number): number {
+  if (!n || n <= 0) return DEFAULT_LIST_LIMIT;
+  return Math.min(n, MAX_LIST_LIMIT);
+}
+
+function userMatchesQuery(u: StoredUser, q: string): boolean {
+  const needle = q.toLowerCase();
+  if (u.email && u.email.toLowerCase().includes(needle)) return true;
+  if (u.name && u.name.toLowerCase().includes(needle)) return true;
+  if (u.id && u.id.toLowerCase().includes(needle)) return true;
+  return false;
 }
 
 function newUser(uid: UserId, init: UserStoreInit, now: string): StoredUser {
@@ -181,6 +224,17 @@ export class InMemoryUserStore implements UserStore {
     this.users.set(uid, updated);
     return updated;
   }
+
+  async list(opts: ListUsersOptions = {}): Promise<StoredUser[]> {
+    let rows = Array.from(this.users.values());
+    if (opts.exam) rows = rows.filter((u) => u.targetExam === opts.exam);
+    if (opts.q && opts.q.trim()) rows = rows.filter((u) => userMatchesQuery(u, opts.q!.trim()));
+    if (opts.beforeCreatedAt) {
+      rows = rows.filter((u) => u.createdAt < (opts.beforeCreatedAt as string));
+    }
+    rows.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+    return rows.slice(0, clampListLimit(opts.limit));
+  }
 }
 
 // ---------- firestore ------------------------------------------------------
@@ -249,5 +303,30 @@ export class FirestoreUserStore implements UserStore {
       tx.set(ref, updated, { merge: true });
       return updated;
     });
+  }
+
+  /**
+   * Phase 20 admin list. We don't have a server-side full-text index so a
+   * `q` query goes via a single-equality + small client-side filter. Exam
+   * filtering uses a Firestore equality clause when set; otherwise we
+   * paginate over createdAt only.
+   *
+   * Rule of thumb at our scale: keep the page small (50) and apply text
+   * filtering on the small page client-side. Switch to Algolia / a search
+   * extension when the corpus crosses ~50k users.
+   */
+  async list(opts: ListUsersOptions = {}): Promise<StoredUser[]> {
+    let q = this.db
+      .collection(COLLECTION)
+      .orderBy('createdAt', 'desc') as FirebaseFirestore.Query;
+    if (opts.exam) q = q.where('targetExam', '==', opts.exam);
+    if (opts.beforeCreatedAt) q = q.where('createdAt', '<', opts.beforeCreatedAt);
+    // When `q` is provided we over-fetch a bit so the small client-side
+    // filter has rows to work with. Without `q` we trust the page size.
+    const overFetch = opts.q && opts.q.trim() ? 5 : 1;
+    const snap = await q.limit(clampListLimit(opts.limit) * overFetch).get();
+    let rows = snap.docs.map((d) => d.data() as StoredUser);
+    if (opts.q && opts.q.trim()) rows = rows.filter((u) => userMatchesQuery(u, opts.q!.trim()));
+    return rows.slice(0, clampListLimit(opts.limit));
   }
 }

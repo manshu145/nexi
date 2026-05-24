@@ -117,6 +117,19 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               >
                 Long-form
               </NavLink>
+              <span className="mx-1 hidden h-4 w-px bg-line lg:inline-block" aria-hidden="true" />
+              <NavLink href="/admin/users" current={pathname.startsWith('/admin/users')}>
+                Users
+              </NavLink>
+              <NavLink
+                href="/admin/analytics"
+                current={pathname.startsWith('/admin/analytics')}
+              >
+                Analytics
+              </NavLink>
+              <NavLink href="/admin/audit" current={pathname.startsWith('/admin/audit')}>
+                Audit
+              </NavLink>
               {me.role === 'super_admin' ? (
                 <NavLink href="/admin/team" current={pathname.startsWith('/admin/team')}>
                   Team
@@ -169,6 +182,15 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             current={pathname.startsWith('/admin/long-answers')}
           >
             Long-form
+          </NavLink>
+          <NavLink href="/admin/users" current={pathname.startsWith('/admin/users')}>
+            Users
+          </NavLink>
+          <NavLink href="/admin/analytics" current={pathname.startsWith('/admin/analytics')}>
+            Analytics
+          </NavLink>
+          <NavLink href="/admin/audit" current={pathname.startsWith('/admin/audit')}>
+            Audit
           </NavLink>
           {me.role === 'super_admin' ? (
             <NavLink href="/admin/team" current={pathname.startsWith('/admin/team')}>
