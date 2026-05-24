@@ -95,7 +95,7 @@ export default function NexipediaArticlePage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col px-6 pt-6 pb-16">
+    <main className="mx-auto flex min-h-screen max-w-3xl flex-col px-4 pt-6 pb-24 sm:px-6 sm:pb-16">
       <header className="flex items-start justify-between">
         <Logo />
         <Link href="/nexipedia" className="btn-ghost-sm">

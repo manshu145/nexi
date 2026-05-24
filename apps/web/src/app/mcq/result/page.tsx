@@ -32,7 +32,7 @@ export default function McqResultPage() {
 
   if (missing) {
     return (
-      <main className="mx-auto flex min-h-screen max-w-2xl flex-col px-6 pt-10 pb-16">
+      <main className="mx-auto flex min-h-screen max-w-3xl flex-col px-4 pt-8 pb-24 sm:px-6 sm:pb-16">
         <Logo />
         <section className="paper-card mt-12 p-7">
           <h1 className="font-serif text-2xl font-semibold text-ink-900">
@@ -68,7 +68,7 @@ export default function McqResultPage() {
   const correctMap = new Map(result.explanations.map((e) => [e.mcqId, e]));
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col px-6 pt-8 pb-16">
+    <main className="mx-auto flex min-h-screen max-w-3xl flex-col px-4 pt-6 pb-24 sm:px-6 sm:pb-16">
       <header className="flex items-start justify-between">
         <Logo />
         <button

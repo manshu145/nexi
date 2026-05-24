@@ -7,6 +7,8 @@ import type { PublishedChapter } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 import { useAuth } from '~/lib/auth-context';
 import { api } from '~/lib/api';
+import { TextToSpeech } from '~/components/TextToSpeech';
+import { VisualizeButton } from '~/components/VisualizeButton';
 
 /**
  * /read/<exam>/<subject>/<slug>
@@ -49,6 +51,7 @@ export default function ChapterReadPage() {
   const [markReadError, setMarkReadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
+  const [flipDir, setFlipDir] = useState<'forward' | 'back' | null>(null);
   const pageRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -97,13 +100,16 @@ export default function ChapterReadPage() {
     () => (chapter ? `nexi.read.${chapter.id}` : null),
     [chapter],
   );
-
   // Restore last page on mount (after chapter loads).
+  // If bookmark is at the last page (end page), reset to cover.
   useEffect(() => {
     if (!storageKey || totalPages === 0) return;
     try {
       const raw = window.localStorage.getItem(storageKey);
-      const idx = raw == null ? 0 : Math.max(0, Math.min(totalPages - 1, Number(raw)));
+      if (raw == null) { setPage(0); return; }
+      const idx = Math.max(0, Math.min(totalPages - 1, Number(raw)));
+      // If stored position is the end page, restart from cover
+      if (idx >= totalPages - 1) { setPage(0); return; }
       setPage(Number.isFinite(idx) ? idx : 0);
     } catch {
       setPage(0);
@@ -127,10 +133,18 @@ export default function ChapterReadPage() {
     pageRef.current?.scrollTo({ top: 0, behavior: 'auto' });
   }, [page]);
 
+  // Clear page-flip animation class after it completes
+  useEffect(() => {
+    if (!flipDir) return;
+    const t = setTimeout(() => setFlipDir(null), 420);
+    return () => clearTimeout(t);
+  }, [flipDir, page]);
   const goPrev = useCallback(() => {
+    setFlipDir('back');
     setPage((p) => Math.max(0, p - 1));
   }, []);
   const goNext = useCallback(() => {
+    setFlipDir('forward');
     setPage((p) => Math.min(totalPages - 1, p + 1));
   }, [totalPages]);
 
@@ -267,7 +281,7 @@ export default function ChapterReadPage() {
       {/* The reading column. */}
       <article
         ref={pageRef}
-        className="kindle-page reader"
+        className={`kindle-page reader ${flipDir === 'forward' ? 'kindle-page-flip-forward' : flipDir === 'back' ? 'kindle-page-flip-back' : ''}`}
         aria-live="polite"
       >
         {isCover ? (
@@ -330,6 +344,10 @@ export default function ChapterReadPage() {
         ) : currentSection ? (
           <section>
             <h2 className="reader-heading font-serif">{currentSection.heading}</h2>
+            <div className="flex items-center gap-3 mt-2 mb-4">
+              <TextToSpeech text={currentSection.body} />
+              <VisualizeButton text={currentSection.body} title={currentSection.heading} />
+            </div>
             <div className="reader-body">{renderBody(currentSection.body)}</div>
           </section>
         ) : null}

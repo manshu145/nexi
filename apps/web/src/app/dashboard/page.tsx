@@ -110,7 +110,7 @@ export default function DashboardPage() {
   const examName = me?.targetExam ? EXAM_BY_SLUG.get(me.targetExam)?.name : null;
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-5xl flex-col px-4 pt-8 pb-16 sm:px-6">
+    <main className="mx-auto flex min-h-screen max-w-5xl flex-col px-4 pt-6 pb-24 sm:px-6 sm:pt-8 sm:pb-16">
       {/* ─── Header ─── */}
       <header className="flex items-start justify-between">
         <Logo />

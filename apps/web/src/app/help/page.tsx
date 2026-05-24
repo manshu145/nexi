@@ -113,7 +113,7 @@ export default function HelpPage() {
                 <button
                   key={q}
                   onClick={() => { setInput(q); }}
-                  className="pill cursor-pointer hover:border-ember-500 transition-colors"
+                  className="pill cursor-pointer card-selectable"
                 >
                   {q}
                 </button>
