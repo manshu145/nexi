@@ -65,6 +65,9 @@ export default function OnboardingPage() {
     if (user?.displayName && !name) setName(user.displayName);
   }, [user, name]);
 
+  // Bilingual helper - switches text based on selected language
+  const txt = (en: string, hi: string) => language === 'hi' ? hi : en;
+
   async function startAssessment() {
     if (!targetExam) return;
     try {
@@ -72,10 +75,16 @@ export default function OnboardingPage() {
       setError(null);
       setStep(5);
       const res = await api.ai.generateAssessment(targetExam, 15, language as 'en' | 'hi');
-      setAssessmentMcqs(res.mcqs);
-      setAssessmentAnswers(new Array(res.mcqs.length).fill(null));
+      if (res.mcqs && res.mcqs.length > 0) {
+        setAssessmentMcqs(res.mcqs);
+        setAssessmentAnswers(new Array(res.mcqs.length).fill(null));
+      } else {
+        // No questions returned — skip assessment gracefully
+        setError('AI service is warming up. You can skip and start studying now.');
+      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to generate assessment');
+      // API not available — let user skip assessment
+      setError('AI assessment is temporarily unavailable. You can skip and start studying — your level will be set to intermediate.');
     } finally {
       setAssessmentLoading(false);
     }
@@ -176,7 +185,7 @@ export default function OnboardingPage() {
           <p className="mt-2 text-sm text-muted-500">Content will be shown in this language where available.</p>
           <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
             {SUPPORTED_LANGUAGES.map((lang) => (
-              <button key={lang.code} onClick={() => setLang(lang.code)} className={`paper-card card-selectable px-4 py-3 text-left ${language === lang.code ? 'card-selected' : ''}`}>
+              <button key={lang.code} onClick={() => { setLang(lang.code); setLanguage(lang.code); }} className={`paper-card card-selectable px-4 py-3 text-left ${language === lang.code ? 'card-selected' : ''}`}>
                 <span className="block text-sm font-medium text-ink-900">{lang.native}</span>
                 <span className="block text-xs text-muted-500">{lang.label}</span>
               </button>
@@ -189,12 +198,12 @@ export default function OnboardingPage() {
       {/* Step 2: Personal */}
       {step === 2 && (
         <section>
-          <h1 className="font-serif text-2xl font-semibold leading-tight text-ink-900 sm:text-3xl">Tell us about yourself</h1>
-          <p className="mt-2 text-sm text-muted-500">This helps us personalize your study experience.</p>
+          <h1 className="font-serif text-2xl font-semibold leading-tight text-ink-900 sm:text-3xl">{txt('Tell us about yourself', 'अपने बारे में बताएं')}</h1>
+          <p className="mt-2 text-sm text-muted-500">{txt('This helps us personalize your study experience.', 'इससे हम आपकी पढ़ाई को बेहतर बना सकेंगे।')}</p>
           <div className="mt-6 space-y-4">
-            <div><label className="block text-sm font-medium text-ink-800 mb-1">Full name *</label><input type="text" className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your full name" /></div>
-            <div><label className="block text-sm font-medium text-ink-800 mb-1">Date of birth</label><input type="date" className="input" value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} /></div>
-            <div><label className="block text-sm font-medium text-ink-800 mb-1">Your aim / career goal</label><input type="text" className="input" value={aim} onChange={(e) => setAim(e.target.value)} placeholder="e.g. IAS Officer, Doctor, Engineer" /></div>
+            <div><label className="block text-sm font-medium text-ink-800 mb-1">{txt('Full name *', 'पूरा नाम *')}</label><input type="text" className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your full name" /></div>
+            <div><label className="block text-sm font-medium text-ink-800 mb-1">{txt('Date of birth', 'जन्म तिथि')}</label><input type="date" className="input" value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} /></div>
+            <div><label className="block text-sm font-medium text-ink-800 mb-1">{txt('Your aim / career goal', 'आपका लक्ष्य')}</label><input type="text" className="input" value={aim} onChange={(e) => setAim(e.target.value)} placeholder="e.g. IAS Officer, Doctor, Engineer" /></div>
           </div>
           <div className="mt-8 flex gap-3">
             <button className="btn-ghost flex-1" onClick={() => setStep(1)}>Back</button>
@@ -206,9 +215,9 @@ export default function OnboardingPage() {
       {/* Step 3: Education */}
       {step === 3 && (
         <section>
-          <h1 className="font-serif text-2xl font-semibold leading-tight text-ink-900 sm:text-3xl">Education details</h1>
+          <h1 className="font-serif text-2xl font-semibold leading-tight text-ink-900 sm:text-3xl">{txt('Education details', 'शिक्षा विवरण')}</h1>
           <div className="mt-6 space-y-4">
-            <div><label className="block text-sm font-medium text-ink-800 mb-1">Current class / level</label><select className="input" value={classLevel} onChange={(e) => setClassLevel(e.target.value)}><option value="">Select...</option>{CLASS_LEVELS.map((cl) => (<option key={cl} value={cl}>{cl.replace('-', ' ').replace(/\b\w/g, (c) => c.toUpperCase())}</option>))}</select></div>
+            <div><label className="block text-sm font-medium text-ink-800 mb-1">{txt('Current class / level', 'कक्षा / स्तर')}</label><select className="input" value={classLevel} onChange={(e) => setClassLevel(e.target.value)}><option value="">Select...</option>{CLASS_LEVELS.map((cl) => (<option key={cl} value={cl}>{cl.replace('-', ' ').replace(/\b\w/g, (c) => c.toUpperCase())}</option>))}</select></div>
             <div><label className="block text-sm font-medium text-ink-800 mb-1">Board</label><select className="input" value={board} onChange={(e) => setBoard(e.target.value)}><option value="">Select...</option>{BOARDS.map((b) => (<option key={b} value={b}>{b.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}</option>))}</select></div>
             <div><label className="block text-sm font-medium text-ink-800 mb-1">School / College name</label><input type="text" className="input" value={schoolName} onChange={(e) => setSchoolName(e.target.value)} placeholder="Optional" /></div>
             <div className="grid grid-cols-2 gap-3">
@@ -226,8 +235,8 @@ export default function OnboardingPage() {
       {/* Step 4: Exam selection */}
       {step === 4 && (
         <section>
-          <h1 className="font-serif text-2xl font-semibold leading-tight text-ink-900 sm:text-3xl">Which exam are you preparing for?</h1>
-          <p className="mt-2 text-sm text-muted-500">Choose your primary exam. You can add more later.</p>
+          <h1 className="font-serif text-2xl font-semibold leading-tight text-ink-900 sm:text-3xl">{txt('Which exam are you preparing for?', 'आप किस परीक्षा की तैयारी कर रहे हैं?')}</h1>
+          <p className="mt-2 text-sm text-muted-500">{txt('Choose your primary exam. You can add more later.', 'अपनी मुख्य परीक्षा चुनें। बाद में बदल सकते हैं।')}</p>
           <div className="mt-6 grid grid-cols-1 gap-2 sm:grid-cols-2">
             {LIVE_EXAMS.map((exam) => (
               <button key={exam.id} onClick={() => setTargetExam(exam.id)} className={`paper-card card-selectable px-4 py-3 text-left ${targetExam === exam.id ? 'card-selected' : ''}`}>
@@ -246,10 +255,10 @@ export default function OnboardingPage() {
       {/* Step 5: AI Assessment */}
       {step === 5 && (
         <section>
-          <h1 className="font-serif text-2xl font-semibold leading-tight text-ink-900 sm:text-3xl">AI Assessment</h1>
-          <p className="mt-2 text-sm text-muted-500">Answer these 15 questions so we can personalize your study plan.</p>
+          <h1 className="font-serif text-2xl font-semibold leading-tight text-ink-900 sm:text-3xl">{txt('AI Assessment', 'AI मूल्यांकन')}</h1>
+          <p className="mt-2 text-sm text-muted-500">{txt('Answer these 15 questions so we can personalize your study plan.', 'ये 15 सवालों के जवाब दें ताकि हम आपकी पढ़ाई का प्लान बना सकें।')}</p>
           {assessmentLoading ? (
-            <div className="mt-8 text-center py-12"><span className="spinner" aria-hidden="true" /><p className="mt-3 text-sm text-muted-500">Generating assessment questions with AI...</p></div>
+            <div className="mt-8 text-center py-12"><span className="spinner" aria-hidden="true" /><p className="mt-3 text-sm text-muted-500">{txt('Generating assessment questions with AI...', 'AI से प्रश्न तैयार हो रहे हैं...')}</p></div>
           ) : assessmentMcqs.length > 0 ? (
             <div className="mt-6">
               <div className="flex items-center justify-between text-xs text-muted-500 mb-4">
@@ -278,7 +287,7 @@ export default function OnboardingPage() {
               </div>
             </div>
           ) : (
-            <div className="mt-8 text-center"><p className="text-sm text-muted-500">No questions generated.</p><button className="btn-ghost mt-4" onClick={startAssessment}>Retry</button><button className="btn-primary mt-4 ml-2" onClick={skipAssessment}>Skip</button></div>
+            <div className="mt-8 text-center"><p className="text-sm text-ink-800 font-medium">Assessment not available right now</p><p className="mt-2 text-sm text-muted-500">Don't worry! You can start studying immediately. Your level will be set to intermediate.</p><button className="btn-primary mt-6 w-full" onClick={skipAssessment} disabled={submitting}>{submitting ? 'Saving...' : 'Start Studying →'}</button><button className="btn-ghost mt-3 w-full" onClick={startAssessment}>Retry Assessment</button></div>
           )}
         </section>
       )}

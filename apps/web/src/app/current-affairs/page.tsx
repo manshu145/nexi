@@ -32,22 +32,46 @@ export default function CurrentAffairsPage() {
 
   useEffect(() => {
     if (!user) return;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout
     (async () => {
       try {
         const res = await api.ai.getCurrentAffairs();
         setItems(res.items ?? []);
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Failed to load current affairs');
+        if (controller.signal.aborted) {
+          setError('Request timed out. AI service may be busy. Please try again later.');
+        } else {
+          setError(e instanceof Error ? e.message : 'Failed to load current affairs. AI service may not be available.');
+        }
       } finally {
+        clearTimeout(timeout);
         setFetching(false);
       }
     })();
+    return () => { controller.abort(); clearTimeout(timeout); };
   }, [user]);
 
-  if (loading || !user || fetching) {
+  if (loading || !user) {
     return (
       <main className="flex min-h-dvh items-center justify-center">
-        <span className="spinner" /> <span className="ml-2 text-sm text-muted-500">Loading current affairs...</span>
+        <span className="spinner" /> <span className="ml-2 text-sm text-muted-500">Loading...</span>
+      </main>
+    );
+  }
+
+  if (fetching) {
+    return (
+      <main className="mx-auto max-w-lg px-5 pt-6 pb-10 min-h-dvh">
+        <header className="flex items-center gap-3 mb-6">
+          <button onClick={() => router.push('/dashboard')} className="text-ink-800 hover:text-ember-600 transition">&larr;</button>
+          <h1 className="font-serif text-xl font-bold text-ink-900">📰 Current Affairs</h1>
+        </header>
+        <div className="text-center py-12">
+          <span className="spinner" />
+          <p className="mt-3 text-sm text-muted-500">AI is generating today&apos;s current affairs...</p>
+          <p className="mt-1 text-xs text-muted-400">This may take 10-15 seconds</p>
+        </div>
       </main>
     );
   }
@@ -97,7 +121,13 @@ export default function CurrentAffairsPage() {
         ))}
       </div>
 
-      {error && <p className="mt-4 text-sm text-ember-600 text-center">{error}</p>}
+      {error && (
+        <div className="text-center py-8">
+          <p className="text-sm text-ember-600">{error}</p>
+          <button onClick={() => { setFetching(true); setError(null); }} className="btn-ghost mt-4 text-sm">Retry</button>
+          <button onClick={() => router.push('/dashboard')} className="btn-ghost mt-2 ml-2 text-sm">Go to Dashboard</button>
+        </div>
+      )}
     </main>
   );
 }
