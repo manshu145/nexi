@@ -11,6 +11,7 @@ import {
 import { Logo } from '~/components/Logo';
 import { useAuth } from '~/lib/auth-context';
 import { api } from '~/lib/api';
+import { TextToSpeech } from '~/components/TextToSpeech';
 
 /**
  * /today -- Phase 19 student page for today's current affairs digest.
@@ -120,6 +121,9 @@ export default function TodayPage() {
               <h2 className="font-serif mt-2 text-lg font-semibold leading-snug text-ink-900">
                 {it.headline}
               </h2>
+              <div className="mt-2 mb-2">
+                <TextToSpeech text={it.body} />
+              </div>
               <div className="reader mt-3">
                 <div className="reader-body">{renderItemBody(it.body)}</div>
               </div>

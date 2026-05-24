@@ -304,26 +304,6 @@ export default function OnboardingPage() {
             ))}
           </div>
 
-          {/* Coming soon exams */}
-          <div className="mt-6">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-500 mb-2">All Exams (Live)</p>
-            <div className="flex flex-wrap gap-2">
-              {EXAMS.filter(e => e.status === 'soon').map((exam) => (
-                <button
-                  key={exam.id}
-                  onClick={() => setTargetExam(exam.id)}
-                  className={`pill card-selectable ${
-                    targetExam === exam.id
-                      ? 'card-selected'
-                      : ''
-                  }`}
-                >
-                  {exam.name}
-                </button>
-              ))}
-            </div>
-          </div>
-
           <div className="mt-8 flex gap-3">
             <button className="btn-ghost flex-1" onClick={() => setStep(3)}>Back</button>
             <button
