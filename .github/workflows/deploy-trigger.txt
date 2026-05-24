@@ -1,0 +1,2 @@
+Trigger file — edit this to force a web deploy without code changes.
+Last triggered: 2026-05-24
