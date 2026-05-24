@@ -150,6 +150,8 @@ import { makeAdaptiveTestRoutes } from './routes/adaptiveTest.js';
 import { makeSchedulerRoutes } from './routes/scheduler.js';
 import { makeCaQuizRoutes } from './routes/caQuiz.js';
 import { makeVisualizeRoutes } from './routes/visualize.js';
+import { makePersonalizedRoutes } from './routes/personalized.js';
+import { createAIEngine } from './lib/aiEngine.js';
 import { makeTtsRoutes } from './routes/tts.js';
 import { makeRecommendationsRoutes } from './routes/recommendations.js';
 
@@ -485,6 +487,10 @@ export function buildApp(deps: AppDeps): Hono {
   // Phase G+H+I: AI visualization + Text-to-Speech
   v1.route('/visualize', makeVisualizeRoutes({ logger, openaiApiKey: env.OPENAI_API_KEY, geminiApiKey: env.GEMINI_API_KEY }));
   v1.route('/tts', makeTtsRoutes({ logger, googleTtsApiKey: env.GOOGLE_TTS_API_KEY }));
+
+  // On-demand personalized AI content generation (no admin needed)
+  const aiEngine = createAIEngine({ openaiApiKey: env.OPENAI_API_KEY, geminiApiKey: env.GEMINI_API_KEY, groqApiKey: env.GROQ_API_KEY });
+  v1.route('/ai', makePersonalizedRoutes({ ai: aiEngine, users, logger, openaiApiKey: env.OPENAI_API_KEY }));
 
   // /admin/* so its specific paths win over the generic admin route's
   // catch-all (Hono matches in registration order).
