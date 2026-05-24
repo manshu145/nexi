@@ -65,6 +65,14 @@ import {
   type CurrentAffairsDraftStore,
 } from './lib/currentAffairsStore.js';
 import {
+  FirestoreLongAnswerAttemptStore,
+  FirestoreLongAnswerQuestionStore,
+  InMemoryLongAnswerAttemptStore,
+  InMemoryLongAnswerQuestionStore,
+  type LongAnswerAttemptStore,
+  type LongAnswerQuestionStore,
+} from './lib/longAnswerStore.js';
+import {
   FirestoreReferralStore,
   InMemoryReferralStore,
   type ReferralStore,
@@ -109,6 +117,11 @@ import {
   makeAdminCurrentAffairsRoutes,
   makeStudentCurrentAffairsRoutes,
 } from './routes/currentAffairs.js';
+import {
+  makeAdminLongAnswerRoutes,
+  makeStudentLongAnswerRoutes,
+  makeUserLongAnswerRoutes,
+} from './routes/longAnswers.js';
 import { makeProgressRoutes } from './routes/progress.js';
 import { makeUsersRoutes } from './routes/users.js';
 
@@ -139,6 +152,8 @@ export interface AppDeps {
   nexipediaArticles?: NexipediaArticleStore;
   currentAffairsDrafts?: CurrentAffairsDraftStore;
   currentAffairsDigests?: CurrentAffairsDigestStore;
+  longAnswerQuestions?: LongAnswerQuestionStore;
+  longAnswerAttempts?: LongAnswerAttemptStore;
   attempts?: McqAttemptStore;
   examDates?: ExamDatesStore;
   referrals?: ReferralStore;
@@ -189,6 +204,16 @@ export function buildApp(deps: AppDeps): Hono {
     (fs
       ? new FirestoreCurrentAffairsDigestStore(fs)
       : new InMemoryCurrentAffairsDigestStore());
+  const longAnswerQuestions =
+    deps.longAnswerQuestions ??
+    (fs
+      ? new FirestoreLongAnswerQuestionStore(fs)
+      : new InMemoryLongAnswerQuestionStore());
+  const longAnswerAttempts =
+    deps.longAnswerAttempts ??
+    (fs
+      ? new FirestoreLongAnswerAttemptStore(fs)
+      : new InMemoryLongAnswerAttemptStore());
   const attempts =
     deps.attempts ??
     (fs ? new FirestoreMcqAttemptStore(fs) : new InMemoryMcqAttemptStore());
@@ -374,6 +399,30 @@ export function buildApp(deps: AppDeps): Hono {
       now: engineDeps.now,
     }),
   );
+  // Phase 18: long-form descriptive answers + AI grading.
+  v1.route(
+    '/long-answers',
+    makeStudentLongAnswerRoutes({
+      env,
+      questions: longAnswerQuestions,
+      attempts: longAnswerAttempts,
+      ledger,
+      logger,
+      newId: () => globalThis.crypto.randomUUID().replace(/-/g, '').slice(0, 16),
+      newEventId: engineDeps.newId,
+      now: engineDeps.now,
+      getTargetExam,
+    }),
+  );
+  // Mount caller's "my attempts" history under /v1/users/me/long-answers/*.
+  v1.route(
+    '/users',
+    makeUserLongAnswerRoutes({
+      questions: longAnswerQuestions,
+      attempts: longAnswerAttempts,
+      logger,
+    }),
+  );
   // Phase 6: RBAC bootstrap routes. /admin/auth/* MUST be mounted BEFORE
   // /admin/* so its specific paths win over the generic admin route's
   // catch-all (Hono matches in registration order).
@@ -412,6 +461,18 @@ export function buildApp(deps: AppDeps): Hono {
       digests: currentAffairsDigests,
       admins,
       logger,
+    }),
+  );
+  // Phase 18: admin long-form question CRUD. Same ordering rule.
+  v1.route(
+    '/admin',
+    makeAdminLongAnswerRoutes({
+      env,
+      questions: longAnswerQuestions,
+      admins,
+      logger,
+      newId: () => globalThis.crypto.randomUUID().replace(/-/g, '').slice(0, 16),
+      now: engineDeps.now,
     }),
   );
   v1.route('/admin', makeAdminRoutes({ env, drafts, mcqs, admins, logger }));

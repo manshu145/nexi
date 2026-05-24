@@ -33,6 +33,7 @@ export type CreditSpendReason =
   | 'mock_test'               // -20
   | 'ai_tutor_question'       // -5
   | 'concept_video'           // -5
+  | 'long_answer_grading'     // -30 (Phase 18)
   | 'admin_revoke';           // discretionary
 
 export type CreditEventKind =
