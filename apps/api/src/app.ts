@@ -570,10 +570,15 @@ export function buildApp(deps: AppDeps): Hono {
       logger,
     }),
   );
+  // Phase E: Auto-content scheduler — mounted at specific path BEFORE
+  // generic /admin routes so its own auth (requireAuth only) takes priority.
+  v1.route('/admin/scheduler', makeSchedulerRoutes({ env, drafts, users, logger }));
+
   // Phase 21: admin comms — announcements, broadcasts, support tickets.
   v1.route(
     '/admin',
     makeAdminCommsRoutes({
+      env,
       announcements: announcementsStore,
       broadcasts: broadcastsStore,
       tickets: ticketsStore,
@@ -585,9 +590,6 @@ export function buildApp(deps: AppDeps): Hono {
     }),
   );
   v1.route('/admin', makeAdminRoutes({ env, drafts, mcqs, admins, logger }));
-
-  // Phase E: Auto-content scheduler (admin monitors, AI generates)
-  v1.route('/admin/scheduler', makeSchedulerRoutes({ env, drafts, users, logger }));
 
   // Phase F: Current affairs quiz with timer + leaderboard
   v1.route('/current-affairs-quiz', makeCaQuizRoutes({ logger }));

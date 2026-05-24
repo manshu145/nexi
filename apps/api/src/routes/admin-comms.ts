@@ -6,13 +6,15 @@
  */
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { requireAuth } from '../auth.js';
+import { requireAnyAdmin, requireAuth } from '../auth.js';
+import type { Env } from '../env.js';
 import type { AdminUserStore } from '../lib/adminUserStore.js';
 import type { AnnouncementStore, BroadcastStore, TicketStore } from '../lib/commsStore.js';
 import type { UserStore } from '../lib/userStore.js';
 import type { Logger } from '../logger.js';
 
 interface Deps {
+  env: Env;
   announcements: AnnouncementStore;
   broadcasts: BroadcastStore;
   tickets: TicketStore;
@@ -24,22 +26,14 @@ interface Deps {
 }
 
 export function makeAdminCommsRoutes(deps: Deps) {
-  const { announcements, broadcasts, tickets, admins, logger, newId, now } = deps;
+  const { env, announcements, broadcasts, tickets, admins, logger, newId, now } = deps;
   const app = new Hono();
 
   // ──── guard: at least support_admin ────
   app.use('*', async (c, next) => {
-    const principal = requireAuth(c);
-    const uid = principal.userId as string;
-    const admin = await admins.get(uid);
-    if (
-      !admin ||
-      !['super_admin', 'admin', 'content_admin', 'support_admin'].includes(admin.role)
-    ) {
-      throw new HTTPException(403, { message: 'admin access required' });
-    }
-    c.set('adminUid', uid);
-    c.set('adminEmail', admin.email);
+    const { principal } = await requireAnyAdmin(c, env, admins, 'support_admin');
+    c.set('adminUid', principal.userId as string);
+    c.set('adminEmail', principal.email ?? 'admin');
     await next();
   });
 
