@@ -383,9 +383,23 @@ export function makeStudentChapterRoutes(deps: StudentChapterRoutesDeps): Hono {
     };
     if (exam) opts.exam = exam;
     if (subject) opts.subject = subject;
+    // Fetch the chapter list and the per-user read flags in parallel.
+    // The library page is the most-trafficked authenticated route after
+    // the dashboard, so a single transient Firestore hiccup on the
+    // chapter_reads subcollection (e.g. a brand-new user with an empty
+    // subcollection that hasn't been promoted yet) must NOT take down
+    // the whole library. We treat read-flag failures as "no reads yet"
+    // and log so we can chase the underlying cause without students
+    // seeing an "internal server error" banner.
     const [list, readRows] = await Promise.all([
       chapters.list(opts),
-      reads.list(principal.userId, exam),
+      reads.list(principal.userId, exam).catch((err) => {
+        logger.warn('chapters.reads_list_failed', {
+          userId: principal.userId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return [] as Awaited<ReturnType<ChapterReadStore['list']>>;
+      }),
     ]);
     const readSet = new Set<string>(readRows.map((r) => r.id));
     // Strip section bodies from the listing payload to keep responses small.

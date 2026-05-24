@@ -121,9 +121,20 @@ export async function computeSnapshot(input: {
   const sinceIso = new Date(sinceMs).toISOString();
 
   const [allAttempts, readRows, publishedChapters] = await Promise.all([
-    attempts.list({ userId, exam, limit: 5000 }),
-    reads.list(userId, exam),
-    chapters.list({ exam, publishedOnly: true, limit: 500 }),
+    // Each store call is wrapped so a transient failure in one
+    // sub-query (e.g. a brand-new user with no mcq_attempts yet, or
+    // a Firestore composite-index that's still building) doesn't
+    // 500 the whole /progress endpoint. Logged-and-degraded is far
+    // better than a screen-blanking error banner.
+    attempts
+      .list({ userId, exam, limit: 5000 })
+      .catch(() => [] as Awaited<ReturnType<typeof attempts.list>>),
+    reads
+      .list(userId, exam)
+      .catch(() => [] as Awaited<ReturnType<typeof reads.list>>),
+    chapters
+      .list({ exam, publishedOnly: true, limit: 500 })
+      .catch(() => [] as Awaited<ReturnType<typeof chapters.list>>),
   ]);
 
   // ---------- counts + per-subject mastery (all-time) -----------------
