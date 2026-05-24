@@ -320,8 +320,10 @@ export default function AdminChapterReviewPage() {
                   disabled={busy}
                 />
               ) : (
-                <div className="prose-paper font-serif mt-2 whitespace-pre-wrap text-ink-800">
-                  {s.body}
+                <div className="reader mt-2">
+                  <div className="reader-body whitespace-pre-wrap">
+                    {s.body}
+                  </div>
                 </div>
               )}
             </div>
