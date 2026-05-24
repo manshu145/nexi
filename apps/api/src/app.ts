@@ -56,6 +56,11 @@ import {
   type NexipediaArticleStore,
   type NexipediaDraftStore,
 } from './lib/nexipediaArticleStore.js';
+import {
+  FirestoreReferralStore,
+  InMemoryReferralStore,
+  type ReferralStore,
+} from './lib/referralStore.js';
 import { makeRateLimitMiddleware } from './lib/rateLimit.js';
 import {
   FirestoreSubscriptionStore,
@@ -84,6 +89,10 @@ import {
   makeMockTestSessionsRoutes,
   makeMockTestsRoutes,
 } from './routes/mockTests.js';
+import {
+  makeReferralAttributionRoutes,
+  makeReferralsMeRoutes,
+} from './routes/referrals.js';
 import {
   makeAdminNexipediaRoutes,
   makeStudentNexipediaRoutes,
@@ -118,6 +127,7 @@ export interface AppDeps {
   nexipediaArticles?: NexipediaArticleStore;
   attempts?: McqAttemptStore;
   examDates?: ExamDatesStore;
+  referrals?: ReferralStore;
 }
 
 export function buildApp(deps: AppDeps): Hono {
@@ -161,6 +171,9 @@ export function buildApp(deps: AppDeps): Hono {
   const examDates =
     deps.examDates ??
     (fs ? new FirestoreExamDatesStore(fs) : new InMemoryExamDatesStore());
+  const referrals =
+    deps.referrals ??
+    (fs ? new FirestoreReferralStore(fs) : new InMemoryReferralStore());
 
   const verifier = makeVerifier(env);
   const engineDeps = defaultEngineDeps();
@@ -284,6 +297,30 @@ export function buildApp(deps: AppDeps): Hono {
   v1.route('/billing', makeBillingRoutes({ env, subscriptions, logger }));
   // Phase 12: read-only exam dates endpoint for the dashboard countdown.
   v1.route('/exam-dates', makeExamDatesRoutes({ store: examDates, logger }));
+  // Phase 16: referral hub mounted on /v1/users so the path is
+  // /v1/users/me/referral. Attribution lives at the top level.
+  v1.route(
+    '/users',
+    makeReferralsMeRoutes({
+      store: referrals,
+      ledger,
+      logger,
+      newId: engineDeps.newId,
+      now: engineDeps.now,
+      appOrigin: env.APP_ORIGIN,
+    }),
+  );
+  v1.route(
+    '/referrals',
+    makeReferralAttributionRoutes({
+      store: referrals,
+      ledger,
+      logger,
+      newId: engineDeps.newId,
+      now: engineDeps.now,
+      appOrigin: env.APP_ORIGIN,
+    }),
+  );
   // Phase 9-10: AI-generated chapters. Student-facing list + read endpoints.
   // Phase 12: same routes now also expose `mark-read` and join with chapter_reads.
   v1.route(
