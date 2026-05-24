@@ -146,6 +146,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               <NavLink href="/admin/tickets" current={pathname.startsWith('/admin/tickets')}>
                 Tickets
               </NavLink>
+              <NavLink href="/admin/scheduler" current={pathname.startsWith('/admin/scheduler')}>
+                Scheduler
+              </NavLink>
               {me.role === 'super_admin' ? (
                 <NavLink href="/admin/team" current={pathname.startsWith('/admin/team')}>
                   Team
