@@ -16,7 +16,9 @@ export type ExamCategory =
   | 'civil-services'
   | 'defence'
   | 'banking'
-  | 'state';
+  | 'state'
+  | 'law'
+  | 'management';
 
 export type ExamStatus = 'live' | 'soon';
 

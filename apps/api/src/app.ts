@@ -146,6 +146,11 @@ import { makeStudentCommsRoutes } from './routes/student-comms.js';
 import { makeProgressRoutes } from './routes/progress.js';
 import { makeUsersRoutes } from './routes/users.js';
 import { makeChatbotRoutes } from './routes/chatbot.js';
+import { makeAdaptiveTestRoutes } from './routes/adaptiveTest.js';
+import { makeSchedulerRoutes } from './routes/scheduler.js';
+import { makeCaQuizRoutes } from './routes/caQuiz.js';
+import { makeVisualizeRoutes } from './routes/visualize.js';
+import { makeTtsRoutes } from './routes/tts.js';
 
 /**
  * Build the Hono app.
@@ -335,6 +340,7 @@ export function buildApp(deps: AppDeps): Hono {
   v1.route('/users', makeUsersRoutes({ users, logger }));
   // Phase J: AI support chatbot
   v1.route('/chat', makeChatbotRoutes({ logger, openaiApiKey: env.OPENAI_API_KEY }));
+  v1.route('/users/me/adaptive-test', makeAdaptiveTestRoutes({ users, logger, openaiApiKey: env.OPENAI_API_KEY }));
   // Phase 12: progress snapshot for /progress page + dashboard widgets.
   // Mounted on the same /users prefix so the path is /v1/users/me/progress.
   v1.route(
@@ -473,6 +479,10 @@ export function buildApp(deps: AppDeps): Hono {
     }),
   );
   // Phase 6: RBAC bootstrap routes. /admin/auth/* MUST be mounted BEFORE
+  // Phase G+H+I: AI visualization + Text-to-Speech
+  v1.route('/visualize', makeVisualizeRoutes({ logger, openaiApiKey: env.OPENAI_API_KEY }));
+  v1.route('/tts', makeTtsRoutes({ logger, googleTtsApiKey: env.GOOGLE_TTS_API_KEY }));
+
   // /admin/* so its specific paths win over the generic admin route's
   // catch-all (Hono matches in registration order).
   v1.route('/admin/auth', makeAdminAuthRoutes({ env, admins, logger }));
@@ -575,6 +585,13 @@ export function buildApp(deps: AppDeps): Hono {
     }),
   );
   v1.route('/admin', makeAdminRoutes({ env, drafts, mcqs, admins, logger }));
+
+  // Phase E: Auto-content scheduler (admin monitors, AI generates)
+  v1.route('/admin/scheduler', makeSchedulerRoutes({ logger, openaiApiKey: env.OPENAI_API_KEY }));
+
+  // Phase F: Current affairs quiz with timer + leaderboard
+  v1.route('/current-affairs-quiz', makeCaQuizRoutes({ logger }));
+
   app.route('/v1', v1);
 
   app.onError((err, c) => {

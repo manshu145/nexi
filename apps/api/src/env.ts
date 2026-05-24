@@ -89,6 +89,7 @@ const schema = z.object({
    *   - GROQ_API_KEY    -- verifier 2 (llama-3.3-70b-versatile)
    */
   OPENAI_API_KEY: z.string().default(''),
+  GOOGLE_TTS_API_KEY: z.string().default(''),
   GEMINI_API_KEY: z.string().default(''),
   GROQ_API_KEY: z.string().default(''),
 
