@@ -1473,16 +1473,56 @@ export const api = {
 
   // ─── On-demand AI content (personalized, no admin needed) ───────────
   ai: {
+    async generateSyllabus(exam?: string, language?: 'en' | 'hi'): Promise<{ syllabus: { subject: string; topics: { id: string; title: string; order: number }[] }[] }> {
+      const res = await authedFetch('/v1/ai/syllabus', { method: 'POST', body: JSON.stringify({ exam, language }) });
+      return res.json() as Promise<any>;
+    },
+    async generateAssessment(exam: string, count?: number, language?: 'en' | 'hi'): Promise<{ mcqs: { question: string; options: { key: string; text: string }[]; correctOption: string; explanation: string; subject: string; difficulty: string }[] }> {
+      const res = await authedFetch('/v1/ai/assess/generate', { method: 'POST', body: JSON.stringify({ exam, count, language }) });
+      return res.json() as Promise<any>;
+    },
+    async submitAssessment(exam: string, mcqs: any[], answers: (string | null)[]): Promise<{ result: { score: number; total: number; skillLevel: string; weakSubjects: string[]; strongSubjects: string[]; recommendations: string[] }; progress: any }> {
+      const res = await authedFetch('/v1/ai/assess/submit', { method: 'POST', body: JSON.stringify({ exam, mcqs, answers }) });
+      return res.json() as Promise<any>;
+    },
+    async getProgress(): Promise<{ progress: any | null }> {
+      const res = await authedFetch('/v1/ai/progress');
+      return res.json() as Promise<any>;
+    },
+    async updateProgress(data: Record<string, unknown>): Promise<{ ok: boolean }> {
+      const res = await authedFetch('/v1/ai/progress/update', { method: 'POST', body: JSON.stringify(data) });
+      return res.json() as Promise<any>;
+    },
+    async generateChapter(topic: string, subject?: string): Promise<{ chapter: { title: string; sections: { heading: string; content: string }[]; summary: string; keyPoints: string[] } }> {
+      const res = await authedFetch('/v1/ai/chapter', { method: 'POST', body: JSON.stringify({ topic, subject }) });
+      return res.json() as Promise<any>;
+    },
+    async generateMockTest(subject?: string, topic?: string, count?: number): Promise<{ id: string; mcqs: any[]; durationMinutes: number; totalQuestions: number }> {
+      const res = await authedFetch('/v1/ai/mock-test', { method: 'POST', body: JSON.stringify({ subject, topic, count }) });
+      return res.json() as Promise<any>;
+    },
+    async generateFinalTest(count?: number): Promise<{ id: string; mcqs: any[]; durationMinutes: number; totalQuestions: number }> {
+      const res = await authedFetch('/v1/ai/final-test', { method: 'POST', body: JSON.stringify({ count }) });
+      return res.json() as Promise<any>;
+    },
+    async getCurrentAffairs(): Promise<{ items: { title: string; summary: string; category: string; date: string; examRelevance: string }[] }> {
+      const res = await authedFetch('/v1/ai/current-affairs');
+      return res.json() as Promise<any>;
+    },
+    async chat(message: string): Promise<{ reply: string; timestamp: string }> {
+      const res = await authedFetch('/v1/ai/chat', { method: 'POST', body: JSON.stringify({ message }) });
+      return res.json() as Promise<any>;
+    },
+    async getChatHistory(): Promise<{ messages: { role: string; content: string; timestamp: string }[] }> {
+      const res = await authedFetch('/v1/ai/chat/history');
+      return res.json() as Promise<any>;
+    },
+    async clearChatHistory(): Promise<{ ok: boolean }> {
+      const res = await authedFetch('/v1/ai/chat/history', { method: 'DELETE' });
+      return res.json() as Promise<any>;
+    },
     async generateMcqs(subject?: string, count?: number): Promise<{ mcqs: { question: string; options: { key: string; text: string }[]; correctOption: string; explanation: string; subject: string; difficulty: string }[] }> {
       const res = await authedFetch('/v1/ai/mcqs', { method: 'POST', body: JSON.stringify({ subject, count }) });
-      return res.json() as Promise<any>;
-    },
-    async generateChapter(topic: string): Promise<{ chapter: { title: string; sections: { heading: string; content: string }[]; summary: string; keyPoints: string[] } }> {
-      const res = await authedFetch('/v1/ai/chapter', { method: 'POST', body: JSON.stringify({ topic }) });
-      return res.json() as Promise<any>;
-    },
-    async generateMockTest(subject?: string): Promise<{ id: string; mcqs: any[]; durationMinutes: number; totalQuestions: number }> {
-      const res = await authedFetch('/v1/ai/mock-test', { method: 'POST', body: JSON.stringify({ subject }) });
       return res.json() as Promise<any>;
     },
     async searchNexipedia(topic: string): Promise<{ article: { title: string; summary: string; sections: { heading: string; content: string; imageQuery?: string }[]; relatedTopics: string[]; youtubeQuery: string; diagramPrompt: string } }> {
@@ -1491,10 +1531,6 @@ export const api = {
     },
     async visualize(content: string): Promise<{ diagram: string; title: string }> {
       const res = await authedFetch('/v1/ai/visualize', { method: 'POST', body: JSON.stringify({ content }) });
-      return res.json() as Promise<any>;
-    },
-    async chat(message: string): Promise<{ reply: string }> {
-      const res = await authedFetch('/v1/ai/chat', { method: 'POST', body: JSON.stringify({ message }) });
       return res.json() as Promise<any>;
     },
   },
