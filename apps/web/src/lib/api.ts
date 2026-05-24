@@ -28,6 +28,13 @@ import type {
   LongAnswerLength,
   LongAnswerQuestion,
   ProgressSnapshot,
+  Announcement,
+  AnnouncementSummary,
+  Broadcast,
+  BroadcastSummary,
+  SupportTicket,
+  TicketMessage,
+  TicketWithMessages,
 } from '@nexigrate/shared';
 import { getFirebaseAuthClient } from './firebase';
 
@@ -1002,6 +1009,92 @@ export const api = {
       const res = await authedFetch('/v1/admin/analytics');
       return res.json() as Promise<AdminAnalyticsOverview>;
     },
+
+    // Phase 21: admin comms
+    comms: {
+      async listAnnouncements(): Promise<{ announcements: AnnouncementSummary[] }> {
+        const res = await authedFetch('/v1/admin/announcements');
+        return res.json() as Promise<{ announcements: AnnouncementSummary[] }>;
+      },
+      async getAnnouncement(id: string): Promise<Announcement> {
+        const res = await authedFetch(`/v1/admin/announcements/${encodeURIComponent(id)}`);
+        return res.json() as Promise<Announcement>;
+      },
+      async createAnnouncement(input: {
+        type?: string;
+        title: string;
+        body: string;
+        audience?: string;
+        audienceExam?: string;
+        expiresAt?: string | null;
+      }): Promise<{ id: string }> {
+        const res = await authedFetch('/v1/admin/announcements', {
+          method: 'POST',
+          body: JSON.stringify(input),
+        });
+        return res.json() as Promise<{ id: string }>;
+      },
+      async updateAnnouncement(id: string, patch: Record<string, unknown>): Promise<void> {
+        await authedFetch(`/v1/admin/announcements/${encodeURIComponent(id)}`, {
+          method: 'PATCH',
+          body: JSON.stringify(patch),
+        });
+      },
+      async deleteAnnouncement(id: string): Promise<void> {
+        await authedFetch(`/v1/admin/announcements/${encodeURIComponent(id)}`, {
+          method: 'DELETE',
+        });
+      },
+      async listBroadcasts(): Promise<{ broadcasts: BroadcastSummary[] }> {
+        const res = await authedFetch('/v1/admin/broadcasts');
+        return res.json() as Promise<{ broadcasts: BroadcastSummary[] }>;
+      },
+      async getBroadcast(id: string): Promise<Broadcast> {
+        const res = await authedFetch(`/v1/admin/broadcasts/${encodeURIComponent(id)}`);
+        return res.json() as Promise<Broadcast>;
+      },
+      async createBroadcast(input: {
+        channel?: string;
+        subject?: string;
+        body: string;
+        audience?: string;
+        audienceExam?: string;
+      }): Promise<{ id: string }> {
+        const res = await authedFetch('/v1/admin/broadcasts', {
+          method: 'POST',
+          body: JSON.stringify(input),
+        });
+        return res.json() as Promise<{ id: string }>;
+      },
+      async sendBroadcast(id: string): Promise<{ ok: boolean; status: string; recipientCount: number }> {
+        const res = await authedFetch(`/v1/admin/broadcasts/${encodeURIComponent(id)}/send`, {
+          method: 'POST',
+        });
+        return res.json() as Promise<{ ok: boolean; status: string; recipientCount: number }>;
+      },
+      async listTickets(status?: string): Promise<{ tickets: SupportTicket[] }> {
+        const qs = status ? `?status=${status}` : '';
+        const res = await authedFetch(`/v1/admin/tickets${qs}`);
+        return res.json() as Promise<{ tickets: SupportTicket[] }>;
+      },
+      async getTicket(id: string): Promise<TicketWithMessages> {
+        const res = await authedFetch(`/v1/admin/tickets/${encodeURIComponent(id)}`);
+        return res.json() as Promise<TicketWithMessages>;
+      },
+      async updateTicket(id: string, patch: Record<string, unknown>): Promise<void> {
+        await authedFetch(`/v1/admin/tickets/${encodeURIComponent(id)}`, {
+          method: 'PATCH',
+          body: JSON.stringify(patch),
+        });
+      },
+      async replyToTicket(ticketId: string, body: string): Promise<{ id: string }> {
+        const res = await authedFetch(
+          `/v1/admin/tickets/${encodeURIComponent(ticketId)}/reply`,
+          { method: 'POST', body: JSON.stringify({ body }) },
+        );
+        return res.json() as Promise<{ id: string }>;
+      },
+    },
   },
 
   // ----- chapters (student-facing)
@@ -1230,6 +1323,50 @@ export const api = {
       }>;
     },
   },
+
+  /* ═══ Phase 21: Comms — announcements, tickets ═══ */
+
+  announcements: {
+    async list(): Promise<{ announcements: AnnouncementSummary[] }> {
+      const res = await authedFetch('/v1/announcements');
+      return res.json() as Promise<{ announcements: AnnouncementSummary[] }>;
+    },
+  },
+
+  tickets: {
+    async create(input: { subject: string; body: string }): Promise<{ id: string }> {
+      const res = await authedFetch('/v1/tickets', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+      return res.json() as Promise<{ id: string }>;
+    },
+    async list(): Promise<{ tickets: SupportTicket[] }> {
+      const res = await authedFetch('/v1/tickets');
+      return res.json() as Promise<{ tickets: SupportTicket[] }>;
+    },
+    async get(id: string): Promise<TicketWithMessages> {
+      const res = await authedFetch(`/v1/tickets/${encodeURIComponent(id)}`);
+      return res.json() as Promise<TicketWithMessages>;
+    },
+    async reply(ticketId: string, body: string): Promise<{ id: string }> {
+      const res = await authedFetch(
+        `/v1/tickets/${encodeURIComponent(ticketId)}/reply`,
+        { method: 'POST', body: JSON.stringify({ body }) },
+      );
+      return res.json() as Promise<{ id: string }>;
+    },
+  },
 };
 
 export { ApiError };
+
+export type {
+  Announcement,
+  AnnouncementSummary,
+  Broadcast,
+  BroadcastSummary,
+  SupportTicket,
+  TicketMessage,
+  TicketWithMessages,
+};

@@ -78,6 +78,17 @@ import {
   type AuditLogStore,
 } from './lib/auditLogStore.js';
 import {
+  FirestoreAnnouncementStore,
+  FirestoreBroadcastStore,
+  FirestoreTicketStore,
+  InMemoryAnnouncementStore,
+  InMemoryBroadcastStore,
+  InMemoryTicketStore,
+  type AnnouncementStore,
+  type BroadcastStore,
+  type TicketStore,
+} from './lib/commsStore.js';
+import {
   FirestoreReferralStore,
   InMemoryReferralStore,
   type ReferralStore,
@@ -130,6 +141,8 @@ import {
 import { makeAdminUsersRoutes } from './routes/admin-users.js';
 import { makeAdminAuditRoutes } from './routes/admin-audit.js';
 import { makeAdminAnalyticsRoutes } from './routes/admin-analytics.js';
+import { makeAdminCommsRoutes } from './routes/admin-comms.js';
+import { makeStudentCommsRoutes } from './routes/student-comms.js';
 import { makeProgressRoutes } from './routes/progress.js';
 import { makeUsersRoutes } from './routes/users.js';
 
@@ -166,6 +179,9 @@ export interface AppDeps {
   examDates?: ExamDatesStore;
   referrals?: ReferralStore;
   audit?: AuditLogStore;
+  announcements?: AnnouncementStore;
+  broadcasts?: BroadcastStore;
+  tickets?: TicketStore;
 }
 
 export function buildApp(deps: AppDeps): Hono {
@@ -234,6 +250,13 @@ export function buildApp(deps: AppDeps): Hono {
     (fs ? new FirestoreReferralStore(fs) : new InMemoryReferralStore());
   const audit =
     deps.audit ?? (fs ? new FirestoreAuditLogStore(fs) : new InMemoryAuditLogStore());
+  const announcementsStore =
+    deps.announcements ??
+    (fs ? new FirestoreAnnouncementStore(fs) : new InMemoryAnnouncementStore());
+  const broadcastsStore =
+    deps.broadcasts ?? (fs ? new FirestoreBroadcastStore(fs) : new InMemoryBroadcastStore());
+  const ticketsStore =
+    deps.tickets ?? (fs ? new FirestoreTicketStore(fs) : new InMemoryTicketStore());
 
   const verifier = makeVerifier(env);
   const engineDeps = defaultEngineDeps();
@@ -425,6 +448,18 @@ export function buildApp(deps: AppDeps): Hono {
       getTargetExam,
     }),
   );
+  // Phase 21: student-facing announcements + support tickets.
+  v1.route(
+    '/',
+    makeStudentCommsRoutes({
+      announcements: announcementsStore,
+      tickets: ticketsStore,
+      users,
+      logger,
+      newId: () => globalThis.crypto.randomUUID().replace(/-/g, '').slice(0, 16),
+      now: engineDeps.now,
+    }),
+  );
   // Mount caller's "my attempts" history under /v1/users/me/long-answers/*.
   v1.route(
     '/users',
@@ -520,6 +555,20 @@ export function buildApp(deps: AppDeps): Hono {
       articles: nexipediaArticles,
       admins,
       logger,
+    }),
+  );
+  // Phase 21: admin comms — announcements, broadcasts, support tickets.
+  v1.route(
+    '/admin',
+    makeAdminCommsRoutes({
+      announcements: announcementsStore,
+      broadcasts: broadcastsStore,
+      tickets: ticketsStore,
+      users,
+      admins,
+      logger,
+      newId: () => globalThis.crypto.randomUUID().replace(/-/g, '').slice(0, 16),
+      now: engineDeps.now,
     }),
   );
   v1.route('/admin', makeAdminRoutes({ env, drafts, mcqs, admins, logger }));
