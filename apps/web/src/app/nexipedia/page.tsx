@@ -169,44 +169,25 @@ export default function NexipediaListPage() {
       ) : null}
 
       {articles && articles.length === 0 ? (
-        <section className="paper-card mt-6 p-6 sm:p-8">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-500">
-            {debouncedQ || category !== 'all' ? 'No matches' : 'Coming soon'}
+        <section className="paper-card mt-6 p-6 sm:p-8 border-l-4 border-l-ember-600">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ember-600">
+            AI Encyclopedia — Real-time
           </p>
           <h2 className="font-serif mt-2 text-xl font-semibold text-ink-900">
-            {debouncedQ || category !== 'all'
-              ? 'Nothing matches that yet.'
-              : 'No articles published yet'}
+            AI is generating articles for your exam
           </h2>
           <p className="mt-2 text-ink-800">
-            {debouncedQ || category !== 'all'
-              ? 'Try a different search term or category. Our editors are still seeding the library.'
-              : "We're still authoring the first batch of Nexipedia articles. Check back soon."}
+            The platform auto-creates encyclopedia articles based on your exam syllabus.
+            Meanwhile, use the AI Library to read any topic instantly.
           </p>
-          {debouncedQ || category !== 'all' ? (
-            <button
-              type="button"
-              onClick={() => {
-                setQ('');
-                setCategory('all');
-              }}
-              className="btn-ghost mt-4"
-            >
-              Clear filters
-            </button>
-          ) : (
-            <div className="mt-4 flex gap-2">
-              <Link href="/chapters" className="btn-primary">
-                Open chapter library
-              </Link>
-              <Link href="/library" className="btn-ghost">
-                AI Library (generate any topic)
-              </Link>
-              <Link href="/mcq" className="btn-ghost">
-                Daily MCQ
-              </Link>
-            </div>
-          )}
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Link href="/library" className="btn-primary">
+              Open AI Library
+            </Link>
+            <Link href="/chapters" className="btn-ghost">
+              Study Chapters
+            </Link>
+          </div>
         </section>
       ) : null}
 
