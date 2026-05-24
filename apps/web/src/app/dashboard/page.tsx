@@ -122,6 +122,7 @@ export default function DashboardPage() {
           <button type="button" onClick={() => router.push('/upgrade')} className="btn-ghost-sm">
             Upgrade
           </button>
+          <button type="button" onClick={() => router.push("/profile")} className="btn-ghost-sm">Profile</button>
           <button
             type="button"
             onClick={() => signOut().then(() => router.replace('/signin'))}
