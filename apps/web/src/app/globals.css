@@ -15,6 +15,8 @@
  *   ember   : book-cover red, used sparingly for emphasis + CTAs
  *   gold    : trust accents
  *   line    : printed-paper hairline borders
+ *
+ * Dark mode: swap to warm-dark tones. Class-based (`html.dark`).
  */
 @theme {
   --color-paper-50: #FBF6E8;
@@ -28,12 +30,19 @@
   --color-ink-900: #2A241A;
   --color-ink-950: #1A1610;
 
+  --color-ember-50: #FDF0EA;
+  --color-ember-100: #F5D8CA;
+  --color-ember-200: #E8B49E;
   --color-ember-500: #B3461F;
   --color-ember-600: #8B2E1A;
   --color-ember-700: #6E2414;
 
+  --color-gold-50: #FBF5E6;
+  --color-gold-100: #F5E8C8;
+  --color-gold-200: #EBDAAB;
   --color-gold-500: #B8862F;
   --color-gold-600: #8E6720;
+  --color-gold-700: #6B4E18;
 
   --color-muted-500: #7A6F5C;
   --color-muted-400: #9A8E78;
@@ -44,18 +53,58 @@
   --font-sans:  'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
+/* ─── Dark mode token overrides ─── */
+html.dark {
+  --color-paper-50: #1C1A16;
+  --color-paper-100: #1F1D18;
+  --color-paper-200: #2A2620;
+  --color-paper-300: #36312A;
+  --color-paper-400: #453F35;
+
+  --color-ink-700: #C8BFAC;
+  --color-ink-800: #DDD5C4;
+  --color-ink-900: #F0EAD8;
+  --color-ink-950: #FAF5E8;
+
+  --color-ember-50: #2A1A14;
+  --color-ember-100: #3D2418;
+  --color-ember-200: #5A3020;
+  --color-ember-500: #E06030;
+  --color-ember-600: #F07040;
+  --color-ember-700: #FF8855;
+
+  --color-gold-50: #2A2410;
+  --color-gold-100: #3D3418;
+  --color-gold-200: #5A4D20;
+  --color-gold-500: #D4A040;
+  --color-gold-600: #E8B850;
+  --color-gold-700: #F5CC66;
+
+  --color-muted-500: #9A9080;
+  --color-muted-400: #7A7060;
+
+  --color-line: #3D3728;
+
+  color-scheme: dark;
+}
+
 html, body {
   background-color: var(--color-paper-100);
   color: var(--color-ink-900);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: background-color 200ms ease, color 200ms ease;
 }
 
 body {
   background-image: radial-gradient(circle at 1px 1px, rgba(42, 36, 26, 0.04) 1px, transparent 0);
   background-size: 24px 24px;
   min-height: 100vh;
+}
+
+html.dark body {
+  background-image: radial-gradient(circle at 1px 1px, rgba(240, 234, 216, 0.03) 1px, transparent 0);
 }
 
 ::selection {
@@ -436,7 +485,7 @@ textarea.input {
   bottom: 0;
   z-index: 5;
   border-top: 1px solid var(--color-line);
-  background-color: rgba(248, 241, 221, 0.92);
+  background-color: color-mix(in srgb, var(--color-paper-100) 92%, transparent);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
   display: flex;
@@ -510,3 +559,35 @@ textarea.input {
   .kindle-tap { cursor: default; }
 }
 
+
+
+/* Alias: some Phase 21 pages use .input-field instead of .input */
+.input-field {
+  display: block;
+  width: 100%;
+  padding: 0.55rem 0.85rem;
+  border-radius: 0.5rem;
+  background-color: var(--color-paper-50);
+  color: var(--color-ink-900);
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  line-height: 1.4;
+  border: 1px solid var(--color-line);
+  box-shadow: 0 1px 0 rgba(42, 36, 26, 0.02);
+  transition: border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.input-field::placeholder { color: var(--color-muted-400); }
+.input-field:hover:not(:disabled) { border-color: var(--color-muted-400); }
+.input-field:focus, .input-field:focus-visible {
+  outline: none;
+  border-color: var(--color-ember-500);
+  box-shadow: 0 0 0 3px rgba(179, 70, 31, 0.18);
+  background-color: var(--color-paper-50);
+}
+.input-field:disabled {
+  background-color: var(--color-paper-200);
+  color: var(--color-muted-500);
+  cursor: not-allowed;
+}
