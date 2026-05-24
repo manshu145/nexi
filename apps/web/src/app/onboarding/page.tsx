@@ -7,6 +7,7 @@ import { Logo } from '~/components/Logo';
 import { ThemeToggle } from '~/components/ThemeToggle';
 import { useAuth } from '~/lib/auth-context';
 import { api } from '~/lib/api';
+import { setLanguage } from '~/lib/i18n';
 
 const LIVE_EXAMS = EXAMS.filter((e) => e.status === 'live');
 
@@ -71,6 +72,8 @@ export default function OnboardingPage() {
         preparingExams: [],
         onboardingVersion: 2,
       });
+      // Save language choice for UI translation
+      setLanguage(language);
       router.replace('/dashboard');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to save. Please try again.');
