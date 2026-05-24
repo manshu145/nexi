@@ -62,21 +62,9 @@ interface VerifyJson {
 
 const KEYS = ['A', 'B', 'C', 'D'] as const;
 
-function tryParseJson<T>(s: string): T | null {
-  // The OpenAI/Groq json_object mode returns a clean JSON string. Gemini
-  // with responseMimeType 'application/json' usually does the same, but is
-  // sometimes wrapped in ```json fences. Strip those defensively.
-  const stripped = s
-    .replace(/^\s*```json\s*/i, '')
-    .replace(/^\s*```\s*/i, '')
-    .replace(/\s*```\s*$/i, '')
-    .trim();
-  try {
-    return JSON.parse(stripped) as T;
-  } catch {
-    return null;
-  }
-}
+// Robust JSON parser that handles markdown fences and trailing commentary.
+// See ../llm/parseJson.ts for the failure modes covered.
+import { safeParseLlmJson as tryParseJson } from '../llm/parseJson.js';
 
 function isValidDraftJson(d: unknown): d is RawDraftJson {
   if (typeof d !== 'object' || d === null) return false;
@@ -163,7 +151,12 @@ export async function generateOne(input: GenerateOneInput): Promise<GenerateOneR
           user: verificationUser(verifyPayload),
           json: true,
           temperature: 0.2,
-          maxTokens: 400,
+          // Bumped from 400 -> 1200. The verifier writes out a structured
+          // JSON object that includes a reasoning string and a list of
+          // factualErrors; 400 tokens was hitting the limit mid-object,
+          // which produced "malformed verifier output" flags on otherwise
+          // good drafts. 1200 leaves headroom while staying cheap.
+          maxTokens: 1200,
         });
         const parsed = tryParseJson<VerifyJson>(resp.content);
         if (!parsed || !isValidVerifyJson(parsed)) {

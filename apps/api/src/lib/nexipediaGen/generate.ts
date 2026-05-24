@@ -10,6 +10,7 @@ import {
   type NexipediaVerifierScore,
 } from '@nexigrate/shared';
 import type { LLMClient } from '../llm/index.js';
+import { safeParseLlmJson } from '../llm/parseJson.js';
 import {
   nexipediaGenerationSystem,
   nexipediaGenerationUser,
@@ -71,16 +72,7 @@ const ALLOWED_EXAMS = new Set([
 ]);
 
 function tryParseJson<T>(s: string): T | null {
-  const stripped = s
-    .replace(/^\s*```json\s*/i, '')
-    .replace(/^\s*```\s*/i, '')
-    .replace(/\s*```\s*$/i, '')
-    .trim();
-  try {
-    return JSON.parse(stripped) as T;
-  } catch {
-    return null;
-  }
+  return safeParseLlmJson<T>(s);
 }
 
 function isValidArticleJson(d: unknown): d is RawArticleJson {
@@ -220,7 +212,11 @@ export async function generateNexipediaArticle(
           user: nexipediaVerificationUser(verifyPayload),
           json: true,
           temperature: 0.2,
-          maxTokens: 800,
+          // Bumped from 800 -> 2000. See chapterGen for context: the
+          // verifier's reasoning + factualErrors list was being truncated
+          // for substantive articles, producing a misleading 'malformed
+          // verifier output' flag on otherwise good drafts.
+          maxTokens: 2000,
         });
         const parsed = tryParseJson<VerifyArticleJson>(resp.content);
         if (!parsed || !isValidVerifyJson(parsed)) {
