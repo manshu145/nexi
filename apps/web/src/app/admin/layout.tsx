@@ -10,30 +10,26 @@ import { api, type AdminMeResponse } from '~/lib/api';
 
 const NAV_GROUPS = [
   {
-    label: 'Content',
+    label: 'Monitoring',
     items: [
-      { href: '/admin/mcq-drafts', label: 'MCQ Drafts' },
-      { href: '/admin/chapters', label: 'Chapters' },
-      { href: '/admin/nexipedia', label: 'Nexipedia' },
-      { href: '/admin/current-affairs', label: 'Current Affairs' },
-      { href: '/admin/long-answers', label: 'Long-form' },
-      { href: '/admin/scheduler', label: 'Scheduler' },
-    ],
-  },
-  {
-    label: 'Management',
-    items: [
-      { href: '/admin/users', label: 'Users' },
       { href: '/admin/analytics', label: 'Analytics' },
+      { href: '/admin/users', label: 'Users' },
       { href: '/admin/audit', label: 'Audit Log' },
-      { href: '/admin/tickets', label: 'Tickets' },
+      { href: '/admin/scheduler', label: 'AI Scheduler' },
     ],
   },
   {
-    label: 'Communications',
+    label: 'Support',
     items: [
+      { href: '/admin/tickets', label: 'Tickets' },
       { href: '/admin/announcements', label: 'Announcements' },
       { href: '/admin/broadcasts', label: 'Broadcasts' },
+    ],
+  },
+  {
+    label: 'System',
+    items: [
+      { href: '/admin/team', label: 'Team' },
     ],
   },
 ];
