@@ -41,17 +41,19 @@ const FORMAT_RULES = `Output STRICT JSON with this exact shape:
     }
   ],
   "estimatedReadMinutes": 6,
-  "source": "Specific NCERT chapter or Government of India publication. e.g. 'NCERT Class 12 Biology, Ch. 13'.",
+  "source": "Specific NCERT chapter or Government of India publication. e.g. 'NCERT Class 12 Biology, Ch. 13'. For exam-guide and learning-tip categories: cite the exam authority (NTA, CBSE, UPSC) or a peer-reviewed cognitive-science reference.",
   "relatedExams": ["jee-main", "neet-ug", "class-12-cbse"]
 }
 
 Hard rules:
 - Produce 4 to 8 sections. First section MUST be an introduction. Last section MUST be a 'See also' or 'Key takeaways' bullet list.
-- Encyclopedia third-person voice. NO 'in this article', 'we will learn', or other textbook framing.
-- NO exam-prep framing inside section bodies. Exam relevance goes in relatedExams metadata only.
+- Default voice is encyclopedia third-person. NO 'in this article', 'we will learn', or other textbook framing.
+- For category 'exam-guide': second-person practical advice voice IS expected ("you should", "your strategy"). Exam framing in prose is REQUIRED, not flagged. Cite the exam authority (NTA, CBSE, UPSC) for any factual claim about syllabus, pattern, or marks.
+- For category 'learning-tip': pedagogical technique voice. Cite peer-reviewed cognitive-science sources (Brown/Roediger 'Make It Stick', published learning-science research) for any claim about effectiveness. NO unsourced productivity-blog tropes.
+- For all OTHER categories: NO exam-prep framing inside section bodies. Exam relevance goes in relatedExams metadata only.
 - Cite NCERT chapters or Government of India publications inline where claims need backing. Do NOT cite blogs, YouTube, or unofficial websites.
 - Do NOT invent facts, formulas, dates, or numerical values. If unsure, omit rather than guess.
-- relatedExams is an array of slugs from this list ONLY: jee-main, jee-advanced, neet-ug, class-11-cbse, class-12-cbse, upsc, ssc. Empty array is fine for general knowledge.
+- relatedExams is an array of slugs from this list ONLY: jee-main, jee-advanced, neet-ug, class-11-cbse, class-12-cbse, upsc, ssc. Empty array is fine for general knowledge or learning-tip.
 - NO images, tables, or HTML. Markdown only.
 - NO commentary outside the JSON. NO markdown fences around the response.`;
 
@@ -85,6 +87,10 @@ const CATEGORY_HINTS: Record<NexipediaCategory, string> = {
     'State the event with date and source. Cover background, key facts, and significance. Cite official press releases (PIB) or government publications.',
   'general-knowledge':
     'Lead with a clear definition. Cover origin, current state, and Indian context where relevant.',
+  'exam-guide':
+    'Practical exam-prep advice. Open with the exam name + authority + current pattern (year-cited). Cover: syllabus scope, marks/section breakdown, recommended NCERT-first study sequence, common pitfalls, and a concrete week-by-week or month-by-month plan. Use second-person ("you should", "your revision"). Every quantitative claim about syllabus, marks, or paper pattern MUST cite the issuing authority (NTA, CBSE, UPSC, NEET-AIIMS) and the year. Do NOT recommend specific coaching brands or YouTube channels.',
+  'learning-tip':
+    'Pedagogical technique article. Open with the technique name + one-line definition + the cognitive principle it leverages (e.g. retrieval practice, spaced repetition, interleaving, dual coding). Cover: how it works, evidence base (cite peer-reviewed cognitive-science source), step-by-step how to apply it during NCERT-based study, common mistakes, and a 1-week worked example. NO productivity-blog tropes ("just be consistent", "discipline > motivation"). Every effectiveness claim must cite a published source (Brown/Roediger "Make It Stick", Karpicke, Bjork, etc.).',
 };
 
 export function nexipediaGenerationUser(ctx: NexipediaGenerationContext): string {
@@ -142,8 +148,12 @@ Hard rules:
 
 export function nexipediaVerificationSystem(): string {
   return [
-    'You are a senior reference editor reviewing AI-generated encyclopedia articles for an Indian-curriculum knowledge base that brands itself as "verified facts only".',
-    'Your job is to catch factual errors, exam-prep framing that leaked into the prose, and structurally weak passages BEFORE any student reads the article.',
+    'You are a senior reference editor reviewing AI-generated articles for an Indian-curriculum knowledge base that brands itself as "verified facts only".',
+    'Your job is to catch factual errors, voice-style violations, and structurally weak passages BEFORE any student reads the article.',
+    'Voice-style rules are CATEGORY-DEPENDENT (the user prompt will tell you the category):',
+    '  - For category "exam-guide": second-person practical advice voice IS expected ("you should"). Do NOT flag exam-prep framing. DO flag any quantitative claim about syllabus, marks, or pattern that is not year-cited to NTA/CBSE/UPSC/NEET-AIIMS.',
+    '  - For category "learning-tip": pedagogical-technique voice with peer-reviewed cognitive-science citations IS expected. DO flag unsourced productivity-blog claims and unsupported effectiveness numbers.',
+    '  - For ALL OTHER categories: flag exam-prep framing in prose (it belongs in relatedExams metadata only).',
     'You are conservative: when in doubt about a fact, you score lower and explain. You list specific factualErrors so the next regeneration can fix them.',
     VERIFY_RULES,
   ].join('\n\n');
