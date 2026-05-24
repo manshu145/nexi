@@ -147,6 +147,8 @@ import { makeProgressRoutes } from './routes/progress.js';
 import { makeUsersRoutes } from './routes/users.js';
 import { makeChatbotRoutes } from './routes/chatbot.js';
 import { makeAdaptiveTestRoutes } from './routes/adaptiveTest.js';
+import { makeSchedulerRoutes } from './routes/scheduler.js';
+import { makeCaQuizRoutes } from './routes/caQuiz.js';
 
 /**
  * Build the Hono app.
@@ -577,6 +579,13 @@ export function buildApp(deps: AppDeps): Hono {
     }),
   );
   v1.route('/admin', makeAdminRoutes({ env, drafts, mcqs, admins, logger }));
+
+  // Phase E: Auto-content scheduler (admin monitors, AI generates)
+  v1.route('/admin/scheduler', makeSchedulerRoutes({ logger, openaiApiKey: env.OPENAI_API_KEY }));
+
+  // Phase F: Current affairs quiz with timer + leaderboard
+  v1.route('/current-affairs-quiz', makeCaQuizRoutes({ logger }));
+
   app.route('/v1', v1);
 
   app.onError((err, c) => {
