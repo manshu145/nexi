@@ -476,6 +476,21 @@ export const api = {
     return res.json() as Promise<CreditBalance>;
   },
 
+  // ----- adaptive test -----
+  adaptiveTest: {
+    async start() {
+      const res = await authedFetch('/v1/users/me/adaptive-test/start', { method: 'POST' });
+      return res.json() as Promise<{ mcqs: Array<{ id: string; question: string; options: string[]; difficulty: string; subject: string }>; totalQuestions: number; _answers: number[] }>;
+    },
+    async complete(answers: number[], correctAnswers: number[]) {
+      const res = await authedFetch('/v1/users/me/adaptive-test/complete', {
+        method: 'POST',
+        body: JSON.stringify({ answers, correctAnswers }),
+      });
+      return res.json() as Promise<{ score: number; correct: number; total: number; skillLevel: string; studyPlan: Record<string, unknown> }>;
+    },
+  },
+
   async getDaily(): Promise<DailyMcqResponse> {
     const res = await authedFetch('/v1/mcqs/daily');
     return res.json() as Promise<DailyMcqResponse>;
