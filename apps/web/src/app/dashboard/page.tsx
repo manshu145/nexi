@@ -343,30 +343,30 @@ export default function DashboardPage() {
           <Tile
             label="Chapters"
             color="gold"
-            desc="3-AI verified study material."
+            desc="AI-generated study chapters for your exam syllabus."
             onClick={() => router.push('/chapters')}
             cta="Open library"
           />
           <Tile
-            label="Nexipedia"
-            color="gold"
-            desc="Encyclopedia for Indian students."
-            onClick={() => router.push('/nexipedia')}
-            cta="Browse"
-          />
-          <Tile
-            label="Exam guides"
+            label="Nexi AI"
             color="ember"
-            desc="Cited prep how-tos for JEE, NEET, UPSC."
-            onClick={() => router.push('/guides')}
-            cta="Browse guides"
+            desc="Chat with your AI study buddy. Ask anything, get instant answers."
+            onClick={() => router.push('/nexipedia')}
+            cta="Chat with Nexi"
           />
           <Tile
-            label="Learning tips"
+            label="Current Affairs"
             color="gold"
-            desc="Evidence-backed study techniques."
-            onClick={() => router.push('/learn')}
-            cta="Read tips"
+            desc="Daily digest from 30+ sources. Exam-ready facts."
+            onClick={() => router.push('/today')}
+            cta="Read today"
+          />
+          <Tile
+            label="Refer & Earn"
+            color="gold"
+            desc="Invite friends. Both get bonus credits."
+            onClick={() => router.push('/refer')}
+            cta="Get code"
           />
         </div>
       </section>
