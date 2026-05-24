@@ -5,26 +5,39 @@ import type { Logger } from '../logger.js';
 
 /**
  * AI Visualization endpoint.
- * Takes a topic/section text, returns a Mermaid diagram or SVG description
- * that the frontend renders with a "nexigrate" watermark.
+ * Uses Gemini Flash for fast, cheap diagram generation.
+ * Falls back to OpenAI if Gemini key not available.
  *
- * POST /v1/visualize — generates a diagram for a given text section
+ * POST /v1/visualize — generates a Mermaid diagram for a given text section
  */
 export interface VisualizeDeps {
   logger: Logger;
   openaiApiKey?: string;
+  geminiApiKey?: string;
 }
 
-const VIZ_SYSTEM_PROMPT = `You are a visual learning assistant for Indian students.
-Given a section of educational text, create a Mermaid diagram that helps visualize the key concepts.
-Use flowchart, mindmap, or sequence diagram format as appropriate.
+const VIZ_SYSTEM_PROMPT = `You are a visual learning assistant for Indian students preparing for exams.
+Given educational text, create a clear Mermaid diagram that visualizes the key concepts.
 
-Rules:
-- Keep it simple and readable
-- Maximum 15 nodes
-- Use short labels (max 30 chars)
-- Return ONLY the Mermaid code, no markdown fences, no explanation
-- Use flowchart TD for processes, mindmap for topic overviews, sequenceDiagram for procedures`;
+STRICT RULES:
+1. Return ONLY valid Mermaid code — no markdown fences, no backticks, no explanation
+2. Use flowchart TD for processes/hierarchies, mindmap for topic overviews
+3. Maximum 12 nodes — keep it readable
+4. Node labels: max 25 characters, simple English
+5. Do NOT use special characters like quotes, semicolons, or HTML in node labels
+6. Do NOT end lines with semicolons
+7. Use simple arrow syntax: A --> B or A --- B
+8. For mindmap: indent with 2 spaces per level
+
+Example good output:
+flowchart TD
+  A[Units of Measurement] --> B[SI System]
+  A --> C[CGS System]
+  B --> D[Meter]
+  B --> E[Kilogram]
+  B --> F[Second]
+  C --> G[Centimeter]
+  C --> H[Gram]`;
 
 export function makeVisualizeRoutes(deps: VisualizeDeps): Hono {
   const app = new Hono();
@@ -37,45 +50,27 @@ export function makeVisualizeRoutes(deps: VisualizeDeps): Hono {
     }
 
     const { text, title } = body as { text: string; title?: string };
+    const userPrompt = `Topic: ${title || 'Educational content'}\n\nText to visualize:\n${text.slice(0, 2000)}`;
 
     let mermaidCode: string;
 
-    if (deps.openaiApiKey) {
-      try {
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${deps.openaiApiKey}`,
-          },
-          body: JSON.stringify({
-            model: 'gpt-4o-mini',
-            temperature: 0.3,
-            max_tokens: 800,
-            messages: [
-              { role: 'system', content: VIZ_SYSTEM_PROMPT },
-              { role: 'user', content: `Topic: ${title || 'Educational content'}\n\nText:\n${text.slice(0, 2000)}` },
-            ],
-          }),
-        });
-
-        if (!response.ok) {
-          deps.logger.warn('visualize.openai_failed', { status: response.status });
-          mermaidCode = generateFallbackDiagram(title || 'Topic');
-        } else {
-          const data = await response.json() as { choices: Array<{ message: { content: string } }> };
-          mermaidCode = data.choices[0]?.message?.content?.trim() ?? generateFallbackDiagram(title || 'Topic');
-          // Strip markdown fences if present
-          mermaidCode = mermaidCode.replace(/^```mermaid\s*\n?/i, '').replace(/\n?```\s*$/i, '');
-        }
-      } catch {
-        mermaidCode = generateFallbackDiagram(title || 'Topic');
-      }
+    // Priority: Gemini Flash (faster + cheaper) > OpenAI > fallback
+    if (deps.geminiApiKey) {
+      mermaidCode = await generateWithGemini(deps.geminiApiKey, userPrompt, deps.logger);
+    } else if (deps.openaiApiKey) {
+      mermaidCode = await generateWithOpenAI(deps.openaiApiKey, userPrompt, deps.logger);
     } else {
-      mermaidCode = generateFallbackDiagram(title || 'Topic');
+      mermaidCode = generateFallbackDiagram(title || 'Topic', text);
     }
 
-    deps.logger.info('visualize.generated', { titleLen: (title || '').length, textLen: text.length });
+    // Clean up common AI output issues
+    mermaidCode = cleanMermaidOutput(mermaidCode);
+
+    deps.logger.info('visualize.generated', {
+      titleLen: (title || '').length,
+      textLen: text.length,
+      provider: deps.geminiApiKey ? 'gemini' : deps.openaiApiKey ? 'openai' : 'fallback',
+    });
 
     return c.json({
       mermaid: mermaidCode,
@@ -87,16 +82,103 @@ export function makeVisualizeRoutes(deps: VisualizeDeps): Hono {
   return app;
 }
 
-function generateFallbackDiagram(title: string): string {
+async function generateWithGemini(apiKey: string, userPrompt: string, logger: Logger): Promise<string> {
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: { role: 'system', parts: [{ text: VIZ_SYSTEM_PROMPT }] },
+        contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: 600,
+        },
+      }),
+    });
+
+    if (!res.ok) {
+      logger.warn('visualize.gemini_failed', { status: res.status });
+      return '';
+    }
+
+    const data = await res.json() as {
+      candidates?: { content?: { parts?: { text?: string }[] } }[];
+    };
+    return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
+  } catch (e) {
+    logger.warn('visualize.gemini_error', { error: e instanceof Error ? e.message : 'unknown' });
+    return '';
+  }
+}
+
+async function generateWithOpenAI(apiKey: string, userPrompt: string, logger: Logger): Promise<string> {
+  try {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        temperature: 0.2,
+        max_tokens: 600,
+        messages: [
+          { role: 'system', content: VIZ_SYSTEM_PROMPT },
+          { role: 'user', content: userPrompt },
+        ],
+      }),
+    });
+
+    if (!res.ok) {
+      logger.warn('visualize.openai_failed', { status: res.status });
+      return '';
+    }
+
+    const data = await res.json() as { choices: Array<{ message: { content: string } }> };
+    return data.choices[0]?.message?.content?.trim() ?? '';
+  } catch (e) {
+    logger.warn('visualize.openai_error', { error: e instanceof Error ? e.message : 'unknown' });
+    return '';
+  }
+}
+
+function cleanMermaidOutput(code: string): string {
+  if (!code) return generateFallbackDiagram('Topic', '');
+  // Remove markdown fences
+  code = code.replace(/^```mermaid\s*\n?/i, '').replace(/\n?```\s*$/i, '');
+  code = code.replace(/^```\s*\n?/i, '').replace(/\n?```\s*$/i, '');
+  // Remove trailing semicolons
+  code = code.replace(/;\s*$/gm, '');
+  // Remove empty lines at start/end
+  code = code.trim();
+  // Basic validation: must start with a known diagram type
+  const validStarts = ['flowchart', 'graph', 'mindmap', 'sequenceDiagram', 'classDiagram', 'stateDiagram', 'erDiagram', 'pie', 'gantt'];
+  const firstWord = code.split(/\s/)[0]?.toLowerCase() ?? '';
+  if (!validStarts.some(s => firstWord.startsWith(s))) {
+    return generateFallbackDiagram('Topic', '');
+  }
+  return code;
+}
+
+function generateFallbackDiagram(title: string, text: string): string {
+  // Extract key terms from the text for a more relevant fallback
+  const words = (text || title).split(/\s+/).filter(w => w.length > 5).slice(0, 6);
+  const concepts = words.length >= 3
+    ? words.slice(0, 6).map(w => w.replace(/[^a-zA-Z]/g, '').slice(0, 20))
+    : ['Concept 1', 'Concept 2', 'Concept 3', 'Concept 4', 'Concept 5'];
+
   return `mindmap
-  root((${title.slice(0, 25)}))
-    Key Concept 1
+  root((${title.slice(0, 20) || 'Topic'}))
+    ${concepts[0] || 'Key Idea 1'}
       Detail A
       Detail B
-    Key Concept 2
+    ${concepts[1] || 'Key Idea 2'}
       Detail C
       Detail D
-    Key Concept 3
+    ${concepts[2] || 'Key Idea 3'}
       Example 1
       Example 2`;
 }

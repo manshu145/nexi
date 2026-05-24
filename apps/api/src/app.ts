@@ -151,6 +151,7 @@ import { makeSchedulerRoutes } from './routes/scheduler.js';
 import { makeCaQuizRoutes } from './routes/caQuiz.js';
 import { makeVisualizeRoutes } from './routes/visualize.js';
 import { makeTtsRoutes } from './routes/tts.js';
+import { makeRecommendationsRoutes } from './routes/recommendations.js';
 
 /**
  * Build the Hono app.
@@ -341,6 +342,8 @@ export function buildApp(deps: AppDeps): Hono {
   // Phase J: AI support chatbot
   v1.route('/chat', makeChatbotRoutes({ logger, openaiApiKey: env.OPENAI_API_KEY }));
   v1.route('/users/me/adaptive-test', makeAdaptiveTestRoutes({ users, logger, openaiApiKey: env.OPENAI_API_KEY }));
+  // Personalized recommendations engine (AI as teacher/mentor)
+  v1.route('/users', makeRecommendationsRoutes({ users, attempts, chapters, logger }));
   // Phase 12: progress snapshot for /progress page + dashboard widgets.
   // Mounted on the same /users prefix so the path is /v1/users/me/progress.
   v1.route(
@@ -480,7 +483,7 @@ export function buildApp(deps: AppDeps): Hono {
   );
   // Phase 6: RBAC bootstrap routes. /admin/auth/* MUST be mounted BEFORE
   // Phase G+H+I: AI visualization + Text-to-Speech
-  v1.route('/visualize', makeVisualizeRoutes({ logger, openaiApiKey: env.OPENAI_API_KEY }));
+  v1.route('/visualize', makeVisualizeRoutes({ logger, openaiApiKey: env.OPENAI_API_KEY, geminiApiKey: env.GEMINI_API_KEY }));
   v1.route('/tts', makeTtsRoutes({ logger, googleTtsApiKey: env.GOOGLE_TTS_API_KEY }));
 
   // /admin/* so its specific paths win over the generic admin route's
@@ -572,7 +575,7 @@ export function buildApp(deps: AppDeps): Hono {
   );
   // Phase E: Auto-content scheduler — mounted at specific path BEFORE
   // generic /admin routes so its own auth (requireAuth only) takes priority.
-  v1.route('/admin/scheduler', makeSchedulerRoutes({ env, drafts, users, logger }));
+  v1.route('/admin/scheduler', makeSchedulerRoutes({ env, drafts, caDrafts: currentAffairsDrafts, caDigests: currentAffairsDigests, users, logger }));
 
   // Phase 21: admin comms — announcements, broadcasts, support tickets.
   v1.route(
