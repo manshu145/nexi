@@ -23,6 +23,10 @@ import type {
   CurrentAffairsDigestDraft,
   CurrentAffairsDigestStatus,
   CurrentAffairsDigestSummary,
+  LongAnswerAttempt,
+  LongAnswerAttemptSummary,
+  LongAnswerLength,
+  LongAnswerQuestion,
   ProgressSnapshot,
 } from '@nexigrate/shared';
 import { getFirebaseAuthClient } from './firebase';
@@ -727,6 +731,92 @@ export const api = {
       );
       return res.json() as Promise<{ draft: CurrentAffairsDigestDraft }>;
     },
+
+    // ----- long-form question CRUD (Phase 18) - admin curates by hand,
+    // no AI generation for the prompts themselves.
+    async listLongAnswerQuestions(
+      opts: { exam?: ExamSlug | string; subject?: string; limit?: number } = {},
+    ): Promise<{ questions: LongAnswerQuestion[] }> {
+      const params = new URLSearchParams();
+      if (opts.exam) params.set('exam', String(opts.exam));
+      if (opts.subject) params.set('subject', opts.subject);
+      if (opts.limit) params.set('limit', String(opts.limit));
+      const qs = params.toString() ? `?${params.toString()}` : '';
+      const res = await authedFetch(`/v1/admin/long-answers${qs}`);
+      return res.json() as Promise<{ questions: LongAnswerQuestion[] }>;
+    },
+
+    async getLongAnswerQuestion(
+      id: string,
+    ): Promise<{ question: LongAnswerQuestion }> {
+      const res = await authedFetch(
+        `/v1/admin/long-answers/${encodeURIComponent(id)}`,
+      );
+      return res.json() as Promise<{ question: LongAnswerQuestion }>;
+    },
+
+    async createLongAnswerQuestion(input: {
+      slug: string;
+      exam: ExamSlug | string;
+      subject: string;
+      source: string;
+      prompt: string;
+      expectedLength: LongAnswerLength;
+      rubricNotes?: string;
+      isPublished?: boolean;
+    }): Promise<{ question: LongAnswerQuestion }> {
+      const res = await authedFetch('/v1/admin/long-answers', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+      return res.json() as Promise<{ question: LongAnswerQuestion }>;
+    },
+
+    async editLongAnswerQuestion(
+      id: string,
+      edits: Partial<{
+        exam: ExamSlug | string;
+        subject: string;
+        source: string;
+        prompt: string;
+        expectedLength: LongAnswerLength;
+        rubricNotes: string;
+      }>,
+    ): Promise<{ question: LongAnswerQuestion }> {
+      const res = await authedFetch(
+        `/v1/admin/long-answers/${encodeURIComponent(id)}`,
+        { method: 'PATCH', body: JSON.stringify(edits) },
+      );
+      return res.json() as Promise<{ question: LongAnswerQuestion }>;
+    },
+
+    async publishLongAnswerQuestion(
+      id: string,
+    ): Promise<{ question: LongAnswerQuestion }> {
+      const res = await authedFetch(
+        `/v1/admin/long-answers/${encodeURIComponent(id)}/publish`,
+        { method: 'POST', body: JSON.stringify({}) },
+      );
+      return res.json() as Promise<{ question: LongAnswerQuestion }>;
+    },
+
+    async unpublishLongAnswerQuestion(
+      id: string,
+    ): Promise<{ question: LongAnswerQuestion }> {
+      const res = await authedFetch(
+        `/v1/admin/long-answers/${encodeURIComponent(id)}/unpublish`,
+        { method: 'POST', body: JSON.stringify({}) },
+      );
+      return res.json() as Promise<{ question: LongAnswerQuestion }>;
+    },
+
+    async deleteLongAnswerQuestion(id: string): Promise<{ ok: true }> {
+      const res = await authedFetch(
+        `/v1/admin/long-answers/${encodeURIComponent(id)}`,
+        { method: 'DELETE' },
+      );
+      return res.json() as Promise<{ ok: true }>;
+    },
   },
 
   // ----- chapters (student-facing)
@@ -892,6 +982,67 @@ export const api = {
     async getByDate(date: string): Promise<{ digest: CurrentAffairsDigest }> {
       const res = await authedFetch(`/v1/current-affairs/${encodeURIComponent(date)}`);
       return res.json() as Promise<{ digest: CurrentAffairsDigest }>;
+    },
+  },
+
+  // ----- long-form answers (Phase 18)
+  longAnswers: {
+    async list(
+      opts: { exam?: ExamSlug | string; subject?: string; limit?: number } = {},
+    ): Promise<{ questions: LongAnswerQuestion[] }> {
+      const params = new URLSearchParams();
+      if (opts.exam) params.set('exam', String(opts.exam));
+      if (opts.subject) params.set('subject', opts.subject);
+      if (opts.limit) params.set('limit', String(opts.limit));
+      const qs = params.toString() ? `?${params.toString()}` : '';
+      const res = await authedFetch(`/v1/long-answers${qs}`);
+      return res.json() as Promise<{ questions: LongAnswerQuestion[] }>;
+    },
+
+    async get(slug: string): Promise<{ question: LongAnswerQuestion }> {
+      const res = await authedFetch(
+        `/v1/long-answers/${encodeURIComponent(slug)}`,
+      );
+      return res.json() as Promise<{ question: LongAnswerQuestion }>;
+    },
+
+    async submit(
+      questionId: string,
+      input: { answer: string; nonce?: string },
+    ): Promise<{
+      attempt: LongAnswerAttempt;
+      alreadySubmitted: boolean;
+      balance: number;
+    }> {
+      const res = await authedFetch(
+        `/v1/long-answers/${encodeURIComponent(questionId)}/submit`,
+        { method: 'POST', body: JSON.stringify(input) },
+      );
+      return res.json() as Promise<{
+        attempt: LongAnswerAttempt;
+        alreadySubmitted: boolean;
+        balance: number;
+      }>;
+    },
+
+    async myAttempts(
+      limit?: number,
+    ): Promise<{ attempts: LongAnswerAttemptSummary[] }> {
+      const qs = limit ? `?limit=${limit}` : '';
+      const res = await authedFetch(`/v1/users/me/long-answers${qs}`);
+      return res.json() as Promise<{ attempts: LongAnswerAttemptSummary[] }>;
+    },
+
+    async myAttempt(
+      id: string,
+    ): Promise<{ attempt: LongAnswerAttempt; question: LongAnswerQuestion | null }> {
+      const res = await authedFetch(
+        `/v1/users/me/long-answers/${encodeURIComponent(id)}`,
+      );
+      return res.json() as Promise<{
+        attempt: LongAnswerAttempt;
+        question: LongAnswerQuestion | null;
+      }>;
     },
   },
 };
