@@ -187,6 +187,26 @@ export default function DashboardPage() {
         </button>
       </section>
 
+      <section className="paper-card mt-6 p-6 sm:p-8">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ember-600">
+          Mock tests · timed
+        </p>
+        <h2 className="font-serif mt-3 text-xl font-semibold leading-snug text-ink-900">
+          Pressure-test yourself before exam day.
+        </h2>
+        <p className="mt-3 text-ink-800">
+          Full-length mocks priced in credits. Score 60% or more and we
+          refund the cost plus a bonus.
+        </p>
+        <button
+          type="button"
+          onClick={() => router.push('/mock-tests')}
+          className="btn-ghost mt-6"
+        >
+          Browse mock tests
+        </button>
+      </section>
+
       <section className="mt-6 grid gap-4 sm:grid-cols-3">
         <div className="paper-card p-5">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-500">
