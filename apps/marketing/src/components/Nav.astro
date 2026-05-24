@@ -7,15 +7,100 @@ import Logo from './Logo.astro';
     <Logo />
 
     <nav class="hidden items-center gap-7 md:flex" aria-label="Primary">
-      <a href="/#why" class="text-sm font-medium text-ink-800 hover:text-ember-600 transition">Why Nexigrate</a>
+      <a href="/#features" class="text-sm font-medium text-ink-800 hover:text-ember-600 transition">Features</a>
       <a href="/#exams" class="text-sm font-medium text-ink-800 hover:text-ember-600 transition">Exams</a>
       <a href="/#how" class="text-sm font-medium text-ink-800 hover:text-ember-600 transition">How it works</a>
       <a href="/pricing" class="text-sm font-medium text-ink-800 hover:text-ember-600 transition">Pricing</a>
       <a href="/#faq" class="text-sm font-medium text-ink-800 hover:text-ember-600 transition">FAQ</a>
     </nav>
 
-    <a href="/#waitlist" class="btn-primary text-sm">
-      Get early access
-    </a>
+    <div class="flex items-center gap-3">
+      <a href="https://app.nexigrate.com/signin" class="hidden sm:inline-flex btn-ghost text-sm !py-2 !px-4">
+        Sign in
+      </a>
+      <a href="https://app.nexigrate.com/signin" class="btn-primary text-sm">
+        Start free
+      </a>
+      <!-- Mobile menu toggle -->
+      <button
+        id="mobile-menu-btn"
+        class="md:hidden p-2 text-ink-800"
+        aria-label="Menu"
+        aria-expanded="false"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Mobile toast menu -->
+  <div
+    id="mobile-menu"
+    class="hidden md:hidden fixed inset-x-4 top-16 z-50 paper-card p-4 shadow-lg animate-in"
+    role="navigation"
+    aria-label="Mobile navigation"
+  >
+    <nav class="flex flex-col gap-1">
+      <a href="/#features" class="mobile-nav-link">Features</a>
+      <a href="/#exams" class="mobile-nav-link">Exams</a>
+      <a href="/#how" class="mobile-nav-link">How it works</a>
+      <a href="/#credits" class="mobile-nav-link">Credits</a>
+      <a href="/pricing" class="mobile-nav-link">Pricing</a>
+      <a href="/#faq" class="mobile-nav-link">FAQ</a>
+      <hr class="my-2 border-line" />
+      <a href="https://app.nexigrate.com/signin" class="mobile-nav-link font-semibold text-ember-600">
+        Sign in →
+      </a>
+    </nav>
   </div>
 </header>
+
+<style>
+  .mobile-nav-link {
+    display: block;
+    padding: 0.6rem 0.85rem;
+    border-radius: 0.5rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--color-ink-800);
+    transition: background-color 120ms ease;
+  }
+  .mobile-nav-link:hover {
+    background-color: var(--color-paper-200);
+  }
+  .animate-in {
+    animation: slide-in 200ms ease-out;
+  }
+  @keyframes slide-in {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+</style>
+
+<script>
+  const btn = document.getElementById('mobile-menu-btn');
+  const menu = document.getElementById('mobile-menu');
+  if (btn && menu) {
+    btn.addEventListener('click', () => {
+      const expanded = btn.getAttribute('aria-expanded') === 'true';
+      btn.setAttribute('aria-expanded', String(!expanded));
+      menu.classList.toggle('hidden');
+    });
+    // Close on click outside
+    document.addEventListener('click', (e) => {
+      if (!menu.contains(e.target as Node) && !btn.contains(e.target as Node)) {
+        menu.classList.add('hidden');
+        btn.setAttribute('aria-expanded', 'false');
+      }
+    });
+    // Close on nav link click
+    menu.querySelectorAll('a').forEach((link) => {
+      link.addEventListener('click', () => {
+        menu.classList.add('hidden');
+        btn.setAttribute('aria-expanded', 'false');
+      });
+    });
+  }
+</script>
