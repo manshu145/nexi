@@ -14,3 +14,6 @@ export * from './currentAffairs.js';
 export * from './longAnswer.js';
 
 export * from './comms.js';
+
+
+export * from './currentAffairsQuiz.js';
