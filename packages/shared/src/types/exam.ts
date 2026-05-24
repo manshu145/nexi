@@ -16,7 +16,11 @@ export type ExamCategory =
   | 'civil-services'
   | 'defence'
   | 'banking'
-  | 'state';
+  | 'state'
+  | 'law'
+  | 'management'
+  | 'teaching'
+  | 'university';
 
 export type ExamStatus = 'live' | 'soon';
 
@@ -30,6 +34,9 @@ export interface Exam {
 }
 
 export type ClassLevel =
+  | 'class-5'
+  | 'class-6'
+  | 'class-7'
   | 'class-8'
   | 'class-9'
   | 'class-10'
