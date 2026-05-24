@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '~/lib/auth-context';
@@ -18,7 +18,7 @@ interface Chapter {
   keyPoints: string[];
 }
 
-export default function ChapterReaderPage() {
+function ChapterReaderContent() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -189,5 +189,15 @@ export default function ChapterReaderPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+
+
+export default function ChapterReaderPage() {
+  return (
+    <Suspense fallback={<div className="flex min-h-dvh items-center justify-center"><span className="spinner" /></div>}>
+      <ChapterReaderContent />
+    </Suspense>
   );
 }

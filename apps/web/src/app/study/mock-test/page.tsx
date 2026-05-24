@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '~/lib/auth-context';
@@ -20,7 +20,7 @@ interface Mcq {
   difficulty: string;
 }
 
-export default function MockTestPage() {
+function MockTestContent() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -278,5 +278,15 @@ export default function MockTestPage() {
         </button>
       </div>
     </main>
+  );
+}
+
+
+
+export default function MockTestPage() {
+  return (
+    <Suspense fallback={<div className="flex min-h-dvh items-center justify-center"><span className="spinner" /></div>}>
+      <MockTestContent />
+    </Suspense>
   );
 }
