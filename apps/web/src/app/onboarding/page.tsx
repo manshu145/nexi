@@ -273,13 +273,12 @@ export default function OnboardingPage() {
                 <div className="flex gap-1">{assessmentMcqs.map((_, i) => (<button key={i} onClick={() => setCurrentAssessmentQ(i)} className={`h-2.5 w-2.5 rounded-full ${i === currentAssessmentQ ? 'bg-ember-500' : assessmentAnswers[i] !== null ? 'bg-ember-300' : 'bg-paper-300'}`} />))}</div>
                 <button onClick={() => setCurrentAssessmentQ((q) => Math.min(assessmentMcqs.length - 1, q + 1))} disabled={currentAssessmentQ === assessmentMcqs.length - 1} className="btn-ghost px-3 py-1.5 text-sm disabled:opacity-40">Next &rarr;</button>
               </div>
-              <div className="mt-8 flex gap-3">
-                <button className="btn-ghost flex-1" onClick={skipAssessment} disabled={submitting}>{submitting ? 'Saving...' : 'Skip Assessment'}</button>
-                <button className="btn-primary flex-1" onClick={submitAssessment} disabled={assessmentSubmitting}>{assessmentSubmitting ? 'Analyzing...' : `Submit (${assessmentAnswers.filter((a) => a !== null).length}/${assessmentMcqs.length})`}</button>
+              <div className="mt-8">
+                <button className="btn-primary w-full" onClick={submitAssessment} disabled={assessmentSubmitting}>{assessmentSubmitting ? 'Analyzing...' : `Submit (${assessmentAnswers.filter((a) => a !== null).length}/${assessmentMcqs.length})`}</button>
               </div>
             </div>
           ) : (
-            <div className="mt-8 text-center"><p className="text-sm text-muted-500">No questions generated.</p><button className="btn-ghost mt-4" onClick={startAssessment}>Retry</button><button className="btn-primary mt-4 ml-2" onClick={skipAssessment}>Skip</button></div>
+            <div className="mt-8 text-center"><p className="text-sm text-muted-500">No questions generated.</p><button className="btn-primary mt-4" onClick={startAssessment}>Retry</button></div>
           )}
         </section>
       )}

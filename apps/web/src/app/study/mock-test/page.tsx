@@ -42,9 +42,16 @@ function MockTestContent() {
   }, [user, loading, router]);
 
   useEffect(() => {
-    if (!user || !topic) return;
+    if (!user || !topic) {
+      if (!loading && user && !topic) {
+        setError('No topic specified. Please go back to the chapter and try again.');
+        setLoadingTest(false);
+      }
+      return;
+    }
     loadTest();
-  }, [user, topic]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, topic, loading]);
 
   async function loadTest() {
     try {
