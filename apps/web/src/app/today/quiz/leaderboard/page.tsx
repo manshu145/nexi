@@ -50,7 +50,7 @@ export default function LeaderboardPage() {
   }
 
   return (
-    <main className="mx-auto max-w-2xl px-6 pt-10 pb-16">
+    <main className="mx-auto max-w-3xl px-4 pt-8 pb-24 sm:px-6 sm:pb-16">
       <div className="flex items-center justify-between">
         <Logo />
         <button className="btn-ghost-sm" onClick={() => router.push('/today')}>
@@ -105,7 +105,7 @@ export default function LeaderboardPage() {
               <div
                 key={entry.rank}
                 className={`paper-card px-4 py-3 flex items-center gap-4 ${
-                  entry.rank === 1 ? 'ring-2 ring-gold-500' : ''
+                  entry.rank === 1 ? 'border-gold-500 shadow-[0_0_0_2px] shadow-gold-500/30' : ''
                 }`}
               >
                 <span className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${

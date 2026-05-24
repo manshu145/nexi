@@ -91,7 +91,7 @@ export default function OnboardingPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col px-6 pt-10 pb-16">
+    <main className="mx-auto flex min-h-screen max-w-3xl flex-col px-4 pt-8 pb-24 sm:px-6 sm:pb-16">
       <div className="flex items-center justify-between">
         <Logo />
         <ThemeToggle />
@@ -126,10 +126,10 @@ export default function OnboardingPage() {
               <button
                 key={lang.code}
                 onClick={() => setLanguage(lang.code)}
-                className={`paper-card px-4 py-3 text-left transition-all ${
+                className={`paper-card card-selectable px-4 py-3 text-left ${
                   language === lang.code
-                    ? 'ring-2 ring-ember-500 border-ember-500'
-                    : 'hover:border-muted-400'
+                    ? 'card-selected'
+                    : ''
                 }`}
               >
                 <span className="block text-sm font-medium text-ink-900">{lang.native}</span>
@@ -292,10 +292,10 @@ export default function OnboardingPage() {
               <button
                 key={exam.id}
                 onClick={() => setTargetExam(exam.id)}
-                className={`paper-card px-4 py-3 text-left transition-all ${
+                className={`paper-card card-selectable px-4 py-3 text-left ${
                   targetExam === exam.id
-                    ? 'ring-2 ring-ember-500 border-ember-500'
-                    : 'hover:border-muted-400'
+                    ? 'card-selected'
+                    : ''
                 }`}
               >
                 <span className="block text-sm font-medium text-ink-900">{exam.name}</span>
@@ -312,9 +312,9 @@ export default function OnboardingPage() {
                 <button
                   key={exam.id}
                   onClick={() => setTargetExam(exam.id)}
-                  className={`pill cursor-pointer transition-all ${
+                  className={`pill card-selectable ${
                     targetExam === exam.id
-                      ? 'ring-2 ring-ember-500 border-ember-500'
+                      ? 'card-selected'
                       : ''
                   }`}
                 >

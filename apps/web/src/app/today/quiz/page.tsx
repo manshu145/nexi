@@ -104,7 +104,7 @@ export default function CaQuizPage() {
 
   if (phase === 'result' && result) {
     return (
-      <main className="mx-auto max-w-2xl px-6 pt-10 pb-16">
+      <main className="mx-auto max-w-3xl px-4 pt-8 pb-24 sm:px-6 sm:pb-16">
         <Logo />
         <section className="mt-8 text-center">
           <h1 className="font-serif text-3xl font-semibold text-ink-900">Quiz Complete!</h1>
@@ -118,15 +118,15 @@ export default function CaQuizPage() {
           {/* Review */}
           <div className="mt-8 space-y-3 text-left">
             {questions.map((q, i) => {
-              const userAns = answers[i];
-              const correct = result.correctAnswers[i];
+              const userAns = answers[i] ?? -1;
+              const correct = result.correctAnswers[i] ?? -1;
               const isCorrect = userAns === correct;
               return (
                 <div key={q.id} className={`paper-card p-4 border-l-4 ${isCorrect ? 'border-l-gold-500' : 'border-l-ember-500'}`}>
                   <p className="text-sm font-medium text-ink-900">{i + 1}. {q.question}</p>
                   <p className="mt-1 text-xs text-muted-500">
-                    Your answer: {userAns !== null && userAns >= 0 ? q.options[userAns] : 'Not answered'}
-                    {!isCorrect && <> · Correct: {q.options[correct]}</>}
+                    Your answer: {userAns >= 0 ? q.options[userAns] : 'Not answered'}
+                    {!isCorrect && correct >= 0 && <> · Correct: {q.options[correct]}</>}
                   </p>
                 </div>
               );
@@ -152,7 +152,7 @@ export default function CaQuizPage() {
   const isTimeLow = timeLeft <= 60;
 
   return (
-    <main className="mx-auto max-w-2xl px-6 pt-6 pb-16">
+    <main className="mx-auto max-w-3xl px-4 pt-6 pb-24 sm:px-6 sm:pb-16">
       {/* Header */}
       <div className="flex items-center justify-between">
         <Logo />
@@ -194,8 +194,8 @@ export default function CaQuizPage() {
               }}
               className={`w-full text-left px-4 py-3 rounded-lg border transition-all ${
                 answers[currentQ] === i
-                  ? 'border-ember-500 bg-paper-200 ring-2 ring-ember-500/30'
-                  : 'border-line hover:border-muted-400'
+                  ? 'card-selected'
+                  : 'border-line card-selectable'
               }`}
             >
               <span className="text-sm text-ink-900">{opt}</span>
