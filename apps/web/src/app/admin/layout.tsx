@@ -130,6 +130,21 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               <NavLink href="/admin/audit" current={pathname.startsWith('/admin/audit')}>
                 Audit
               </NavLink>
+              <NavLink
+                href="/admin/announcements"
+                current={pathname.startsWith('/admin/announcements')}
+              >
+                Announce
+              </NavLink>
+              <NavLink
+                href="/admin/broadcasts"
+                current={pathname.startsWith('/admin/broadcasts')}
+              >
+                Broadcast
+              </NavLink>
+              <NavLink href="/admin/tickets" current={pathname.startsWith('/admin/tickets')}>
+                Tickets
+              </NavLink>
               {me.role === 'super_admin' ? (
                 <NavLink href="/admin/team" current={pathname.startsWith('/admin/team')}>
                   Team
@@ -191,6 +206,21 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           </NavLink>
           <NavLink href="/admin/audit" current={pathname.startsWith('/admin/audit')}>
             Audit
+          </NavLink>
+          <NavLink
+            href="/admin/announcements"
+            current={pathname.startsWith('/admin/announcements')}
+          >
+            Announce
+          </NavLink>
+          <NavLink
+            href="/admin/broadcasts"
+            current={pathname.startsWith('/admin/broadcasts')}
+          >
+            Broadcast
+          </NavLink>
+          <NavLink href="/admin/tickets" current={pathname.startsWith('/admin/tickets')}>
+            Tickets
           </NavLink>
           {me.role === 'super_admin' ? (
             <NavLink href="/admin/team" current={pathname.startsWith('/admin/team')}>
