@@ -87,8 +87,9 @@ function ChapterReaderContent() {
         return;
       }
 
-      // Generate fresh — language auto-detected from user profile on backend
-      const res = await api.ai.generateChapter(topic);
+      // Generate fresh — pass language explicitly from localStorage
+      const userLang = getLanguage();
+      const res = await api.ai.generateChapter(topic, undefined, userLang);
       setChapter(res.chapter);
       // Cache for next time
       setCachedChapter(topic, res.chapter);

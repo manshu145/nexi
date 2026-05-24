@@ -1493,8 +1493,8 @@ export const api = {
       const res = await authedFetch('/v1/ai/progress/update', { method: 'POST', body: JSON.stringify(data) });
       return res.json() as Promise<any>;
     },
-    async generateChapter(topic: string, subject?: string): Promise<{ chapter: { title: string; sections: { heading: string; content: string }[]; summary: string; keyPoints: string[] } }> {
-      const res = await authedFetch('/v1/ai/chapter', { method: 'POST', body: JSON.stringify({ topic, subject }) });
+    async generateChapter(topic: string, subject?: string, language?: string): Promise<{ chapter: { title: string; sections: { heading: string; content: string }[]; summary: string; keyPoints: string[] } }> {
+      const res = await authedFetch('/v1/ai/chapter', { method: 'POST', body: JSON.stringify({ topic, subject, language }) });
       return res.json() as Promise<any>;
     },
     async generateMockTest(subject?: string, topic?: string, count?: number): Promise<{ id: string; mcqs: any[]; durationMinutes: number; totalQuestions: number }> {

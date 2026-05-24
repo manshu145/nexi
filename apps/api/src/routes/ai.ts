@@ -36,6 +36,7 @@ export interface AIRoutesDeps {
   progressStore: StudentProgressStore;
   chatStore: ChatHistoryStore;
   logger: Logger;
+  openaiApiKey?: string;
 }
 
 export function makeAIRoutes(deps: AIRoutesDeps): Hono {
@@ -78,10 +79,14 @@ export function makeAIRoutes(deps: AIRoutesDeps): Hono {
     const count = Math.min(Math.max((body['count'] as number) || 15, 5), 30);
     const language = (body['language'] as 'en' | 'hi') || (await getUserLanguage(principal.userId));
 
-    const mcqs = await ai.generateAssessmentMcqs(exam, count, language);
-
-    logger.info('ai.assess.generate', { userId: principal.userId, exam, count: mcqs.length });
-    return c.json({ mcqs });
+    try {
+      const mcqs = await ai.generateAssessmentMcqs(exam, count, language);
+      logger.info('ai.assess.generate', { userId: principal.userId, exam, count: mcqs.length });
+      return c.json({ mcqs });
+    } catch (err) {
+      logger.error('ai.assess.generate.error', { userId: principal.userId, error: (err as Error).message });
+      throw new HTTPException(503, { message: 'AI service unavailable. Please try again in a moment.' });
+    }
   });
 
   // ─── POST /assess/submit ─────────────────────────────────────────────────
@@ -169,13 +174,14 @@ export function makeAIRoutes(deps: AIRoutesDeps): Hono {
     const schema = z.object({
       topic: z.string().min(2).max(200),
       subject: z.string().optional(),
+      language: z.enum(['en', 'hi']).optional(),
     });
     const parsed = schema.safeParse(body);
     if (!parsed.success) throw new HTTPException(400, { message: 'topic required' });
 
     const progress = await progressStore.getProgress(principal.userId);
     const exam = progress?.exam ?? (await getUserExam(principal.userId));
-    const language = progress?.language ?? (await getUserLanguage(principal.userId));
+    const language = parsed.data.language ?? progress?.language ?? (await getUserLanguage(principal.userId));
     const skillLevel = progress?.skillLevel ?? 'intermediate';
 
     const chapter = await ai.generateChapter(
@@ -243,12 +249,55 @@ export function makeAIRoutes(deps: AIRoutesDeps): Hono {
   app.get('/current-affairs', async (c) => {
     const principal = requireAuth(c);
     const language = await getUserLanguage(principal.userId);
+    const exam = await getUserExam(principal.userId);
+    const lang = language === 'hi' ? 'Hindi' : 'English';
 
-    const ctx = { exam: (await getUserExam(principal.userId)) as ExamSlug, skillLevel: 'intermediate' as const, weakSubjects: [] as string[], language };
-    const items = await ai.generateMcqs(ctx, 5, 'current affairs');
+    const prompt = `Generate 8-10 current affairs items relevant to "${exam}" exam preparation in India.
+Each item should be a real, recent, important news/event.
+Language: ${lang}
+Categories to cover: polity, economy, science, international, sports, environment, defence, technology
+Return JSON: { "items": [{ "title": "Short headline", "summary": "2-3 sentence exam-focused summary", "category": "polity|economy|science|international|sports|environment|defence|technology", "date": "${new Date().toISOString().slice(0, 10)}", "examRelevance": "Why this matters for the exam" }] }
+Generate AT LEAST 8 items covering different categories.`;
 
-    logger.info('ai.current-affairs', { userId: principal.userId });
-    return c.json({ items });
+    const systemPrompt = `You are an Indian current affairs expert creating daily digest for competitive exam students. Write factual, concise, exam-relevant summaries. Return ONLY valid JSON.`;
+
+    try {
+      const openaiKey = deps.openaiApiKey ?? '';
+      if (!openaiKey) {
+        return c.json({ items: [] });
+      }
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${openaiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: prompt },
+          ],
+          temperature: 0.7,
+          response_format: { type: 'json_object' },
+        }),
+      });
+
+      if (!res.ok) {
+        logger.warn('ai.current-affairs.api-error', { status: res.status });
+        return c.json({ items: [] });
+      }
+
+      const data = (await res.json()) as { choices?: { message: { content: string } }[] };
+      const content = data.choices?.[0]?.message.content ?? '{}';
+      const parsed = JSON.parse(content) as { items?: Array<{ title: string; summary: string; category: string; date: string; examRelevance: string }> };
+
+      logger.info('ai.current-affairs', { userId: principal.userId, count: parsed.items?.length ?? 0 });
+      return c.json({ items: parsed.items ?? [] });
+    } catch (err) {
+      logger.warn('ai.current-affairs.error', { error: (err as Error).message });
+      return c.json({ items: [] });
+    }
   });
 
   // ─── POST /chat ──────────────────────────────────────────────────────────
