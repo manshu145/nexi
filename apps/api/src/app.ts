@@ -587,7 +587,7 @@ export function buildApp(deps: AppDeps): Hono {
   v1.route('/admin', makeAdminRoutes({ env, drafts, mcqs, admins, logger }));
 
   // Phase E: Auto-content scheduler (admin monitors, AI generates)
-  v1.route('/admin/scheduler', makeSchedulerRoutes({ logger, openaiApiKey: env.OPENAI_API_KEY }));
+  v1.route('/admin/scheduler', makeSchedulerRoutes({ env, drafts, users, logger }));
 
   // Phase F: Current affairs quiz with timer + leaderboard
   v1.route('/current-affairs-quiz', makeCaQuizRoutes({ logger }));
