@@ -362,46 +362,70 @@ textarea.input {
   font-size: 0.92em;
 }
 
-/* ----- Paged Kindle frame (Phase 10b) ----- */
-/*
- * The reader fills the viewport. The header / footer chrome live OUTSIDE
- * the frame and slide in/out on user activity. The frame body is a single
- * fixed-height surface; long sections scroll internally rather than
- * lengthening the document.
- */
+/* ----- Book-style Reader (Kindle redesign) ----- */
 .kindle-frame {
   position: relative;
   display: flex;
   flex-direction: column;
-  /*
-   * 100dvh on mobile keeps the frame inside the visible viewport even when
-   * iOS Safari shows/hides its address bar. svh / dvh fall back to vh on
-   * older browsers.
-   */
   min-height: 100dvh;
-  background-color: var(--color-paper-100);
+  background-color: var(--color-paper-200);
+}
+.kindle-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background-color: var(--color-paper-50);
+  border-bottom: 1px solid var(--color-line);
+}
+@media (min-width: 720px) {
+  .kindle-header { padding: 0.75rem 2rem; }
+}
+.kindle-book-wrapper {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  padding: 1rem 0.5rem 0;
+  min-height: 0;
+  overflow: hidden;
+}
+@media (min-width: 720px) {
+  .kindle-book-wrapper { padding: 2rem 2rem 0; }
 }
 .kindle-page {
-  /* The actual reading column. Width matches a typical print column. */
-  flex: 1 1 auto;
   width: 100%;
-  max-width: 38rem;
-  margin: 0 auto;
-  padding: 4.5rem 1.5rem 5.5rem;
-  /*
-   * Internal scroll only -- the frame itself doesn't scroll. A long
-   * section gets its own scrollbar within this column instead of
-   * lengthening the page. min-height:0 is required so the flex parent
-   * lets us shrink + scroll.
-   */
+  max-width: 42rem;
+  background-color: var(--color-paper-50);
+  border: 1px solid var(--color-line);
+  border-bottom: none;
+  border-radius: 0.5rem 0.5rem 0 0;
+  padding: 2rem 1.25rem 3rem;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  min-height: 0;
+  /* Book shadow — gives depth */
+  box-shadow:
+    0 0 0 1px rgba(42, 36, 26, 0.03),
+    4px 0 8px -2px rgba(42, 36, 26, 0.06),
+    -4px 0 8px -2px rgba(42, 36, 26, 0.06),
+    0 -2px 12px -4px rgba(42, 36, 26, 0.08);
 }
 @media (min-width: 720px) {
   .kindle-page {
-    padding: 6rem 2rem 6rem;
+    padding: 3rem 3rem 4rem;
+    border-radius: 0.75rem 0.75rem 0 0;
+    box-shadow:
+      0 0 0 1px rgba(42, 36, 26, 0.04),
+      8px 0 16px -4px rgba(42, 36, 26, 0.08),
+      -8px 0 16px -4px rgba(42, 36, 26, 0.08),
+      0 -4px 20px -6px rgba(42, 36, 26, 0.1);
   }
+}
+@media (min-width: 1024px) {
+  .kindle-page { padding: 3.5rem 4rem 4rem; }
 }
 
 /* Cover page (page 1): centered hero with title + summary + source. */
@@ -464,38 +488,46 @@ textarea.input {
 .kindle-toolbar {
   position: sticky;
   bottom: 0;
-  z-index: 5;
+  z-index: 10;
   border-top: 1px solid var(--color-line);
-  background-color: rgba(248, 241, 221, 0.92);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  background-color: var(--color-paper-50);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  padding: 0.55rem 1rem;
+  padding: 0.6rem 1rem;
   font-family: var(--font-sans);
   font-size: 0.82rem;
   color: var(--color-muted-500);
 }
+@media (min-width: 720px) {
+  .kindle-toolbar { padding: 0.6rem 2rem; }
+}
 .kindle-toolbar button {
   font-family: var(--font-sans);
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   font-weight: 500;
   color: var(--color-ink-900);
-  padding: 0.35rem 0.85rem;
-  border-radius: 999px;
-  background-color: transparent;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  background-color: var(--color-paper-200);
   border: 1px solid var(--color-line);
   cursor: pointer;
-  transition: background-color 120ms ease, color 120ms ease;
+  transition: background-color 120ms ease, transform 80ms ease;
 }
 .kindle-toolbar button:hover:not(:disabled) {
-  background-color: var(--color-paper-200);
+  background-color: var(--color-paper-300);
+}
+.kindle-toolbar button:active:not(:disabled) {
+  transform: scale(0.96);
 }
 .kindle-toolbar button:disabled {
-  opacity: 0.35;
+  opacity: 0.3;
   cursor: not-allowed;
+}
+.kindle-page-indicator {
+  font-weight: 500;
+  color: var(--color-ink-800);
 }
 .kindle-progress {
   position: absolute;
@@ -503,48 +535,33 @@ textarea.input {
   left: 0;
   height: 2px;
   background-color: var(--color-ember-500);
-  transition: width 240ms ease;
+  transition: width 300ms ease;
+  border-radius: 1px;
 }
 
-/* Tap zones (mobile / non-keyboard) -- invisible overlays.
- *
- *   - top: 4rem keeps the header (Logo + "Library" pill) clickable on
- *     every page. Without this offset the fixed-positioned tap zone sits
- *     above the header and steals every click in that strip.
- *   - bottom: 3.4rem leaves room for the toolbar.
- *   - The reader page only mounts these tap zones on cover + section
- *     pages; the end page has CTAs inside the article and shouldn't be
- *     intercepted at all.
- */
-.kindle-tap {
-  position: fixed;
-  top: 4rem;
-  bottom: 3.4rem;
-  width: 35%;
-  z-index: 1;
-  cursor: pointer;
-  background: transparent;
-  -webkit-tap-highlight-color: transparent;
-}
-@media (min-width: 720px) {
-  .kindle-tap {
-    /* Header pads more on tablet/desktop. */
-    top: 5rem;
-  }
-}
-.kindle-tap-left  { left: 0; }
-.kindle-tap-right { right: 0; width: 65%; }
-@media (hover: hover) and (pointer: fine) {
-  /* On desktop, mouse-clicks are flippable too but we don't show a cursor
-     change because keyboard nav is the primary input. */
-  .kindle-tap { cursor: default; }
-}
+/* ----- Page flip animation ----- */
 
 
 
 /* ----- Dark mode component overrides ----- */
+html.dark .kindle-frame {
+  background-color: var(--color-paper-300);
+}
+html.dark .kindle-header {
+  background-color: var(--color-paper-100);
+}
+html.dark .kindle-page {
+  background-color: var(--color-paper-100);
+  box-shadow:
+    0 0 0 1px rgba(237, 223, 191, 0.04),
+    4px 0 12px -2px rgba(0, 0, 0, 0.2),
+    -4px 0 12px -2px rgba(0, 0, 0, 0.2);
+}
 html.dark .kindle-toolbar {
-  background-color: rgba(35, 32, 27, 0.92);
+  background-color: var(--color-paper-100);
+}
+html.dark .kindle-toolbar button {
+  background-color: var(--color-paper-300);
 }
 html.dark .spinner {
   border-color: var(--color-paper-400);
@@ -555,42 +572,22 @@ html.dark ::selection {
   color: var(--color-paper-50);
 }
 
-/* ----- Page flip animation (Phase G) ----- */
+/* ----- Page flip animation ----- */
 @keyframes page-flip-forward {
-  0% { transform: perspective(1200px) rotateY(0deg); opacity: 1; }
-  50% { transform: perspective(1200px) rotateY(-90deg); opacity: 0.6; }
-  100% { transform: perspective(1200px) rotateY(0deg); opacity: 1; }
+  0% { opacity: 1; transform: translateX(0); }
+  40% { opacity: 0.4; transform: translateX(-12px); }
+  100% { opacity: 1; transform: translateX(0); }
 }
 @keyframes page-flip-back {
-  0% { transform: perspective(1200px) rotateY(0deg); opacity: 1; }
-  50% { transform: perspective(1200px) rotateY(90deg); opacity: 0.6; }
-  100% { transform: perspective(1200px) rotateY(0deg); opacity: 1; }
+  0% { opacity: 1; transform: translateX(0); }
+  40% { opacity: 0.4; transform: translateX(12px); }
+  100% { opacity: 1; transform: translateX(0); }
 }
-.kindle-page-flip-forward {
-  animation: page-flip-forward 400ms ease-out;
-  transform-origin: left center;
+.kindle-flip-next {
+  animation: page-flip-forward 300ms ease-out;
 }
-.kindle-page-flip-back {
-  animation: page-flip-back 400ms ease-out;
-  transform-origin: right center;
-}
-
-/* Swipe hint indicator */
-.kindle-swipe-hint {
-  position: fixed;
-  bottom: 4rem;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 0.75rem;
-  color: var(--color-muted-400);
-  opacity: 0;
-  animation: swipe-hint-fade 3s ease-out 2s forwards;
-}
-@keyframes swipe-hint-fade {
-  0% { opacity: 0; }
-  20% { opacity: 1; }
-  80% { opacity: 1; }
-  100% { opacity: 0; }
+.kindle-flip-prev {
+  animation: page-flip-back 300ms ease-out;
 }
 
 /* ----- AI Visualization watermark (Phase H) ----- */
@@ -788,4 +785,98 @@ button.paper-card:hover {
 }
 .btn-ghost-sm:active:not(:disabled) {
   transform: scale(0.95);
+}
+
+
+/* ----- Admin Panel Layout ----- */
+.admin-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+@media (min-width: 1024px) {
+  .admin-layout {
+    flex-direction: row;
+  }
+}
+.admin-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 1rem;
+  background-color: var(--color-paper-50);
+  border-bottom: 1px solid var(--color-line);
+}
+@media (min-width: 1024px) {
+  .admin-topbar {
+    position: fixed;
+    top: 0;
+    left: 15rem;
+    right: 0;
+    border-bottom: 1px solid var(--color-line);
+  }
+}
+.admin-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 15rem;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-paper-50);
+  border-right: 1px solid var(--color-line);
+  transform: translateX(-100%);
+  transition: transform 200ms ease;
+}
+.admin-sidebar-open {
+  transform: translateX(0);
+}
+@media (min-width: 1024px) {
+  .admin-sidebar {
+    transform: translateX(0);
+    position: fixed;
+  }
+}
+.admin-nav-link {
+  display: block;
+  padding: 0.45rem 0.75rem;
+  border-radius: 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-ink-800);
+  transition: background-color 100ms ease, color 100ms ease;
+}
+.admin-nav-link:hover {
+  background-color: var(--color-paper-200);
+  color: var(--color-ink-900);
+}
+.admin-nav-active {
+  background-color: var(--color-ink-900);
+  color: var(--color-paper-100);
+}
+.admin-nav-active:hover {
+  background-color: var(--color-ink-900);
+  color: var(--color-paper-100);
+}
+.admin-main {
+  flex: 1;
+  padding: 1.5rem 1rem 3rem;
+  max-width: 100%;
+}
+@media (min-width: 1024px) {
+  .admin-main {
+    margin-left: 15rem;
+    margin-top: 3.25rem;
+    padding: 2rem 2.5rem 3rem;
+  }
+}
+@media (min-width: 1280px) {
+  .admin-main {
+    padding: 2rem 3.5rem 3rem;
+  }
 }
