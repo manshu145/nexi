@@ -201,6 +201,12 @@ export class FirestoreNexipediaDraftStore implements NexipediaDraftStore {
 
 export interface ListNexipediaArticlesOptions {
   category?: NexipediaCategory;
+  /**
+   * If set, exclude these categories from the result. Used by the
+   * encyclopedia listing (/nexipedia) to hide exam-guide and learning-tip
+   * entries which have their own dedicated student surfaces.
+   */
+  excludeCategories?: NexipediaCategory[];
   /** Lowercased substring; filters on searchTokens client-side after fetch. */
   query?: string;
   publishedOnly?: boolean;
@@ -240,6 +246,9 @@ export class InMemoryNexipediaArticleStore implements NexipediaArticleStore {
     const filtered = all.filter((a) => {
       if (publishedOnly && !a.isPublished) return false;
       if (opts.category && a.category !== opts.category) return false;
+      if (opts.excludeCategories && opts.excludeCategories.includes(a.category)) {
+        return false;
+      }
       if (q) {
         const inTitle = a.title.toLowerCase().includes(q);
         const inSummary = a.summary.toLowerCase().includes(q);
@@ -285,6 +294,10 @@ export class FirestoreNexipediaArticleStore implements NexipediaArticleStore {
     if (opts.category) q = q.where('category', '==', opts.category);
     const snap = await q.get();
     let rows = snap.docs.map((d) => d.data() as NexipediaArticle);
+    if (opts.excludeCategories && opts.excludeCategories.length > 0) {
+      const excluded = new Set(opts.excludeCategories);
+      rows = rows.filter((a) => !excluded.has(a.category));
+    }
     const queryStr = (opts.query ?? '').toLowerCase().trim();
     if (queryStr) {
       rows = rows.filter((a) => {

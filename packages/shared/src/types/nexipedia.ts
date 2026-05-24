@@ -51,6 +51,11 @@ export const NEXIPEDIA_CATEGORIES = [
   'biography',
   'current-affairs',
   'general-knowledge',
+  // Phase 17 additions: re-use the same 3-AI pipeline + admin review for
+  // exam-prep how-to content and study-technique articles. Editorially
+  // distinct (see prompts.ts CATEGORY_HINTS) but lifecycle is identical.
+  'exam-guide',
+  'learning-tip',
 ] as const;
 
 export type NexipediaCategory = (typeof NEXIPEDIA_CATEGORIES)[number];
@@ -66,6 +71,8 @@ export const NEXIPEDIA_CATEGORY_LABELS: Record<NexipediaCategory, string> = {
   biography: 'Biographies',
   'current-affairs': 'Current affairs',
   'general-knowledge': 'General knowledge',
+  'exam-guide': 'Exam guide',
+  'learning-tip': 'Learning tip',
 };
 
 export type NexipediaArticleStatus = 'pending' | 'approved' | 'rejected';

@@ -255,6 +255,48 @@ export default function DashboardPage() {
 
       <section className="paper-card mt-6 p-6 sm:p-8">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ember-600">
+          Exam guides · how to crack it
+        </p>
+        <h2 className="font-serif mt-3 text-xl font-semibold leading-snug text-ink-900">
+          Practical, no-noise exam preparation.
+        </h2>
+        <p className="mt-3 text-ink-800">
+          Step-by-step guides for JEE, NEET, UPSC, SSC and CBSE boards.
+          Every claim about syllabus, pattern, and marks is cited to the
+          issuing authority. No coaching ads, no YouTube hype.
+        </p>
+        <button
+          type="button"
+          onClick={() => router.push('/guides')}
+          className="btn-ghost mt-6"
+        >
+          Browse exam guides
+        </button>
+      </section>
+
+      <section className="paper-card mt-6 p-6 sm:p-8">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gold-600">
+          Learning tips · evidence-backed
+        </p>
+        <h2 className="font-serif mt-3 text-xl font-semibold leading-snug text-ink-900">
+          Study techniques that actually work.
+        </h2>
+        <p className="mt-3 text-ink-800">
+          Spaced repetition, retrieval practice, interleaving -- each
+          technique is backed by published cognitive-science research, not
+          motivation tropes. Read once, apply forever.
+        </p>
+        <button
+          type="button"
+          onClick={() => router.push('/learn')}
+          className="btn-ghost mt-6"
+        >
+          Open learning tips
+        </button>
+      </section>
+
+      <section className="paper-card mt-6 p-6 sm:p-8">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ember-600">
           Refer a friend · earn credits
         </p>
         <h2 className="font-serif mt-3 text-xl font-semibold leading-snug text-ink-900">
