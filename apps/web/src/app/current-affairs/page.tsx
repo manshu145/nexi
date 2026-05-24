@@ -1,18 +1,29 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import type { CurrentAffairsDigestSummary } from '@nexigrate/shared';
-import { Logo } from '~/components/Logo';
 import { useAuth } from '~/lib/auth-context';
 import { api } from '~/lib/api';
 
-/** /current-affairs -- archive of past daily digests. */
-export default function CurrentAffairsArchivePage() {
+interface AffairsItem {
+  title: string;
+  summary: string;
+  category: string;
+  date: string;
+  examRelevance: string;
+}
+
+const CATEGORY_ICONS: Record<string, string> = {
+  polity: '🏛️', economy: '💰', science: '🔬', international: '🌍',
+  sports: '⚽', environment: '🌿', defence: '🛡️', technology: '💻',
+};
+
+export default function CurrentAffairsPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
-  const [list, setList] = useState<CurrentAffairsDigestSummary[] | null>(null);
+  const [items, setItems] = useState<AffairsItem[]>([]);
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [fetching, setFetching] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -21,116 +32,72 @@ export default function CurrentAffairsArchivePage() {
 
   useEffect(() => {
     if (!user) return;
-    let cancelled = false;
     (async () => {
       try {
-        const res = await api.currentAffairs.list(60);
-        if (!cancelled) setList(res.digests);
+        const res = await api.ai.getCurrentAffairs();
+        setItems(res.items ?? []);
       } catch (e) {
-        if (!cancelled) {
-          setError(e instanceof Error ? e.message : 'failed to load archive');
-        }
+        setError(e instanceof Error ? e.message : 'Failed to load current affairs');
+      } finally {
+        setFetching(false);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
   }, [user]);
 
-  if (loading || !user) {
+  if (loading || !user || fetching) {
     return (
-      <main className="flex min-h-[60vh] items-center justify-center px-6">
-        <span className="inline-flex items-center gap-2 text-sm text-muted-500">
-          <span className="spinner" aria-hidden="true" />
-          Loading...
-        </span>
+      <main className="flex min-h-dvh items-center justify-center">
+        <span className="spinner" /> <span className="ml-2 text-sm text-muted-500">Loading current affairs...</span>
       </main>
     );
   }
 
+  const categories = [...new Set(items.map(i => i.category))];
+  const filtered = activeCategory ? items.filter(i => i.category === activeCategory) : items;
+
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col px-4 pt-6 pb-24 sm:px-6 sm:pt-8 sm:pb-16">
-      <header className="flex items-start justify-between">
-        <Logo />
-        <div className="flex items-center gap-2">
-          <Link href="/dashboard" className="btn-ghost-sm">
-            Dashboard
-          </Link>
-          <Link href="/today" className="btn-ghost-sm">
-            Today
-          </Link>
-        </div>
+    <main className="mx-auto max-w-lg px-5 pt-6 pb-10 min-h-dvh">
+      <header className="flex items-center gap-3 mb-6">
+        <button onClick={() => router.push('/dashboard')} className="text-ink-800 hover:text-ember-600 transition">&larr;</button>
+        <h1 className="font-serif text-xl font-bold text-ink-900">📰 Current Affairs</h1>
       </header>
 
-      <section className="mt-10">
-        <p className="pill mb-3">Current affairs · archive</p>
-        <h1 className="font-serif text-3xl font-semibold leading-tight text-ink-900 sm:text-4xl">
-          The last 60 days, one click away.
-        </h1>
-      </section>
+      {/* Category filter */}
+      <nav className="flex gap-2 overflow-x-auto pb-2 mb-5 -mx-1 px-1">
+        <button
+          onClick={() => setActiveCategory(null)}
+          className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition ${!activeCategory ? 'bg-ink-900 text-paper-100' : 'bg-paper-200 text-ink-800 hover:bg-paper-300'}`}
+        >All</button>
+        {categories.map(cat => (
+          <button
+            key={cat}
+            onClick={() => setActiveCategory(cat)}
+            className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition ${activeCategory === cat ? 'bg-ink-900 text-paper-100' : 'bg-paper-200 text-ink-800 hover:bg-paper-300'}`}
+          >{CATEGORY_ICONS[cat] ?? '📌'} {cat}</button>
+        ))}
+      </nav>
 
-      {error ? (
-        <div className="banner banner-error mt-6" role="alert">
-          {error}
-        </div>
-      ) : null}
+      {/* Items */}
+      <div className="flex flex-col gap-3">
+        {filtered.length === 0 && (
+          <p className="text-center text-sm text-muted-500 py-8">No items found. Try selecting &quot;All&quot;.</p>
+        )}
+        {filtered.map((item, i) => (
+          <article key={i} className="paper-card p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-lg">{CATEGORY_ICONS[item.category] ?? '📌'}</span>
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-500">{item.category}</span>
+            </div>
+            <h2 className="font-serif text-base font-semibold text-ink-900 leading-snug">{item.title}</h2>
+            <p className="mt-2 text-sm text-ink-800 leading-relaxed">{item.summary}</p>
+            <p className="mt-2 text-xs text-muted-500 bg-paper-200 rounded px-2 py-1 inline-block">
+              📝 {item.examRelevance}
+            </p>
+          </article>
+        ))}
+      </div>
 
-      {!list ? (
-        <p className="mt-8 text-sm text-muted-500">Loading archive...</p>
-      ) : null}
-
-      {list && list.length === 0 ? (
-        <section className="paper-card mt-8 p-6 sm:p-8">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-500">
-            Coming soon
-          </p>
-          <h2 className="font-serif mt-2 text-xl font-semibold text-ink-900">
-            No digests published yet
-          </h2>
-          <p className="mt-2 text-ink-800">
-            The first daily digest will appear once an editor approves it.
-          </p>
-        </section>
-      ) : null}
-
-      {list && list.length > 0 ? (
-        <section className="mt-8 flex flex-col gap-2">
-          {list.map((d) => (
-            <Link
-              key={d.id}
-              href={`/current-affairs/${encodeURIComponent(d.date)}`}
-              className="paper-card flex items-start justify-between gap-3 p-4 transition hover:bg-paper-200/40"
-            >
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ember-600">
-                  {humanDate(d.date)}
-                </p>
-                <p className="font-serif mt-1 line-clamp-2 text-base font-medium text-ink-900">
-                  {d.summary}
-                </p>
-              </div>
-              <span className="rounded-full bg-paper-200 px-2 py-1 text-[11px] tabular-nums text-muted-500">
-                {d.itemCount} items
-              </span>
-            </Link>
-          ))}
-        </section>
-      ) : null}
+      {error && <p className="mt-4 text-sm text-ember-600 text-center">{error}</p>}
     </main>
   );
-}
-
-function humanDate(d: string): string {
-  try {
-    const dt = new Date(`${d}T00:00:00.000Z`);
-    return dt.toLocaleDateString('en-IN', {
-      weekday: 'short',
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      timeZone: 'UTC',
-    });
-  } catch {
-    return d;
-  }
 }
