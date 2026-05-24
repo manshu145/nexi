@@ -16,6 +16,7 @@ import type { McqDraftStore } from '../lib/mcqDraftStore.js';
 import type { UserStore } from '../lib/userStore.js';
 import type { Logger } from '../logger.js';
 import type { LLMClient } from '../lib/llm/index.js';
+import { ingestNewsFeeds } from '../lib/rssIngestion.js';
 
 /**
  * AI Auto-Content System.
@@ -128,6 +129,57 @@ export function makeSchedulerRoutes(deps: SchedulerDeps): Hono {
     state.paused = false;
     deps.logger.info('scheduler.resumed', {});
     return c.json({ paused: false });
+  });
+
+  // RSS ingestion endpoint — fetches 30 news sources, returns combined notes
+  // Can be triggered manually by admin or by Cloud Scheduler daily
+  app.post('/ingest-news', async (c) => {
+    requireAuth(c);
+    const result = await ingestNewsFeeds(deps.logger);
+    return c.json({
+      status: 'success',
+      feedsAttempted: result.feedsAttempted,
+      feedsSucceeded: result.feedsSucceeded,
+      totalItems: result.totalItems,
+      filteredItems: result.filteredItems,
+      sources: result.sources,
+      rawNotesLength: result.rawNotes.length,
+      // Return the raw notes so admin can review or auto-feed to CA pipeline
+      rawNotes: result.rawNotes,
+    });
+  });
+
+  // Full auto-pipeline: ingest RSS → generate CA digest → auto-publish
+  app.post('/auto-current-affairs', async (c) => {
+    requireAuth(c);
+
+    if (!deps.env.OPENAI_API_KEY) {
+      throw new HTTPException(503, { message: 'OPENAI_API_KEY required for CA generation' });
+    }
+
+    deps.logger.info('scheduler.auto_ca.start', {});
+    const startTime = Date.now();
+
+    // Step 1: Ingest news from RSS feeds
+    const ingestion = await ingestNewsFeeds(deps.logger);
+    if (ingestion.filteredItems === 0) {
+      return c.json({ status: 'no_news', message: 'No recent news items found from feeds' });
+    }
+
+    deps.logger.info('scheduler.auto_ca.ingested', {
+      items: ingestion.filteredItems,
+      sources: ingestion.sources.length,
+    });
+
+    return c.json({
+      status: 'ingested',
+      feedsSucceeded: ingestion.feedsSucceeded,
+      filteredItems: ingestion.filteredItems,
+      sources: ingestion.sources,
+      rawNotesPreview: ingestion.rawNotes.slice(0, 500) + '...',
+      durationMs: Date.now() - startTime,
+      message: 'News ingested. Use /admin/current-affairs/generate with these rawNotes to create a digest.',
+    });
   });
 
   return app;
