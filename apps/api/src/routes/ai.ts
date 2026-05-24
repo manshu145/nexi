@@ -252,20 +252,37 @@ export function makeAIRoutes(deps: AIRoutesDeps): Hono {
     const exam = await getUserExam(principal.userId);
     const lang = language === 'hi' ? 'Hindi' : 'English';
 
-    const prompt = `Generate 8-10 current affairs items relevant to "${exam}" exam preparation in India.
-Each item should be a real, recent, important news/event.
-Language: ${lang}
-Categories to cover: polity, economy, science, international, sports, environment, defence, technology
-Return JSON: { "items": [{ "title": "Short headline", "summary": "2-3 sentence exam-focused summary", "category": "polity|economy|science|international|sports|environment|defence|technology", "date": "${new Date().toISOString().slice(0, 10)}", "examRelevance": "Why this matters for the exam" }] }
-Generate AT LEAST 8 items covering different categories.`;
-
-    const systemPrompt = `You are an Indian current affairs expert creating daily digest for competitive exam students. Write factual, concise, exam-relevant summaries. Return ONLY valid JSON.`;
-
     try {
       const openaiKey = deps.openaiApiKey ?? '';
       if (!openaiKey) {
         return c.json({ items: [] });
       }
+
+      // Step 1: Fetch REAL news from RSS feeds (30 sources)
+      const { ingestNewsFeeds } = await import('../lib/rssIngestion.js');
+      const ingestion = await ingestNewsFeeds(logger);
+
+      if (!ingestion.rawNotes || ingestion.filteredItems === 0) {
+        logger.warn('ai.current-affairs.no-feeds', { feedsSucceeded: ingestion.feedsSucceeded });
+        return c.json({ items: [] });
+      }
+
+      // Step 2: AI summarizes REAL news into exam-focused digest
+      const prompt = `You are given REAL news headlines from today's Indian newspapers and government press releases.
+Summarize these into 8-10 current affairs items relevant to "${exam}" exam preparation.
+Language: ${lang}
+Categories: polity, economy, science, international, sports, environment, defence, technology
+
+IMPORTANT: Use ONLY the information from the news below. Do NOT make up events.
+
+--- TODAY'S NEWS ---
+${ingestion.rawNotes.slice(0, 6000)}
+--- END NEWS ---
+
+Return JSON: { "items": [{ "title": "Short headline", "summary": "2-3 sentence exam-focused summary", "category": "polity|economy|science|international|sports|environment|defence|technology", "date": "${new Date().toISOString().slice(0, 10)}", "examRelevance": "Why this matters for the exam" }] }`;
+
+      const systemPrompt = `You are an Indian current affairs expert creating daily digest from REAL news sources for competitive exam students. Summarize factually. Return ONLY valid JSON.`;
+
       const res = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -278,7 +295,7 @@ Generate AT LEAST 8 items covering different categories.`;
             { role: 'system', content: systemPrompt },
             { role: 'user', content: prompt },
           ],
-          temperature: 0.7,
+          temperature: 0.3,
           response_format: { type: 'json_object' },
         }),
       });
@@ -292,7 +309,7 @@ Generate AT LEAST 8 items covering different categories.`;
       const content = data.choices?.[0]?.message.content ?? '{}';
       const parsed = JSON.parse(content) as { items?: Array<{ title: string; summary: string; category: string; date: string; examRelevance: string }> };
 
-      logger.info('ai.current-affairs', { userId: principal.userId, count: parsed.items?.length ?? 0 });
+      logger.info('ai.current-affairs', { userId: principal.userId, count: parsed.items?.length ?? 0, feedsUsed: ingestion.feedsSucceeded });
       return c.json({ items: parsed.items ?? [] });
     } catch (err) {
       logger.warn('ai.current-affairs.error', { error: (err as Error).message });
