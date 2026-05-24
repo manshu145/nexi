@@ -123,6 +123,37 @@ export default function AdminSchedulerPage() {
       <div className="text-xs text-muted-500">
         Next scheduled run: {status?.nextScheduledRun ? new Date(status.nextScheduledRun).toLocaleString() : 'N/A'}
       </div>
+
+      {/* RSS News Ingestion */}
+      <hr className="border-line" />
+      <div className="space-y-4">
+        <h2 className="font-serif text-xl font-semibold text-ink-900">News Feed Ingestion</h2>
+        <p className="text-sm text-muted-500">
+          Fetches from 30 official government + news publication RSS feeds (PIB, RBI, I&B, The Hindu, Indian Express, etc.).
+          AI fact-checks and verifies before publishing as current affairs.
+        </p>
+        <button
+          className="btn-ghost"
+          onClick={async () => {
+            setLastTriggerResult(null);
+            setTriggering(true);
+            try {
+              const res = await fetch(`${process.env['NEXT_PUBLIC_API_BASE_URL'] ?? 'https://api.nexigrate.com'}/v1/admin/scheduler/ingest-news`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${await (await import('~/lib/firebase')).getFirebaseAuthClient().currentUser?.getIdToken()}` },
+              });
+              const data = await res.json() as any;
+              setLastTriggerResult(`RSS Ingested: ${data.filteredItems ?? 0} items from ${data.feedsSucceeded ?? 0} feeds (${data.sources?.length ?? 0} unique sources)`);
+            } catch (e) {
+              setLastTriggerResult(`RSS Error: ${e instanceof Error ? e.message : 'unknown'}`);
+            }
+            setTriggering(false);
+          }}
+          disabled={triggering}
+        >
+          Ingest News Feeds (30 sources)
+        </button>
+      </div>
     </div>
   );
 }

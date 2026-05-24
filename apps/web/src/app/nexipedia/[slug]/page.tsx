@@ -11,6 +11,7 @@ import {
 import { Logo } from '~/components/Logo';
 import { useAuth } from '~/lib/auth-context';
 import { api } from '~/lib/api';
+import { TextToSpeech } from '~/components/TextToSpeech';
 
 /**
  * /nexipedia/[slug] -- single Nexipedia article reader (Phase 14).
@@ -144,6 +145,9 @@ export default function NexipediaArticlePage() {
               <h2 className="reader-heading font-serif text-xl font-semibold text-ink-900">
                 {s.heading}
               </h2>
+              <div className="mt-2 mb-3">
+                <TextToSpeech text={s.body} />
+              </div>
               <div className="reader-body mt-3 text-ink-800">
                 {renderMarkdown(s.body)}
               </div>
