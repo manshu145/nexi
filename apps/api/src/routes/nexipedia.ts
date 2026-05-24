@@ -383,7 +383,14 @@ export function makeStudentNexipediaRoutes(deps: StudentNexipediaRoutesDeps): Ho
       limit: limitN,
     };
     if (q) opts.query = q;
-    if (category) opts.category = category;
+    if (category) {
+      opts.category = category;
+    } else {
+      // Default encyclopedia listing excludes exam-guide and learning-tip:
+      // those have their own dedicated student surfaces (/guides, /learn).
+      // Callers that explicitly filter by either category still get them.
+      opts.excludeCategories = ['exam-guide', 'learning-tip'];
+    }
     let list: NexipediaArticle[];
     try {
       list = await articles.list(opts);
