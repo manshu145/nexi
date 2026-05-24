@@ -143,6 +143,8 @@ import { makeAdminAuditRoutes } from './routes/admin-audit.js';
 import { makeAdminAnalyticsRoutes } from './routes/admin-analytics.js';
 import { makeAdminCommsRoutes } from './routes/admin-comms.js';
 import { makeStudentCommsRoutes } from './routes/student-comms.js';
+import { makeVisualizeRoutes } from './routes/visualize.js';
+import { OpenAIClient } from './lib/llm/openai.js';
 import { makeProgressRoutes } from './routes/progress.js';
 import { makeUsersRoutes } from './routes/users.js';
 
@@ -446,6 +448,14 @@ export function buildApp(deps: AppDeps): Hono {
       newEventId: engineDeps.newId,
       now: engineDeps.now,
       getTargetExam,
+    }),
+  );
+  // Phase H: AI visualization — generates Mermaid diagrams for chapter sections.
+  v1.route(
+    '/visualize',
+    makeVisualizeRoutes({
+      generator: new OpenAIClient(env.OPENAI_API_KEY),
+      logger,
     }),
   );
   // Phase 21: student-facing announcements + support tickets.
