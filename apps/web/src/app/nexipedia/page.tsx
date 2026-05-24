@@ -1,258 +1,234 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  NEXIPEDIA_CATEGORIES,
-  NEXIPEDIA_CATEGORY_LABELS,
-  type NexipediaArticleSummary,
-  type NexipediaCategory,
-} from '@nexigrate/shared';
 import { Logo } from '~/components/Logo';
+import { MobileNav } from '~/components/MobileNav';
 import { useAuth } from '~/lib/auth-context';
 import { api } from '~/lib/api';
 
 /**
- * /nexipedia -- Phase 14 student entry point.
+ * /nexipedia → Nexi AI Chatbot
  *
- * Encyclopedia browse + search. The corpus is small in early phases so
- * we do server-side substring search over a Firestore-fetched slice;
- * once we're north of ~1000 articles we'll either move to a managed
- * search service (Algolia/Typesense) or build a lightweight inverted
- * index in Firestore.
+ * A full-screen ChatGPT-like study assistant. Students can:
+ * - Ask any academic question
+ * - Get explanations with examples
+ * - Request diagrams/visualizations
+ * - Get study tips personalized to their exam
  *
- * Layout:
- *   - search box at the top, debounced
- *   - category filter pills
- *   - results grouped by category, each card linking to /nexipedia/:slug
- *
- * Empty states:
- *   - no articles published yet: friendly "coming soon" pitch
- *   - search returns nothing: short "no matches" line + clear-search button
+ * No manual input for content — this IS the encyclopedia, but interactive.
  */
-export default function NexipediaListPage() {
+
+interface Message {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: number;
+}
+
+export default function NexiChatPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
-
-  const [articles, setArticles] = useState<NexipediaArticleSummary[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [q, setQ] = useState('');
-  const [debouncedQ, setDebouncedQ] = useState('');
-  const [category, setCategory] = useState<NexipediaCategory | 'all'>('all');
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState('');
+  const [sending, setSending] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!loading && !user) router.replace('/signin');
   }, [user, loading, router]);
 
-  // Debounce search input by 250ms.
+  // Load history from localStorage
   useEffect(() => {
-    const t = window.setTimeout(() => setDebouncedQ(q.trim()), 250);
-    return () => window.clearTimeout(t);
-  }, [q]);
+    try {
+      const saved = localStorage.getItem('nexi.chat.history');
+      if (saved) setMessages(JSON.parse(saved));
+    } catch {}
+  }, []);
 
+  // Save to localStorage on change
   useEffect(() => {
-    if (!user) return;
-    let cancelled = false;
-    (async () => {
+    if (messages.length > 0) {
       try {
-        const opts: Parameters<typeof api.nexipedia.list>[0] = {};
-        if (debouncedQ) opts.q = debouncedQ;
-        if (category !== 'all') opts.category = category;
-        const res = await api.nexipedia.list(opts);
-        if (!cancelled) {
-          setArticles(res.articles);
-          setError(null);
-        }
-      } catch (e) {
-        if (!cancelled) {
-          setError(e instanceof Error ? e.message : 'failed to load articles');
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [user, debouncedQ, category]);
-
-  // Group results by category for the bookshelf-style layout.
-  const grouped = useMemo(() => {
-    if (!articles) return [];
-    const map = new Map<NexipediaCategory, NexipediaArticleSummary[]>();
-    for (const a of articles) {
-      const arr = map.get(a.category) ?? [];
-      arr.push(a);
-      map.set(a.category, arr);
+        localStorage.setItem('nexi.chat.history', JSON.stringify(messages.slice(-50)));
+      } catch {}
     }
-    return Array.from(map.entries())
-      .map(([cat, items]) => ({
-        category: cat,
-        items: items.slice().sort((a, b) => (a.title < b.title ? -1 : 1)),
-      }))
-      .sort((a, b) => a.category.localeCompare(b.category));
-  }, [articles]);
+  }, [messages]);
+
+  // Auto-scroll
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages, sending]);
+
+  async function onSend() {
+    if (!input.trim() || sending) return;
+    const userMsg: Message = {
+      id: `u-${Date.now()}`,
+      role: 'user',
+      content: input.trim(),
+      timestamp: Date.now(),
+    };
+    setMessages((prev) => [...prev, userMsg]);
+    setInput('');
+    setSending(true);
+
+    try {
+      const res = await api.ai.chat(userMsg.content);
+      const assistantMsg: Message = {
+        id: `a-${Date.now()}`,
+        role: 'assistant',
+        content: res.reply,
+        timestamp: Date.now(),
+      };
+      setMessages((prev) => [...prev, assistantMsg]);
+    } catch (e) {
+      const errorMsg: Message = {
+        id: `e-${Date.now()}`,
+        role: 'assistant',
+        content: 'Sorry, I couldn\'t respond. Please check your internet connection and try again.',
+        timestamp: Date.now(),
+      };
+      setMessages((prev) => [...prev, errorMsg]);
+    } finally {
+      setSending(false);
+      inputRef.current?.focus();
+    }
+  }
+
+  function clearHistory() {
+    setMessages([]);
+    localStorage.removeItem('nexi.chat.history');
+  }
 
   if (loading || !user) {
     return (
-      <main className="flex min-h-[60vh] items-center justify-center px-6">
-        <span className="inline-flex items-center gap-2 text-sm text-muted-500">
-          <span className="spinner" aria-hidden="true" />
-          Loading...
-        </span>
+      <main className="flex min-h-screen items-center justify-center">
+        <span className="spinner" />
       </main>
     );
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col px-4 pt-6 pb-24 sm:px-6 sm:pt-8 sm:pb-16">
-      <header className="flex items-start justify-between">
-        <Logo />
-        <div className="flex items-center gap-2">
-          <Link href="/dashboard" className="btn-ghost-sm">
-            Dashboard
-          </Link>
-          <Link href="/chapters" className="btn-ghost-sm">
-            Library
-          </Link>
-        </div>
-      </header>
-
-      <section className="mt-10">
-        <p className="pill mb-3">Nexipedia</p>
-        <h1 className="font-serif text-3xl font-semibold leading-tight text-ink-900 sm:text-4xl">
-          Verified knowledge, no rabbit holes.
-        </h1>
-        <p className="mt-2 text-ink-800">
-          Every article is generated and verified by three AIs (OpenAI,
-          Gemini, Groq), then approved by an editor. Cited from NCERT and
-          Government of India sources.
-        </p>
-      </section>
-
-      <section className="mt-6 flex flex-col gap-3">
-        <label className="block">
-          <span className="sr-only">Search Nexipedia</span>
-          <input
-            type="search"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search articles -- e.g. 'photosynthesis', 'partition of india'"
-            className="input w-full"
-            autoFocus
-          />
-        </label>
-        <div className="flex flex-wrap gap-2">
-          <CategoryPill
-            active={category === 'all'}
-            label="All"
-            onClick={() => setCategory('all')}
-          />
-          {NEXIPEDIA_CATEGORIES.map((cat) => (
-            <CategoryPill
-              key={cat}
-              active={category === cat}
-              label={NEXIPEDIA_CATEGORY_LABELS[cat]}
-              onClick={() => setCategory(cat)}
-            />
-          ))}
-        </div>
-      </section>
-
-      {error ? (
-        <div className="banner banner-error mt-6" role="alert">
-          <span>{error}</span>
-        </div>
-      ) : null}
-
-      {!articles && !error ? (
-        <p className="mt-8 text-sm text-muted-500">Loading articles...</p>
-      ) : null}
-
-      {articles && articles.length === 0 ? (
-        <section className="paper-card mt-6 p-6 sm:p-8 border-l-4 border-l-ember-600">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ember-600">
-            AI Encyclopedia — Real-time
-          </p>
-          <h2 className="font-serif mt-2 text-xl font-semibold text-ink-900">
-            AI is generating articles for your exam
-          </h2>
-          <p className="mt-2 text-ink-800">
-            The platform auto-creates encyclopedia articles based on your exam syllabus.
-            Meanwhile, use the AI Library to read any topic instantly.
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Link href="/library" className="btn-primary">
-              Open AI Library
-            </Link>
-            <Link href="/chapters" className="btn-ghost">
-              Study Chapters
-            </Link>
-          </div>
-        </section>
-      ) : null}
-
-      {grouped.length > 0 ? (
-        <section className="mt-8 flex flex-col gap-8">
-          {grouped.map((shelf) => (
-            <div key={shelf.category}>
-              <div className="flex items-baseline justify-between border-b border-line pb-2">
-                <h2 className="font-serif text-sm font-semibold uppercase tracking-[0.18em] text-ink-800">
-                  {NEXIPEDIA_CATEGORY_LABELS[shelf.category]}
-                </h2>
-                <span className="text-xs text-muted-500">
-                  {shelf.items.length} article{shelf.items.length === 1 ? '' : 's'}
-                </span>
-              </div>
-              <ul className="mt-4 grid gap-3 sm:grid-cols-2">
-                {shelf.items.map((a) => (
-                  <li key={a.id}>
-                    <Link
-                      href={`/nexipedia/${encodeURIComponent(a.slug)}`}
-                      className="paper-card block h-full p-5 transition hover:bg-paper-200/40"
-                    >
-                      <h3 className="font-serif text-lg font-semibold leading-snug text-ink-900">
-                        {a.title}
-                      </h3>
-                      <p className="mt-2 line-clamp-2 text-sm text-ink-800">
-                        {a.summary}
-                      </p>
-                      <p className="mt-3 text-xs text-muted-500">
-                        {a.estimatedReadMinutes} min read · verified by 3 AIs
-                      </p>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
+    <>
+      <main className="flex min-h-screen flex-col">
+        {/* Header */}
+        <header className="sticky top-0 z-40 flex items-center justify-between border-b border-line bg-paper-50/95 px-4 py-3 backdrop-blur-md">
+          <div className="flex items-center gap-3">
+            <Logo />
+            <div className="flex items-center gap-1.5">
+              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-ember-600 text-xs text-paper-100 font-bold">N</span>
+              <span className="font-serif text-sm font-semibold text-ink-900">Nexi</span>
+              <span className="pill text-[9px]">AI</span>
             </div>
-          ))}
-        </section>
-      ) : null}
-    </main>
-  );
-}
+          </div>
+          <div className="flex items-center gap-2">
+            {messages.length > 0 && (
+              <button type="button" onClick={clearHistory} className="btn-ghost-sm text-xs">
+                Clear
+              </button>
+            )}
+            <button type="button" onClick={() => router.push('/dashboard')} className="btn-ghost-sm">
+              Dashboard
+            </button>
+          </div>
+        </header>
 
-function CategoryPill({
-  active,
-  label,
-  onClick,
-}: {
-  active: boolean;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={
-        'rounded-full border px-3 py-1 text-xs font-medium transition ' +
-        (active
-          ? 'border-ink-900 bg-ink-900 text-paper-100'
-          : 'border-line bg-paper-50 text-ink-800 hover:border-ember-500')
-      }
-      aria-pressed={active}
-    >
-      {label}
-    </button>
+        {/* Messages area */}
+        <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6 sm:px-6 pb-32">
+          <div className="mx-auto max-w-2xl space-y-4">
+            {messages.length === 0 && (
+              <div className="mt-16 text-center">
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-paper-200">
+                  <span className="text-3xl">🧠</span>
+                </div>
+                <h1 className="font-serif mt-4 text-2xl font-semibold text-ink-900">
+                  Hi! I&apos;m Nexi
+                </h1>
+                <p className="mt-2 text-sm text-ink-800 max-w-sm mx-auto">
+                  Your AI study buddy. Ask me anything — explain concepts, solve problems,
+                  create summaries, quiz you, or just chat about your studies.
+                </p>
+                <div className="mt-6 grid grid-cols-2 gap-2 max-w-md mx-auto">
+                  {[
+                    'Explain photosynthesis simply',
+                    'Solve: derivative of x²+3x',
+                    'Summarize Indian Constitution Art 14-18',
+                    'Quiz me on Newton\'s Laws',
+                  ].map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      onClick={() => { setInput(suggestion); inputRef.current?.focus(); }}
+                      className="paper-card p-3 text-left text-xs text-ink-800 hover:bg-paper-200/60 transition"
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {messages.map((msg) => (
+              <div
+                key={msg.id}
+                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                <div
+                  className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                    msg.role === 'user'
+                      ? 'bg-ink-900 text-paper-100 rounded-br-md'
+                      : 'bg-paper-200 text-ink-900 rounded-bl-md'
+                  }`}
+                >
+                  <p className="whitespace-pre-wrap">{msg.content}</p>
+                </div>
+              </div>
+            ))}
+
+            {sending && (
+              <div className="flex justify-start">
+                <div className="rounded-2xl rounded-bl-md bg-paper-200 px-4 py-3">
+                  <div className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-muted-500 animate-pulse" />
+                    <span className="h-2 w-2 rounded-full bg-muted-500 animate-pulse" style={{ animationDelay: '0.2s' }} />
+                    <span className="h-2 w-2 rounded-full bg-muted-500 animate-pulse" style={{ animationDelay: '0.4s' }} />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Input bar — fixed at bottom */}
+        <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-line bg-paper-50/95 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-md sm:pb-3">
+          <div className="mx-auto flex max-w-2xl gap-2">
+            <input
+              ref={inputRef}
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && onSend()}
+              placeholder="Ask Nexi anything about your studies..."
+              className="flex-1 rounded-full border border-line bg-paper-100 px-4 py-2.5 text-sm text-ink-900 placeholder:text-muted-400 focus:outline-none focus:ring-2 focus:ring-ember-600"
+              disabled={sending}
+            />
+            <button
+              type="button"
+              onClick={onSend}
+              disabled={!input.trim() || sending}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ink-900 text-paper-100 transition hover:bg-ember-600 disabled:opacity-40"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="19" x2="12" y2="5" />
+                <polyline points="5 12 12 5 19 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </main>
+    </>
   );
 }
