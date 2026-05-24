@@ -19,6 +19,10 @@ import type {
   NexipediaArticleStatus,
   NexipediaArticleSummary,
   NexipediaCategory,
+  CurrentAffairsDigest,
+  CurrentAffairsDigestDraft,
+  CurrentAffairsDigestStatus,
+  CurrentAffairsDigestSummary,
   ProgressSnapshot,
 } from '@nexigrate/shared';
 import { getFirebaseAuthClient } from './firebase';
@@ -652,6 +656,77 @@ export const api = {
       );
       return res.json() as Promise<{ draft: AdminNexipediaDraft }>;
     },
+
+    // ----- current-affairs pipeline (Phase 19)
+    async generateCurrentAffairs(input: {
+      date: string;
+      rawNotes: string;
+      focusHint?: string;
+    }): Promise<{ draft: CurrentAffairsDigestDraft; verifierDisagreement: boolean }> {
+      const res = await authedFetch('/v1/admin/current-affairs/generate', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+      return res.json() as Promise<{
+        draft: CurrentAffairsDigestDraft;
+        verifierDisagreement: boolean;
+      }>;
+    },
+
+    async listCurrentAffairsDrafts(opts: {
+      status?: CurrentAffairsDigestStatus;
+      limit?: number;
+    } = {}): Promise<{ drafts: CurrentAffairsDigestDraft[] }> {
+      const params = new URLSearchParams();
+      if (opts.status) params.set('status', opts.status);
+      if (opts.limit) params.set('limit', String(opts.limit));
+      const qs = params.toString() ? `?${params.toString()}` : '';
+      const res = await authedFetch(`/v1/admin/current-affairs-drafts${qs}`);
+      return res.json() as Promise<{ drafts: CurrentAffairsDigestDraft[] }>;
+    },
+
+    async getCurrentAffairsDraft(
+      id: string,
+    ): Promise<{ draft: CurrentAffairsDigestDraft }> {
+      const res = await authedFetch(
+        `/v1/admin/current-affairs-drafts/${encodeURIComponent(id)}`,
+      );
+      return res.json() as Promise<{ draft: CurrentAffairsDigestDraft }>;
+    },
+
+    async approveCurrentAffairsDraft(
+      id: string,
+    ): Promise<{ draft: CurrentAffairsDigestDraft; digest: CurrentAffairsDigest }> {
+      const res = await authedFetch(
+        `/v1/admin/current-affairs-drafts/${encodeURIComponent(id)}/approve`,
+        { method: 'POST', body: JSON.stringify({}) },
+      );
+      return res.json() as Promise<{
+        draft: CurrentAffairsDigestDraft;
+        digest: CurrentAffairsDigest;
+      }>;
+    },
+
+    async rejectCurrentAffairsDraft(
+      id: string,
+      rejectionReason: string,
+    ): Promise<{ draft: CurrentAffairsDigestDraft }> {
+      const res = await authedFetch(
+        `/v1/admin/current-affairs-drafts/${encodeURIComponent(id)}/reject`,
+        { method: 'POST', body: JSON.stringify({ rejectionReason }) },
+      );
+      return res.json() as Promise<{ draft: CurrentAffairsDigestDraft }>;
+    },
+
+    async regenerateCurrentAffairsDraft(
+      id: string,
+    ): Promise<{ draft: CurrentAffairsDigestDraft }> {
+      const res = await authedFetch(
+        `/v1/admin/current-affairs-drafts/${encodeURIComponent(id)}/regenerate`,
+        { method: 'POST', body: JSON.stringify({}) },
+      );
+      return res.json() as Promise<{ draft: CurrentAffairsDigestDraft }>;
+    },
   },
 
   // ----- chapters (student-facing)
@@ -798,6 +873,25 @@ export const api = {
         body: JSON.stringify({ code }),
       });
       return res.json() as Promise<ReferralAttributeResponse>;
+    },
+  },
+
+  // ----- current affairs (Phase 19)
+  currentAffairs: {
+    async today(): Promise<{ digest: CurrentAffairsDigest | null }> {
+      const res = await authedFetch('/v1/current-affairs/today');
+      return res.json() as Promise<{ digest: CurrentAffairsDigest | null }>;
+    },
+
+    async list(limit?: number): Promise<{ digests: CurrentAffairsDigestSummary[] }> {
+      const qs = limit ? `?limit=${limit}` : '';
+      const res = await authedFetch(`/v1/current-affairs${qs}`);
+      return res.json() as Promise<{ digests: CurrentAffairsDigestSummary[] }>;
+    },
+
+    async getByDate(date: string): Promise<{ digest: CurrentAffairsDigest }> {
+      const res = await authedFetch(`/v1/current-affairs/${encodeURIComponent(date)}`);
+      return res.json() as Promise<{ digest: CurrentAffairsDigest }>;
     },
   },
 };
