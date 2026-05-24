@@ -1,6 +1,9 @@
 'use client';
 
 import type {
+  Chapter,
+  ChapterDraft,
+  ChapterDraftStatus,
   CreditBalance,
   ExamSlug,
   MCQ,
@@ -150,6 +153,57 @@ export interface GenerateDraftRequest {
 export interface GenerateDraftResponse {
   created: AdminMcqDraft[];
   errors: { index: number; error: string }[];
+}
+
+// ============================================================================
+// Chapter (Phase 9-10) -- AI-generated chapter content
+// ============================================================================
+
+/** Slim chapter shape returned by the public list endpoint (no section bodies). */
+export interface ChapterSummary {
+  id: string;
+  exam: ExamSlug;
+  subject: string;
+  slug: string;
+  classLevel: string;
+  title: string;
+  summary: string;
+  estimatedReadMinutes: number;
+  source: string;
+  sectionCount: number;
+}
+
+export type AdminChapterDraftStatus = ChapterDraftStatus;
+export type AdminChapterDraft = ChapterDraft;
+export type PublishedChapter = Chapter;
+
+export interface GenerateChapterRequest {
+  exam: ExamSlug | string;
+  subject: string;
+  /** Stable kebab-case slug, e.g. 'units-and-measurements'. */
+  slug: string;
+  /** Human-readable title fed to the AI prompt. */
+  chapterTitle: string;
+  classLevel: string;
+  sourceHint?: string;
+  targetReadMinutes?: number;
+}
+
+export interface GenerateChapterResponse {
+  draft: AdminChapterDraft;
+  verifierDisagreement: boolean;
+}
+
+export interface ChapterEditPayload {
+  title?: string;
+  summary?: string;
+  source?: string;
+  sections?: Array<{
+    id: string;
+    heading: string;
+    body: string;
+    order: number;
+  }>;
 }
 
 // ============================================================================
@@ -325,6 +379,112 @@ export const api = {
         { method: 'POST', body: JSON.stringify({ rejectionReason }) },
       );
       return res.json() as Promise<{ draft: AdminMcqDraft }>;
+    },
+
+    // ----- chapter pipeline (Phase 9-10)
+    async generateChapter(
+      input: GenerateChapterRequest,
+    ): Promise<GenerateChapterResponse> {
+      const res = await authedFetch('/v1/admin/chapters/generate', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+      return res.json() as Promise<GenerateChapterResponse>;
+    },
+
+    async listChapterDrafts(
+      opts: {
+        status?: AdminChapterDraftStatus;
+        exam?: ExamSlug | string;
+        subject?: string;
+        limit?: number;
+      } = {},
+    ): Promise<{ drafts: AdminChapterDraft[] }> {
+      const params = new URLSearchParams();
+      if (opts.status) params.set('status', opts.status);
+      if (opts.exam) params.set('exam', String(opts.exam));
+      if (opts.subject) params.set('subject', opts.subject);
+      if (opts.limit) params.set('limit', String(opts.limit));
+      const qs = params.toString() ? `?${params.toString()}` : '';
+      const res = await authedFetch(`/v1/admin/chapter-drafts${qs}`);
+      return res.json() as Promise<{ drafts: AdminChapterDraft[] }>;
+    },
+
+    async getChapterDraft(id: string): Promise<{ draft: AdminChapterDraft }> {
+      const res = await authedFetch(
+        `/v1/admin/chapter-drafts/${encodeURIComponent(id)}`,
+      );
+      return res.json() as Promise<{ draft: AdminChapterDraft }>;
+    },
+
+    async editChapterDraft(
+      id: string,
+      edits: ChapterEditPayload,
+    ): Promise<{ draft: AdminChapterDraft }> {
+      const res = await authedFetch(
+        `/v1/admin/chapter-drafts/${encodeURIComponent(id)}`,
+        { method: 'PATCH', body: JSON.stringify(edits) },
+      );
+      return res.json() as Promise<{ draft: AdminChapterDraft }>;
+    },
+
+    async approveChapterDraft(
+      id: string,
+    ): Promise<{ draft: AdminChapterDraft; chapter: PublishedChapter }> {
+      const res = await authedFetch(
+        `/v1/admin/chapter-drafts/${encodeURIComponent(id)}/approve`,
+        { method: 'POST', body: JSON.stringify({}) },
+      );
+      return res.json() as Promise<{
+        draft: AdminChapterDraft;
+        chapter: PublishedChapter;
+      }>;
+    },
+
+    async rejectChapterDraft(
+      id: string,
+      rejectionReason: string,
+    ): Promise<{ draft: AdminChapterDraft }> {
+      const res = await authedFetch(
+        `/v1/admin/chapter-drafts/${encodeURIComponent(id)}/reject`,
+        { method: 'POST', body: JSON.stringify({ rejectionReason }) },
+      );
+      return res.json() as Promise<{ draft: AdminChapterDraft }>;
+    },
+
+    async regenerateChapterDraft(
+      id: string,
+    ): Promise<{ draft: AdminChapterDraft }> {
+      const res = await authedFetch(
+        `/v1/admin/chapter-drafts/${encodeURIComponent(id)}/regenerate`,
+        { method: 'POST', body: JSON.stringify({}) },
+      );
+      return res.json() as Promise<{ draft: AdminChapterDraft }>;
+    },
+  },
+
+  // ----- chapters (student-facing)
+  chapters: {
+    async list(
+      opts: { exam?: ExamSlug | string; subject?: string } = {},
+    ): Promise<{ chapters: ChapterSummary[] }> {
+      const params = new URLSearchParams();
+      if (opts.exam) params.set('exam', String(opts.exam));
+      if (opts.subject) params.set('subject', opts.subject);
+      const qs = params.toString() ? `?${params.toString()}` : '';
+      const res = await authedFetch(`/v1/chapters${qs}`);
+      return res.json() as Promise<{ chapters: ChapterSummary[] }>;
+    },
+
+    async get(
+      exam: string,
+      subject: string,
+      slug: string,
+    ): Promise<{ chapter: PublishedChapter }> {
+      const res = await authedFetch(
+        `/v1/chapters/${encodeURIComponent(exam)}/${encodeURIComponent(subject)}/${encodeURIComponent(slug)}`,
+      );
+      return res.json() as Promise<{ chapter: PublishedChapter }>;
     },
   },
 };

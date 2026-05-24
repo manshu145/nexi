@@ -271,3 +271,54 @@ textarea.input {
     transition: none !important;
   }
 }
+
+/* ----------------------------------------------------------------------------
+ * Kindle-style reader (Phase 9-10).
+ * Used by /read/<exam>/<subject>/<slug>. Generous serif body, narrow column,
+ * page-like cream background, drop cap on first paragraph.
+ * -------------------------------------------------------------------------- */
+.reader {
+  font-family: var(--font-serif);
+  color: var(--color-ink-900);
+}
+.reader-section {
+  margin-top: 2.25rem;
+}
+.reader-section:first-child {
+  margin-top: 0;
+}
+.reader-heading {
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--color-ink-900);
+  margin-bottom: 0.85rem;
+  border-bottom: 1px solid var(--color-line);
+  padding-bottom: 0.4rem;
+}
+.reader-body {
+  font-size: 1.075rem;
+  line-height: 1.78;
+  color: var(--color-ink-900);
+}
+.reader-paragraph + .reader-paragraph {
+  margin-top: 1rem;
+  text-indent: 1.5em;
+}
+/* Drop cap on the first paragraph of the first section. */
+.reader-dropcap::first-letter {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-size: 3.4rem;
+  line-height: 1;
+  float: left;
+  margin: 0.2rem 0.55rem -0.1rem 0;
+  color: var(--color-ember-600);
+}
+.reader-paragraph code {
+  background-color: var(--color-paper-200);
+  border: 1px solid var(--color-line);
+  border-radius: 0.3rem;
+  padding: 0.05rem 0.35rem;
+  font-size: 0.92em;
+}
