@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Logo } from '~/components/Logo';
+import { ThemeToggle } from '~/components/ThemeToggle';
 import { useAuth } from '~/lib/auth-context';
 import { api, type AdminMeResponse } from '~/lib/api';
 
@@ -153,6 +154,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             </nav>
           </div>
           <div className="flex items-center gap-3">
+            <ThemeToggle />
             <span className="hidden text-right text-xs text-muted-500 sm:block">
               <span className="block">{me.email}</span>
               <span className="font-medium text-ink-800">{prettyRole(me.role)}</span>

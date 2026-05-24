@@ -9,6 +9,7 @@ import {
   type ProgressSnapshot,
 } from '@nexigrate/shared';
 import { Logo } from '~/components/Logo';
+import { ThemeToggle } from '~/components/ThemeToggle';
 import { useAuth } from '~/lib/auth-context';
 import { api, type MeResponse } from '~/lib/api';
 
@@ -114,6 +115,7 @@ export default function DashboardPage() {
       <header className="flex items-start justify-between">
         <Logo />
         <div className="flex items-center gap-2">
+          <ThemeToggle />
           <button type="button" onClick={() => router.push('/progress')} className="btn-ghost-sm">
             Progress
           </button>
