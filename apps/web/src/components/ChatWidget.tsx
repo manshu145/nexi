@@ -20,15 +20,19 @@ export function ChatWidget() {
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Auto-scroll to bottom
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages]);
+
   // Don't show on admin, signin, onboarding pages
-  if (
+  const hidden =
     !user ||
     pathname.startsWith('/admin') ||
     pathname.startsWith('/signin') ||
-    pathname.startsWith('/onboarding')
-  ) {
-    return null;
-  }
+    pathname.startsWith('/onboarding');
 
   async function sendMessage() {
     if (!input.trim() || sending) return;
@@ -47,12 +51,7 @@ export function ChatWidget() {
     setSending(false);
   }
 
-  // Auto-scroll to bottom
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages]);
+  if (hidden) return null;
 
   return (
     <>
