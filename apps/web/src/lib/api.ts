@@ -463,10 +463,10 @@ export const api = {
     return res.json() as Promise<MeResponse>;
   },
 
-  async setOnboarding(targetExam: ExamSlug): Promise<MeResponse> {
+  async setOnboarding(payload: Record<string, unknown>): Promise<MeResponse> {
     const res = await authedFetch('/v1/users/me/onboarding', {
       method: 'POST',
-      body: JSON.stringify({ targetExam }),
+      body: JSON.stringify(payload),
     });
     return res.json() as Promise<MeResponse>;
   },
