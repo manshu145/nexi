@@ -10,3 +10,4 @@ export * from './progress.js';
 export * from './subscription.js';
 export * from './referral.js';
 export * from './audit.js';
+export * from './currentAffairs.js';

@@ -57,6 +57,14 @@ import {
   type NexipediaDraftStore,
 } from './lib/nexipediaArticleStore.js';
 import {
+  FirestoreCurrentAffairsDigestStore,
+  FirestoreCurrentAffairsDraftStore,
+  InMemoryCurrentAffairsDigestStore,
+  InMemoryCurrentAffairsDraftStore,
+  type CurrentAffairsDigestStore,
+  type CurrentAffairsDraftStore,
+} from './lib/currentAffairsStore.js';
+import {
   FirestoreReferralStore,
   InMemoryReferralStore,
   type ReferralStore,
@@ -97,6 +105,10 @@ import {
   makeAdminNexipediaRoutes,
   makeStudentNexipediaRoutes,
 } from './routes/nexipedia.js';
+import {
+  makeAdminCurrentAffairsRoutes,
+  makeStudentCurrentAffairsRoutes,
+} from './routes/currentAffairs.js';
 import { makeProgressRoutes } from './routes/progress.js';
 import { makeUsersRoutes } from './routes/users.js';
 
@@ -125,6 +137,8 @@ export interface AppDeps {
   chapterReads?: ChapterReadStore;
   nexipediaDrafts?: NexipediaDraftStore;
   nexipediaArticles?: NexipediaArticleStore;
+  currentAffairsDrafts?: CurrentAffairsDraftStore;
+  currentAffairsDigests?: CurrentAffairsDigestStore;
   attempts?: McqAttemptStore;
   examDates?: ExamDatesStore;
   referrals?: ReferralStore;
@@ -165,6 +179,16 @@ export function buildApp(deps: AppDeps): Hono {
   const nexipediaArticles =
     deps.nexipediaArticles ??
     (fs ? new FirestoreNexipediaArticleStore(fs) : new InMemoryNexipediaArticleStore());
+  const currentAffairsDrafts =
+    deps.currentAffairsDrafts ??
+    (fs
+      ? new FirestoreCurrentAffairsDraftStore(fs)
+      : new InMemoryCurrentAffairsDraftStore());
+  const currentAffairsDigests =
+    deps.currentAffairsDigests ??
+    (fs
+      ? new FirestoreCurrentAffairsDigestStore(fs)
+      : new InMemoryCurrentAffairsDigestStore());
   const attempts =
     deps.attempts ??
     (fs ? new FirestoreMcqAttemptStore(fs) : new InMemoryMcqAttemptStore());
@@ -341,6 +365,15 @@ export function buildApp(deps: AppDeps): Hono {
       now: engineDeps.now,
     }),
   );
+  // Phase 19: current affairs daily digest (3-AI pipeline).
+  v1.route(
+    '/current-affairs',
+    makeStudentCurrentAffairsRoutes({
+      digests: currentAffairsDigests,
+      logger,
+      now: engineDeps.now,
+    }),
+  );
   // Phase 6: RBAC bootstrap routes. /admin/auth/* MUST be mounted BEFORE
   // /admin/* so its specific paths win over the generic admin route's
   // catch-all (Hono matches in registration order).
@@ -366,6 +399,17 @@ export function buildApp(deps: AppDeps): Hono {
       env,
       drafts: nexipediaDrafts,
       articles: nexipediaArticles,
+      admins,
+      logger,
+    }),
+  );
+  // Phase 19: admin current-affairs pipeline. Same ordering rule.
+  v1.route(
+    '/admin',
+    makeAdminCurrentAffairsRoutes({
+      env,
+      drafts: currentAffairsDrafts,
+      digests: currentAffairsDigests,
       admins,
       logger,
     }),
