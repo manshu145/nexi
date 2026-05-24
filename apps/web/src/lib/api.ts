@@ -766,11 +766,12 @@ export const api = {
   // ----- nexipedia (student-facing, Phase 14)
   nexipedia: {
     async list(
-      opts: { q?: string; category?: NexipediaCategory } = {},
+      opts: { q?: string; category?: NexipediaCategory; limit?: number } = {},
     ): Promise<{ articles: NexipediaArticleSummary[] }> {
       const params = new URLSearchParams();
       if (opts.q) params.set('q', opts.q);
       if (opts.category) params.set('category', opts.category);
+      if (opts.limit) params.set('limit', String(opts.limit));
       const qs = params.toString() ? `?${params.toString()}` : '';
       const res = await authedFetch(`/v1/nexipedia${qs}`);
       return res.json() as Promise<{ articles: NexipediaArticleSummary[] }>;
