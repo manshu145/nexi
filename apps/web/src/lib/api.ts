@@ -294,7 +294,6 @@ export interface NexipediaArticleEditPayload {
 }
 
 // ---------- referrals (Phase 16) ------------------------------------------
-
 export interface ReferralMeResponse {
   code: string;
   shareUrl: string;
@@ -325,6 +324,126 @@ export interface ReferralAttributeResponse {
   };
   firstTime: boolean;
 }
+
+// ---------- admin user management (Phase 20) ------------------------------
+
+export interface AdminUserListRow {
+  id: string;
+  email: string;
+  name: string;
+  photoPath: string | null;
+  targetExam: ExamSlug | null;
+  isVerified: boolean;
+  currentStreak: number;
+  bestStreak: number;
+  createdAt: string;
+}
+
+export interface AdminUserDetail {
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    photoPath: string | null;
+    targetExam?: ExamSlug | null;
+    isVerified: boolean;
+    isMinor: boolean;
+    locale: string;
+    currentStreak?: number;
+    bestStreak?: number;
+    createdAt: string;
+    updatedAt: string;
+    deletedAt: string | null;
+  };
+  balance: {
+    userId: string;
+    total: number;
+    expiringSoon: number;
+    lastEventId: string | null;
+    computedAt: string;
+  };
+  recentLedger: Array<{
+    id: string;
+    userId: string;
+    amount: number;
+    event:
+      | { kind: 'earn'; source: string }
+      | { kind: 'spend'; reason: string }
+      | { kind: 'expire' };
+    occurredAt: string;
+    createdAt: string;
+    expiresAt: string | null;
+    sourceRef: string | null;
+  }>;
+  recentAttempts: Array<{
+    id: string;
+    userId: string;
+    sessionId: string;
+    mcqId: string;
+    exam: ExamSlug;
+    subject: string;
+    chapter: string;
+    isCorrect: boolean;
+    attemptedAt: string;
+  }>;
+  referralStats: {
+    totalReferred: number;
+    rewarded: number;
+    retained: number;
+  };
+  subscription: unknown | null;
+}
+
+export interface AdminGrantCreditsResponse {
+  result:
+    | { kind: 'awarded'; event: { id: string; amount: number; expiresAt: string | null } }
+    | { kind: 'duplicate' };
+  balance: {
+    userId: string;
+    total: number;
+    expiringSoon: number;
+    lastEventId: string | null;
+    computedAt: string;
+  };
+  audit: AuditLogEntry;
+}
+
+export type AuditAction =
+  | 'admin.users.grant_credits'
+  | 'admin.users.revoke_credits'
+  | 'admin.users.suspend'
+  | 'admin.users.unsuspend'
+  | 'admin.team.add_admin'
+  | 'admin.team.revoke_admin'
+  | 'admin.content.approve'
+  | 'admin.content.reject';
+
+export interface AuditLogEntry {
+  id: string;
+  occurredAt: string;
+  actorUid: string;
+  actorEmail: string | null;
+  action: AuditAction;
+  targetId: string | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface AdminAnalyticsOverview {
+  users: {
+    recentTotal: number;
+    last24h: number;
+    last7d: number;
+    last30d: number;
+    verifiedInRecent: number;
+    examBreakdown: Record<string, number>;
+  };
+  content: {
+    publishedChapters: number;
+    publishedNexipediaArticles: number;
+  };
+  asOf: string;
+}
+
 
 // ============================================================================
 // Public api object
@@ -816,6 +935,72 @@ export const api = {
         { method: 'DELETE' },
       );
       return res.json() as Promise<{ ok: true }>;
+    },
+
+    // ----- Phase 20 -- user management + audit + analytics
+
+    async listUsers(opts: {
+      q?: string;
+      exam?: ExamSlug | string;
+      limit?: number;
+      beforeCreatedAt?: string;
+    } = {}): Promise<{ users: AdminUserListRow[]; nextCursor: string | null }> {
+      const params = new URLSearchParams();
+      if (opts.q) params.set('q', opts.q);
+      if (opts.exam) params.set('exam', String(opts.exam));
+      if (opts.limit) params.set('limit', String(opts.limit));
+      if (opts.beforeCreatedAt) params.set('beforeCreatedAt', opts.beforeCreatedAt);
+      const qs = params.toString() ? `?${params.toString()}` : '';
+      const res = await authedFetch(`/v1/admin/users${qs}`);
+      return res.json() as Promise<{
+        users: AdminUserListRow[];
+        nextCursor: string | null;
+      }>;
+    },
+
+    async getUserDetail(uid: string): Promise<AdminUserDetail> {
+      const res = await authedFetch(`/v1/admin/users/${encodeURIComponent(uid)}`);
+      return res.json() as Promise<AdminUserDetail>;
+    },
+
+    async grantCreditsToUser(
+      uid: string,
+      input: { amount: number; reason: string },
+    ): Promise<AdminGrantCreditsResponse> {
+      const res = await authedFetch(
+        `/v1/admin/users/${encodeURIComponent(uid)}/grant-credits`,
+        { method: 'POST', body: JSON.stringify(input) },
+      );
+      return res.json() as Promise<AdminGrantCreditsResponse>;
+    },
+
+    async listAuditLog(opts: {
+      action?: AuditAction;
+      actorUid?: string;
+      limit?: number;
+      beforeOccurredAt?: string;
+    } = {}): Promise<{ entries: AuditLogEntry[]; nextCursor: string | null }> {
+      const params = new URLSearchParams();
+      if (opts.action) params.set('action', opts.action);
+      if (opts.actorUid) params.set('actorUid', opts.actorUid);
+      if (opts.limit) params.set('limit', String(opts.limit));
+      if (opts.beforeOccurredAt) params.set('beforeOccurredAt', opts.beforeOccurredAt);
+      const qs = params.toString() ? `?${params.toString()}` : '';
+      const res = await authedFetch(`/v1/admin/audit${qs}`);
+      return res.json() as Promise<{
+        entries: AuditLogEntry[];
+        nextCursor: string | null;
+      }>;
+    },
+
+    async listAuditActions(): Promise<{ actions: AuditAction[] }> {
+      const res = await authedFetch('/v1/admin/audit/actions');
+      return res.json() as Promise<{ actions: AuditAction[] }>;
+    },
+
+    async getAnalyticsOverview(): Promise<AdminAnalyticsOverview> {
+      const res = await authedFetch('/v1/admin/analytics');
+      return res.json() as Promise<AdminAnalyticsOverview>;
     },
   },
 

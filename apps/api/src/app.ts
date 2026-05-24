@@ -73,6 +73,11 @@ import {
   type LongAnswerQuestionStore,
 } from './lib/longAnswerStore.js';
 import {
+  FirestoreAuditLogStore,
+  InMemoryAuditLogStore,
+  type AuditLogStore,
+} from './lib/auditLogStore.js';
+import {
   FirestoreReferralStore,
   InMemoryReferralStore,
   type ReferralStore,
@@ -122,6 +127,9 @@ import {
   makeStudentLongAnswerRoutes,
   makeUserLongAnswerRoutes,
 } from './routes/longAnswers.js';
+import { makeAdminUsersRoutes } from './routes/admin-users.js';
+import { makeAdminAuditRoutes } from './routes/admin-audit.js';
+import { makeAdminAnalyticsRoutes } from './routes/admin-analytics.js';
 import { makeProgressRoutes } from './routes/progress.js';
 import { makeUsersRoutes } from './routes/users.js';
 
@@ -157,6 +165,7 @@ export interface AppDeps {
   attempts?: McqAttemptStore;
   examDates?: ExamDatesStore;
   referrals?: ReferralStore;
+  audit?: AuditLogStore;
 }
 
 export function buildApp(deps: AppDeps): Hono {
@@ -223,6 +232,8 @@ export function buildApp(deps: AppDeps): Hono {
   const referrals =
     deps.referrals ??
     (fs ? new FirestoreReferralStore(fs) : new InMemoryReferralStore());
+  const audit =
+    deps.audit ?? (fs ? new FirestoreAuditLogStore(fs) : new InMemoryAuditLogStore());
 
   const verifier = makeVerifier(env);
   const engineDeps = defaultEngineDeps();
@@ -473,6 +484,42 @@ export function buildApp(deps: AppDeps): Hono {
       logger,
       newId: () => globalThis.crypto.randomUUID().replace(/-/g, '').slice(0, 16),
       now: engineDeps.now,
+    }),
+  );
+  // Phase 20: admin user management + audit log + analytics. Mounted
+  // BEFORE the generic /admin so /admin/users, /admin/audit, /admin/
+  // analytics resolve here first.
+  v1.route(
+    '/admin',
+    makeAdminUsersRoutes({
+      env,
+      users,
+      ledger,
+      attempts,
+      referrals,
+      subscriptions,
+      admins,
+      audit,
+      logger,
+      newId: engineDeps.newId,
+      newAuditId: () =>
+        globalThis.crypto.randomUUID().replace(/-/g, '').slice(0, 16),
+      now: engineDeps.now,
+    }),
+  );
+  v1.route(
+    '/admin',
+    makeAdminAuditRoutes({ env, audit, admins, logger }),
+  );
+  v1.route(
+    '/admin',
+    makeAdminAnalyticsRoutes({
+      env,
+      users,
+      chapters,
+      articles: nexipediaArticles,
+      admins,
+      logger,
     }),
   );
   v1.route('/admin', makeAdminRoutes({ env, drafts, mcqs, admins, logger }));
