@@ -277,7 +277,7 @@ export default function AdminLongAnswersPage() {
                 className={
                   'paper-card flex items-start justify-between gap-3 p-4 transition ' +
                   (mode.kind === 'edit' && mode.id === q.id
-                    ? 'ring-2 ring-ember-500'
+                    ? 'card-selected'
                     : 'hover:bg-paper-200/40')
                 }
               >
