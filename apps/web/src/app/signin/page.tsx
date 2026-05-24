@@ -30,6 +30,22 @@ export default function SignInPage() {
     if (!loading && user) router.replace('/dashboard');
   }, [user, loading, router]);
 
+  // Phase 16: capture `?ref=CODE` from the URL into sessionStorage so the
+  // referral attribution survives the Firebase auth redirect. The dashboard
+  // applies it on the first authenticated landing.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    const ref = url.searchParams.get('ref');
+    if (ref && /^[A-Z0-9]{4,20}$/i.test(ref)) {
+      try {
+        sessionStorage.setItem('nexigrate.refCode', ref.toUpperCase());
+      } catch {
+        /* sessionStorage blocked -- attribution silently fails, no error */
+      }
+    }
+  }, []);
+
   // Initialize an invisible reCAPTCHA verifier once per page load. Firebase
   // requires it to gate Phone Auth requests (anti-abuse). It binds to a
   // hidden div and resolves silently for legitimate users.

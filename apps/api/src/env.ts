@@ -62,6 +62,13 @@ const schema = z.object({
         .filter(Boolean),
     ),
 
+  /**
+   * Public origin of the student web app, used to build referral share URLs
+   * and other absolute links emitted by the API. Default works in prod;
+   * override locally to `http://localhost:3000`.
+   */
+  APP_ORIGIN: z.string().url().default('https://app.nexigrate.com'),
+
   /** Toggle structured JSON logging vs human-readable lines. JSON in production. */
   LOG_JSON: stringBool.default('false'),
 

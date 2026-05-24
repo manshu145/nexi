@@ -69,6 +69,31 @@ export default function DashboardPage() {
           .catch(() => {
             /* same -- countdown is a nice-to-have */
           });
+
+        // Phase 16: apply a stashed referral code from /signin?ref=CODE.
+        // Self-referral, unknown-code, and already-attributed are all
+        // handled server-side; we just fire-and-forget and clear the
+        // sessionStorage key on either success or terminal failure so we
+        // don't keep retrying on every dashboard load.
+        try {
+          const refCode = sessionStorage.getItem('nexigrate.refCode');
+          if (refCode) {
+            api.referrals
+              .attribute(refCode)
+              .catch(() => {
+                /* surfaced server-side; user UX shouldn't block on this */
+              })
+              .finally(() => {
+                try {
+                  sessionStorage.removeItem('nexigrate.refCode');
+                } catch {
+                  /* best-effort */
+                }
+              });
+          }
+        } catch {
+          /* sessionStorage blocked */
+        }
       } catch (e) {
         if (cancelled) return;
         setError(e instanceof Error ? e.message : 'failed to load');
@@ -225,6 +250,26 @@ export default function DashboardPage() {
           className="btn-ghost mt-6"
         >
           Open Nexipedia
+        </button>
+      </section>
+
+      <section className="paper-card mt-6 p-6 sm:p-8">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ember-600">
+          Refer a friend · earn credits
+        </p>
+        <h2 className="font-serif mt-3 text-xl font-semibold leading-snug text-ink-900">
+          Bring someone you study with.
+        </h2>
+        <p className="mt-3 text-ink-800">
+          Both of you get bonus credits when they sign up with your code.
+          Earn another bonus once they{'\u2019'}re still around 7 days later.
+        </p>
+        <button
+          type="button"
+          onClick={() => router.push('/refer')}
+          className="btn-ghost mt-6"
+        >
+          Get my referral code
         </button>
       </section>
 
