@@ -476,6 +476,30 @@ export const api = {
     return res.json() as Promise<CreditBalance>;
   },
 
+  // ----- visualize (Phase H)
+  async visualize(text: string, title?: string) {
+    const res = await authedFetch('/v1/visualize', {
+      method: 'POST',
+      body: JSON.stringify({ text, title }),
+    });
+    return res.json() as Promise<{ mermaid: string; watermark: string; generatedAt: string }>;
+  },
+
+  // ----- text-to-speech (Phase I)
+  tts: {
+    async synthesize(text: string, language?: string) {
+      const res = await authedFetch('/v1/tts/synthesize', {
+        method: 'POST',
+        body: JSON.stringify({ text, language }),
+      });
+      return res.json() as Promise<{ mode: string; text?: string; language?: string; audioBase64?: string; format?: string }>;
+    },
+    async languages() {
+      const res = await authedFetch('/v1/tts/languages');
+      return res.json() as Promise<{ languages: Array<{ code: string; name: string }> }>;
+    },
+  },
+
   async getDaily(): Promise<DailyMcqResponse> {
     const res = await authedFetch('/v1/mcqs/daily');
     return res.json() as Promise<DailyMcqResponse>;

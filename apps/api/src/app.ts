@@ -145,6 +145,8 @@ import { makeAdminCommsRoutes } from './routes/admin-comms.js';
 import { makeStudentCommsRoutes } from './routes/student-comms.js';
 import { makeProgressRoutes } from './routes/progress.js';
 import { makeUsersRoutes } from './routes/users.js';
+import { makeVisualizeRoutes } from './routes/visualize.js';
+import { makeTtsRoutes } from './routes/tts.js';
 
 /**
  * Build the Hono app.
@@ -470,6 +472,10 @@ export function buildApp(deps: AppDeps): Hono {
     }),
   );
   // Phase 6: RBAC bootstrap routes. /admin/auth/* MUST be mounted BEFORE
+  // Phase G+H+I: AI visualization + Text-to-Speech
+  v1.route('/visualize', makeVisualizeRoutes({ logger, openaiApiKey: env.OPENAI_API_KEY }));
+  v1.route('/tts', makeTtsRoutes({ logger, googleTtsApiKey: env.GOOGLE_TTS_API_KEY }));
+
   // /admin/* so its specific paths win over the generic admin route's
   // catch-all (Hono matches in registration order).
   v1.route('/admin/auth', makeAdminAuthRoutes({ env, admins, logger }));
