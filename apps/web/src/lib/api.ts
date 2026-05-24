@@ -12,6 +12,8 @@ import type {
   McqDraft,
   McqDraftStatus,
   McqDifficulty,
+  MockTest,
+  MockTestSession,
   ProgressSnapshot,
 } from '@nexigrate/shared';
 import { getFirebaseAuthClient } from './firebase';
@@ -225,6 +227,23 @@ export interface ChapterTestStartResponse {
   durationSeconds: number;
   /** Same shape as DailyMcqResponse.mcqs (no answers / explanations). */
   mcqs: Omit<MCQ, 'correctOption' | 'explanation'>[];
+}
+
+// ---------- mock test (Phase 13) -------------------------------------------
+
+export interface MockTestStartResponse {
+  session: MockTestSession;
+  durationMinutes: number;
+  mcqs: Omit<MCQ, 'correctOption' | 'explanation'>[];
+}
+
+export interface MockTestCompleteResponse {
+  session: MockTestSession;
+  passed: boolean;
+  bonusAwarded: number;
+  balance: number;
+  explanations: { mcqId: string; correctOption: string; explanation: string }[];
+  alreadySubmitted?: boolean;
 }
 
 // ============================================================================
@@ -554,6 +573,43 @@ export const api = {
       body: JSON.stringify(input),
     });
     return res.json() as Promise<ChapterTestStartResponse>;
+  },
+
+  // ----- mock tests (Phase 13)
+  mockTests: {
+    async list(
+      exam?: ExamSlug | string,
+    ): Promise<{ mockTests: MockTest[] }> {
+      const qs = exam ? `?exam=${encodeURIComponent(String(exam))}` : '';
+      const res = await authedFetch(`/v1/mock-tests${qs}`);
+      return res.json() as Promise<{ mockTests: MockTest[] }>;
+    },
+
+    async get(id: string): Promise<{ mockTest: MockTest }> {
+      const res = await authedFetch(
+        `/v1/mock-tests/${encodeURIComponent(id)}`,
+      );
+      return res.json() as Promise<{ mockTest: MockTest }>;
+    },
+
+    async start(id: string): Promise<MockTestStartResponse> {
+      const res = await authedFetch(
+        `/v1/mock-tests/${encodeURIComponent(id)}/start`,
+        { method: 'POST', body: JSON.stringify({}) },
+      );
+      return res.json() as Promise<MockTestStartResponse>;
+    },
+
+    async complete(
+      sessionId: string,
+      body: { answers: { mcqId: string; chosen: AnswerKey | null }[] },
+    ): Promise<MockTestCompleteResponse> {
+      const res = await authedFetch(
+        `/v1/mock-test-sessions/${encodeURIComponent(sessionId)}/complete`,
+        { method: 'POST', body: JSON.stringify(body) },
+      );
+      return res.json() as Promise<MockTestCompleteResponse>;
+    },
   },
 };
 
