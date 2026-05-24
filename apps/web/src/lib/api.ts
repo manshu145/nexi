@@ -14,6 +14,11 @@ import type {
   McqDifficulty,
   MockTest,
   MockTestSession,
+  NexipediaArticle,
+  NexipediaArticleDraft,
+  NexipediaArticleStatus,
+  NexipediaArticleSummary,
+  NexipediaCategory,
   ProgressSnapshot,
 } from '@nexigrate/shared';
 import { getFirebaseAuthClient } from './firebase';
@@ -244,6 +249,40 @@ export interface MockTestCompleteResponse {
   balance: number;
   explanations: { mcqId: string; correctOption: string; explanation: string }[];
   alreadySubmitted?: boolean;
+}
+
+// ---------- nexipedia (Phase 14) -------------------------------------------
+
+export type AdminNexipediaArticleStatus = NexipediaArticleStatus;
+export type AdminNexipediaDraft = NexipediaArticleDraft;
+export type PublishedNexipediaArticle = NexipediaArticle;
+
+export interface GenerateNexipediaArticleRequest {
+  /** Stable kebab-case slug, unique across the corpus. */
+  slug: string;
+  title: string;
+  category: NexipediaCategory;
+  outlineHint?: string;
+  sourceHint?: string;
+  targetReadMinutes?: number;
+}
+
+export interface GenerateNexipediaArticleResponse {
+  draft: AdminNexipediaDraft;
+  verifierDisagreement: boolean;
+}
+
+export interface NexipediaArticleEditPayload {
+  title?: string;
+  summary?: string;
+  source?: string;
+  relatedExams?: ExamSlug[] | string[];
+  sections?: Array<{
+    id: string;
+    heading: string;
+    body: string;
+    order: number;
+  }>;
 }
 
 // ============================================================================
@@ -501,6 +540,85 @@ export const api = {
       );
       return res.json() as Promise<{ draft: AdminChapterDraft }>;
     },
+
+    // ----- nexipedia pipeline (Phase 14)
+    async generateNexipediaArticle(
+      input: GenerateNexipediaArticleRequest,
+    ): Promise<GenerateNexipediaArticleResponse> {
+      const res = await authedFetch('/v1/admin/nexipedia/generate', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+      return res.json() as Promise<GenerateNexipediaArticleResponse>;
+    },
+
+    async listNexipediaDrafts(
+      opts: {
+        status?: AdminNexipediaArticleStatus;
+        category?: NexipediaCategory;
+        limit?: number;
+      } = {},
+    ): Promise<{ drafts: AdminNexipediaDraft[] }> {
+      const params = new URLSearchParams();
+      if (opts.status) params.set('status', opts.status);
+      if (opts.category) params.set('category', opts.category);
+      if (opts.limit) params.set('limit', String(opts.limit));
+      const qs = params.toString() ? `?${params.toString()}` : '';
+      const res = await authedFetch(`/v1/admin/nexipedia-drafts${qs}`);
+      return res.json() as Promise<{ drafts: AdminNexipediaDraft[] }>;
+    },
+
+    async getNexipediaDraft(id: string): Promise<{ draft: AdminNexipediaDraft }> {
+      const res = await authedFetch(
+        `/v1/admin/nexipedia-drafts/${encodeURIComponent(id)}`,
+      );
+      return res.json() as Promise<{ draft: AdminNexipediaDraft }>;
+    },
+
+    async editNexipediaDraft(
+      id: string,
+      edits: NexipediaArticleEditPayload,
+    ): Promise<{ draft: AdminNexipediaDraft }> {
+      const res = await authedFetch(
+        `/v1/admin/nexipedia-drafts/${encodeURIComponent(id)}`,
+        { method: 'PATCH', body: JSON.stringify(edits) },
+      );
+      return res.json() as Promise<{ draft: AdminNexipediaDraft }>;
+    },
+
+    async approveNexipediaDraft(
+      id: string,
+    ): Promise<{ draft: AdminNexipediaDraft; article: PublishedNexipediaArticle }> {
+      const res = await authedFetch(
+        `/v1/admin/nexipedia-drafts/${encodeURIComponent(id)}/approve`,
+        { method: 'POST', body: JSON.stringify({}) },
+      );
+      return res.json() as Promise<{
+        draft: AdminNexipediaDraft;
+        article: PublishedNexipediaArticle;
+      }>;
+    },
+
+    async rejectNexipediaDraft(
+      id: string,
+      rejectionReason: string,
+    ): Promise<{ draft: AdminNexipediaDraft }> {
+      const res = await authedFetch(
+        `/v1/admin/nexipedia-drafts/${encodeURIComponent(id)}/reject`,
+        { method: 'POST', body: JSON.stringify({ rejectionReason }) },
+      );
+      return res.json() as Promise<{ draft: AdminNexipediaDraft }>;
+    },
+
+    async regenerateNexipediaDraft(
+      id: string,
+    ): Promise<{ draft: AdminNexipediaDraft }> {
+      const res = await authedFetch(
+        `/v1/admin/nexipedia-drafts/${encodeURIComponent(id)}/regenerate`,
+        { method: 'POST', body: JSON.stringify({}) },
+      );
+      return res.json() as Promise<{ draft: AdminNexipediaDraft }>;
+    },
   },
 
   // ----- chapters (student-facing)
@@ -609,6 +727,27 @@ export const api = {
         { method: 'POST', body: JSON.stringify(body) },
       );
       return res.json() as Promise<MockTestCompleteResponse>;
+    },
+  },
+
+  // ----- nexipedia (student-facing, Phase 14)
+  nexipedia: {
+    async list(
+      opts: { q?: string; category?: NexipediaCategory } = {},
+    ): Promise<{ articles: NexipediaArticleSummary[] }> {
+      const params = new URLSearchParams();
+      if (opts.q) params.set('q', opts.q);
+      if (opts.category) params.set('category', opts.category);
+      const qs = params.toString() ? `?${params.toString()}` : '';
+      const res = await authedFetch(`/v1/nexipedia${qs}`);
+      return res.json() as Promise<{ articles: NexipediaArticleSummary[] }>;
+    },
+
+    async get(slug: string): Promise<{ article: PublishedNexipediaArticle }> {
+      const res = await authedFetch(
+        `/v1/nexipedia/${encodeURIComponent(slug)}`,
+      );
+      return res.json() as Promise<{ article: PublishedNexipediaArticle }>;
     },
   },
 };
