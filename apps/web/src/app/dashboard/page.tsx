@@ -79,6 +79,18 @@ export default function DashboardPage() {
     };
   }, [user, router]);
 
+  // IMPORTANT: all hooks must be called on every render in the same order.
+  // Keep these useMemos ABOVE any early return (the loading/!user guard
+  // below) -- otherwise React throws error #310 ("Rendered more hooks
+  // than during the previous render") on the first authenticated render.
+  const upcoming = useMemo(() => examDates[0] ?? null, [examDates]);
+  const daysToEvent = useMemo(() => daysUntil(upcoming?.eventDate ?? null), [upcoming]);
+  const last7Accuracy = useMemo(() => last7DaysAccuracy(progress), [progress]);
+  const topSubject = useMemo(
+    () => (progress && progress.subjects.length > 0 ? progress.subjects[0] : null),
+    [progress],
+  );
+
   if (loading || !user) {
     return (
       <main className="flex min-h-[60vh] items-center justify-center px-6">
@@ -91,16 +103,6 @@ export default function DashboardPage() {
   }
 
   const examName = me?.targetExam ? EXAM_BY_SLUG.get(me.targetExam)?.name : null;
-  const upcoming = useMemo(() => examDates[0] ?? null, [examDates]);
-  const daysToEvent = useMemo(() => daysUntil(upcoming?.eventDate ?? null), [upcoming]);
-  const last7Accuracy = useMemo(
-    () => last7DaysAccuracy(progress),
-    [progress],
-  );
-  const topSubject = useMemo(
-    () => (progress && progress.subjects.length > 0 ? progress.subjects[0] : null),
-    [progress],
-  );
 
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col px-6 pt-8 pb-16">
