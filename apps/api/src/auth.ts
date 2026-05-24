@@ -33,6 +33,9 @@ export interface AuthPrincipal {
 declare module 'hono' {
   interface ContextVariableMap {
     auth: AuthPrincipal;
+    userId: string;
+    adminUid: string;
+    adminEmail: string;
   }
 }
 

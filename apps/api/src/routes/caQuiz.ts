@@ -139,7 +139,7 @@ export function makeCaQuizRoutes(deps: CaQuizDeps): Hono {
 
     let score = 0;
     for (let i = 0; i < Math.min(answers.length, questions.length); i++) {
-      if (answers[i] === questions[i].correctIndex) score++;
+      if (answers[i] === questions[i]?.correctIndex) score++;
     }
 
     const attempt: QuizAttempt = {
