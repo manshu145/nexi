@@ -44,6 +44,9 @@ export default function ChapterReadPage() {
   const router = useRouter();
 
   const [chapter, setChapter] = useState<PublishedChapter | null>(null);
+  const [isRead, setIsRead] = useState(false);
+  const [markReadBusy, setMarkReadBusy] = useState(false);
+  const [markReadError, setMarkReadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const pageRef = useRef<HTMLElement | null>(null);
@@ -58,10 +61,25 @@ export default function ChapterReadPage() {
       setError(null);
       const res = await api.chapters.get(exam, subject, slug);
       setChapter(res.chapter);
+      setIsRead(!!res.isRead);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'failed to load chapter');
     }
   }, [user, exam, subject, slug]);
+
+  const onMarkRead = useCallback(async () => {
+    if (!chapter) return;
+    try {
+      setMarkReadBusy(true);
+      setMarkReadError(null);
+      await api.chapters.markRead(chapter.exam, chapter.subject, chapter.slug);
+      setIsRead(true);
+    } catch (e) {
+      setMarkReadError(e instanceof Error ? e.message : 'could not mark as read');
+    } finally {
+      setMarkReadBusy(false);
+    }
+  }, [chapter]);
 
   useEffect(() => {
     void load();
@@ -274,10 +292,27 @@ export default function ChapterReadPage() {
               {chapter.title}
             </h2>
             <p className="mt-4 max-w-md text-ink-800">
-              You&apos;ve finished reading. Take the chapter test now to lock
-              this in -- {countSuggestion(chapter.estimatedReadMinutes)}.
+              You&apos;ve finished reading. Mark it complete and take the
+              chapter test -- {countSuggestion(chapter.estimatedReadMinutes)}.
             </p>
+            {markReadError ? (
+              <p className="mt-3 text-xs text-ember-600" role="alert">
+                {markReadError}
+              </p>
+            ) : null}
             <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+              {isRead ? (
+                <span className="pill pill-success">Marked as read</span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onMarkRead}
+                  disabled={markReadBusy}
+                  className="btn-ghost"
+                >
+                  {markReadBusy ? 'Marking...' : 'Mark as read'}
+                </button>
+              )}
               <Link
                 href={`/test/${encodeURIComponent(chapter.exam)}/${encodeURIComponent(chapter.subject)}/${encodeURIComponent(chapter.slug)}`}
                 className="btn-primary"

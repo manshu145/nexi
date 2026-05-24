@@ -1,8 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { EXAM_BY_SLUG, type CreditBalance } from '@nexigrate/shared';
+import {
+  EXAM_BY_SLUG,
+  type CreditBalance,
+  type ExamDate,
+  type ProgressSnapshot,
+} from '@nexigrate/shared';
 import { Logo } from '~/components/Logo';
 import { useAuth } from '~/lib/auth-context';
 import { api, type MeResponse } from '~/lib/api';
@@ -24,6 +29,8 @@ export default function DashboardPage() {
 
   const [me, setMe] = useState<MeResponse['user'] | null>(null);
   const [balance, setBalance] = useState<CreditBalance | null>(null);
+  const [progress, setProgress] = useState<ProgressSnapshot | null>(null);
+  const [examDates, setExamDates] = useState<ExamDate[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -41,7 +48,27 @@ export default function DashboardPage() {
         setBalance(balRes);
         if (!meRes.user.targetExam) {
           router.replace('/onboarding');
+          return;
         }
+        // Fire-and-forget the progress + dates loads; the cards render
+        // their own placeholder until they arrive, so the dashboard
+        // doesn't block on them.
+        api
+          .getProgress(meRes.user.targetExam)
+          .then((p) => {
+            if (!cancelled) setProgress(p);
+          })
+          .catch(() => {
+            /* dashboard tolerates a missing progress card */
+          });
+        api
+          .listExamDates(meRes.user.targetExam)
+          .then((d) => {
+            if (!cancelled) setExamDates(d.dates ?? []);
+          })
+          .catch(() => {
+            /* same -- countdown is a nice-to-have */
+          });
       } catch (e) {
         if (cancelled) return;
         setError(e instanceof Error ? e.message : 'failed to load');
@@ -64,12 +91,29 @@ export default function DashboardPage() {
   }
 
   const examName = me?.targetExam ? EXAM_BY_SLUG.get(me.targetExam)?.name : null;
+  const upcoming = useMemo(() => examDates[0] ?? null, [examDates]);
+  const daysToEvent = useMemo(() => daysUntil(upcoming?.eventDate ?? null), [upcoming]);
+  const last7Accuracy = useMemo(
+    () => last7DaysAccuracy(progress),
+    [progress],
+  );
+  const topSubject = useMemo(
+    () => (progress && progress.subjects.length > 0 ? progress.subjects[0] : null),
+    [progress],
+  );
 
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col px-6 pt-8 pb-16">
       <header className="flex items-start justify-between">
         <Logo />
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => router.push('/progress')}
+            className="btn-ghost-sm"
+          >
+            Progress
+          </button>
           <button
             type="button"
             onClick={() => router.push('/upgrade')}
@@ -189,6 +233,75 @@ export default function DashboardPage() {
         </div>
       </section>
 
+      {/* Phase 12: progress glance + exam date countdown. Both are
+          tolerant of missing data -- the dashboard doesn't block on
+          their loads. */}
+      <section className="mt-6 grid gap-4 sm:grid-cols-3">
+        <button
+          type="button"
+          onClick={() => router.push('/progress')}
+          className="paper-card p-5 text-left transition hover:bg-paper-200/40"
+        >
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-500">
+            Last 7d accuracy
+          </p>
+          <p className="font-serif mt-2 text-3xl font-semibold tabular-nums text-ink-900">
+            {last7Accuracy === null ? (
+              <span className="text-muted-500">—</span>
+            ) : (
+              <>
+                {last7Accuracy}
+                <span className="ml-1 text-base text-muted-500">%</span>
+              </>
+            )}
+          </p>
+          <p className="mt-1 text-xs text-muted-500">Tap for full progress</p>
+        </button>
+        <button
+          type="button"
+          onClick={() => router.push('/progress')}
+          className="paper-card p-5 text-left transition hover:bg-paper-200/40"
+        >
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-500">
+            Top subject
+          </p>
+          <p className="font-serif mt-2 text-2xl font-semibold leading-tight text-ink-900">
+            {topSubject ? prettySubject(topSubject.subject) : (
+              <span className="text-muted-500">—</span>
+            )}
+          </p>
+          <p className="mt-1 text-xs text-muted-500">
+            {topSubject
+              ? `${topSubject.masteryPct}% across ${topSubject.mcqsAttempted} MCQs`
+              : 'Attempt MCQs to see mastery'}
+          </p>
+        </button>
+        <div className="paper-card p-5">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-500">
+            Next exam
+          </p>
+          {upcoming ? (
+            <>
+              <p className="font-serif mt-2 text-3xl font-semibold tabular-nums text-ink-900">
+                {daysToEvent ?? '\u2014'}
+                <span className="ml-1 text-base text-muted-500">
+                  {daysToEvent === 1 ? 'day' : 'days'}
+                </span>
+              </p>
+              <p className="mt-1 truncate text-xs text-muted-500">
+                {upcoming.eventName}
+                {upcoming.isOfficial ? '' : ' (tentative)'}
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="font-serif mt-2 text-3xl font-semibold text-muted-500">—</p>
+              <p className="mt-1 text-xs text-muted-500">No date set yet</p>
+            </>
+          )}
+        </div>
+      </section>
+
       {error ? (
         <p className="mt-8 text-sm text-ember-600" role="alert">
           {error}
@@ -210,4 +323,43 @@ function greeting(): string {
   if (istHour < 12) return 'Good morning';
   if (istHour < 17) return 'Good afternoon';
   return 'Good evening';
+}
+
+function prettySubject(s: string): string {
+  return s
+    .split('-')
+    .map((w) => (w[0]?.toUpperCase() ?? '') + w.slice(1))
+    .join(' ');
+}
+
+/** Days from today (UTC) until eventDate (YYYY-MM-DD). null if past or missing. */
+function daysUntil(eventDate: string | null): number | null {
+  if (!eventDate) return null;
+  const today = new Date();
+  const todayMs = Date.UTC(
+    today.getUTCFullYear(),
+    today.getUTCMonth(),
+    today.getUTCDate(),
+  );
+  const eventMs = new Date(`${eventDate}T00:00:00.000Z`).getTime();
+  if (Number.isNaN(eventMs)) return null;
+  const days = Math.round((eventMs - todayMs) / 86400000);
+  return days < 0 ? null : days;
+}
+
+/**
+ * Compute "last 7 days accuracy" from a 30-bucket trend.
+ * Returns null if no MCQs were attempted in the last 7 days.
+ */
+function last7DaysAccuracy(p: ProgressSnapshot | null): number | null {
+  if (!p) return null;
+  const last7 = p.accuracyTrend30d.slice(-7);
+  let attempted = 0;
+  let correct = 0;
+  for (const b of last7) {
+    attempted += b.mcqsAttempted;
+    correct += b.mcqsCorrect;
+  }
+  if (attempted === 0) return null;
+  return Math.round((correct / attempted) * 100);
 }
