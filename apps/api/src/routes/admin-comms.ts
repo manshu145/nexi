@@ -6,6 +6,7 @@
  */
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { requireAuth } from '../auth.js';
 import type { AdminUserStore } from '../lib/adminUserStore.js';
 import type { AnnouncementStore, BroadcastStore, TicketStore } from '../lib/commsStore.js';
 import type { UserStore } from '../lib/userStore.js';
@@ -28,7 +29,8 @@ export function makeAdminCommsRoutes(deps: Deps) {
 
   // ──── guard: at least support_admin ────
   app.use('*', async (c, next) => {
-    const uid = c.get('userId') as string;
+    const principal = requireAuth(c);
+    const uid = principal.userId as string;
     const admin = await admins.get(uid);
     if (
       !admin ||

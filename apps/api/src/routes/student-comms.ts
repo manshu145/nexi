@@ -8,6 +8,7 @@
  */
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { requireAuth } from '../auth.js';
 import type { AnnouncementStore, TicketStore } from '../lib/commsStore.js';
 import type { UserStore } from '../lib/userStore.js';
 import type { Logger } from '../logger.js';
@@ -28,7 +29,7 @@ export function makeStudentCommsRoutes(deps: Deps) {
   /* ═══ Announcements ═══ */
 
   app.get('/announcements', async (c) => {
-    const uid = c.get('userId') as string;
+    const { userId: uid } = requireAuth(c);
     let targetExam = 'jee-main';
     try {
       const u = await users.get(uid);
@@ -46,7 +47,7 @@ export function makeStudentCommsRoutes(deps: Deps) {
   /* ═══ Tickets ═══ */
 
   app.post('/tickets', async (c) => {
-    const uid = c.get('userId') as string;
+    const { userId: uid } = requireAuth(c);
     const body = await c.req.json<{ subject?: string; body?: string }>();
     if (!body.subject || !body.body) {
       throw new HTTPException(400, { message: 'subject and body required' });
@@ -88,7 +89,7 @@ export function makeStudentCommsRoutes(deps: Deps) {
   });
 
   app.get('/tickets', async (c) => {
-    const uid = c.get('userId') as string;
+    const { userId: uid } = requireAuth(c);
     const list = await tickets.listForUser(uid).catch((err) => {
       logger.warn('tickets.list_failed', { err: String(err) });
       return [];
@@ -97,7 +98,7 @@ export function makeStudentCommsRoutes(deps: Deps) {
   });
 
   app.get('/tickets/:id', async (c) => {
-    const uid = c.get('userId') as string;
+    const { userId: uid } = requireAuth(c);
     const t = await tickets.getWithMessages(c.req.param('id'));
     if (!t || t.userId !== uid) {
       throw new HTTPException(404, { message: 'not found' });
@@ -106,7 +107,7 @@ export function makeStudentCommsRoutes(deps: Deps) {
   });
 
   app.post('/tickets/:id/reply', async (c) => {
-    const uid = c.get('userId') as string;
+    const { userId: uid } = requireAuth(c);
     const ticketId = c.req.param('id');
     const body = await c.req.json<{ body?: string }>();
     if (!body.body) throw new HTTPException(400, { message: 'body required' });
