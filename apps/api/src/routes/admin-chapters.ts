@@ -9,11 +9,16 @@ import {
   type ChapterDraftStatus,
   type ChapterId,
   type ExamSlug,
+  type ISODateTime,
 } from '@nexigrate/shared';
-import { requireAnyAdmin } from '../auth.js';
+import { requireAnyAdmin, requireAuth } from '../auth.js';
 import type { Env } from '../env.js';
 import type { AdminUserStore } from '../lib/adminUserStore.js';
 import type { ChapterDraftStore, ChapterStore } from '../lib/chapterDraftStore.js';
+import {
+  makeChapterRead,
+  type ChapterReadStore,
+} from '../lib/chapterReadStore.js';
 import { generateChapter } from '../lib/chapterGen/generate.js';
 import { GeminiClient } from '../lib/llm/gemini.js';
 import { GroqClient } from '../lib/llm/groq.js';
@@ -352,20 +357,23 @@ export function makeAdminChapterRoutes(deps: AdminChapterRoutesDeps): Hono {
 }
 
 // ============================================================================
-// Student-facing chapter routes (read-only)
+// Student-facing chapter routes (read-only + mark-as-read)
 // ============================================================================
 
 export interface StudentChapterRoutesDeps {
   chapters: ChapterStore;
+  reads: ChapterReadStore;
   logger: Logger;
+  now: () => ISODateTime;
 }
 
 export function makeStudentChapterRoutes(deps: StudentChapterRoutesDeps): Hono {
   const app = new Hono();
-  const { chapters } = deps;
+  const { chapters, reads, logger, now } = deps;
 
   // GET /v1/chapters?exam=...&subject=...
   app.get('/', async (c) => {
+    const principal = requireAuth(c);
     const examQ = c.req.query('exam');
     const exam = examQ && isExamSlug(examQ) ? (examQ as ExamSlug) : undefined;
     const subject = c.req.query('subject') ?? undefined;
@@ -375,7 +383,11 @@ export function makeStudentChapterRoutes(deps: StudentChapterRoutesDeps): Hono {
     };
     if (exam) opts.exam = exam;
     if (subject) opts.subject = subject;
-    const list = await chapters.list(opts);
+    const [list, readRows] = await Promise.all([
+      chapters.list(opts),
+      reads.list(principal.userId, exam),
+    ]);
+    const readSet = new Set<string>(readRows.map((r) => r.id));
     // Strip section bodies from the listing payload to keep responses small.
     // Students get the full body when they open a single chapter.
     const slim = list.map((c2) => ({
@@ -389,12 +401,14 @@ export function makeStudentChapterRoutes(deps: StudentChapterRoutesDeps): Hono {
       estimatedReadMinutes: c2.estimatedReadMinutes,
       source: c2.source,
       sectionCount: c2.sections.length,
+      isRead: readSet.has(c2.id),
     }));
     return c.json({ chapters: slim });
   });
 
   // GET /v1/chapters/:exam/:subject/:slug -- student reading view.
   app.get('/:exam/:subject/:slug', async (c) => {
+    const principal = requireAuth(c);
     const examP = c.req.param('exam');
     if (!isExamSlug(examP)) {
       throw new HTTPException(400, { message: 'unknown exam slug' });
@@ -407,8 +421,44 @@ export function makeStudentChapterRoutes(deps: StudentChapterRoutesDeps): Hono {
     if (!ch || !ch.isPublished) {
       throw new HTTPException(404, { message: 'chapter not found' });
     }
-    return c.json({ chapter: ch });
+    const readDoc = await reads.get(principal.userId, ch.id);
+    return c.json({ chapter: ch, isRead: !!readDoc, readAt: readDoc?.readAt ?? null });
+  });
+
+  // POST /v1/chapters/:exam/:subject/:slug/mark-read -- record completion.
+  // Idempotent: re-tapping bumps readAt but doesn't double-credit.
+  app.post('/:exam/:subject/:slug/mark-read', async (c) => {
+    const principal = requireAuth(c);
+    const examP = c.req.param('exam');
+    if (!isExamSlug(examP)) {
+      throw new HTTPException(400, { message: 'unknown exam slug' });
+    }
+    const ch = await chapters.getBySlug(
+      examP as ExamSlug,
+      c.req.param('subject'),
+      c.req.param('slug'),
+    );
+    if (!ch || !ch.isPublished) {
+      throw new HTTPException(404, { message: 'chapter not found' });
+    }
+    const readAt = now();
+    const read = makeChapterRead(
+      principal.userId,
+      ch.id,
+      ch.exam,
+      ch.subject,
+      ch.slug,
+      readAt,
+    );
+    await reads.put(read);
+    logger.info('chapter.mark_read', {
+      userId: principal.userId,
+      chapterId: ch.id,
+      slug: ch.slug,
+    });
+    return c.json({ read });
   });
 
   return app;
 }
+

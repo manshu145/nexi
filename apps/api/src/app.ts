@@ -17,8 +17,23 @@ import {
   type ChapterDraftStore,
   type ChapterStore,
 } from './lib/chapterDraftStore.js';
+import {
+  FirestoreChapterReadStore,
+  InMemoryChapterReadStore,
+  type ChapterReadStore,
+} from './lib/chapterReadStore.js';
+import {
+  FirestoreExamDatesStore,
+  InMemoryExamDatesStore,
+  type ExamDatesStore,
+} from './lib/examDatesStore.js';
 import { getFirebaseFirestore } from './lib/firebaseAdmin.js';
 import { FirestoreLedgerStore } from './lib/firestoreLedger.js';
+import {
+  FirestoreMcqAttemptStore,
+  InMemoryMcqAttemptStore,
+  type McqAttemptStore,
+} from './lib/mcqAttemptStore.js';
 import {
   FirestoreMcqDraftStore,
   InMemoryMcqDraftStore,
@@ -54,12 +69,14 @@ import {
   makeCreditsRoutes,
   type LedgerStore,
 } from './routes/credits.js';
+import { makeExamDatesRoutes } from './routes/examDates.js';
 import { makeHealthRoutes } from './routes/health.js';
 import { makeMcqsRoutes, makeMcqSessionsRoutes } from './routes/mcqs.js';
 import {
   makeMockTestSessionsRoutes,
   makeMockTestsRoutes,
 } from './routes/mockTests.js';
+import { makeProgressRoutes } from './routes/progress.js';
 import { makeUsersRoutes } from './routes/users.js';
 
 /**
@@ -84,6 +101,9 @@ export interface AppDeps {
   admins?: AdminUserStore;
   chapterDrafts?: ChapterDraftStore;
   chapters?: ChapterStore;
+  chapterReads?: ChapterReadStore;
+  attempts?: McqAttemptStore;
+  examDates?: ExamDatesStore;
 }
 
 export function buildApp(deps: AppDeps): Hono {
@@ -112,6 +132,15 @@ export function buildApp(deps: AppDeps): Hono {
     (fs ? new FirestoreChapterDraftStore(fs) : new InMemoryChapterDraftStore());
   const chapters =
     deps.chapters ?? (fs ? new FirestoreChapterStore(fs) : new InMemoryChapterStore());
+  const chapterReads =
+    deps.chapterReads ??
+    (fs ? new FirestoreChapterReadStore(fs) : new InMemoryChapterReadStore());
+  const attempts =
+    deps.attempts ??
+    (fs ? new FirestoreMcqAttemptStore(fs) : new InMemoryMcqAttemptStore());
+  const examDates =
+    deps.examDates ??
+    (fs ? new FirestoreExamDatesStore(fs) : new InMemoryExamDatesStore());
 
   const verifier = makeVerifier(env);
   const engineDeps = defaultEngineDeps();
@@ -187,13 +216,26 @@ export function buildApp(deps: AppDeps): Hono {
   v1.use('*', authMiddleware(verifier));
   v1.route('/credits', makeCreditsRoutes({ ledger, logger, ...engineDeps }));
   v1.route('/users', makeUsersRoutes({ users, logger }));
+  // Phase 12: progress snapshot for /progress page + dashboard widgets.
+  // Mounted on the same /users prefix so the path is /v1/users/me/progress.
+  v1.route(
+    '/users',
+    makeProgressRoutes({
+      attempts,
+      reads: chapterReads,
+      chapters,
+      users,
+      logger,
+      now: engineDeps.now,
+    }),
+  );
   v1.route(
     '/mcqs',
-    makeMcqsRoutes({ mcqs, ledger, users, logger, ...engineDeps, getTargetExam }),
+    makeMcqsRoutes({ mcqs, attempts, ledger, users, logger, ...engineDeps, getTargetExam }),
   );
   v1.route(
     '/mcq-sessions',
-    makeMcqSessionsRoutes({ mcqs, ledger, users, logger, ...engineDeps, getTargetExam }),
+    makeMcqSessionsRoutes({ mcqs, attempts, ledger, users, logger, ...engineDeps, getTargetExam }),
   );
   v1.route(
     '/mock-tests',
@@ -220,8 +262,19 @@ export function buildApp(deps: AppDeps): Hono {
     }),
   );
   v1.route('/billing', makeBillingRoutes({ env, subscriptions, logger }));
+  // Phase 12: read-only exam dates endpoint for the dashboard countdown.
+  v1.route('/exam-dates', makeExamDatesRoutes({ store: examDates, logger }));
   // Phase 9-10: AI-generated chapters. Student-facing list + read endpoints.
-  v1.route('/chapters', makeStudentChapterRoutes({ chapters, logger }));
+  // Phase 12: same routes now also expose `mark-read` and join with chapter_reads.
+  v1.route(
+    '/chapters',
+    makeStudentChapterRoutes({
+      chapters,
+      reads: chapterReads,
+      logger,
+      now: engineDeps.now,
+    }),
+  );
   // Phase 6: RBAC bootstrap routes. /admin/auth/* MUST be mounted BEFORE
   // /admin/* so its specific paths win over the generic admin route's
   // catch-all (Hono matches in registration order).
