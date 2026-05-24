@@ -101,6 +101,18 @@ export interface MeResponse {
     currentStreak?: number;
     bestStreak?: number;
     lastDailyAt?: string | null;
+    /* Phase B: expanded profile */
+    preferredLanguage?: string | null;
+    surname?: string | null;
+    dateOfBirth?: string | null;
+    classLevel?: string | null;
+    board?: string | null;
+    schoolName?: string | null;
+    district?: string | null;
+    state?: string | null;
+    aim?: string | null;
+    preparingExams?: string[] | null;
+    onboardingVersion?: number | null;
   };
 }
 
