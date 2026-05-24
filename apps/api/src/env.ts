@@ -76,6 +76,14 @@ const schema = z.object({
   RAZORPAY_KEY_ID: z.string().default(''),
   RAZORPAY_KEY_SECRET: z.string().default(''),
   RAZORPAY_WEBHOOK_SECRET: z.string().default(''),
+
+  /** AI engine keys for personalized content generation. */
+  OPENAI_API_KEY: z.string().default(''),
+  GEMINI_API_KEY: z.string().default(''),
+  GROQ_API_KEY: z.string().default(''),
+
+  /** Super admin email for elevated operations. */
+  SUPER_ADMIN_EMAIL: z.string().default('').transform((v) => v.toLowerCase()),
 });
 
 export type Env = z.output<typeof schema>;

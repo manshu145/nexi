@@ -49,6 +49,10 @@ export interface UserStore {
    * unchanged. Resets to 1 if the previous bump was not yesterday.
    */
   bumpStreak(uid: UserId, now: ISODateTime): Promise<StoredUser>;
+  /** Update arbitrary profile fields (skill level, weak subjects, language, etc.). */
+  updateProfile(uid: UserId, data: Record<string, unknown>): Promise<StoredUser>;
+  /** Set the user's preferred language. */
+  updateLanguage(uid: UserId, language: string): Promise<StoredUser>;
 }
 
 function newUser(uid: UserId, init: UserStoreInit, now: string): StoredUser {
@@ -161,6 +165,22 @@ export class InMemoryUserStore implements UserStore {
     this.users.set(uid, updated);
     return updated;
   }
+
+  async updateProfile(uid: UserId, data: Record<string, unknown>): Promise<StoredUser> {
+    const u = this.users.get(uid);
+    if (!u) throw new Error(`user ${uid} not found`);
+    const updated: StoredUser = {
+      ...u,
+      ...data,
+      updatedAt: asISODateTime(new Date().toISOString()),
+    } as StoredUser;
+    this.users.set(uid, updated);
+    return updated;
+  }
+
+  async updateLanguage(uid: UserId, language: string): Promise<StoredUser> {
+    return this.updateProfile(uid, { language });
+  }
 }
 
 // ---------- firestore ------------------------------------------------------
@@ -211,5 +231,19 @@ export class FirestoreUserStore implements UserStore {
       tx.set(ref, updated, { merge: true });
       return updated;
     });
+  }
+
+  async updateProfile(uid: UserId, data: Record<string, unknown>): Promise<StoredUser> {
+    const ref = this.db.collection(COLLECTION).doc(uid);
+    await ref.set(
+      { ...data, updatedAt: new Date().toISOString() },
+      { merge: true },
+    );
+    const snap = await ref.get();
+    return snap.data() as StoredUser;
+  }
+
+  async updateLanguage(uid: UserId, language: string): Promise<StoredUser> {
+    return this.updateProfile(uid, { language });
   }
 }

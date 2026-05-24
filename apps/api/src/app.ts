@@ -13,6 +13,7 @@ import {
   type SubscriptionStore,
 } from './lib/subscriptionStore.js';
 import { FirestoreUserStore, InMemoryUserStore, type UserStore } from './lib/userStore.js';
+import { createAIEngine } from './lib/aiEngine.js';
 import { makeRateLimitMiddleware } from './lib/rateLimit.js';
 import type { Logger } from './logger.js';
 import { makeBillingRoutes } from './routes/billing.js';
@@ -25,6 +26,8 @@ import {
 import { makeHealthRoutes } from './routes/health.js';
 import { makeMcqsRoutes, makeMcqSessionsRoutes } from './routes/mcqs.js';
 import { makeUsersRoutes } from './routes/users.js';
+import { makeAdaptiveRoutes } from './routes/adaptive.js';
+import { makePersonalizedRoutes } from './routes/personalized.js';
 
 /**
  * Build the Hono app.
@@ -59,6 +62,13 @@ export function buildApp(deps: AppDeps): Hono {
 
   const verifier = makeVerifier(env);
   const engineDeps = defaultEngineDeps();
+
+  // AI Engine for personalized content generation
+  const ai = createAIEngine({
+    openaiApiKey: env.OPENAI_API_KEY,
+    geminiApiKey: env.GEMINI_API_KEY,
+    groqApiKey: env.GROQ_API_KEY,
+  });
 
   const getTargetExam = async (userId: UserId): Promise<ExamSlug> => {
     const u = await users.get(userId);
@@ -141,6 +151,8 @@ export function buildApp(deps: AppDeps): Hono {
     makeMcqSessionsRoutes({ mcqs, ledger, users, logger, ...engineDeps, getTargetExam }),
   );
   v1.route('/billing', makeBillingRoutes({ env, subscriptions, logger }));
+  v1.route('/adaptive', makeAdaptiveRoutes({ ai, users, logger }));
+  v1.route('/ai', makePersonalizedRoutes({ ai, users, logger, openaiApiKey: env.OPENAI_API_KEY }));
   app.route('/v1', v1);
 
   app.onError((err, c) => {
