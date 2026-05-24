@@ -285,6 +285,39 @@ export interface NexipediaArticleEditPayload {
   }>;
 }
 
+// ---------- referrals (Phase 16) ------------------------------------------
+
+export interface ReferralMeResponse {
+  code: string;
+  shareUrl: string;
+  stats: {
+    totalReferred: number;
+    rewarded: number;
+    retained: number;
+    creditsEarned: number;
+  };
+  perReferralReward: {
+    signup: number;
+    retained: number;
+  };
+}
+
+export interface ReferralAttributeResponse {
+  referral: {
+    id: string;
+    referrerUserId: string;
+    referredUserId: string;
+    code: string;
+    status: 'pending' | 'rewarded' | 'retained' | 'reverted';
+    signedUpAt: string;
+    verifiedAt: string | null;
+    retainedAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+  };
+  firstTime: boolean;
+}
+
 // ============================================================================
 // Public api object
 // ============================================================================
@@ -748,6 +781,22 @@ export const api = {
         `/v1/nexipedia/${encodeURIComponent(slug)}`,
       );
       return res.json() as Promise<{ article: PublishedNexipediaArticle }>;
+    },
+  },
+
+  // ----- referrals (Phase 16)
+  referrals: {
+    async me(): Promise<ReferralMeResponse> {
+      const res = await authedFetch('/v1/users/me/referral');
+      return res.json() as Promise<ReferralMeResponse>;
+    },
+
+    async attribute(code: string): Promise<ReferralAttributeResponse> {
+      const res = await authedFetch('/v1/referrals/attribute', {
+        method: 'POST',
+        body: JSON.stringify({ code }),
+      });
+      return res.json() as Promise<ReferralAttributeResponse>;
     },
   },
 };
