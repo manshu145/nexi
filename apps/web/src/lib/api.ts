@@ -577,6 +577,26 @@ export const api = {
       },
     },
 
+    // ----- scheduler (Phase E)
+    scheduler: {
+      async status() {
+        const res = await authedFetch('/v1/admin/scheduler/status');
+        return res.json() as Promise<{ paused: boolean; lastRunAt: string | null; lastRunStatus: string | null; totalGenerated: number; totalFailed: number; runsToday: number; openaiConfigured: boolean; nextScheduledRun: string }>;
+      },
+      async triggerDaily() {
+        const res = await authedFetch('/v1/admin/scheduler/trigger-daily', { method: 'POST' });
+        return res.json() as Promise<{ status: string; generated: number; failed: number; durationMs: number; examsProcessed: number }>;
+      },
+      async pause() {
+        const res = await authedFetch('/v1/admin/scheduler/pause', { method: 'POST' });
+        return res.json() as Promise<{ paused: boolean }>;
+      },
+      async resume() {
+        const res = await authedFetch('/v1/admin/scheduler/resume', { method: 'POST' });
+        return res.json() as Promise<{ paused: boolean }>;
+      },
+    },
+
     async listDrafts(opts: {
       status?: DraftStatus;
       exam?: ExamSlug | string;
@@ -1225,6 +1245,25 @@ export const api = {
         `/v1/nexipedia/${encodeURIComponent(slug)}`,
       );
       return res.json() as Promise<{ article: PublishedNexipediaArticle }>;
+    },
+  },
+
+  // ----- current affairs quiz (Phase F)
+  caQuiz: {
+    async today() {
+      const res = await authedFetch('/v1/current-affairs-quiz/today');
+      return res.json() as Promise<{ date: string; questions: Array<{ id: string; question: string; options: string[]; category: string; source: string }>; totalQuestions: number; timeLimitSeconds: number }>;
+    },
+    async submit(answers: number[], timeTakenSeconds: number, userName: string) {
+      const res = await authedFetch('/v1/current-affairs-quiz/submit', {
+        method: 'POST',
+        body: JSON.stringify({ answers, timeTakenSeconds, userName }),
+      });
+      return res.json() as Promise<{ score: number; totalQuestions: number; timeTakenSeconds: number; rank: number; correctAnswers: number[]; alreadySubmitted?: boolean }>;
+    },
+    async leaderboard() {
+      const res = await authedFetch('/v1/current-affairs-quiz/leaderboard');
+      return res.json() as Promise<{ today: { date: string; top10: Array<{ rank: number; userName: string; score: number; totalQuestions: number; timeTakenSeconds: number }>; totalParticipants: number }; yesterdayWinner: { userName: string; score: number; timeTakenSeconds: number } | null }>;
     },
   },
 
