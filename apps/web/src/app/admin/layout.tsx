@@ -99,6 +99,12 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               <NavLink href="/admin/chapters" current={pathname.startsWith('/admin/chapters')}>
                 Chapters
               </NavLink>
+              <NavLink
+                href="/admin/nexipedia"
+                current={pathname.startsWith('/admin/nexipedia')}
+              >
+                Nexipedia
+              </NavLink>
               {me.role === 'super_admin' ? (
                 <NavLink href="/admin/team" current={pathname.startsWith('/admin/team')}>
                   Team
@@ -136,6 +142,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           </NavLink>
           <NavLink href="/admin/chapters" current={pathname.startsWith('/admin/chapters')}>
             Chapters
+          </NavLink>
+          <NavLink href="/admin/nexipedia" current={pathname.startsWith('/admin/nexipedia')}>
+            Nexipedia
           </NavLink>
           {me.role === 'super_admin' ? (
             <NavLink href="/admin/team" current={pathname.startsWith('/admin/team')}>

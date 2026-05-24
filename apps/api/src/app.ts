@@ -48,6 +48,14 @@ import {
   type MockTestSessionStore,
   type MockTestStore,
 } from './lib/mockTestStore.js';
+import {
+  FirestoreNexipediaArticleStore,
+  FirestoreNexipediaDraftStore,
+  InMemoryNexipediaArticleStore,
+  InMemoryNexipediaDraftStore,
+  type NexipediaArticleStore,
+  type NexipediaDraftStore,
+} from './lib/nexipediaArticleStore.js';
 import { makeRateLimitMiddleware } from './lib/rateLimit.js';
 import {
   FirestoreSubscriptionStore,
@@ -76,6 +84,10 @@ import {
   makeMockTestSessionsRoutes,
   makeMockTestsRoutes,
 } from './routes/mockTests.js';
+import {
+  makeAdminNexipediaRoutes,
+  makeStudentNexipediaRoutes,
+} from './routes/nexipedia.js';
 import { makeProgressRoutes } from './routes/progress.js';
 import { makeUsersRoutes } from './routes/users.js';
 
@@ -102,6 +114,8 @@ export interface AppDeps {
   chapterDrafts?: ChapterDraftStore;
   chapters?: ChapterStore;
   chapterReads?: ChapterReadStore;
+  nexipediaDrafts?: NexipediaDraftStore;
+  nexipediaArticles?: NexipediaArticleStore;
   attempts?: McqAttemptStore;
   examDates?: ExamDatesStore;
 }
@@ -135,6 +149,12 @@ export function buildApp(deps: AppDeps): Hono {
   const chapterReads =
     deps.chapterReads ??
     (fs ? new FirestoreChapterReadStore(fs) : new InMemoryChapterReadStore());
+  const nexipediaDrafts =
+    deps.nexipediaDrafts ??
+    (fs ? new FirestoreNexipediaDraftStore(fs) : new InMemoryNexipediaDraftStore());
+  const nexipediaArticles =
+    deps.nexipediaArticles ??
+    (fs ? new FirestoreNexipediaArticleStore(fs) : new InMemoryNexipediaArticleStore());
   const attempts =
     deps.attempts ??
     (fs ? new FirestoreMcqAttemptStore(fs) : new InMemoryMcqAttemptStore());
@@ -275,6 +295,15 @@ export function buildApp(deps: AppDeps): Hono {
       now: engineDeps.now,
     }),
   );
+  // Phase 14: Nexipedia (verified topic articles via 3-AI pipeline).
+  v1.route(
+    '/nexipedia',
+    makeStudentNexipediaRoutes({
+      articles: nexipediaArticles,
+      logger,
+      now: engineDeps.now,
+    }),
+  );
   // Phase 6: RBAC bootstrap routes. /admin/auth/* MUST be mounted BEFORE
   // /admin/* so its specific paths win over the generic admin route's
   // catch-all (Hono matches in registration order).
@@ -288,6 +317,18 @@ export function buildApp(deps: AppDeps): Hono {
       env,
       drafts: chapterDrafts,
       chapters,
+      admins,
+      logger,
+    }),
+  );
+  // Phase 14: admin Nexipedia pipeline. Mounted BEFORE the generic /admin
+  // so its specific paths resolve first.
+  v1.route(
+    '/admin',
+    makeAdminNexipediaRoutes({
+      env,
+      drafts: nexipediaDrafts,
+      articles: nexipediaArticles,
       admins,
       logger,
     }),
