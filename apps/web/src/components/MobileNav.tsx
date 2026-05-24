@@ -1,98 +1,82 @@
 'use client';
 
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { t } from '~/lib/i18n';
+import { usePathname, useRouter } from 'next/navigation';
+import { useTranslation } from '~/lib/useTranslation';
 
-const NAV_ITEMS = [
-  {
-    href: '/dashboard',
-    labelKey: 'nav.home',
-    fallback: 'Home',
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-        <polyline points="9 22 9 12 15 12 15 22" />
-      </svg>
-    ),
-  },
-  {
-    href: '/mcq',
-    labelKey: 'nav.mcq',
-    fallback: 'MCQ',
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M9 11l3 3L22 4" />
-        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-      </svg>
-    ),
-  },
-  {
-    href: '/chapters',
-    labelKey: 'nav.library',
-    fallback: 'Library',
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-      </svg>
-    ),
-  },
-  {
-    href: '/today',
-    labelKey: 'nav.today',
-    fallback: 'Today',
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-        <line x1="16" y1="2" x2="16" y2="6" />
-        <line x1="8" y1="2" x2="8" y2="6" />
-        <line x1="3" y1="10" x2="21" y2="10" />
-      </svg>
-    ),
-  },
-  {
-    href: '/progress',
-    labelKey: 'nav.progress',
-    fallback: 'Progress',
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <line x1="18" y1="20" x2="18" y2="10" />
-        <line x1="12" y1="20" x2="12" y2="4" />
-        <line x1="6" y1="20" x2="6" y2="14" />
-      </svg>
-    ),
-  },
-];
+const HIDDEN_PATHS = ['/signin', '/onboarding', '/study/chapter', '/study/mock-test', '/study/final-test'];
 
 export function MobileNav() {
   const pathname = usePathname();
+  const router = useRouter();
+  const { t } = useTranslation();
 
-  // Don't show on onboarding, signin, admin, or reader pages
-  if (
-    pathname.startsWith('/onboarding') ||
-    pathname.startsWith('/signin') ||
-    pathname.startsWith('/admin') ||
-    pathname.startsWith('/read/')
-  ) {
-    return null;
-  }
+  // Hide on certain pages
+  if (HIDDEN_PATHS.some(p => pathname.startsWith(p))) return null;
+
+  const tabs = [
+    { key: 'home', path: '/dashboard', icon: HomeIcon, label: t('nav.home', 'Home') },
+    { key: 'study', path: '/study', icon: BookIcon, label: t('nav.study', 'Study') },
+    { key: 'affairs', path: '/current-affairs', icon: NewsIcon, label: t('nav.affairs', 'Affairs') },
+    { key: 'ai', path: '/nexi', icon: AiIcon, label: t('nav.ai', 'AI') },
+  ];
 
   return (
-    <nav className="mobile-nav" aria-label="Main navigation">
-      {NAV_ITEMS.map((item) => {
-        const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={`mobile-nav-item ${isActive ? 'active' : ''}`}
-          >
-            {item.icon}
-            <span>{t(item.labelKey, item.fallback)}</span>
-          </Link>
-        );
-      })}
+    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-paper-200 bg-paper-100/90 backdrop-blur-xl safe-bottom md:hidden">
+      <div className="mx-auto flex max-w-lg items-center justify-around px-2 py-2">
+        {tabs.map(tab => {
+          const isActive = pathname === tab.path || (tab.path !== '/dashboard' && pathname.startsWith(tab.path));
+          return (
+            <button
+              key={tab.key}
+              onClick={() => router.push(tab.path)}
+              className={`flex flex-col items-center gap-0.5 rounded-lg px-3 py-1.5 transition-all duration-200 ${
+                isActive
+                  ? 'text-ember-600'
+                  : 'text-muted-500 hover:text-ink-800'
+              }`}
+            >
+              <tab.icon active={isActive} />
+              <span className={`text-[10px] font-medium ${isActive ? 'text-ember-600' : 'text-muted-500'}`}>
+                {tab.label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </nav>
+  );
+}
+
+// ═══ Icons ═══════════════════════════════════════════════════════════════════
+
+function HomeIcon({ active }: { active: boolean }) {
+  return (
+    <svg className="h-5 w-5" fill={active ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={active ? 0 : 1.8}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+    </svg>
+  );
+}
+
+function BookIcon({ active }: { active: boolean }) {
+  return (
+    <svg className="h-5 w-5" fill={active ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={active ? 0 : 1.8}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+    </svg>
+  );
+}
+
+function NewsIcon({ active }: { active: boolean }) {
+  return (
+    <svg className="h-5 w-5" fill={active ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={active ? 0 : 1.8}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
+    </svg>
+  );
+}
+
+function AiIcon({ active }: { active: boolean }) {
+  return (
+    <svg className="h-5 w-5" fill={active ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={active ? 0 : 1.8}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+    </svg>
   );
 }
