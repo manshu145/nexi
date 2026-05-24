@@ -510,3 +510,75 @@ textarea.input {
   .kindle-tap { cursor: default; }
 }
 
+
+
+/* ─── Phase G: Page-flip transition for Kindle reader ─── */
+
+.kindle-page-transition {
+  animation: kindle-flip-in 320ms ease-out forwards;
+}
+
+.kindle-page-transition-reverse {
+  animation: kindle-flip-in-reverse 320ms ease-out forwards;
+}
+
+@keyframes kindle-flip-in {
+  0% {
+    opacity: 0;
+    transform: translateX(30px) rotateY(-2deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) rotateY(0deg);
+  }
+}
+
+@keyframes kindle-flip-in-reverse {
+  0% {
+    opacity: 0;
+    transform: translateX(-30px) rotateY(2deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) rotateY(0deg);
+  }
+}
+
+/* Page shadow during transition — mimics paper edge */
+.kindle-page-shadow {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 20px;
+  height: 100%;
+  background: linear-gradient(
+    to left,
+    rgba(42, 36, 26, 0.06),
+    transparent
+  );
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+
+.kindle-frame:hover .kindle-page-shadow {
+  opacity: 1;
+}
+
+html.dark .kindle-page-shadow {
+  background: linear-gradient(
+    to left,
+    rgba(240, 234, 216, 0.04),
+    transparent
+  );
+}
+
+/* Swipe hint — subtle bounce on first visit */
+@keyframes kindle-swipe-hint {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(8px); }
+}
+
+.kindle-swipe-hint {
+  animation: kindle-swipe-hint 1.5s ease-in-out 2;
+}

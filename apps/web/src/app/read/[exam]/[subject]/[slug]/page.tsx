@@ -129,10 +129,40 @@ export default function ChapterReadPage() {
 
   const goPrev = useCallback(() => {
     setPage((p) => Math.max(0, p - 1));
+    setFlipDir('reverse');
   }, []);
   const goNext = useCallback(() => {
     setPage((p) => Math.min(totalPages - 1, p + 1));
+    setFlipDir('forward');
   }, [totalPages]);
+
+  // Page-flip animation direction state
+  const [flipDir, setFlipDir] = useState<'forward' | 'reverse' | null>(null);
+  const [flipKey, setFlipKey] = useState(0);
+
+  // Reset animation on page change
+  useEffect(() => {
+    setFlipKey((k) => k + 1);
+  }, [page]);
+
+  // Touch swipe support
+  const touchStartX = useRef(0);
+  const touchStartY = useRef(0);
+
+  const onTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0]!.clientX;
+    touchStartY.current = e.touches[0]!.clientY;
+  }, []);
+
+  const onTouchEnd = useCallback((e: React.TouchEvent) => {
+    const dx = e.changedTouches[0]!.clientX - touchStartX.current;
+    const dy = e.changedTouches[0]!.clientY - touchStartY.current;
+    // Only trigger if horizontal swipe is dominant and > 50px
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      if (dx < 0) goNext(); // swipe left = next
+      else goPrev(); // swipe right = prev
+    }
+  }, [goNext, goPrev]);
 
   // Keyboard navigation. Don't intercept while the user is typing in
   // a form (e.g. a future highlight/note editor) -- guard on target.
@@ -267,9 +297,14 @@ export default function ChapterReadPage() {
       {/* The reading column. */}
       <article
         ref={pageRef}
-        className="kindle-page reader"
+        className={`kindle-page reader ${flipDir === 'forward' ? 'kindle-page-transition' : flipDir === 'reverse' ? 'kindle-page-transition-reverse' : ''}`}
+        key={flipKey}
         aria-live="polite"
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
       >
+        {/* Page edge shadow */}
+        <div className="kindle-page-shadow" aria-hidden="true" />
         {isCover ? (
           <div className="kindle-cover">
             <p className="kindle-cover-eyebrow">
