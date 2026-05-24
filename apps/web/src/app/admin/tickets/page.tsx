@@ -39,10 +39,10 @@ export default function AdminTicketsPage() {
     if (!selectedTicket || !replyText.trim()) return;
     setReplying(true);
     try {
-      await api.admin.comms.replyToTicket(selectedTicket.ticket.id, replyText);
+      await api.admin.comms.replyToTicket(selectedTicket.id, replyText);
       setReplyText('');
       // Reload ticket
-      await openTicket(selectedTicket.ticket.id);
+      await openTicket(selectedTicket.id);
     } catch {
       setError('Failed to send reply');
     } finally {
@@ -54,7 +54,7 @@ export default function AdminTicketsPage() {
     try {
       await api.admin.comms.updateTicket(id, { status: newStatus });
       loadTickets(statusFilter || undefined);
-      if (selectedTicket?.ticket.id === id) {
+      if (selectedTicket?.id === id) {
         openTicket(id);
       }
     } catch {
@@ -87,15 +87,15 @@ export default function AdminTicketsPage() {
       {selectedTicket && (
         <div className="mt-4 paper-card p-5 border-l-4 border-ember-500">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold text-ink-900">{selectedTicket.ticket.subject}</h2>
+            <h2 className="font-semibold text-ink-900">{selectedTicket.subject}</h2>
             <button onClick={() => setSelectedTicket(null)} className="text-xs text-muted-500 hover:text-ink-900">✕</button>
           </div>
           <div className="flex items-center gap-3 text-xs text-muted-500 mb-4">
-            <span>Status: <span className="font-semibold text-ink-800">{selectedTicket.ticket.status}</span></span>
+            <span>Status: <span className="font-semibold text-ink-800">{selectedTicket.status}</span></span>
             <select
               className="input text-xs py-1 px-2 w-32"
-              value={selectedTicket.ticket.status}
-              onChange={e => handleStatusChange(selectedTicket.ticket.id, e.target.value)}
+              value={selectedTicket.status}
+              onChange={e => handleStatusChange(selectedTicket.id, e.target.value)}
             >
               <option value="open">Open</option>
               <option value="in_progress">In Progress</option>
@@ -108,10 +108,10 @@ export default function AdminTicketsPage() {
           <div className="space-y-3 max-h-64 overflow-y-auto mb-4">
             {selectedTicket.messages.map((msg, i) => (
               <div key={i} className={`rounded-lg p-3 text-sm ${
-                msg.senderRole === 'admin' ? 'bg-ember-50 border border-ember-200' : 'bg-paper-200'
+                msg.authorRole === 'admin' ? 'bg-ember-50 border border-ember-200' : 'bg-paper-200'
               }`}>
                 <p className="text-xs text-muted-500 mb-1">
-                  {msg.senderRole === 'admin' ? '👤 Admin' : '🎓 Student'} · {new Date(msg.createdAt).toLocaleString('en-IN')}
+                  {msg.authorRole === 'admin' ? '👤 Admin' : '🎓 Student'} · {new Date(msg.createdAt).toLocaleString('en-IN')}
                 </p>
                 <p className="text-ink-800">{msg.body}</p>
               </div>
