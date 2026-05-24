@@ -3,14 +3,6 @@
 import type { CreditBalance, ExamSlug, MCQ } from '@nexigrate/shared';
 import { getFirebaseAuthClient } from './firebase';
 
-/**
- * Typed client for @nexigrate/api.
- *
- * Auto-attaches the Firebase ID token on every call. Forwards the user's
- * email / display name / photo / provider as headers so the api can populate
- * the user profile on first contact (`GET /v1/users/me`).
- */
-
 const API_BASE_URL =
   process.env['NEXT_PUBLIC_API_BASE_URL'] ?? 'http://localhost:9090';
 
@@ -65,6 +57,10 @@ export interface MeResponse {
     currentStreak?: number;
     bestStreak?: number;
     lastDailyAt?: string | null;
+    skillLevel?: 'beginner' | 'intermediate' | 'advanced';
+    weakSubjects?: string[];
+    strongSubjects?: string[];
+    language?: 'en' | 'hi';
   };
 }
 
@@ -92,9 +88,65 @@ export interface CompleteSessionResponse {
   balance: number;
 }
 
+export interface GeneratedMcq {
+  question: string;
+  options: { key: string; text: string }[];
+  correctOption: string;
+  explanation: string;
+  subject: string;
+  difficulty: string;
+}
+
+export interface GeneratedChapter {
+  title: string;
+  sections: { heading: string; content: string }[];
+  summary: string;
+  keyPoints: string[];
+}
+
+export interface NexipediaArticle {
+  title: string;
+  summary: string;
+  sections: { heading: string; content: string; imageQuery?: string }[];
+  relatedTopics: string[];
+  youtubeQuery: string;
+  diagramPrompt: string;
+}
+
+export interface AdaptiveResponse {
+  sessionId: string;
+  round: number;
+  totalRounds: number;
+  questions: {
+    question: string;
+    options: { key: string; text: string }[];
+    subject: string;
+    topic: string;
+  }[];
+}
+
+export interface AssessmentResult {
+  skillLevel: 'beginner' | 'intermediate' | 'advanced';
+  score: number;
+  totalQuestions: number;
+  subjectScores: { subject: string; score: number; total: number }[];
+  weakSubjects: string[];
+  strongSubjects: string[];
+  studyPlan: string[];
+}
+
+export interface StudyPlan {
+  skillLevel: string;
+  weakSubjects: string[];
+  strongSubjects: string[];
+  studyPlan: string[];
+  recommendations: string[];
+}
+
 // ---------- methods ---------------------------------------------------------
 
 export const api = {
+  // User
   async me(): Promise<MeResponse> {
     const res = await authedFetch('/v1/users/me');
     return res.json() as Promise<MeResponse>;
@@ -108,11 +160,34 @@ export const api = {
     return res.json() as Promise<MeResponse>;
   },
 
+  async setLanguage(language: 'en' | 'hi'): Promise<MeResponse> {
+    const res = await authedFetch('/v1/users/me/language', {
+      method: 'POST',
+      body: JSON.stringify({ language }),
+    });
+    return res.json() as Promise<MeResponse>;
+  },
+
+  async updateProfile(data: Record<string, unknown>): Promise<MeResponse> {
+    const res = await authedFetch('/v1/users/me/profile', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return res.json() as Promise<MeResponse>;
+  },
+
+  async getStudyPlan(): Promise<StudyPlan> {
+    const res = await authedFetch('/v1/users/me/study-plan');
+    return res.json() as Promise<StudyPlan>;
+  },
+
+  // Credits
   async getBalance(): Promise<CreditBalance> {
     const res = await authedFetch('/v1/credits/balance');
     return res.json() as Promise<CreditBalance>;
   },
 
+  // MCQ
   async getDaily(): Promise<DailyMcqResponse> {
     const res = await authedFetch('/v1/mcqs/daily');
     return res.json() as Promise<DailyMcqResponse>;
@@ -129,6 +204,73 @@ export const api = {
     return res.json() as Promise<CompleteSessionResponse>;
   },
 
+  // Adaptive Test
+  async startAdaptiveTest(exam: string): Promise<AdaptiveResponse> {
+    const res = await authedFetch('/v1/adaptive/start', {
+      method: 'POST',
+      body: JSON.stringify({ exam }),
+    });
+    return res.json() as Promise<AdaptiveResponse>;
+  },
+
+  async submitAdaptiveRound(sessionId: string, answers: { questionIndex: number; chosen: string | null }[]): Promise<AdaptiveResponse & { complete?: boolean; result?: AssessmentResult }> {
+    const res = await authedFetch('/v1/adaptive/submit-round', {
+      method: 'POST',
+      body: JSON.stringify({ sessionId, answers }),
+    });
+    return res.json() as Promise<AdaptiveResponse & { complete?: boolean; result?: AssessmentResult }>;
+  },
+
+  // AI Personalized Content
+  async generateMcqs(subject?: string, count?: number): Promise<{ mcqs: GeneratedMcq[] }> {
+    const res = await authedFetch('/v1/ai/mcqs', {
+      method: 'POST',
+      body: JSON.stringify({ subject, count }),
+    });
+    return res.json() as Promise<{ mcqs: GeneratedMcq[] }>;
+  },
+
+  async generateChapter(topic: string): Promise<{ chapter: GeneratedChapter }> {
+    const res = await authedFetch('/v1/ai/chapter', {
+      method: 'POST',
+      body: JSON.stringify({ topic }),
+    });
+    return res.json() as Promise<{ chapter: GeneratedChapter }>;
+  },
+
+  async generateMockTest(subject?: string): Promise<{ id: string; mcqs: GeneratedMcq[]; durationMinutes: number; totalQuestions: number }> {
+    const res = await authedFetch('/v1/ai/mock-test', {
+      method: 'POST',
+      body: JSON.stringify({ subject }),
+    });
+    return res.json() as Promise<{ id: string; mcqs: GeneratedMcq[]; durationMinutes: number; totalQuestions: number }>;
+  },
+
+  async searchNexipedia(topic: string): Promise<{ article: NexipediaArticle }> {
+    const res = await authedFetch('/v1/ai/nexipedia', {
+      method: 'POST',
+      body: JSON.stringify({ topic }),
+    });
+    return res.json() as Promise<{ article: NexipediaArticle }>;
+  },
+
+  async visualize(content: string): Promise<{ diagram: string; title: string }> {
+    const res = await authedFetch('/v1/ai/visualize', {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    });
+    return res.json() as Promise<{ diagram: string; title: string }>;
+  },
+
+  async chatWithMentor(message: string): Promise<{ reply: string }> {
+    const res = await authedFetch('/v1/ai/chat', {
+      method: 'POST',
+      body: JSON.stringify({ message }),
+    });
+    return res.json() as Promise<{ reply: string }>;
+  },
+
+  // Billing
   async createBillingOrder(input: {
     plan: 'scholar' | 'aspirant' | 'achiever';
     interval: 'monthly' | 'yearly';

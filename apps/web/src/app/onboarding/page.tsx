@@ -2,39 +2,76 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { LIVE_EXAMS, SOON_EXAMS, type ExamSlug } from '@nexigrate/shared';
+import { EXAMS, type ExamSlug } from '@nexigrate/shared';
 import { Logo } from '~/components/Logo';
 import { useAuth } from '~/lib/auth-context';
-import { api } from '~/lib/api';
+import { api, type AdaptiveResponse, type AssessmentResult } from '~/lib/api';
+import { setLang, t, type Lang } from '~/lib/i18n';
 
-/**
- * One-screen onboarding: pick a target exam.
- *
- * After this we send to /dashboard. Phase 2.4 keeps onboarding minimal so
- * the 10-user pilot has the absolute shortest path to the daily MCQ flow;
- * full onboarding (school, class, parent contact, verification) lands in
- * Phase 2.3.
- */
+type Step = 'language' | 'exam' | 'test' | 'result';
+
 export default function OnboardingPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
-  const [selected, setSelected] = useState<ExamSlug | null>(null);
+  const [step, setStep] = useState<Step>('language');
+  const [lang, setLangState] = useState<Lang>('en');
+  const [selectedExam, setSelectedExam] = useState<ExamSlug | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Adaptive test state
+  const [adaptive, setAdaptive] = useState<AdaptiveResponse | null>(null);
+  const [testAnswers, setTestAnswers] = useState<Record<number, string | null>>({});
+  const [result, setResult] = useState<AssessmentResult | null>(null);
 
   useEffect(() => {
     if (!loading && !user) router.replace('/signin');
   }, [user, loading, router]);
 
-  async function onContinue() {
-    if (!selected) return;
+  async function onSelectLanguage(l: Lang) {
+    setLangState(l);
+    setLang(l);
+    await api.setLanguage(l).catch(() => {});
+    setStep('exam');
+  }
+
+  async function onSelectExam() {
+    if (!selectedExam) return;
+    setSubmitting(true);
+    setError(null);
     try {
-      setError(null);
-      setSubmitting(true);
-      await api.setOnboarding(selected);
-      router.replace('/dashboard');
+      await api.setOnboarding(selectedExam);
+      // Start adaptive test
+      const res = await api.startAdaptiveTest(selectedExam);
+      setAdaptive(res);
+      setTestAnswers({});
+      setStep('test');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'failed to save');
+      setError(e instanceof Error ? e.message : 'failed');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function onSubmitRound() {
+    if (!adaptive) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const answers = adaptive.questions.map((_, i) => ({
+        questionIndex: i,
+        chosen: testAnswers[i] ?? null,
+      }));
+      const res = await api.submitAdaptiveRound(adaptive.sessionId, answers);
+      if ((res as { complete?: boolean }).complete) {
+        setResult((res as { result: AssessmentResult }).result);
+        setStep('result');
+      } else {
+        setAdaptive(res as AdaptiveResponse);
+        setTestAnswers({});
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'failed');
     } finally {
       setSubmitting(false);
     }
@@ -42,85 +79,200 @@ export default function OnboardingPage() {
 
   if (loading || !user) {
     return (
-      <main className="flex min-h-[60vh] items-center justify-center px-6">
-        <span className="inline-flex items-center gap-2 text-sm text-muted-500">
-          <span className="spinner" aria-hidden="true" />
-          Loading…
-        </span>
+      <main className="flex min-h-screen items-center justify-center px-4">
+        <span className="spinner" />
       </main>
     );
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col px-6 pt-10 pb-16">
+    <main className="mx-auto flex min-h-screen max-w-lg flex-col px-4 pt-8 pb-16 sm:px-6">
       <Logo />
 
-      <section className="mt-12">
-        <p className="pill mb-5">Step 1 of 1</p>
-        <h1 className="font-serif text-3xl font-semibold leading-tight text-ink-900 sm:text-4xl">
-          Which exam are you preparing for?
-        </h1>
-        <p className="mt-3 max-w-lg text-ink-800">
-          We tailor the daily MCQ, syllabus map, and current affairs to your
-          target exam. You can change this later from your dashboard.
-        </p>
+      {/* Progress indicator */}
+      <div className="mt-6 flex gap-1">
+        {(['language', 'exam', 'test', 'result'] as Step[]).map((s, i) => (
+          <div
+            key={s}
+            className={`h-1 flex-1 rounded-full transition-colors ${
+              (['language', 'exam', 'test', 'result'] as Step[]).indexOf(step) >= i
+                ? 'bg-ember-600'
+                : 'bg-paper-300'
+            }`}
+          />
+        ))}
+      </div>
 
-        <div className="mt-7">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ember-600">
-            Available now
-          </p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            {LIVE_EXAMS.map((exam) => (
+      {/* Step 1: Language */}
+      {step === 'language' && (
+        <section className="mt-8">
+          <h1 className="font-serif text-2xl font-semibold text-ink-900 sm:text-3xl">
+            {t('onboard.lang.title', lang)}
+          </h1>
+          <p className="mt-2 text-sm text-ink-800">{t('onboard.lang.sub', lang)}</p>
+          <div className="mt-6 grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => onSelectLanguage('en')}
+              className="paper-card flex flex-col items-center gap-2 p-6 transition hover:-translate-y-0.5 active:translate-y-0"
+            >
+              <span className="text-3xl">🇬🇧</span>
+              <span className="font-serif text-lg font-semibold text-ink-900">English</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onSelectLanguage('hi')}
+              className="paper-card flex flex-col items-center gap-2 p-6 transition hover:-translate-y-0.5 active:translate-y-0"
+            >
+              <span className="text-3xl">🇮🇳</span>
+              <span className="font-serif text-lg font-semibold text-ink-900">हिन्दी</span>
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* Step 2: Exam selection */}
+      {step === 'exam' && (
+        <section className="mt-8">
+          <h1 className="font-serif text-2xl font-semibold text-ink-900 sm:text-3xl">
+            {t('onboard.exam.title', lang)}
+          </h1>
+          <p className="mt-2 text-sm text-ink-800">{t('onboard.exam.sub', lang)}</p>
+          <div className="mt-5 grid gap-2 sm:grid-cols-2">
+            {EXAMS.map((exam) => (
               <button
                 key={exam.id}
                 type="button"
-                onClick={() => setSelected(exam.id)}
-                className={`paper-card px-4 py-3 text-left transition hover:-translate-y-0.5 ${
-                  selected === exam.id
+                onClick={() => setSelectedExam(exam.id)}
+                className={`paper-card px-4 py-3 text-left transition active:scale-[0.98] ${
+                  selectedExam === exam.id
                     ? 'ring-2 ring-ember-600 ring-offset-2 ring-offset-paper-100'
-                    : ''
+                    : 'hover:-translate-y-0.5'
                 }`}
               >
-                <span className="font-serif text-base font-semibold text-ink-900">
-                  {exam.name}
-                </span>
+                <span className="font-serif text-sm font-semibold text-ink-900">{exam.name}</span>
               </button>
             ))}
           </div>
-        </div>
+          {error && <p className="mt-4 text-sm text-ember-600">{error}</p>}
+          <button
+            type="button"
+            onClick={onSelectExam}
+            disabled={!selectedExam || submitting}
+            className="btn-primary mt-6 w-full"
+          >
+            {submitting ? t('common.loading', lang) : t('onboard.start_test', lang)}
+          </button>
+        </section>
+      )}
 
-        <div className="mt-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-500">
-            Coming soon
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {SOON_EXAMS.map((exam) => (
-              <span
-                key={exam.id}
-                className="pill"
-                style={{ borderStyle: 'dashed', color: 'var(--color-muted-500)' }}
-              >
-                {exam.name}
-              </span>
+      {/* Step 3: Adaptive Test */}
+      {step === 'test' && adaptive && (
+        <section className="mt-8">
+          <div className="flex items-center justify-between">
+            <h1 className="font-serif text-xl font-semibold text-ink-900">
+              {t('onboard.test.title', lang)}
+            </h1>
+            <span className="pill">
+              {t('mcq.question', lang)} {adaptive.round}/{adaptive.totalRounds}
+            </span>
+          </div>
+          <p className="mt-2 text-sm text-ink-800">{t('onboard.test.sub', lang)}</p>
+
+          <div className="mt-5 space-y-4">
+            {adaptive.questions.map((q, qi) => (
+              <div key={qi} className="paper-card p-4">
+                <p className="text-xs font-semibold uppercase text-muted-500">{q.subject}</p>
+                <p className="mt-1 font-serif text-sm font-semibold text-ink-900 sm:text-base">{q.question}</p>
+                <div className="mt-3 space-y-2">
+                  {q.options.map((opt) => (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onClick={() => setTestAnswers((prev) => ({ ...prev, [qi]: opt.key }))}
+                      className={`flex w-full items-start gap-2 rounded-lg border px-3 py-2 text-left text-sm transition ${
+                        testAnswers[qi] === opt.key
+                          ? 'border-ember-600 bg-paper-200'
+                          : 'border-line bg-paper-50 hover:border-ember-500'
+                      }`}
+                    >
+                      <span className="font-semibold text-ember-600">{opt.key}.</span>
+                      <span className="text-ink-900">{opt.text}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
-        </div>
 
-        {error ? (
-          <p className="mt-6 text-sm text-ember-600" role="alert">
-            {error}
+          {error && <p className="mt-4 text-sm text-ember-600">{error}</p>}
+          <button
+            type="button"
+            onClick={onSubmitRound}
+            disabled={submitting}
+            className="btn-primary mt-6 w-full"
+          >
+            {submitting ? t('common.loading', lang) : adaptive.round < adaptive.totalRounds ? t('mcq.next', lang) : t('mcq.submit', lang)}
+          </button>
+        </section>
+      )}
+
+      {/* Step 4: Result */}
+      {step === 'result' && result && (
+        <section className="mt-8 text-center">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-paper-200">
+            <span className="text-3xl">
+              {result.skillLevel === 'advanced' ? '🏆' : result.skillLevel === 'intermediate' ? '⭐' : '🌱'}
+            </span>
+          </div>
+          <h1 className="font-serif mt-4 text-2xl font-semibold text-ink-900">
+            {t('onboard.result.title', lang)}
+          </h1>
+          <p className="mt-2 text-ink-800">
+            {lang === 'hi' ? 'आपका स्तर' : 'Your level'}:{' '}
+            <span className="font-semibold capitalize text-ember-600">{result.skillLevel}</span>
           </p>
-        ) : null}
+          <p className="mt-1 text-sm text-muted-500">
+            {result.score}/{result.totalQuestions} {lang === 'hi' ? 'सही' : 'correct'}
+          </p>
 
-        <button
-          type="button"
-          onClick={onContinue}
-          disabled={!selected || submitting}
-          className="btn-primary mt-9 w-full sm:w-auto"
-        >
-          {submitting ? 'Saving\u2026' : 'Continue to dashboard'}
-        </button>
-      </section>
+          {result.weakSubjects.length > 0 && (
+            <div className="mt-4 paper-card p-4 text-left">
+              <p className="text-xs font-semibold uppercase text-muted-500">
+                {lang === 'hi' ? 'फोकस क्षेत्र' : 'Focus Areas'}
+              </p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {result.weakSubjects.map((s) => (
+                  <span key={s} className="pill">{s}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {result.studyPlan.length > 0 && (
+            <div className="mt-4 paper-card p-4 text-left">
+              <p className="text-xs font-semibold uppercase text-muted-500">
+                {lang === 'hi' ? 'अध्ययन प्लान' : 'Study Plan'}
+              </p>
+              <ul className="mt-2 space-y-1.5 text-sm text-ink-800">
+                {result.studyPlan.map((s, i) => (
+                  <li key={i} className="flex gap-2">
+                    <span className="text-ember-600">•</span> {s}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => router.replace('/dashboard')}
+            className="btn-primary mt-8 w-full"
+          >
+            {t('onboard.go_dashboard', lang)}
+          </button>
+        </section>
+      )}
     </main>
   );
 }
