@@ -59,7 +59,7 @@ export function VisualizeButton({ text, title }: Props) {
 
         const { svg } = await mermaid.render(`mermaid-${uid}`, code);
         if (!cancelled && containerRef.current) {
-          containerRef.current.innerHTML = svg;
+          containerRef.current.innerHTML = `<div class="w-full overflow-x-auto [&>svg]:mx-auto [&>svg]:max-w-full">${svg}</div>`;
         }
       } catch (err) {
         if (!cancelled && containerRef.current) {
@@ -105,8 +105,14 @@ export function VisualizeButton({ text, title }: Props) {
       {error && <p className="mt-2 text-xs text-ember-600">{error}</p>}
 
       {mermaidCode && (
-        <div className="viz-container mt-3" ref={containerRef}>
-          <span className="spinner" />
+        <div
+          className="mt-4 w-full rounded-xl border border-paper-300 bg-white p-4 sm:p-6 shadow-sm overflow-x-auto"
+          style={{ minHeight: '200px', maxHeight: '600px' }}
+        >
+          <div ref={containerRef} className="w-full flex items-center justify-center min-h-[180px]">
+            <span className="spinner" />
+          </div>
+          <p className="mt-3 text-[10px] text-muted-400 text-center italic">AI-generated · nexigrate</p>
         </div>
       )}
     </div>

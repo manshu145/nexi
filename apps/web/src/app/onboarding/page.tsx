@@ -278,7 +278,12 @@ export default function OnboardingPage() {
               </div>
             </div>
           ) : (
-            <div className="mt-8 text-center"><p className="text-sm text-muted-500">No questions generated.</p><button className="btn-primary mt-4" onClick={startAssessment}>Retry</button></div>
+            <div className="mt-8 text-center py-8">
+              <span className="text-3xl">⚠️</span>
+              <p className="mt-3 text-sm font-medium text-ink-900">Assessment could not be generated</p>
+              <p className="mt-1 text-xs text-muted-500">AI service might be busy. Please try again.</p>
+              <button className="btn-primary mt-4" onClick={startAssessment}>Retry</button>
+            </div>
           )}
         </section>
       )}

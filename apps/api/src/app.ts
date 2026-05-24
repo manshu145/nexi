@@ -506,7 +506,7 @@ export function buildApp(deps: AppDeps): Hono {
     ? new FirestoreChatHistoryStore(fs)
     : new InMemoryChatHistoryStore();
   v1.route('/ai', makePersonalizedRoutes({ ai: aiEngine, users, logger, openaiApiKey: env.OPENAI_API_KEY }));
-  v1.route('/ai', makeAIRoutes({ ai: aiEngine, users, progressStore: studentProgressStore, chatStore: chatHistoryStore, logger }));
+  v1.route('/ai', makeAIRoutes({ ai: aiEngine, users, progressStore: studentProgressStore, chatStore: chatHistoryStore, logger, openaiApiKey: env.OPENAI_API_KEY }));
 
   // /admin/* so its specific paths win over the generic admin route's
   // catch-all (Hono matches in registration order).
