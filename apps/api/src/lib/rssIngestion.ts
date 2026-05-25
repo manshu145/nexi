@@ -201,15 +201,35 @@ export async function ingestCurrentAffairs(
     return !isNaN(d) ? d > oneDayAgo : true;
   }).slice(0, 50); // Max 50 items to summarize
 
-  // 3. AI summarize
-  const summarized = await summarizeItems(recentItems, env, logger);
-
-  // 4. Save
-  if (summarized.length > 0) {
+  // 3. AI summarize (or fallback to raw items if no Gemini key)
+  let itemsToSave: CurrentAffairsStoreItem[];
+  if (env.GEMINI_API_KEY) {
+    itemsToSave = await summarizeItems(recentItems, env, logger);
+  } else {
+    // Fallback: save raw items without AI summarization
+    logger.info('rss.no_gemini_key_fallback', { message: 'Saving raw items without AI summarization' });
     const today = new Date().toISOString().split('T')[0]!;
-    await store.saveItems(today, summarized);
+    itemsToSave = recentItems.slice(0, 30).map((item, i) => ({
+      id: `${today}-raw-${i}-${Math.random().toString(36).slice(2, 6)}`,
+      headline: item.title.slice(0, 100),
+      body: item.description.slice(0, 300) || item.title,
+      category: 'national' as CurrentAffairsCategory,
+      sources: [item.source],
+      relevantExams: [],
+      tags: [],
+      date: today,
+      summary: item.description.slice(0, 200) || item.title,
+      factChecked: false,
+      publishedAt: item.pubDate || new Date().toISOString(),
+    }));
   }
 
-  logger.info('rss.ingestion_complete', { fetched: rawItems.length, saved: summarized.length });
-  return { fetched: rawItems.length, saved: summarized.length };
+  // 4. Save
+  if (itemsToSave.length > 0) {
+    const today = new Date().toISOString().split('T')[0]!;
+    await store.saveItems(today, itemsToSave);
+  }
+
+  logger.info('rss.ingestion_complete', { fetched: rawItems.length, saved: itemsToSave.length });
+  return { fetched: rawItems.length, saved: itemsToSave.length };
 }
