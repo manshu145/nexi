@@ -19,7 +19,7 @@ export default function KindleReaderPage() {
   const [error, setError] = useState<string | null>(null);
   const [showViz, setShowViz] = useState(false);
   const [vizLoading, setVizLoading] = useState(false);
-  const [vizImageUrl, setVizImageUrl] = useState<string | null>(null);
+  const [vizSvgHtml, setVizSvgHtml] = useState<string | null>(null);
   const [vizError, setVizError] = useState<string | null>(null);
   const [speaking, setSpeaking] = useState(false);
   const [flipDirection, setFlipDirection] = useState<'next' | 'prev' | null>(null);
@@ -58,7 +58,7 @@ export default function KindleReaderPage() {
         setCurrentPage(p => p + 1);
         setFlipDirection(null);
         setIsFlipping(false);
-      }, 250);
+      }, 700);
     }
   }, [currentPage, pages.length, isFlipping]);
 
@@ -70,7 +70,7 @@ export default function KindleReaderPage() {
         setCurrentPage(p => p - 1);
         setFlipDirection(null);
         setIsFlipping(false);
-      }, 250);
+      }, 700);
     }
   }, [currentPage, isFlipping]);
 
@@ -142,7 +142,7 @@ export default function KindleReaderPage() {
     setShowViz(true);
     setShowSelectionBtn(false);
     setVizError(null);
-    setVizImageUrl(null);
+    setVizSvgHtml(null);
     try {
       let mermaidStr: string;
       if (mode === 'selection' && selectedText) {
@@ -160,8 +160,7 @@ export default function KindleReaderPage() {
         throw new Error('AI returned empty diagram. Try again.');
       }
 
-      // Try rendering mermaid to SVG
-      let svg: string;
+      // Render mermaid to SVG and display directly (most reliable)
       try {
         const mermaidLib = await import('mermaid');
         mermaidLib.default.initialize({
@@ -171,30 +170,12 @@ export default function KindleReaderPage() {
           flowchart: { curve: 'basis', padding: 16 },
           securityLevel: 'loose',
         });
-        const rendered = await mermaidLib.default.render('mermaid-viz-' + Date.now(), mermaidStr);
-        svg = rendered.svg;
+        const { svg } = await mermaidLib.default.render('mermaid-viz-' + Date.now(), mermaidStr);
+        setVizSvgHtml(svg);
       } catch (mermaidErr) {
-        // Mermaid syntax error — show as SVG fallback with the raw text
-        console.warn('Mermaid render failed:', mermaidErr);
-        // Create a simple fallback SVG showing the diagram as text
-        svg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="400" viewBox="0 0 800 400">
-          <rect width="800" height="400" fill="#FBF6E8" rx="8"/>
-          <text x="400" y="30" text-anchor="middle" font-family="Inter, sans-serif" font-size="14" fill="#7A6F5C">Diagram (text view)</text>
-          <foreignObject x="40" y="50" width="720" height="340">
-            <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:monospace;font-size:11px;white-space:pre-wrap;color:#2A241A;padding:8px">${escapeHtml(mermaidStr)}</div>
-          </foreignObject>
-        </svg>`;
-      }
-
-      // Try converting to PNG, fallback to showing SVG directly
-      try {
-        const pngUrl = await svgToPng(svg, 1200, 800);
-        setVizImageUrl(pngUrl);
-      } catch {
-        // PNG conversion failed — show SVG as data URL
-        const svgBlob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
-        const svgUrl = URL.createObjectURL(svgBlob);
-        setVizImageUrl(svgUrl);
+        // Mermaid parse failed — show raw code in a styled box
+        console.warn('Mermaid render failed, showing raw:', mermaidErr);
+        setVizSvgHtml(`<div style="background:#F5ECD7;border:1px solid #D9CDB0;border-radius:8px;padding:16px;font-family:monospace;font-size:12px;white-space:pre-wrap;color:#2A241A;max-height:400px;overflow:auto"><p style="color:#7A6F5C;margin-bottom:8px;font-family:Inter,sans-serif;font-size:13px">Diagram code (render failed):</p>${escapeHtml(mermaidStr)}</div>`);
       }
     } catch (err) {
       setVizError(err instanceof Error ? err.message : 'Failed to generate visualization. Try again.');
@@ -204,38 +185,47 @@ export default function KindleReaderPage() {
   };
 
   const handleShareViz = async () => {
-    if (!vizImageUrl) return;
+    if (!vizSvgHtml) return;
     try {
-      const blob = await (await fetch(vizImageUrl)).blob();
-      const file = new File([blob], `${chapter}-visualization.png`, { type: 'image/png' });
+      // Create SVG blob for sharing
+      const blob = new Blob([vizSvgHtml], { type: 'image/svg+xml' });
+      const file = new File([blob], `${chapter}-diagram.svg`, { type: 'image/svg+xml' });
       if (navigator.share && navigator.canShare({ files: [file] })) {
         await navigator.share({
           title: `${chapterName} — Nexigrate`,
-          text: `Study visualization for ${chapterName}`,
+          text: `Study diagram for ${chapterName}`,
           files: [file],
         });
       } else {
         // Fallback: download
+        const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = vizImageUrl;
-        a.download = `${chapter}-visualization.png`;
+        a.href = url;
+        a.download = `${chapter}-diagram.svg`;
         a.click();
+        URL.revokeObjectURL(url);
       }
     } catch {
       // Fallback: download
+      const blob = new Blob([vizSvgHtml], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = vizImageUrl!;
-      a.download = `${chapter}-visualization.png`;
+      a.href = url;
+      a.download = `${chapter}-diagram.svg`;
       a.click();
+      URL.revokeObjectURL(url);
     }
   };
 
   const handleSaveViz = () => {
-    if (!vizImageUrl) return;
+    if (!vizSvgHtml) return;
+    const blob = new Blob([vizSvgHtml], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = vizImageUrl;
-    a.download = `${chapter}-visualization.png`;
+    a.href = url;
+    a.download = `${chapter}-diagram.svg`;
     a.click();
+    URL.revokeObjectURL(url);
   };
 
   const handleTTS = () => {
@@ -341,11 +331,11 @@ export default function KindleReaderPage() {
                   <div className="banner banner-error">{vizError}</div>
                   <button onClick={() => handleVisualize('page')} className="btn-ghost-sm mt-4">Try Again</button>
                 </div>
-              ) : vizImageUrl ? (
+              ) : vizSvgHtml ? (
                 <div className="flex flex-col items-center">
-                  <img src={vizImageUrl} alt={`Visualization of ${chapterName}`} className="w-full rounded-lg border border-line" />
+                  <div className="w-full overflow-auto rounded-lg border border-line bg-paper-100 p-4" dangerouslySetInnerHTML={{ __html: vizSvgHtml }} />
                   <div className="mt-4 flex items-center gap-3">
-                    <button onClick={handleSaveViz} className="btn-ghost-sm">💾 Save PNG</button>
+                    <button onClick={handleSaveViz} className="btn-ghost-sm">💾 Save</button>
                     <button onClick={handleShareViz} className="btn-ghost-sm">📤 Share</button>
                   </div>
                   <p className="mt-3 text-center text-xs text-muted-400">Powered by Nexigrate AI</p>
@@ -388,40 +378,6 @@ function stripMarkdown(md: string): string {
     .replace(/\n{2,}/g, '. ')
     .replace(/\n/g, ' ')
     .trim();
-}
-
-/** Convert SVG string to PNG data URL using canvas */
-async function svgToPng(svgStr: string, width: number, height: number): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) { reject(new Error('Canvas context failed')); return; }
-
-    const img = new Image();
-    const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-
-    img.onload = () => {
-      // White background
-      ctx.fillStyle = '#FBF6E8';
-      ctx.fillRect(0, 0, width, height);
-      // Scale SVG to fit
-      const scale = Math.min(width / img.naturalWidth, height / img.naturalHeight) * 0.9;
-      const x = (width - img.naturalWidth * scale) / 2;
-      const y = (height - img.naturalHeight * scale) / 2;
-      ctx.drawImage(img, x, y, img.naturalWidth * scale, img.naturalHeight * scale);
-      // Add watermark
-      ctx.font = '11px Inter, system-ui, sans-serif';
-      ctx.fillStyle = 'rgba(122, 111, 92, 0.5)';
-      ctx.fillText('NEXIGRATE', width - 90, height - 12);
-      URL.revokeObjectURL(url);
-      resolve(canvas.toDataURL('image/png'));
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('SVG render failed')); };
-    img.src = url;
-  });
 }
 
 /**
