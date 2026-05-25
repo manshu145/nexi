@@ -20,7 +20,9 @@
     "@nexigrate/credits": "workspace:*",
     "@nexigrate/shared": "workspace:*",
     "firebase-admin": "^13.0.2",
+    "groq-sdk": "^1.2.0",
     "hono": "^4.6.16",
+    "openai": "^6.39.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {
