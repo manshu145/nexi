@@ -175,7 +175,7 @@ export default function KindleReaderPage() {
       } catch (mermaidErr) {
         // Mermaid parse failed — show raw code in a styled box
         console.warn('Mermaid render failed, showing raw:', mermaidErr);
-        setVizSvgHtml(`<div style="background:#F5ECD7;border:1px solid #D9CDB0;border-radius:8px;padding:16px;font-family:monospace;font-size:12px;white-space:pre-wrap;color:#2A241A;max-height:400px;overflow:auto"><p style="color:#7A6F5C;margin-bottom:8px;font-family:Inter,sans-serif;font-size:13px">Diagram code (render failed):</p>${escapeHtml(mermaidStr)}</div>`);
+        setVizSvgHtml(`<div style="background:var(--color-paper-100);border:1px solid var(--color-paper-300);border-radius:8px;padding:16px;font-family:monospace;font-size:12px;white-space:pre-wrap;color:var(--color-ink-900);max-height:400px;overflow:auto"><p style="color:var(--color-muted-500);margin-bottom:8px;font-family:Inter,sans-serif;font-size:13px">Diagram code (render failed):</p>${escapeHtml(mermaidStr)}</div>`);
       }
     } catch (err) {
       setVizError(err instanceof Error ? err.message : 'Failed to generate visualization. Try again.');

@@ -9,10 +9,21 @@ export default function CompletePage() {
   const ts = useTranslations('onboarding');
   const router = useRouter();
   const [result, setResult] = useState<AssessmentResult | null>(null);
+  const [pageLoading, setPageLoading] = useState(true);
 
   useEffect(() => {
-    const s = sessionStorage.getItem('nexigrate-assessment-result');
-    if (s) { setResult(JSON.parse(s) as AssessmentResult); sessionStorage.removeItem('nexigrate-assessment-result'); }
+    try {
+      const s = sessionStorage.getItem('nexigrate-assessment-result');
+      if (s) {
+        const parsed = JSON.parse(s) as AssessmentResult;
+        setResult(parsed);
+        sessionStorage.removeItem('nexigrate-assessment-result');
+      }
+    } catch (e) {
+      console.error('Failed to parse assessment result:', e);
+    } finally {
+      setPageLoading(false);
+    }
   }, []);
 
   const lang = typeof window !== 'undefined' ? (() => {
@@ -20,6 +31,15 @@ export default function CompletePage() {
     if (m) return m[1] as 'en' | 'hi';
     return (localStorage.getItem('nexigrate-language') as 'en'|'hi') || 'en';
   })() : 'en';
+
+  if (pageLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24">
+        <span className="spinner" />
+        <p className="mt-3 text-sm text-muted-500">Loading results...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col items-center">

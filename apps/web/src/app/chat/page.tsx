@@ -132,7 +132,7 @@ export default function ChatPage() {
           )}
           {messages.map((msg, i) => (
             <div key={i} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-              <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${msg.role === 'user' ? 'bg-ember-500 text-white dark:bg-ember-600' : 'paper-card text-ink-900 dark:text-paper-100'}`}>
+              <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${msg.role === 'user' ? 'bg-ember-500 text-paper-50 dark:bg-ember-600' : 'paper-card text-ink-900 dark:text-paper-100'}`}>
                 {msg.role === 'assistant' ? (
                   <div className="prose prose-sm dark:prose-invert max-w-none">
                     <ReactMarkdown>{msg.content}</ReactMarkdown>
@@ -144,7 +144,7 @@ export default function ChatPage() {
               {msg.role === 'assistant' && msg.content.length > 100 && (
                 <button
                   onClick={() => handleVisualize(msg.content)}
-                  className="mt-1 text-xs text-ember-600 dark:text-amber-400 hover:underline"
+                  className="mt-1 text-xs text-ember-600 dark:text-gold-500 hover:underline"
                 >
                   🔍 Visualize this
                 </button>

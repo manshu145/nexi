@@ -89,15 +89,15 @@ export default function UpgradePage() {
 
       {/* Period toggle */}
       <div className="mt-6 flex items-center justify-center gap-1 rounded-full bg-paper-200 dark:bg-ink-700 p-1">
-        <button onClick={() => setPeriod('monthly')} className={`rounded-full px-5 py-2 text-sm font-medium transition-colors ${period === 'monthly' ? 'bg-white dark:bg-ink-900 text-ink-900 dark:text-paper-50 shadow-sm' : 'text-muted-500'}`}>
+        <button onClick={() => setPeriod('monthly')} className={`rounded-full px-5 py-2 text-sm font-medium transition-colors ${period === 'monthly' ? 'bg-paper-50 dark:bg-ink-900 text-ink-900 dark:text-paper-50 shadow-sm' : 'text-muted-500'}`}>
           Monthly
         </button>
-        <button onClick={() => setPeriod('yearly')} className={`rounded-full px-5 py-2 text-sm font-medium transition-colors ${period === 'yearly' ? 'bg-white dark:bg-ink-900 text-ink-900 dark:text-paper-50 shadow-sm' : 'text-muted-500'}`}>
+        <button onClick={() => setPeriod('yearly')} className={`rounded-full px-5 py-2 text-sm font-medium transition-colors ${period === 'yearly' ? 'bg-paper-50 dark:bg-ink-900 text-ink-900 dark:text-paper-50 shadow-sm' : 'text-muted-500'}`}>
           Yearly <span className="text-xs text-gold-500 ml-1">Save 15%</span>
         </button>
       </div>
 
-      {success && <div className="banner mt-6 text-center bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800">{success}</div>}
+      {success && <div className="banner mt-6 text-center bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800">{success}</div>}
       {error && <div className="banner banner-error mt-6">{error}</div>}
 
       {/* Plan cards */}
@@ -106,12 +106,12 @@ export default function UpgradePage() {
           const isCurrent = currentPlan === plan.id;
           const price = period === 'monthly' ? plan.price : plan.yearlyPrice;
           return (
-            <div key={plan.id} className={`paper-card relative flex flex-col p-5 ${isCurrent ? 'ring-2 ring-amber-500' : ''}`}>
+            <div key={plan.id} className={`paper-card relative flex flex-col p-5 ${isCurrent ? 'ring-2 ring-gold-500' : ''}`}>
               {plan.badge && (
-                <span className="absolute -top-2 right-3 rounded-full bg-amber-500 px-3 py-0.5 text-xs font-semibold text-white">{plan.badge}</span>
+                <span className="absolute -top-2 right-3 rounded-full bg-gold-500 px-3 py-0.5 text-xs font-semibold text-paper-50">{plan.badge}</span>
               )}
               {isCurrent && (
-                <span className="absolute -top-2 left-3 rounded-full bg-green-500 px-3 py-0.5 text-xs font-semibold text-white">Current Plan</span>
+                <span className="absolute -top-2 left-3 rounded-full bg-emerald-600 px-3 py-0.5 text-xs font-semibold text-paper-50">Current Plan</span>
               )}
               <h3 className="font-serif text-lg font-bold text-ink-900 dark:text-paper-50">{plan.name}</h3>
               <p className="mt-2">
