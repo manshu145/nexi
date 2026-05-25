@@ -1137,3 +1137,15 @@ button.paper-card:hover {
     padding: 2rem 3.5rem 3rem;
   }
 }
+
+
+
+/* ----- Fade-in animations for dashboard cards ----- */
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.animate-fadeIn { animation: fadeIn 0.3s ease-out forwards; }
+.animate-fadeIn-delay-1 { animation: fadeIn 0.3s ease-out 0.1s forwards; opacity: 0; }
+.animate-fadeIn-delay-2 { animation: fadeIn 0.3s ease-out 0.2s forwards; opacity: 0; }
+
+/* ----- Toast notification animation ----- */
+@keyframes toastIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+.animate-toast-in { animation: toastIn 0.2s ease-out forwards; }

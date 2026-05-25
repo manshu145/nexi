@@ -19,6 +19,7 @@ export interface UserStore {
   get(uid: UserId): Promise<StoredUser | null>;
   update(uid: UserId, data: Partial<StoredUser>): Promise<StoredUser>;
   bumpStreak(uid: UserId): Promise<{ streak: number; credits: number }>;
+  listAll?(): Promise<StoredUser[]>;
 }
 
 function newUser(uid: UserId, init: UserStoreInit, now: string): StoredUser {
@@ -58,6 +59,7 @@ export class InMemoryUserStore implements UserStore {
   async getOrCreate(uid: UserId, init: UserStoreInit) { const e = this.users.get(uid); if (e) return e; const u = newUser(uid, init, new Date().toISOString()); this.users.set(uid, u); return u; }
   async get(uid: UserId) { return this.users.get(uid) ?? null; }
   async update(uid: UserId, data: Partial<StoredUser>) { const u = this.users.get(uid); if (!u) throw new Error(`user ${uid} not found`); const updated = { ...u, ...data, updatedAt: asISODateTime(new Date().toISOString()) }; this.users.set(uid, updated); return updated; }
+  async listAll() { return Array.from(this.users.values()); }
   async bumpStreak(uid: UserId) {
     const u = this.users.get(uid); if (!u) throw new Error(`user ${uid} not found`);
     const { currentStreak, bestStreak, alreadyBumped } = computeStreak(u);
@@ -74,6 +76,7 @@ export class FirestoreUserStore implements UserStore {
   async getOrCreate(uid: UserId, init: UserStoreInit) { const ref = this.db.collection(COL).doc(uid); const snap = await ref.get(); if (snap.exists) return snap.data() as StoredUser; const u = newUser(uid, init, new Date().toISOString()); await ref.set(u); return u; }
   async get(uid: UserId) { const snap = await this.db.collection(COL).doc(uid).get(); return snap.exists ? (snap.data() as StoredUser) : null; }
   async update(uid: UserId, data: Partial<StoredUser>) { const ref = this.db.collection(COL).doc(uid); await ref.set({ ...data, updatedAt: new Date().toISOString() }, { merge: true }); return (await ref.get()).data() as StoredUser; }
+  async listAll() { const snap = await this.db.collection('users').limit(100).get(); return snap.docs.map(d => d.data() as StoredUser); }
   async bumpStreak(uid: UserId) {
     const ref = this.db.collection(COL).doc(uid);
     return this.db.runTransaction(async (tx) => {
