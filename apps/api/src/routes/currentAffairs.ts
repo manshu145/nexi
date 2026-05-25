@@ -21,11 +21,19 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
 
   // GET /v1/current-affairs — today's items
   app.get('/', async (c) => {
-    requireAuth(c);
-    const today = new Date().toISOString().split('T')[0]!;
-    const items = await deps.currentAffairs.getTodayItems(today);
-    const winner = await deps.currentAffairs.getYesterdayWinner();
-    return c.json({ date: today, items, yesterdayWinner: winner });
+    try {
+      requireAuth(c);
+      const today = new Date().toISOString().split('T')[0]!;
+      let items: any[] = [];
+      let winner: any = null;
+      try { items = await deps.currentAffairs.getTodayItems(today); } catch (e) { deps.logger.error('ca.getTodayItems_error', { error: String(e) }); }
+      try { winner = await deps.currentAffairs.getYesterdayWinner(); } catch (e) { deps.logger.error('ca.getWinner_error', { error: String(e) }); }
+      return c.json({ date: today, items, yesterdayWinner: winner });
+    } catch (e) {
+      if (e instanceof HTTPException) throw e;
+      deps.logger.error('ca.route_error', { error: e instanceof Error ? e.message : String(e), stack: e instanceof Error ? e.stack : '' });
+      return c.json({ date: new Date().toISOString().split('T')[0], items: [], yesterdayWinner: null });
+    }
   });
 
   // GET /v1/current-affairs/quiz — daily 20 MCQs
