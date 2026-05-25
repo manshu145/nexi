@@ -16,14 +16,15 @@ export interface AIEngine {
 }
 
 export function createAIEngine(env: Env, logger: Logger): AIEngine {
-  const groq = new Groq({ apiKey: env.GROQ_API_KEY });
-  const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const groq = env.GROQ_API_KEY ? new Groq({ apiKey: env.GROQ_API_KEY }) : null;
+  const openai = env.OPENAI_API_KEY ? new OpenAI({ apiKey: env.OPENAI_API_KEY }) : null;
 
   return {
     async generateAssessmentQuestions(examSlug, language = 'en', count = 15) {
       const langInstr = language === 'hi' ? 'Generate all questions and options in Hindi (Devanagari script).' : 'Generate all questions and options in English.';
       const prompt = `You are an expert Indian competitive exam question creator.\n\nGenerate exactly ${count} MCQs for "${examSlug}" exam.\n${langInstr}\n\nRequirements:\n- Mix: 5 easy, 5 medium, 5 hard\n- 4 options (A-D), correct answer, brief explanation\n- Different subjects/topics\n\nRespond ONLY with JSON:\n{"questions":[{"id":"q1","question":"...","options":[{"key":"A","text":"..."},{"key":"B","text":"..."},{"key":"C","text":"..."},{"key":"D","text":"..."}],"correctOption":"A","explanation":"...","difficulty":"easy","subject":"...","topic":"..."}]}`;
       try {
+        if (!groq) throw new Error('GROQ_API_KEY not configured');
         const completion = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 4096, response_format: { type: 'json_object' } });
         const parsed = JSON.parse(completion.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
         logger.info('ai.questions_generated', { examSlug, language, count: parsed.questions?.length ?? 0 });
@@ -38,7 +39,7 @@ export function createAIEngine(env: Env, logger: Logger): AIEngine {
       const pct = (correct / total) * 100;
       try {
         const prompt = `Student scored ${correct}/${total} (${pct.toFixed(1)}%) on Indian competitive exam assessment.\nAssign level and provide encouraging message.\nRespond ONLY JSON: {"level":"beginner"|"intermediate"|"advanced","message":"English (1-2 sentences)","messageHi":"Hindi Devanagari"}`;
-        const completion = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 300, response_format: { type: 'json_object' } });
+        if (!openai) throw new Error("OPENAI_API_KEY not configured"); const completion = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 300, response_format: { type: 'json_object' } });
         const parsed = JSON.parse(completion.choices[0]?.message?.content ?? '{}') as { level: 'beginner'|'intermediate'|'advanced'; message: string; messageHi: string };
         logger.info('ai.scored', { correct, total, level: parsed.level });
         return { score: correct, total, ...parsed };
@@ -53,7 +54,7 @@ export function createAIEngine(env: Env, logger: Logger): AIEngine {
       const langInstr = language === 'hi' ? 'Write the entire chapter in Hindi (Devanagari). Simple, student-friendly language.' : 'Write in clear, student-friendly English.';
       const prompt = `You are an expert Indian education content writer.\n\nWrite a chapter on "${chapter}" (subject: ${subject}, exam: ${exam}).\n${langInstr}\n\nRequirements:\n- 800-1200 words, Markdown format\n- Sections: Introduction, Key Concepts (with examples), Important Points, Summary\n- Use ## headings\n- Include real-world Indian examples\n- Exam-focused: highlight frequently-asked areas\n- For science/math: include formulas in $...$\n\nWrite ONLY the Markdown content.`;
       try {
-        const c = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: 3000 });
+        if (!openai) throw new Error("OPENAI_API_KEY not configured"); const c = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: 3000 });
         const content = c.choices[0]?.message?.content ?? '';
         logger.info('ai.chapter_generated', { chapter, subject, exam, language, words: content.split(/\s+/).length });
         return content;
@@ -64,7 +65,7 @@ export function createAIEngine(env: Env, logger: Logger): AIEngine {
       const langInstr = language === 'hi' ? 'Generate in Hindi (Devanagari).' : 'Generate in English.';
       const prompt = `Generate exactly ${count} MCQs for chapter "${chapter}" (${subject}, ${exam}).\n${langInstr}\nMix: 3 easy, 4 medium, 3 hard. 4 options each. Include explanation.\n\nJSON only:\n{"questions":[{"id":"q1","question":"...","options":[{"key":"A","text":"..."},{"key":"B","text":"..."},{"key":"C","text":"..."},{"key":"D","text":"..."}],"correctOption":"A","explanation":"...","difficulty":"easy","subject":"${subject}","topic":"${chapter}"}]}`;
       try {
-        const c = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 4096, response_format: { type: 'json_object' } });
+        if (!groq) throw new Error("GROQ_API_KEY not configured"); const c = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 4096, response_format: { type: 'json_object' } });
         const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
         logger.info('ai.chapter_mcqs', { chapter, count: parsed.questions?.length ?? 0 });
         return parsed.questions ?? [];
@@ -74,7 +75,7 @@ export function createAIEngine(env: Env, logger: Logger): AIEngine {
     async generateMermaidDiagram(chapter, subject, exam) {
       const prompt = `Create a Mermaid.js flowchart (graph TD) that visually explains key concepts of "${chapter}" (${subject}, ${exam}).\n\nMax 12 nodes. Valid Mermaid syntax only. No markdown fences.\nExample:\ngraph TD\n    A[Concept] --> B[Detail]\n    A --> C[Another]`;
       try {
-        const c = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 800 });
+        if (!openai) throw new Error("OPENAI_API_KEY not configured"); const c = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 800 });
         const raw = c.choices[0]?.message?.content ?? '';
         const cleaned = raw.replace(/```mermaid\n?/g, '').replace(/```\n?/g, '').trim();
         logger.info('ai.mermaid', { chapter, subject, exam });
