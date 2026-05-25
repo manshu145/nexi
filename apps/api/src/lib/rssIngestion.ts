@@ -2,6 +2,7 @@ import type { Env } from '../env.js';
 import type { Logger } from '../logger.js';
 import type { CurrentAffairsStoreItem, CurrentAffairsStore } from './currentAffairsStore.js';
 import type { CurrentAffairsCategory } from '@nexigrate/shared';
+import type { AIEngine } from './aiEngine.js';
 
 /**
  * RSS News Sources for Current Affairs ingestion.
@@ -191,6 +192,7 @@ export async function ingestCurrentAffairs(
   store: CurrentAffairsStore,
   env: Env,
   logger: Logger,
+  aiEngine?: AIEngine,
 ): Promise<{ fetched: number; saved: number }> {
   logger.info('rss.ingestion_start', { sources: NEWS_SOURCES.length });
 
@@ -260,6 +262,23 @@ export async function ingestCurrentAffairs(
   if (itemsToSave.length > 0) {
     const today = new Date().toISOString().split('T')[0]!;
     await store.saveItems(today, itemsToSave);
+  }
+
+  // 5. Translate to Hindi (best-effort, background)
+  if (aiEngine && itemsToSave.length > 0) {
+    try {
+      const toTranslate = itemsToSave.slice(0, 15).map(it => ({ headline: it.headline, summary: it.summary }));
+      const translated = await aiEngine.translateToHindi(toTranslate);
+      if (translated.length > 0) {
+        const today = new Date().toISOString().split('T')[0]!;
+        const updatedItems = itemsToSave.map((item, i) => {
+          if (i >= translated.length) return item;
+          return { ...item, headlineHi: translated[i]!.headline, summaryHi: translated[i]!.summary };
+        });
+        await store.saveItems(today, updatedItems);
+        logger.info('rss.hindi_translated', { count: translated.length });
+      }
+    } catch (err) { logger.warn('rss.hindi_translate_failed', { error: err instanceof Error ? err.message : String(err) }); }
   }
 
   logger.info('rss.ingestion_complete', { fetched: rawItems.length, saved: itemsToSave.length });

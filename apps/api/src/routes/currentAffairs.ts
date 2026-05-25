@@ -65,20 +65,14 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
 
       items = deduplicateItems(items);
 
-      // Translate to Hindi if requested (max 10 items, 8s timeout to prevent Cloud Run timeout)
+      // For Hindi users, swap to pre-translated fields (translated at ingestion time)
       if (language === 'hi' && items.length > 0) {
-        try {
-          const toTranslate = items.slice(0, 10).map((it: any) => ({ headline: it.headline, summary: it.summary || it.body || '' }));
-          const translatePromise = deps.aiEngine.translateToHindi(toTranslate);
-          const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000));
-          const translated = await Promise.race([translatePromise, timeoutPromise]);
-          if (translated && translated.length === toTranslate.length) {
-            items = items.map((it: any, i: number) => {
-              if (i >= translated.length) return it;
-              return { ...it, headline: translated[i]!.headline || it.headline, summary: translated[i]!.summary || it.summary || it.body, body: translated[i]!.summary || it.body };
-            });
-          }
-        } catch (e) { deps.logger.warn('ca.translate_error', { error: e instanceof Error ? e.message : String(e) }); }
+        items = items.map((it: any) => ({
+          ...it,
+          headline: it.headlineHi || it.headline,
+          summary: it.summaryHi || it.summary || it.body,
+          body: it.summaryHi || it.body,
+        }));
       }
 
       return c.json({ date: today, items, yesterdayWinner: winner });
@@ -171,7 +165,7 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
       if (user?.role !== 'admin') throw new HTTPException(403, { message: 'admin only' });
     }
 
-    const result = await ingestCurrentAffairs(deps.currentAffairs, deps.env, deps.logger);
+    const result = await ingestCurrentAffairs(deps.currentAffairs, deps.env, deps.logger, deps.aiEngine);
     return c.json({ success: true, ...result });
   });
 

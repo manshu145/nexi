@@ -56,7 +56,7 @@ export function buildApp(deps: AppDeps): Hono {
       return c.json({ error: 'unauthorized' }, 401);
     }
     const { ingestCurrentAffairs } = await import('./lib/rssIngestion.js');
-    const result = await ingestCurrentAffairs(currentAffairs, env, logger);
+    const result = await ingestCurrentAffairs(currentAffairs, env, logger, aiEngine);
     return c.json({ success: true, ...result });
   });
 

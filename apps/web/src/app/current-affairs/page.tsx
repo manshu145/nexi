@@ -30,11 +30,7 @@ export default function CurrentAffairsPage() {
     if (!user) return;
     (async () => {
       try {
-        let lang: 'en' | 'hi' = 'en';
-        try {
-          const meRes = await api.me();
-          lang = meRes.user.language || 'en';
-        } catch { /* default to en */ }
+        const lang = (localStorage.getItem('nexigrate-language') as 'en' | 'hi') || 'en';
         const res = await api.getCurrentAffairs(lang);
         setItems(res.items);
         setWinner(res.yesterdayWinner);

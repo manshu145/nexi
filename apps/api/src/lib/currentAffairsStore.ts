@@ -7,6 +7,8 @@ export interface CurrentAffairsStoreItem extends CurrentAffairsItem {
   summary: string;
   factChecked: boolean;
   publishedAt: string;
+  headlineHi?: string;  // Hindi translation (pre-computed at ingestion)
+  summaryHi?: string;   // Hindi translation (pre-computed at ingestion)
 }
 
 export interface DailyQuizResult {
