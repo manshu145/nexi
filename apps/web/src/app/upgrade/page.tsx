@@ -7,12 +7,12 @@ import { Logo } from '~/components/Logo';
 
 declare global { interface Window { Razorpay: new (options: Record<string, unknown>) => { open(): void }; } }
 
-interface PlanDisplay { id: string; name: string; price: number; yearlyPrice: number; badge?: string; features: string[]; }
+interface PlanDisplay { id: string; name: string; price: number; yearlyPrice: number; badge?: string; popular?: boolean; features: string[]; }
 
 const PLANS: PlanDisplay[] = [
-  { id: 'scholar', name: 'Scholar', price: 99, yearlyPrice: 999, features: ['10 Daily MCQs', '2 Mock Tests/month', 'AI Tutor (limited)', 'Current Affairs', 'Basic analytics'] },
-  { id: 'aspirant', name: 'Aspirant', price: 299, yearlyPrice: 2999, badge: 'Popular', features: ['30 Daily MCQs', '10 Mock Tests/month', 'AI Tutor (unlimited)', 'Current Affairs', 'Essay Grading', 'Performance analytics'] },
-  { id: 'achiever', name: 'Achiever', price: 599, yearlyPrice: 5999, badge: 'Best Value', features: ['Unlimited MCQs', 'Unlimited Mock Tests', 'AI Tutor (priority)', 'Current Affairs', 'Essay Grading', 'Mentor support', 'Priority support'] },
+  { id: 'scholar', name: 'Scholar', price: 99, yearlyPrice: 949, features: ['10 Daily MCQs', '2 Mock Tests/month', 'AI Tutor (limited)', 'Current Affairs', 'Basic analytics'] },
+  { id: 'aspirant', name: 'Aspirant', price: 299, yearlyPrice: 2869, badge: 'Popular', popular: true, features: ['30 Daily MCQs', '10 Mock Tests/month', 'AI Tutor (unlimited)', 'Current Affairs', 'Essay Grading', 'Performance analytics'] },
+  { id: 'achiever', name: 'Achiever', price: 599, yearlyPrice: 5750, badge: 'Best Value', features: ['Unlimited MCQs', 'Unlimited Mock Tests', 'AI Tutor (priority)', 'Current Affairs', 'Essay Grading', 'Mentor support', 'Priority support'] },
 ];
 
 export default function UpgradePage() {
@@ -93,7 +93,7 @@ export default function UpgradePage() {
           Monthly
         </button>
         <button onClick={() => setPeriod('yearly')} className={`rounded-full px-5 py-2 text-sm font-medium transition-colors ${period === 'yearly' ? 'bg-paper-50 dark:bg-ink-900 text-ink-900 dark:text-paper-50 shadow-sm' : 'text-muted-500'}`}>
-          Yearly <span className="text-xs text-gold-500 ml-1">Save 15%</span>
+          Yearly <span className="text-xs text-gold-500 ml-1">Save 20%</span>
         </button>
       </div>
 
@@ -106,7 +106,7 @@ export default function UpgradePage() {
           const isCurrent = currentPlan === plan.id;
           const price = period === 'monthly' ? plan.price : plan.yearlyPrice;
           return (
-            <div key={plan.id} className={`paper-card relative flex flex-col p-5 ${isCurrent ? 'ring-2 ring-gold-500' : ''}`}>
+            <div key={plan.id} className={`paper-card relative flex flex-col p-5 ${plan.popular ? 'border-gold-500 shadow-[0_0_0_1px_#B8862F]' : ''} ${isCurrent ? 'ring-2 ring-gold-500' : ''}`}>
               {plan.badge && (
                 <span className="absolute -top-2 right-3 rounded-full bg-gold-500 px-3 py-0.5 text-xs font-semibold text-paper-50">{plan.badge}</span>
               )}
@@ -115,12 +115,12 @@ export default function UpgradePage() {
               )}
               <h3 className="font-serif text-lg font-bold text-ink-900 dark:text-paper-50">{plan.name}</h3>
               <p className="mt-2">
-                <span className="font-serif text-3xl font-bold text-ink-900 dark:text-paper-50">₹{price}</span>
+                <span className="font-serif text-3xl font-bold text-ink-900 dark:text-paper-50">₹{price ?? plan.price}</span>
                 <span className="text-sm text-muted-500">/{period === 'monthly' ? 'mo' : 'yr'}</span>
               </p>
               <ul className="mt-4 flex-1 space-y-2">
                 {plan.features.map(f => (
-                  <li key={f} className="flex items-start gap-2 text-sm text-ink-700 dark:text-paper-200">
+                  <li key={f} className="flex items-start gap-2 text-sm text-ink-900 dark:text-paper-100">
                     <span className="text-gold-500 mt-0.5">✓</span>{f}
                   </li>
                 ))}
