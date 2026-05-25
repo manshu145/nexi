@@ -8,7 +8,6 @@ import { ThemeToggle } from '~/components/ThemeToggle';
 import { useAuth } from '~/lib/auth-context';
 import { api } from '~/lib/api';
 import { setLanguage } from '~/lib/i18n';
-import { useTranslation } from '~/lib/useTranslation';
 
 const LIVE_EXAMS = EXAMS.filter((e) => e.status === 'live');
 

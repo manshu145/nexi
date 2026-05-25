@@ -24,7 +24,6 @@ export default function NexiChatPage() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(true);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const SUGGESTIONS = lang === 'hi'
     ? [
