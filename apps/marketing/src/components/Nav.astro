@@ -28,15 +28,14 @@ import Logo from './Logo.astro';
           <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
         </svg>
       </button>
-      <!-- Sign in: hidden on mobile, shown on sm+ -->
-      <a href="https://app.nexigrate.com/signin" class="hidden sm:inline-flex btn-ghost text-sm !py-2 !px-4">
+      <!-- Desktop only: Sign in (ghost) + Start free (primary) -->
+      <a href="https://app.nexigrate.com/signin" class="hidden md:inline-flex btn-ghost text-sm !py-2 !px-4">
         Sign in
       </a>
-      <!-- Start free: hidden on mobile (< 640px) to reduce clutter -->
-      <a href="https://app.nexigrate.com/signin" class="hidden sm:inline-flex btn-primary text-sm">
+      <a href="https://app.nexigrate.com/signin" class="hidden md:inline-flex btn-primary text-sm">
         Start free
       </a>
-      <!-- Mobile menu toggle -->
+      <!-- Mobile only: single hamburger menu button -->
       <button
         id="mobile-menu-btn"
         class="md:hidden p-2 text-ink-800"
@@ -57,7 +56,7 @@ import Logo from './Logo.astro';
     aria-hidden="true"
   ></div>
 
-  <!-- Mobile toast menu -->
+  <!-- Mobile dropdown menu -->
   <div
     id="mobile-menu"
     class="hidden md:hidden fixed inset-x-4 top-16 z-50 paper-card p-4 shadow-lg animate-in max-h-[70vh] overflow-y-auto"
@@ -65,19 +64,17 @@ import Logo from './Logo.astro';
     aria-label="Mobile navigation"
   >
     <nav class="flex flex-col gap-1">
-      <a href="https://app.nexigrate.com/signin" class="mobile-nav-link font-semibold text-ember-600">
-        Sign in
-      </a>
-      <hr class="my-2 border-line" />
       <a href="/#features" class="mobile-nav-link">Features</a>
       <a href="/#exams" class="mobile-nav-link">Exams</a>
       <a href="/#how" class="mobile-nav-link">How it works</a>
-      <a href="/#credits" class="mobile-nav-link">Credits</a>
       <a href="/pricing" class="mobile-nav-link">Pricing</a>
       <a href="/#faq" class="mobile-nav-link">FAQ</a>
       <hr class="my-2 border-line" />
-      <a href="https://app.nexigrate.com/signin" class="btn-primary text-center text-sm mt-1">
-        Start free →
+      <a href="https://app.nexigrate.com/signin" class="mobile-nav-link font-semibold text-ember-600">
+        Sign in →
+      </a>
+      <a href="https://app.nexigrate.com/signin" class="btn-primary text-center text-sm mt-2">
+        Start free
       </a>
     </nav>
   </div>
@@ -125,46 +122,17 @@ import Logo from './Logo.astro';
   if (btn && menu && backdrop) {
     btn.addEventListener('click', () => {
       const expanded = btn.getAttribute('aria-expanded') === 'true';
-      if (expanded) {
-        closeMenu();
-      } else {
-        openMenu();
-      }
+      if (expanded) { closeMenu(); } else { openMenu(); }
     });
-
-    // Close on backdrop click
     backdrop.addEventListener('click', closeMenu);
-
-    // Close on click outside
     document.addEventListener('click', (e) => {
       if (!menu.contains(e.target as Node) && !btn.contains(e.target as Node) && !backdrop.contains(e.target as Node)) {
         closeMenu();
       }
     });
-
-    // Close on nav link click
     menu.querySelectorAll('a').forEach((link) => {
       link.addEventListener('click', closeMenu);
     });
-  }
-</script>
-
-
-<!-- Sticky mobile CTA (shows after scroll) -->
-<div id="sticky-cta" class="fixed bottom-0 inset-x-0 z-50 p-3 bg-paper-100/95 backdrop-blur-sm border-t border-line hidden sm:hidden">
-  <a href="https://app.nexigrate.com/signin" class="btn-primary w-full text-center py-3 shadow-lg">
-    Start free →
-  </a>
-</div>
-
-<script>
-  const stickyCta = document.getElementById('sticky-cta');
-  const heroSection = document.getElementById('waitlist');
-  if (stickyCta && heroSection) {
-    const obs = new IntersectionObserver(([entry]) => {
-      stickyCta.classList.toggle('hidden', entry.isIntersecting);
-    }, { threshold: 0 });
-    obs.observe(heroSection);
   }
 </script>
 

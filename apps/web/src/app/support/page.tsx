@@ -57,17 +57,17 @@ export default function SupportPage() {
       </header>
 
       <section className="mt-6">
-        <h1 className="font-serif text-2xl font-bold text-ink-900 dark:text-paper-50">Support</h1>
+        <h1 className="font-serif text-2xl font-bold text-ink-900">Support</h1>
         <p className="mt-1 text-sm text-muted-500">Chat with Nexi or contact admin for help.</p>
       </section>
 
       {/* Chat area */}
-      <div className="mt-4 flex-1 overflow-y-auto rounded-xl border border-paper-200 dark:border-ink-700 bg-paper-50 dark:bg-ink-800 p-4 space-y-3 min-h-[300px] max-h-[50vh]">
+      <div className="mt-4 flex-1 overflow-y-auto rounded-xl border border-line bg-paper-50 p-4 space-y-3 min-h-[300px] max-h-[50vh]">
         {messages.map((msg, i) => (
           <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${msg.role === 'user' ? 'bg-ember-500 text-paper-50 dark:bg-ember-600' : 'paper-card text-ink-900 dark:text-paper-100'}`}>
+            <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${msg.role === 'user' ? 'bg-ember-500 text-paper-50' : 'paper-card text-ink-900'}`}>
               {msg.role === 'assistant' ? (
-                <div className="prose prose-sm dark:prose-invert max-w-none">
+                <div className="prose prose-sm max-w-none">
                   <ReactMarkdown>{msg.content}</ReactMarkdown>
                 </div>
               ) : (
@@ -98,15 +98,15 @@ export default function SupportPage() {
           onKeyDown={handleKeyDown}
           placeholder="Describe your issue..."
           rows={2}
-          className="w-full resize-none rounded-xl border border-paper-300 dark:border-ink-600 bg-paper-50 dark:bg-ink-800 px-4 py-3 pr-12 text-sm text-ink-900 dark:text-paper-50 placeholder:text-muted-500 focus:outline-none focus:ring-2 focus:ring-ember-500 min-h-[44px]"
+          className="input w-full resize-none pr-12 min-h-[44px]"
         />
         <button onClick={sendMessage} disabled={!input.trim() || sending} className="absolute right-3 bottom-3 btn-primary h-8 w-8 rounded-lg p-0 flex items-center justify-center disabled:opacity-50 text-sm" aria-label="Send message">
           ➤
         </button>
       </div>
 
-      {/* Contact Admin — SVG mail icon instead of broken emoji */}
-      <div className="mt-6 border-t border-paper-200 dark:border-ink-700 pt-4">
+      {/* Contact Admin — SVG mail icon */}
+      <div className="mt-6 border-t border-line pt-4">
         <button onClick={() => setShowContact(!showContact)} className="btn-ghost w-full text-sm flex items-center justify-center gap-2">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <rect x="2" y="4" width="20" height="16" rx="2"/>
@@ -116,8 +116,8 @@ export default function SupportPage() {
         </button>
         {showContact && (
           <div className="paper-card mt-3 p-4 text-center">
-            <p className="text-sm text-ink-700 dark:text-paper-200">For billing or account issues, email:</p>
-            <a href="mailto:help@nexigrate.com" className="mt-2 inline-block font-medium text-ember-600 dark:text-gold-500 underline">
+            <p className="text-sm text-ink-700">For billing or account issues, email:</p>
+            <a href="mailto:help@nexigrate.com" className="mt-2 inline-block font-medium text-ember-600 underline">
               help@nexigrate.com
             </a>
           </div>

@@ -83,13 +83,13 @@ export default function ChatPage() {
   if (loading || !user) return <main className="flex min-h-dvh items-center justify-center"><span className="spinner" /></main>;
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-paper-50 dark:bg-ink-900">
+    <div className="flex h-dvh overflow-hidden bg-paper-100">
       {/* Sidebar backdrop on mobile */}
       {sidebarOpen && <div className="fixed inset-0 z-30 bg-black/40 md:hidden" onClick={() => setSidebarOpen(false)} />}
 
       {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-40 flex w-64 max-w-[80vw] flex-col border-r border-paper-200 bg-paper-100 dark:border-ink-700 dark:bg-ink-800 transition-transform md:static md:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="flex items-center justify-between p-4 border-b border-paper-200 dark:border-ink-700">
+      <aside className={`fixed inset-y-0 left-0 z-40 flex w-64 max-w-[80vw] flex-col border-r border-line bg-paper-50 transition-transform md:static md:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="flex items-center justify-between p-4 border-b border-line">
           <Logo />
           <button onClick={() => setSidebarOpen(false)} className="btn-ghost-sm md:hidden" aria-label="Close sidebar">✕</button>
         </div>
@@ -102,39 +102,38 @@ export default function ChatPage() {
             </div>
           )}
           {sessions.map(s => (
-            <button key={s.id} onClick={() => loadSession(s.id)} className={`w-full truncate rounded-lg px-3 py-2 text-left text-sm transition-colors ${s.id === activeSessionId ? 'bg-paper-300 dark:bg-ink-600 font-medium text-ink-900 dark:text-paper-50' : 'text-ink-700 dark:text-paper-200 hover:bg-paper-200 dark:hover:bg-ink-700'}`}>
+            <button key={s.id} onClick={() => loadSession(s.id)} className={`w-full truncate rounded-lg px-3 py-2 text-left text-sm transition-colors ${s.id === activeSessionId ? 'bg-paper-300 font-medium text-ink-900' : 'text-ink-700 hover:bg-paper-200'}`}>
               {s.title}
             </button>
           ))}
         </nav>
-        <div className="border-t border-paper-200 dark:border-ink-700 p-3">
+        <div className="border-t border-line p-3">
           <button onClick={() => router.push('/dashboard')} className="btn-ghost w-full text-sm">← Dashboard</button>
         </div>
       </aside>
 
       {/* Main chat area */}
-      <main className="flex flex-1 flex-col min-w-0 h-dvh">
+      <main className="flex flex-1 flex-col min-w-0 h-dvh bg-paper-100">
         {/* Top bar */}
-        <header className="flex items-center gap-3 border-b border-paper-200 dark:border-ink-700 px-4 py-3 bg-paper-50 dark:bg-ink-900">
+        <header className="flex items-center gap-3 border-b border-line px-4 py-3 bg-paper-50">
           <button onClick={() => setSidebarOpen(true)} className="btn-ghost-sm md:hidden" aria-label="Open sidebar">☰</button>
-          <h1 className="font-serif text-lg font-semibold text-ink-900 dark:text-paper-50 truncate">Nexi AI</h1>
+          <h1 className="font-serif text-lg font-semibold text-ink-900 truncate">Nexi AI</h1>
         </header>
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center h-full text-center px-4">
-              {/* Clean spark icon instead of robot emoji */}
               <div className="w-12 h-12 rounded-2xl bg-gold-500/10 flex items-center justify-center">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                  <path d="M12 2L13.5 8.5L20 10L13.5 11.5L12 18L10.5 11.5L4 10L10.5 8.5L12 2Z" fill="#B8862F"/>
+                  <path d="M12 2L13.5 8.5L20 10L13.5 11.5L12 18L10.5 11.5L4 10L10.5 8.5L12 2Z" fill="currentColor" className="text-gold-500"/>
                 </svg>
               </div>
-              <h2 className="font-serif mt-4 text-xl font-bold text-ink-900 dark:text-paper-50">Hi, I&apos;m Nexi</h2>
+              <h2 className="font-serif mt-4 text-xl font-bold text-ink-900">Hi, I&apos;m Nexi</h2>
               <p className="mt-2 text-sm text-muted-500">Ask me anything about your exam.</p>
               <div className="mt-6 flex flex-wrap justify-center gap-2">
                 {prompts.map(p => (
-                  <button key={p} onClick={() => { setInput(p); }} className="pill text-xs hover:bg-paper-300 dark:hover:bg-ink-600 transition-colors">
+                  <button key={p} onClick={() => { setInput(p); }} className="pill text-xs">
                     {p}
                   </button>
                 ))}
@@ -143,9 +142,9 @@ export default function ChatPage() {
           )}
           {messages.map((msg, i) => (
             <div key={i} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-              <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${msg.role === 'user' ? 'bg-ember-500 text-paper-50 dark:bg-ember-600' : 'paper-card text-ink-900 dark:text-paper-100'}`}>
+              <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${msg.role === 'user' ? 'bg-ember-500 text-paper-50' : 'paper-card text-ink-900'}`}>
                 {msg.role === 'assistant' ? (
-                  <div className="prose prose-sm dark:prose-invert max-w-none">
+                  <div className="prose prose-sm max-w-none">
                     <ReactMarkdown>{msg.content}</ReactMarkdown>
                   </div>
                 ) : (
@@ -155,7 +154,7 @@ export default function ChatPage() {
               {msg.role === 'assistant' && msg.content.length > 100 && (
                 <button
                   onClick={() => handleVisualize(msg.content)}
-                  className="mt-1 text-xs text-ember-600 dark:text-gold-500 hover:underline"
+                  className="mt-1 text-xs text-ember-600 hover:underline"
                 >
                   Visualize this
                 </button>
@@ -176,8 +175,8 @@ export default function ChatPage() {
           <div ref={bottomRef} />
         </div>
 
-        {/* Input area — send button inside the input container */}
-        <div className="border-t border-paper-200 dark:border-ink-700 p-3 sm:p-4">
+        {/* Input area */}
+        <div className="border-t border-line p-3 sm:p-4 bg-paper-50">
           <div className="mx-auto max-w-2xl relative">
             <textarea
               value={input}
@@ -185,7 +184,7 @@ export default function ChatPage() {
               onKeyDown={handleKeyDown}
               placeholder="Type your message..."
               rows={2}
-              className="w-full resize-none rounded-xl border border-paper-300 dark:border-ink-600 bg-paper-50 dark:bg-ink-800 px-4 py-3 pr-12 text-sm text-ink-900 dark:text-paper-50 placeholder:text-muted-500 focus:outline-none focus:ring-2 focus:ring-ember-500 min-h-[44px]"
+              className="input w-full resize-none pr-12 min-h-[44px]"
             />
             <button
               onClick={sendMessage}
@@ -203,8 +202,8 @@ export default function ChatPage() {
       {vizContent && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setVizContent(null)}>
           <div className="paper-card max-w-lg w-full max-h-[80vh] overflow-auto p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="font-serif text-lg font-bold text-ink-900 dark:text-paper-50">Visualization</h3>
-            <pre className="mt-4 text-xs bg-paper-200 dark:bg-ink-700 p-4 rounded-lg overflow-auto whitespace-pre-wrap">{vizContent}</pre>
+            <h3 className="font-serif text-lg font-bold text-ink-900">Visualization</h3>
+            <pre className="mt-4 text-xs bg-paper-200 p-4 rounded-lg overflow-auto whitespace-pre-wrap">{vizContent}</pre>
             <button onClick={() => setVizContent(null)} className="btn-ghost mt-4 w-full">Close</button>
           </div>
         </div>
