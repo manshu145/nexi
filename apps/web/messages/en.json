@@ -1,0 +1,104 @@
+{
+  "common": {
+    "appName": "Nexigrate",
+    "tagline": "AI-powered exam preparation for Indian students",
+    "loading": "Loading…",
+    "error": "Something went wrong",
+    "retry": "Try again",
+    "save": "Save",
+    "cancel": "Cancel",
+    "next": "Next",
+    "back": "Back",
+    "signOut": "Sign out",
+    "credits": "Credits",
+    "streak": "Streak",
+    "days": "days",
+    "level": "Level"
+  },
+  "auth": {
+    "signIn": "Sign in",
+    "signInWithGoogle": "Sign in with Google",
+    "signInSubtitle": "Start your exam preparation journey",
+    "signingIn": "Signing in…"
+  },
+  "onboarding": {
+    "step": "Step {current} of {total}",
+    "language": {
+      "title": "Choose your language",
+      "subtitle": "You can change this later in settings",
+      "english": "English",
+      "hindi": "हिंदी"
+    },
+    "profile": {
+      "title": "Tell us about yourself",
+      "subtitle": "This helps us personalize your experience",
+      "name": "Full Name",
+      "dob": "Date of Birth",
+      "phone": "Mobile Number",
+      "school": "School / College",
+      "aim": "What's your aim?",
+      "aimPlaceholder": "e.g., Become an IAS officer, Get into IIT..."
+    },
+    "exam": {
+      "title": "Choose your target exam",
+      "subtitle": "We'll build your study plan around this"
+    },
+    "assessment": {
+      "title": "Quick Assessment",
+      "subtitle": "15 questions to understand your current level",
+      "description": "We'll ask you 15 quick questions to understand your level. Take your time — there's no penalty for wrong answers.",
+      "startButton": "Start Assessment",
+      "question": "Question {current} of {total}",
+      "timeLeft": "{seconds}s",
+      "submitting": "Analyzing your answers…"
+    },
+    "complete": {
+      "title": "You're all set!",
+      "score": "You scored {score}/{total}",
+      "level": "Your level: {level}",
+      "startLearning": "Start Learning →",
+      "beginner": "Beginner",
+      "intermediate": "Intermediate",
+      "advanced": "Advanced"
+    }
+  },
+  "dashboard": {
+    "greeting": { "morning": "Good morning", "afternoon": "Good afternoon", "evening": "Good evening" },
+    "todaySlate": "Today's study slate",
+    "tracking": "Tracking",
+    "study": "Study",
+    "studyDesc": "Continue your syllabus",
+    "currentAffairs": "Current Affairs",
+    "currentAffairsDesc": "Today's news digest & quiz",
+    "nexiAI": "Nexi AI",
+    "nexiAIDesc": "Your personal study assistant",
+    "statsCredits": "Credits balance",
+    "statsStreak": "Daily streak",
+    "statsLevel": "Your level",
+    "earnMore": "Earn more by studying daily",
+    "startStreak": "Take today's quiz to start a streak",
+    "best": "Best: {days} days"
+  },
+  "profile": {
+    "title": "Your Profile",
+    "editProfile": "Edit Profile",
+    "personalInfo": "Personal Information",
+    "academicInfo": "Academic Information",
+    "accountInfo": "Account Information",
+    "name": "Name",
+    "email": "Email",
+    "phone": "Phone",
+    "dob": "Date of Birth",
+    "school": "School / College",
+    "aim": "Your Aim",
+    "targetExam": "Target Exam",
+    "classLevel": "Class Level",
+    "board": "Board",
+    "plan": "Current Plan",
+    "level": "Assessment Level",
+    "credits": "Credits",
+    "memberSince": "Member since",
+    "saved": "Profile updated successfully"
+  },
+  "plans": { "free": "Free", "scholar": "Scholar", "aspirant": "Aspirant", "achiever": "Achiever" }
+}

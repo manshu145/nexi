@@ -1,177 +1,58 @@
 'use client';
 
-import type { CreditBalance, ExamSlug, MCQ } from '@nexigrate/shared';
+import type { ExamSlug } from '@nexigrate/shared';
 import { getFirebaseAuthClient } from './firebase';
 
-/**
- * Typed client for @nexigrate/api.
- *
- * Auto-attaches the Firebase ID token on every call. Forwards the user's
- * email / display name / photo / provider as headers so the api can populate
- * the user profile on first contact (`GET /v1/users/me`).
- */
-
-const API_BASE_URL =
-  process.env['NEXT_PUBLIC_API_BASE_URL'] ?? 'http://localhost:9090';
+const API_BASE_URL = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:8080';
 
 class ApiError extends Error {
-  constructor(public readonly status: number, message: string) {
-    super(message);
-  }
+  constructor(public readonly status: number, message: string) { super(message); }
 }
 
 async function authedFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const auth = getFirebaseAuthClient();
   const user = auth.currentUser;
-  if (!user) throw new Error('not signed in');
+  if (!user) throw new ApiError(401, 'not signed in');
   const token = await user.getIdToken();
   const headers = new Headers(init.headers);
   headers.set('Authorization', `Bearer ${token}`);
-  if (!headers.has('Content-Type') && init.body) {
-    headers.set('Content-Type', 'application/json');
-  }
+  if (!headers.has('Content-Type') && init.body) headers.set('Content-Type', 'application/json');
   if (user.email) headers.set('X-User-Email', user.email);
   if (user.displayName) headers.set('X-User-Name', user.displayName);
   if (user.photoURL) headers.set('X-User-Photo', user.photoURL);
-  headers.set(
-    'X-User-Provider',
-    user.providerData[0]?.providerId === 'phone' ? 'phone' : 'google',
-  );
+  headers.set('X-User-Provider', user.providerData[0]?.providerId === 'phone' ? 'phone' : 'google');
 
   const res = await fetch(`${API_BASE_URL}${path}`, { ...init, headers });
   if (!res.ok) {
     let message = `${res.status} ${res.statusText}`;
-    try {
-      const body = (await res.json()) as { error?: string };
-      if (body?.error) message = body.error;
-    } catch {
-      // ignore parse failure
-    }
+    try { const body = (await res.json()) as { error?: string }; if (body?.error) message = body.error; } catch {}
     throw new ApiError(res.status, message);
   }
   return res;
 }
 
-// ---------- types -----------------------------------------------------------
-
-export interface MeResponse {
-  user: {
-    id: string;
-    email: string;
-    name: string;
-    photoPath: string | null;
-    isVerified: boolean;
-    targetExam?: ExamSlug | null;
-    currentStreak?: number;
-    bestStreak?: number;
-    lastDailyAt?: string | null;
-  };
+export interface StoredUser {
+  id: string; email: string; name: string; phone: string | null; photoURL: string | null;
+  language: 'en' | 'hi'; targetExam: ExamSlug | null; classLevel: string | null;
+  board: string | null; school: string | null; dob: string | null; aim: string | null;
+  onboardingScore: number | null; onboardingLevel: 'beginner' | 'intermediate' | 'advanced' | null;
+  credits: number; plan: 'free' | 'scholar' | 'aspirant' | 'achiever';
+  currentStreak: number; bestStreak: number; lastDailyAt: string | null;
+  isVerified: boolean; role: 'student' | 'admin'; createdAt: string;
 }
 
-export interface DailyMcqResponse {
-  sessionId: string;
-  day: string;
-  exam: ExamSlug;
-  mcqs: Omit<MCQ, 'correctOption' | 'explanation'>[];
-}
+export interface MeResponse { user: StoredUser; dailyStreak: { streak: number; creditsEarned: number }; }
 
-export type AnswerKey = 'A' | 'B' | 'C' | 'D';
-
-export interface CompleteSessionRequest {
-  answers: { mcqId: string; chosen: AnswerKey | null }[];
-}
-
-export interface CompleteSessionResponse {
-  sessionId: string;
-  score: number;
-  total: number;
-  passed: boolean;
-  correctMcqIds: string[];
-  explanations: { mcqId: string; correctOption: AnswerKey; explanation: string }[];
-  creditsAwarded: number;
-  balance: number;
-}
-
-// ---------- methods ---------------------------------------------------------
+export interface MCQOption { key: 'A' | 'B' | 'C' | 'D'; text: string; }
+export interface GeneratedMCQ { id: string; question: string; options: MCQOption[]; correctOption: 'A' | 'B' | 'C' | 'D'; explanation: string; difficulty: 'easy' | 'medium' | 'hard'; subject?: string; topic?: string; }
+export interface AssessmentResult { score: number; total: number; level: 'beginner' | 'intermediate' | 'advanced'; message: string; messageHi: string; }
 
 export const api = {
-  async me(): Promise<MeResponse> {
-    const res = await authedFetch('/v1/users/me');
-    return res.json() as Promise<MeResponse>;
-  },
-
-  async setOnboarding(targetExam: ExamSlug): Promise<MeResponse> {
-    const res = await authedFetch('/v1/users/me/onboarding', {
-      method: 'POST',
-      body: JSON.stringify({ targetExam }),
-    });
-    return res.json() as Promise<MeResponse>;
-  },
-
-  async getBalance(): Promise<CreditBalance> {
-    const res = await authedFetch('/v1/credits/balance');
-    return res.json() as Promise<CreditBalance>;
-  },
-
-  async getDaily(): Promise<DailyMcqResponse> {
-    const res = await authedFetch('/v1/mcqs/daily');
-    return res.json() as Promise<DailyMcqResponse>;
-  },
-
-  async completeSession(
-    sessionId: string,
-    body: CompleteSessionRequest,
-  ): Promise<CompleteSessionResponse> {
-    const res = await authedFetch(
-      `/v1/mcq-sessions/${encodeURIComponent(sessionId)}/complete`,
-      { method: 'POST', body: JSON.stringify(body) },
-    );
-    return res.json() as Promise<CompleteSessionResponse>;
-  },
-
-  async createBillingOrder(input: {
-    plan: 'scholar' | 'aspirant' | 'achiever';
-    interval: 'monthly' | 'yearly';
-  }): Promise<{
-    orderId: string;
-    amount: number;
-    currency: 'INR';
-    keyId: string;
-    plan: string;
-    interval: string;
-  }> {
-    const res = await authedFetch('/v1/billing/create-order', {
-      method: 'POST',
-      body: JSON.stringify(input),
-    });
-    return res.json() as Promise<{
-      orderId: string;
-      amount: number;
-      currency: 'INR';
-      keyId: string;
-      plan: string;
-      interval: string;
-    }>;
-  },
-
-  async verifyBilling(input: {
-    razorpay_order_id: string;
-    razorpay_payment_id: string;
-    razorpay_signature: string;
-    plan: 'scholar' | 'aspirant' | 'achiever';
-    interval: 'monthly' | 'yearly';
-  }): Promise<{ subscription: unknown }> {
-    const res = await authedFetch('/v1/billing/verify', {
-      method: 'POST',
-      body: JSON.stringify(input),
-    });
-    return res.json() as Promise<{ subscription: unknown }>;
-  },
-
-  async getSubscription(): Promise<{ subscription: unknown | null }> {
-    const res = await authedFetch('/v1/billing/subscription');
-    return res.json() as Promise<{ subscription: unknown | null }>;
-  },
+  async me(): Promise<MeResponse> { const res = await authedFetch('/v1/users/me'); return res.json() as Promise<MeResponse>; },
+  async updateProfile(data: Record<string, unknown>): Promise<{ user: StoredUser }> { const res = await authedFetch('/v1/users/me', { method: 'PATCH', body: JSON.stringify(data) }); return res.json() as Promise<{ user: StoredUser }>; },
+  async saveOnboarding(data: Record<string, unknown>): Promise<{ user: StoredUser }> { const res = await authedFetch('/v1/users/me/onboarding', { method: 'POST', body: JSON.stringify(data) }); return res.json() as Promise<{ user: StoredUser }>; },
+  async getAssessmentQuestions(examSlug: string, language: 'en' | 'hi'): Promise<{ questions: GeneratedMCQ[] }> { const res = await authedFetch('/v1/assessment/questions', { method: 'POST', body: JSON.stringify({ examSlug, language }) }); return res.json() as Promise<{ questions: GeneratedMCQ[] }>; },
+  async submitAssessment(questions: GeneratedMCQ[], answers: { questionId: string; chosen: string | null }[]): Promise<AssessmentResult> { const res = await authedFetch('/v1/assessment/submit', { method: 'POST', body: JSON.stringify({ questions, answers }) }); return res.json() as Promise<AssessmentResult>; },
 };
 
 export { ApiError };
