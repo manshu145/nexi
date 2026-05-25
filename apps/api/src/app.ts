@@ -9,7 +9,7 @@ import { InMemoryChapterStore, FirestoreChapterStore, type ChapterStore } from '
 import { InMemoryCurrentAffairsStore, FirestoreCurrentAffairsStore, type CurrentAffairsStore } from './lib/currentAffairsStore.js';
 import { authMiddleware } from './auth.js';
 import type { Logger } from './logger.js';
-import { makeHealthRoutes } from './routes/health.js';
+import { makeHealthRoutes, makeDiagRoutes } from './routes/health.js';
 import { makeUsersRoutes } from './routes/users.js';
 import { makeAssessmentRoutes } from './routes/assessment.js';
 import { makeStudyRoutes } from './routes/study.js';
@@ -45,6 +45,7 @@ export function buildApp(deps: AppDeps): Hono {
   });
 
   app.route('/', makeHealthRoutes());
+  app.route('/', makeDiagRoutes(env));
   app.get('/', (c) => c.json({ service: 'nexigrate-api', version: '1.0.0' }));
 
   // Cron endpoint — NO auth required (uses x-cron-secret header instead)
