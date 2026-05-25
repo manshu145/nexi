@@ -12,7 +12,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const messages = await getMessages();
   return (
     <html lang={locale} suppressHydrationWarning>
-      <body className="min-h-screen bg-[var(--background)] text-[var(--foreground)] antialiased">
+      <body>
         <NextIntlClientProvider messages={messages}>
           <Providers>{children}<Toaster /></Providers>
         </NextIntlClientProvider>
