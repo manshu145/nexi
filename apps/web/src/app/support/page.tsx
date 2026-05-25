@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import ReactMarkdown from 'react-markdown';
 import { useAuth } from '~/lib/auth-context';
 import { api, type ChatMessage } from '~/lib/api';
 import { Logo } from '~/components/Logo';
@@ -64,8 +65,14 @@ export default function SupportPage() {
         )}
         {messages.map((msg, i) => (
           <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${msg.role === 'user' ? 'bg-amber-500 text-white dark:bg-amber-600' : 'paper-card text-ink-900 dark:text-paper-100'}`}>
-              <p className="whitespace-pre-wrap">{msg.content}</p>
+            <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${msg.role === 'user' ? 'bg-ember-500 text-white dark:bg-ember-600' : 'paper-card text-ink-900 dark:text-paper-100'}`}>
+              {msg.role === 'assistant' ? (
+                <div className="prose prose-sm dark:prose-invert max-w-none">
+                  <ReactMarkdown>{msg.content}</ReactMarkdown>
+                </div>
+              ) : (
+                <p className="whitespace-pre-wrap">{msg.content}</p>
+              )}
             </div>
           </div>
         ))}
@@ -90,8 +97,8 @@ export default function SupportPage() {
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Describe your issue..."
-          rows={1}
-          className="flex-1 resize-none rounded-xl border border-paper-300 dark:border-ink-600 bg-paper-50 dark:bg-ink-800 px-4 py-3 text-sm text-ink-900 dark:text-paper-50 placeholder:text-muted-500 focus:outline-none focus:ring-2 focus:ring-amber-500"
+          rows={2}
+          className="flex-1 resize-none rounded-xl border border-paper-300 dark:border-ink-600 bg-paper-50 dark:bg-ink-800 px-4 py-3 text-sm text-ink-900 dark:text-paper-50 placeholder:text-muted-500 focus:outline-none focus:ring-2 focus:ring-ember-500 min-h-[44px]"
         />
         <button onClick={sendMessage} disabled={!input.trim() || sending} className="btn-primary h-11 w-11 flex-shrink-0 rounded-xl p-0 flex items-center justify-center disabled:opacity-50">
           ➤
@@ -106,7 +113,7 @@ export default function SupportPage() {
         {showContact && (
           <div className="paper-card mt-3 p-4 text-center">
             <p className="text-sm text-ink-700 dark:text-paper-200">For billing or account issues, email:</p>
-            <a href="mailto:help@nexigrate.com" className="mt-2 inline-block font-medium text-amber-600 dark:text-amber-400 underline">
+            <a href="mailto:help@nexigrate.com" className="mt-2 inline-block font-medium text-ember-600 dark:text-amber-400 underline">
               help@nexigrate.com
             </a>
           </div>

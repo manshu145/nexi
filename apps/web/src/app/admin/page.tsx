@@ -22,13 +22,15 @@ export default function AdminStatsPage() {
   const [error, setError] = useState<string | null>(null);
   const [fetching, setFetching] = useState(true);
 
+  const isAdmin = (email?: string | null) => email === 'manshu.ibc24@gmail.com' || email === 'manshusinha777@gmail.com';
+
   useEffect(() => {
     if (!loading && !user) router.replace('/signin');
-    if (!loading && user && user.email !== 'manshu.ibc24@gmail.com') router.replace('/dashboard');
+    if (!loading && user && !isAdmin(user.email)) router.replace('/dashboard');
   }, [user, loading, router]);
 
   useEffect(() => {
-    if (!user || user.email !== 'manshu.ibc24@gmail.com') return;
+    if (!user || !isAdmin(user.email)) return;
     let cancelled = false;
     (async () => {
       try {

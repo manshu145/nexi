@@ -19,6 +19,7 @@ import { makeChatRoutes } from './routes/chat.js';
 import { makeCreditsRoutes } from './routes/credits.js';
 import { makeBillingRoutes } from './routes/billing.js';
 import { makeAdminRoutes } from './routes/admin.js';
+import { makeSupportRoutes } from './routes/support.js';
 
 export interface AppDeps { env: Env; logger: Logger; users?: UserStore; aiEngine?: AIEngine; chapters?: ChapterStore; currentAffairs?: CurrentAffairsStore; chatStore?: ChatStore; }
 
@@ -76,6 +77,7 @@ export function buildApp(deps: AppDeps): Hono {
   v1.route('/credits', makeCreditsRoutes({ users, logger }));
   v1.route('/billing', makeBillingRoutes({ users, env, logger }));
   v1.route('/admin', makeAdminRoutes({ users, env, logger }));
+  v1.route('/support', makeSupportRoutes({ users, db: fs, logger }));
   app.route('/v1', v1);
 
   app.onError((err, c) => {

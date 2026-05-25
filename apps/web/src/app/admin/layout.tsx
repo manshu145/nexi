@@ -15,9 +15,11 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  const isAdmin = (email?: string | null) => email === 'manshu.ibc24@gmail.com' || email === 'manshusinha777@gmail.com';
+
   useEffect(() => {
     if (!loading && !user) router.replace('/signin');
-    if (!loading && user && user.email !== 'manshu.ibc24@gmail.com') router.replace('/dashboard');
+    if (!loading && user && !isAdmin(user.email)) router.replace('/dashboard');
   }, [user, loading, router]);
 
   if (loading || !user) return <main className="flex min-h-dvh items-center justify-center"><span className="spinner" /></main>;
@@ -25,7 +27,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   return (
     <div className="admin-layout">
       {/* Sidebar */}
-      <aside className={`admin-sidebar ${sidebarOpen ? 'admin-sidebar-open' : ''}`}>
+      <aside className={`admin-sidebar max-w-[80vw] ${sidebarOpen ? 'admin-sidebar-open' : ''}`}>
         <div className="flex items-center gap-2 px-4 py-4 border-b border-line">
           <span className="text-lg">⚙️</span>
           <span className="font-serif font-semibold text-ink-900 dark:text-paper-50">Admin</span>
