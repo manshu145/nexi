@@ -60,10 +60,21 @@ export default function NexiChatPage() {
   async function loadHistory() {
     try {
       setLoadingHistory(true);
+      // Try backend first
       const res = await api.ai.getChatHistory();
-      setMessages(res.messages as ChatMessage[]);
+      if (res.messages && res.messages.length > 0) {
+        setMessages(res.messages as ChatMessage[]);
+        // Backup to localStorage
+        localStorage.setItem('nexi.chat.history', JSON.stringify(res.messages));
+      } else {
+        // Fallback to localStorage
+        const cached = localStorage.getItem('nexi.chat.history');
+        if (cached) setMessages(JSON.parse(cached) as ChatMessage[]);
+      }
     } catch {
-      // Start fresh if history fails
+      // Fallback to localStorage if backend fails
+      const cached = localStorage.getItem('nexi.chat.history');
+      if (cached) setMessages(JSON.parse(cached) as ChatMessage[]);
     } finally {
       setLoadingHistory(false);
     }
@@ -78,7 +89,11 @@ export default function NexiChatPage() {
       content: message,
       timestamp: new Date().toISOString(),
     };
-    setMessages((prev) => [...prev, userMsg]);
+    setMessages((prev) => {
+      const updated = [...prev, userMsg];
+      localStorage.setItem('nexi.chat.history', JSON.stringify(updated.slice(-100)));
+      return updated;
+    });
     setInput('');
     setSending(true);
 
@@ -89,7 +104,11 @@ export default function NexiChatPage() {
         content: res.reply,
         timestamp: res.timestamp ?? new Date().toISOString(),
       };
-      setMessages((prev) => [...prev, assistantMsg]);
+      setMessages((prev) => {
+        const updated = [...prev, assistantMsg];
+        localStorage.setItem('nexi.chat.history', JSON.stringify(updated.slice(-100)));
+        return updated;
+      });
     } catch {
       const errorMsg: ChatMessage = {
         role: 'assistant',
@@ -108,6 +127,7 @@ export default function NexiChatPage() {
     try {
       await api.ai.clearChatHistory();
       setMessages([]);
+      localStorage.removeItem('nexi.chat.history');
     } catch {
       // ignore
     }
