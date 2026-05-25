@@ -65,18 +65,18 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
 
       items = deduplicateItems(items);
 
-      // Translate to Hindi if requested
+      // Translate to Hindi if requested (max 10 items, 8s timeout)
       if (language === 'hi' && items.length > 0) {
         try {
-          const toTranslate = items.map((it: any) => ({ headline: it.headline, summary: it.summary || it.body || '' }));
-          const translated = await deps.aiEngine.translateToHindi(toTranslate);
-          if (translated.length === items.length) {
-            items = items.map((it: any, i: number) => ({
-              ...it,
-              headline: translated[i]!.headline || it.headline,
-              summary: translated[i]!.summary || it.summary || it.body,
-              body: translated[i]!.summary || it.body,
-            }));
+          const toTranslate = items.slice(0, 10).map((it: any) => ({ headline: it.headline, summary: it.summary || it.body || '' }));
+          const translatePromise = deps.aiEngine.translateToHindi(toTranslate);
+          const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000));
+          const translated = await Promise.race([translatePromise, timeoutPromise]);
+          if (translated && translated.length === toTranslate.length) {
+            items = items.map((it: any, i: number) => {
+              if (i >= translated.length) return it;
+              return { ...it, headline: translated[i]!.headline || it.headline, summary: translated[i]!.summary || it.summary || it.body, body: translated[i]!.summary || it.body };
+            });
           }
         } catch (e) { deps.logger.warn('ca.translate_error', { error: e instanceof Error ? e.message : String(e) }); }
       }
