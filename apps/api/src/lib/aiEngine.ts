@@ -26,8 +26,18 @@ export interface AIEngine {
 }
 
 export function createAIEngine(env: Env, logger: Logger): AIEngine {
-  const groq = env.GROQ_API_KEY ? new Groq({ apiKey: env.GROQ_API_KEY }) : null;
-  const openai = env.OPENAI_API_KEY ? new OpenAI({ apiKey: env.OPENAI_API_KEY }) : null;
+  // Log which AI providers are available at startup
+  const hasGroq = !!(env.GROQ_API_KEY && env.GROQ_API_KEY.length > 5);
+  const hasOpenai = !!(env.OPENAI_API_KEY && env.OPENAI_API_KEY.length > 5);
+  const hasGemini = !!(env.GEMINI_API_KEY && env.GEMINI_API_KEY.length > 5);
+  logger.info('ai.providers_init', {
+    groq: hasGroq, openai: hasOpenai, gemini: hasGemini,
+    groqKeyLen: env.GROQ_API_KEY?.length ?? 0,
+    openaiKeyLen: env.OPENAI_API_KEY?.length ?? 0,
+    geminiKeyLen: env.GEMINI_API_KEY?.length ?? 0,
+  });
+  const groq = hasGroq ? new Groq({ apiKey: env.GROQ_API_KEY }) : null;
+  const openai = hasOpenai ? new OpenAI({ apiKey: env.OPENAI_API_KEY }) : null;
 
   return {
     async generateAssessmentQuestions(examSlug, language = 'en', count = 15) {
@@ -74,12 +84,32 @@ export function createAIEngine(env: Env, logger: Logger): AIEngine {
     async generateChapterMCQs(chapter, subject, exam, language = 'en', count = 10) {
       const langInstr = language === 'hi' ? 'Generate in Hindi (Devanagari).' : 'Generate in English.';
       const prompt = `Generate exactly ${count} MCQs for chapter "${chapter}" (${subject}, ${exam}).\n${langInstr}\nMix: 3 easy, 4 medium, 3 hard. 4 options each. Include explanation.\n\nJSON only:\n{"questions":[{"id":"q1","question":"...","options":[{"key":"A","text":"..."},{"key":"B","text":"..."},{"key":"C","text":"..."},{"key":"D","text":"..."}],"correctOption":"A","explanation":"...","difficulty":"easy","subject":"${subject}","topic":"${chapter}"}]}`;
-      try {
-        if (!groq) throw new Error("GROQ_API_KEY not configured"); const c = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 4096, response_format: { type: 'json_object' } });
-        const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
-        logger.info('ai.chapter_mcqs', { chapter, count: parsed.questions?.length ?? 0 });
-        return parsed.questions ?? [];
-      } catch (err) { logger.error('ai.chapter_mcqs_error', { error: err instanceof Error ? err.message : String(err) }); throw new Error('Failed to generate chapter MCQs'); }
+      const errors: string[] = [];
+      if (groq) {
+        try {
+          const c = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 4096, response_format: { type: 'json_object' } });
+          const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
+          if (parsed.questions?.length) { logger.info('ai.chapter_mcqs', { provider: 'groq', chapter, count: parsed.questions.length }); return parsed.questions; }
+          errors.push('Groq returned empty');
+        } catch (err) { errors.push(`Groq: ${err instanceof Error ? err.message : String(err)}`); }
+      } else { errors.push('Groq not configured'); }
+      if (openai) {
+        try {
+          const c = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 4096, response_format: { type: 'json_object' } });
+          const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
+          if (parsed.questions?.length) { logger.info('ai.chapter_mcqs', { provider: 'openai', chapter, count: parsed.questions.length }); return parsed.questions; }
+          errors.push('OpenAI returned empty');
+        } catch (err) { errors.push(`OpenAI: ${err instanceof Error ? err.message : String(err)}`); }
+      } else { errors.push('OpenAI not configured'); }
+      if (env.GEMINI_API_KEY && env.GEMINI_API_KEY.length > 5) {
+        try {
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.7, maxOutputTokens: 4096 } }) });
+          if (res.ok) { const data = await res.json() as any; const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''; const jsonMatch = rawText.match(/\{[\s\S]*\}/); if (jsonMatch) { const parsed = JSON.parse(jsonMatch[0]) as { questions: GeneratedMCQ[] }; if (parsed.questions?.length) { logger.info('ai.chapter_mcqs', { provider: 'gemini', chapter, count: parsed.questions.length }); return parsed.questions; } } }
+          errors.push(`Gemini failed`);
+        } catch (err) { errors.push(`Gemini: ${err instanceof Error ? err.message : String(err)}`); }
+      } else { errors.push('Gemini not configured'); }
+      logger.error('ai.chapter_mcqs_all_failed', { errors, chapter, subject, exam });
+      throw new Error(`Failed to generate chapter MCQs: ${errors.join('; ')}`);
     },
 
     async generateMermaidDiagram(chapter, subject, exam) {
