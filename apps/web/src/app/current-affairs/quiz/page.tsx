@@ -25,7 +25,8 @@ export default function CurrentAffairsQuizPage() {
   const startQuiz = async () => {
     setPhase('loading');
     try {
-      const res = await api.getCurrentAffairsQuiz();
+      const lang = (localStorage.getItem('nexigrate-language') as 'en' | 'hi') || 'en';
+      const res = await api.getCurrentAffairsQuiz(lang);
       setQuestions(res.questions);
       setAnswers(new Array(res.questions.length).fill(-1));
       setPhase('quiz');
