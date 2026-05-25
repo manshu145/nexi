@@ -14,8 +14,12 @@ import { makeUsersRoutes } from './routes/users.js';
 import { makeAssessmentRoutes } from './routes/assessment.js';
 import { makeStudyRoutes } from './routes/study.js';
 import { makeCurrentAffairsRoutes } from './routes/currentAffairs.js';
+import { InMemoryChatStore, FirestoreChatStore, type ChatStore } from './lib/chatStore.js';
+import { makeChatRoutes } from './routes/chat.js';
+import { makeCreditsRoutes } from './routes/credits.js';
+import { makeBillingRoutes } from './routes/billing.js';
 
-export interface AppDeps { env: Env; logger: Logger; users?: UserStore; aiEngine?: AIEngine; chapters?: ChapterStore; currentAffairs?: CurrentAffairsStore; }
+export interface AppDeps { env: Env; logger: Logger; users?: UserStore; aiEngine?: AIEngine; chapters?: ChapterStore; currentAffairs?: CurrentAffairsStore; chatStore?: ChatStore; }
 
 export function buildApp(deps: AppDeps): Hono {
   const { env, logger } = deps;
@@ -25,6 +29,7 @@ export function buildApp(deps: AppDeps): Hono {
   const aiEngine = deps.aiEngine ?? createAIEngine(env, logger);
   const chapters = deps.chapters ?? (fs ? new FirestoreChapterStore(fs) : new InMemoryChapterStore());
   const currentAffairs = deps.currentAffairs ?? (fs ? new FirestoreCurrentAffairsStore(fs) : new InMemoryCurrentAffairsStore());
+  const chatStore = deps.chatStore ?? (fs ? new FirestoreChatStore(fs) : new InMemoryChatStore());
   const firebaseAuth = getFirebaseAuth(env);
 
   const app = new Hono();
@@ -66,6 +71,9 @@ export function buildApp(deps: AppDeps): Hono {
   v1.route('/assessment', makeAssessmentRoutes({ users, aiEngine, logger }));
   v1.route('/study', makeStudyRoutes({ users, aiEngine, chapters, logger }));
   v1.route('/current-affairs', cronRoutes);
+  v1.route('/chat', makeChatRoutes({ users, aiEngine, chat: chatStore, logger }));
+  v1.route('/credits', makeCreditsRoutes({ users, logger }));
+  v1.route('/billing', makeBillingRoutes({ users, env, logger }));
   app.route('/v1', v1);
 
   app.onError((err, c) => {

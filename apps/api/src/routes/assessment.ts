@@ -22,9 +22,14 @@ export function makeAssessmentRoutes(deps: AssessmentRoutesDeps): Hono {
     const body = await c.req.json().catch(() => null);
     const parsed = questionsSchema.safeParse(body);
     if (!parsed.success) throw new HTTPException(400, { message: parsed.error.issues[0]?.message ?? 'invalid body' });
-    const questions = await deps.aiEngine.generateAssessmentQuestions(parsed.data.examSlug, parsed.data.language, 15);
-    deps.logger.info('assessment.generated', { examSlug: parsed.data.examSlug, count: questions.length });
-    return c.json({ questions });
+    try {
+      const questions = await deps.aiEngine.generateAssessmentQuestions(parsed.data.examSlug, parsed.data.language, 15);
+      deps.logger.info('assessment.generated', { examSlug: parsed.data.examSlug, count: questions.length });
+      return c.json({ questions });
+    } catch (err) {
+      deps.logger.error('assessment.generate_error', { examSlug: parsed.data.examSlug, error: err instanceof Error ? err.message : String(err) });
+      throw new HTTPException(503, { message: 'Assessment generation failed. AI service may be busy. Please try again in a moment.' });
+    }
   });
 
   app.post('/submit', async (c) => {
