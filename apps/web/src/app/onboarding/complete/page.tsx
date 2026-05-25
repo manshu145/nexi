@@ -15,7 +15,11 @@ export default function CompletePage() {
     if (s) { setResult(JSON.parse(s) as AssessmentResult); sessionStorage.removeItem('nexigrate-assessment-result'); }
   }, []);
 
-  const lang = typeof window !== 'undefined' ? (localStorage.getItem('nexigrate-language') as 'en'|'hi') || 'en' : 'en';
+  const lang = typeof window !== 'undefined' ? (() => {
+    const m = document.cookie.match(/nexigrate-language=(en|hi)/);
+    if (m) return m[1] as 'en' | 'hi';
+    return (localStorage.getItem('nexigrate-language') as 'en'|'hi') || 'en';
+  })() : 'en';
 
   return (
     <div className="flex flex-col items-center">

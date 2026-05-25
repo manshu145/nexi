@@ -81,12 +81,28 @@ export function createAIEngine(env: Env, logger: Logger): AIEngine {
     },
 
     async generateMermaidDiagram(chapter, subject, exam) {
-      const prompt = `Create a Mermaid.js flowchart (graph TD) that visually explains key concepts of "${chapter}" (${subject}, ${exam}).\n\nMax 12 nodes. Valid Mermaid syntax only. No markdown fences.\nExample:\ngraph TD\n    A[Concept] --> B[Detail]\n    A --> C[Another]`;
+      const prompt = `Create a Mermaid.js flowchart (graph TD) that visually explains key concepts of "${chapter}" (${subject}, ${exam}).\n\nRequirements:\n- Max 12 nodes with clear, concise labels\n- Use meaningful connections with labels on arrows where helpful\n- Group related concepts visually\n- Valid Mermaid syntax only, no markdown fences\n- Use subgraphs if the topic has distinct sub-areas\n\nExample:\ngraph TD\n    A[Main Concept] --> B[Sub-concept 1]\n    A --> C[Sub-concept 2]\n    B --> D[Detail]\n    C --> E[Detail]`;
       try {
-        if (!openai) throw new Error("OPENAI_API_KEY not configured"); const c = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 800 });
+        // Use Gemini Flash for visual/diagram tasks
+        if (env.GEMINI_API_KEY) {
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.5, maxOutputTokens: 800 } }),
+          });
+          if (res.ok) {
+            const data = await res.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+            const raw = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+            const cleaned = raw.replace(/```mermaid\n?/g, '').replace(/```\n?/g, '').trim();
+            if (cleaned) { logger.info('ai.mermaid_gemini', { chapter, subject, exam }); return cleaned; }
+          }
+        }
+        // Fallback to OpenAI if Gemini fails
+        if (!openai) throw new Error("No AI API key configured");
+        const c = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 800 });
         const raw = c.choices[0]?.message?.content ?? '';
         const cleaned = raw.replace(/```mermaid\n?/g, '').replace(/```\n?/g, '').trim();
-        logger.info('ai.mermaid', { chapter, subject, exam });
+        logger.info('ai.mermaid_openai_fallback', { chapter, subject, exam });
         return cleaned;
       } catch (err) { logger.error('ai.mermaid_error', { error: err instanceof Error ? err.message : String(err) }); throw new Error('Failed to generate diagram'); }
     },
@@ -103,12 +119,28 @@ export function createAIEngine(env: Env, logger: Logger): AIEngine {
     },
 
     async generateSelectionDiagram(selectedText: string, subject: string, language: 'en' | 'hi') {
-      const langInstr = language === 'hi' ? 'Use Hindi labels in the diagram.' : 'Use English labels.';
-      const prompt = `Create a Mermaid.js flowchart (graph TD) that visually explains this concept:\n\n"${selectedText.slice(0, 500)}"\n\nSubject: ${subject}\n${langInstr}\nMax 10 nodes. Valid Mermaid syntax only. No markdown fences.`;
+      const langInstr = language === 'hi' ? 'Use Hindi labels in the diagram nodes.' : 'Use English labels.';
+      const prompt = `Create a Mermaid.js diagram (graph TD or graph LR) that visually explains this concept from ${subject}:\n\n"${selectedText.slice(0, 500)}"\n\n${langInstr}\nRequirements:\n- Max 10 nodes with concise, clear labels\n- Show relationships/flow clearly\n- Valid Mermaid syntax only, no markdown fences\n- Use appropriate diagram type (flowchart for processes, graph for relationships)`;
       try {
-        if (!openai) throw new Error("OPENAI_API_KEY not configured");
+        // Use Gemini Flash for visual tasks
+        if (env.GEMINI_API_KEY) {
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.5, maxOutputTokens: 600 } }),
+          });
+          if (res.ok) {
+            const data = await res.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+            const raw = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+            const cleaned = raw.replace(/```mermaid\n?/g, '').replace(/```\n?/g, '').trim();
+            if (cleaned) { logger.info('ai.selection_diagram_gemini', { subject, language }); return cleaned; }
+          }
+        }
+        // Fallback to OpenAI
+        if (!openai) throw new Error("No AI API key configured");
         const c = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 600 });
         const raw = c.choices[0]?.message?.content ?? '';
+        logger.info('ai.selection_diagram_openai_fallback', { subject, language });
         return raw.replace(/```mermaid\n?/g, '').replace(/```\n?/g, '').trim();
       } catch (err) { logger.error('ai.selection_diagram_error', { error: err instanceof Error ? err.message : String(err) }); throw new Error('Failed to generate diagram'); }
     },

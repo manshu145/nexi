@@ -7,6 +7,19 @@ import { Logo } from '~/components/Logo';
 
 type Phase = 'loading' | 'quiz' | 'submitting' | 'result';
 
+/** Get user's selected language from cookie or localStorage */
+function getLanguageFromCookie(): 'en' | 'hi' {
+  if (typeof document !== 'undefined') {
+    const match = document.cookie.match(/nexigrate-language=(en|hi)/);
+    if (match) return match[1] as 'en' | 'hi';
+  }
+  if (typeof localStorage !== 'undefined') {
+    const stored = localStorage.getItem('nexigrate-language');
+    if (stored === 'hi' || stored === 'en') return stored;
+  }
+  return 'en';
+}
+
 export default function ChapterQuizPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -31,7 +44,7 @@ export default function ChapterQuizPage() {
       try {
         const meRes = await api.me();
         const exam = meRes.user.targetExam ?? 'jee-main';
-        const lang = (localStorage.getItem('nexigrate-language') as 'en'|'hi') || 'en';
+        const lang = getLanguageFromCookie();
         const res = await api.getChapterQuiz(exam, subject, chapter, lang);
         setQuestions(res.questions);
         setPhase('quiz');

@@ -24,7 +24,11 @@ export default function AssessmentPage() {
   const startAssessment = async () => {
     setLoading(true); setError(null); setPhase('intro');
     try {
-      const lang = (typeof window !== 'undefined' ? localStorage.getItem('nexigrate-language') as 'en'|'hi' : null) || 'en';
+      const lang = (() => {
+        if (typeof document !== 'undefined') { const m = document.cookie.match(/nexigrate-language=(en|hi)/); if (m) return m[1] as 'en' | 'hi'; }
+        if (typeof window !== 'undefined') { const s = localStorage.getItem('nexigrate-language'); if (s === 'hi' || s === 'en') return s; }
+        return 'en' as const;
+      })();
       const meRes = await api.me();
       const exam = meRes.user.targetExam ?? 'jee-main';
       const res = await api.getAssessmentQuestions(exam, lang);
