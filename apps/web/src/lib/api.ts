@@ -2,7 +2,7 @@
 import type { ExamSlug } from '@nexigrate/shared';
 import { getFirebaseAuthClient } from './firebase';
 
-const API = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:8080';
+const API = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com';
 
 class ApiError extends Error { constructor(public readonly status: number, message: string) { super(message); } }
 
