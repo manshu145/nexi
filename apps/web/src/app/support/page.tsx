@@ -65,7 +65,7 @@ export default function SupportPage() {
         )}
         {messages.map((msg, i) => (
           <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${msg.role === 'user' ? 'bg-ember-500 text-white dark:bg-ember-600' : 'paper-card text-ink-900 dark:text-paper-100'}`}>
+            <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${msg.role === 'user' ? 'bg-ember-500 text-paper-50 dark:bg-ember-600' : 'paper-card text-ink-900 dark:text-paper-100'}`}>
               {msg.role === 'assistant' ? (
                 <div className="prose prose-sm dark:prose-invert max-w-none">
                   <ReactMarkdown>{msg.content}</ReactMarkdown>
@@ -113,7 +113,7 @@ export default function SupportPage() {
         {showContact && (
           <div className="paper-card mt-3 p-4 text-center">
             <p className="text-sm text-ink-700 dark:text-paper-200">For billing or account issues, email:</p>
-            <a href="mailto:help@nexigrate.com" className="mt-2 inline-block font-medium text-ember-600 dark:text-amber-400 underline">
+            <a href="mailto:help@nexigrate.com" className="mt-2 inline-block font-medium text-ember-600 dark:text-gold-500 underline">
               help@nexigrate.com
             </a>
           </div>

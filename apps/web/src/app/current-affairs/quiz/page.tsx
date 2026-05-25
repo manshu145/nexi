@@ -203,7 +203,7 @@ export default function CurrentAffairsQuizPage() {
       {/* Navigation — no back button */}
       <div className="mt-4">
         {idx >= questions.length - 1 ? (
-          <button onClick={submitQuiz} className="btn-primary w-full" style={{ backgroundColor: 'var(--color-ember-500)' }}>Submit Quiz →</button>
+          <button onClick={submitQuiz} className="btn-primary w-full">Submit Quiz →</button>
         ) : (
           <button onClick={() => setIdx(i => i + 1)} className="btn-primary w-full">Next →</button>
         )}

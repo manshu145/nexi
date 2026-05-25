@@ -61,7 +61,12 @@ export default function StudyPage() {
     </main>
   );
 
-  if (!syllabus) return null;
+  if (!syllabus) return (
+    <main className="mx-auto flex min-h-dvh max-w-lg flex-col items-center justify-center px-5">
+      <div className="banner banner-error">Unable to load syllabus. Please try again later.</div>
+      <button onClick={() => router.push('/dashboard')} className="btn-ghost mt-4">← Back to Dashboard</button>
+    </main>
+  );
 
   const completedSet = new Set(progress?.completedChapters ?? []);
   const scores = progress?.chapterScores ?? {};
