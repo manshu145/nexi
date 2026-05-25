@@ -32,7 +32,7 @@ export function buildApp(deps: AppDeps): Hono {
   app.use('*', cors({
     origin: (origin) => (env.CORS_ALLOWED_ORIGINS.includes(origin) ? origin : null),
     allowMethods: ['GET','POST','PATCH','DELETE','OPTIONS'],
-    allowHeaders: ['Authorization','Content-Type','X-User-Email','X-User-Name','X-User-Photo','X-User-Provider'],
+    allowHeaders: ['Authorization','Content-Type','X-User-Email','X-User-Name','X-User-Photo','X-User-Provider','x-cron-secret'],
     maxAge: 600, credentials: true,
   }));
 
@@ -47,12 +47,24 @@ export function buildApp(deps: AppDeps): Hono {
   app.route('/', makeHealthRoutes());
   app.get('/', (c) => c.json({ service: 'nexigrate-api', version: '1.0.0' }));
 
+  // Cron endpoint — NO auth required (uses x-cron-secret header instead)
+  const cronRoutes = makeCurrentAffairsRoutes({ users, aiEngine, currentAffairs, env, logger });
+  app.post('/v1/current-affairs/ingest', async (c) => {
+    const cronSecret = c.req.header('x-cron-secret');
+    if (cronSecret !== 'nexigrate-cron-2026') {
+      return c.json({ error: 'unauthorized' }, 401);
+    }
+    const { ingestCurrentAffairs } = await import('./lib/rssIngestion.js');
+    const result = await ingestCurrentAffairs(currentAffairs, env, logger);
+    return c.json({ success: true, ...result });
+  });
+
   const v1 = new Hono();
   v1.use('*', authMiddleware(firebaseAuth));
   v1.route('/users', makeUsersRoutes({ users, logger }));
   v1.route('/assessment', makeAssessmentRoutes({ users, aiEngine, logger }));
   v1.route('/study', makeStudyRoutes({ users, aiEngine, chapters, logger }));
-  v1.route('/current-affairs', makeCurrentAffairsRoutes({ users, aiEngine, currentAffairs, env, logger }));
+  v1.route('/current-affairs', cronRoutes);
   app.route('/v1', v1);
 
   app.onError((err, c) => {
