@@ -35,11 +35,13 @@ ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL \
 # Resolve workspace deps first, for layer cache.
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json turbo.json ./
 COPY packages/shared/package.json packages/shared/package.json
+COPY packages/credits/package.json packages/credits/package.json
 COPY apps/web/package.json apps/web/package.json
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --no-frozen-lockfile
 
 # Copy sources and build.
 COPY packages/shared packages/shared
+COPY packages/credits packages/credits
 COPY apps/web apps/web
 RUN pnpm --filter @nexigrate/shared build
 RUN pnpm --filter @nexigrate/web build
