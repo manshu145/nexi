@@ -260,9 +260,9 @@ export function makeAIRoutes(deps: AIRoutesDeps): Hono {
     try {
       const { ingestNewsFeeds } = await import('../lib/rssIngestion.js');
       const ingestion = await ingestNewsFeeds(logger);
-      if (ingestion.rawNotes && ingestion.itemsIngested > 0) {
+      if (ingestion.rawNotes && ingestion.totalItems > 0) {
         newsContext = `\n\nHere are REAL news items from today (from PIB, RBI, The Hindu, Indian Express, etc.):\n\n${ingestion.rawNotes}\n\nUse ONLY these real items to generate the current affairs digest. Summarize them for exam preparation.`;
-        logger.info('ai.current-affairs.feeds-used', { items: ingestion.itemsIngested, feeds: ingestion.feedsSucceeded });
+        logger.info('ai.current-affairs.feeds-used', { items: ingestion.totalItems, feeds: ingestion.feedsSucceeded });
       }
     } catch (feedErr) {
       logger.warn('ai.current-affairs.feed-fetch-failed', { error: (feedErr as Error).message });
