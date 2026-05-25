@@ -85,8 +85,13 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
     requireAuth(c);
     const { exam, subject, chapter } = c.req.param();
     const language = (c.req.query('lang') as 'en' | 'hi') || 'en';
-    const questions = await deps.aiEngine.generateChapterMCQs(chapter, subject, exam, language, 10);
-    return c.json({ questions });
+    try {
+      const questions = await deps.aiEngine.generateChapterMCQs(chapter, subject, exam, language, 10);
+      return c.json({ questions });
+    } catch (err) {
+      deps.logger.error('study.quiz_error', { exam, subject, chapter, language, error: err instanceof Error ? err.message : String(err) });
+      throw new HTTPException(503, { message: 'Quiz generation failed. AI service may be unavailable. Please try again.' });
+    }
   });
 
   // GET /v1/study/:exam/:subject/:chapter/diagram — mermaid diagram (full chapter)
