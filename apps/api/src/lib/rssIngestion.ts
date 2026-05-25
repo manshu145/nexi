@@ -215,14 +215,37 @@ export async function ingestCurrentAffairs(
   if (summarized.length > 0) {
     itemsToSave = summarized;
   } else {
-    // Fallback: save raw items without AI summarization
-    logger.info('rss.fallback_raw', { message: 'AI summarization returned 0 items, saving raw' });
+    // Fallback: save raw items without AI summarization — deduplicate by title
+    logger.info('rss.fallback_raw', { message: 'AI summarization returned 0 items, saving raw with deduplication' });
     const today = new Date().toISOString().split('T')[0]!;
-    itemsToSave = recentItems.slice(0, 30).map((item, i) => ({
+
+    // Deduplicate raw items by normalized title
+    const seen = new Set<string>();
+    const dedupedItems: typeof recentItems = [];
+    for (const item of recentItems) {
+      const key = item.title.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(w => w.length > 2).slice(0, 6).join(' ');
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      dedupedItems.push(item);
+    }
+
+    // Categorize based on keywords
+    function categorizeItem(item: RawNewsItem): CurrentAffairsCategory {
+      const text = (item.title + ' ' + item.description).toLowerCase();
+      if (/cricket|football|hockey|olympic|medal|sport|ipl|match|cup\b/i.test(text)) return 'sports';
+      if (/economy|gdp|rbi|inflation|stock|market|budget|tax|fiscal|monetary|rupee|dollar/i.test(text)) return 'economy';
+      if (/technology|tech|ai\b|artificial|robot|software|digital|cyber|space|isro|nasa|satellite/i.test(text)) return 'science-tech';
+      if (/climate|environment|forest|pollution|wildlife|biodiversity|carbon|green/i.test(text)) return 'environment';
+      if (/usa|china|russia|pakistan|europe|united nations|un\b|global|world|international|foreign/i.test(text)) return 'international';
+      if (/award|prize|padma|bharat ratna|nobel|honour/i.test(text)) return 'awards';
+      return 'national';
+    }
+
+    itemsToSave = dedupedItems.slice(0, 30).map((item, i) => ({
       id: `${today}-raw-${i}-${Math.random().toString(36).slice(2, 6)}`,
       headline: item.title.slice(0, 100),
       body: item.description.slice(0, 300) || item.title,
-      category: 'national' as CurrentAffairsCategory,
+      category: categorizeItem(item),
       sources: [item.source],
       relevantExams: [],
       tags: [],

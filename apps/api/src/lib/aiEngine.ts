@@ -22,6 +22,7 @@ export interface AIEngine {
   generateSyllabus(examSlug: string, examName: string, level: string): Promise<GeneratedSyllabus>;
   generateSelectionDiagram(selectedText: string, subject: string, language: 'en' | 'hi'): Promise<string>;
   generateCurrentAffairsQuiz(headlines: string, count?: number): Promise<GeneratedMCQ[]>;
+  translateToHindi(items: { headline: string; summary: string }[]): Promise<{ headline: string; summary: string }[]>;
 }
 
 export function createAIEngine(env: Env, logger: Logger): AIEngine {
@@ -148,13 +149,126 @@ export function createAIEngine(env: Env, logger: Logger): AIEngine {
 
     async generateCurrentAffairsQuiz(headlines: string, count = 20) {
       const prompt = `You are a current affairs quiz generator for Indian competitive exams (UPSC, SSC, Banking).\n\nBased on today's news headlines below, generate exactly ${count} MCQs.\n\nHeadlines:\n${headlines.slice(0, 3000)}\n\nRequirements:\n- Questions should test factual recall from these headlines\n- 4 options (A-D), one correct answer\n- Mix difficulty: 7 easy, 8 medium, 5 hard\n- Include brief explanation for correct answer\n- Cover different categories (national, international, economy, science, sports)\n\nRespond ONLY with JSON:\n{"questions":[{"id":"ca-q1","question":"...","options":[{"key":"A","text":"..."},{"key":"B","text":"..."},{"key":"C","text":"..."},{"key":"D","text":"..."}],"correctOption":"A","explanation":"...","difficulty":"easy","subject":"current-affairs","topic":"national"}]}`;
-      try {
-        if (!groq) throw new Error("GROQ_API_KEY not configured");
-        const c = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: 6000, response_format: { type: 'json_object' } });
-        const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
-        logger.info('ai.ca_quiz_generated', { count: parsed.questions?.length ?? 0 });
-        return parsed.questions ?? [];
-      } catch (err) { logger.error('ai.ca_quiz_error', { error: err instanceof Error ? err.message : String(err) }); throw new Error('Failed to generate current affairs quiz'); }
+
+      // Try Groq first (fast), then OpenAI fallback, then Gemini fallback
+      const errors: string[] = [];
+
+      // Attempt 1: Groq
+      if (groq) {
+        try {
+          const c = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: 6000, response_format: { type: 'json_object' } });
+          const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
+          if (parsed.questions?.length) {
+            logger.info('ai.ca_quiz_generated', { provider: 'groq', count: parsed.questions.length });
+            return parsed.questions;
+          }
+          errors.push('Groq returned empty questions');
+        } catch (err) {
+          errors.push(`Groq: ${err instanceof Error ? err.message : String(err)}`);
+          logger.warn('ai.ca_quiz_groq_failed', { error: errors[errors.length - 1] });
+        }
+      } else { errors.push('GROQ_API_KEY not configured'); }
+
+      // Attempt 2: OpenAI
+      if (openai) {
+        try {
+          const c = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: 6000, response_format: { type: 'json_object' } });
+          const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
+          if (parsed.questions?.length) {
+            logger.info('ai.ca_quiz_generated', { provider: 'openai', count: parsed.questions.length });
+            return parsed.questions;
+          }
+          errors.push('OpenAI returned empty questions');
+        } catch (err) {
+          errors.push(`OpenAI: ${err instanceof Error ? err.message : String(err)}`);
+          logger.warn('ai.ca_quiz_openai_failed', { error: errors[errors.length - 1] });
+        }
+      } else { errors.push('OPENAI_API_KEY not configured'); }
+
+      // Attempt 3: Gemini
+      if (env.GEMINI_API_KEY) {
+        try {
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.6, maxOutputTokens: 6000 } }),
+          });
+          if (res.ok) {
+            const data = await res.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+            const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+            const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              const parsed = JSON.parse(jsonMatch[0]) as { questions: GeneratedMCQ[] };
+              if (parsed.questions?.length) {
+                logger.info('ai.ca_quiz_generated', { provider: 'gemini', count: parsed.questions.length });
+                return parsed.questions;
+              }
+            }
+            errors.push('Gemini returned no parseable questions');
+          } else { errors.push(`Gemini HTTP ${res.status}`); }
+        } catch (err) {
+          errors.push(`Gemini: ${err instanceof Error ? err.message : String(err)}`);
+          logger.warn('ai.ca_quiz_gemini_failed', { error: errors[errors.length - 1] });
+        }
+      } else { errors.push('GEMINI_API_KEY not configured'); }
+
+      logger.error('ai.ca_quiz_all_failed', { errors });
+      throw new Error(`All AI providers failed for quiz generation: ${errors.join('; ')}`);
+    },
+
+    async translateToHindi(items: { headline: string; summary: string }[]) {
+      if (items.length === 0) return [];
+      const prompt = `Translate the following news items to Hindi (Devanagari script). Keep them concise and factual.\n\nItems:\n${items.map((it, i) => `${i + 1}. Headline: ${it.headline}\n   Summary: ${it.summary}`).join('\n')}\n\nRespond ONLY with valid JSON:\n{"items":[{"headline":"हिंदी headline","summary":"हिंदी summary"}]}`;
+
+      // Try Gemini first (cheap + fast for translation)
+      if (env.GEMINI_API_KEY) {
+        try {
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.2, maxOutputTokens: 3000 } }),
+          });
+          if (res.ok) {
+            const data = await res.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+            const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+            const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              const parsed = JSON.parse(jsonMatch[0]) as { items: { headline: string; summary: string }[] };
+              if (parsed.items?.length) {
+                logger.info('ai.translate_hindi', { provider: 'gemini', count: parsed.items.length });
+                return parsed.items;
+              }
+            }
+          }
+        } catch (err) { logger.warn('ai.translate_gemini_failed', { error: err instanceof Error ? err.message : String(err) }); }
+      }
+
+      // Fallback: Groq
+      if (groq) {
+        try {
+          const c = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.2, max_tokens: 3000, response_format: { type: 'json_object' } });
+          const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { items: { headline: string; summary: string }[] };
+          if (parsed.items?.length) {
+            logger.info('ai.translate_hindi', { provider: 'groq', count: parsed.items.length });
+            return parsed.items;
+          }
+        } catch (err) { logger.warn('ai.translate_groq_failed', { error: err instanceof Error ? err.message : String(err) }); }
+      }
+
+      // Fallback: OpenAI
+      if (openai) {
+        try {
+          const c = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.2, max_tokens: 3000, response_format: { type: 'json_object' } });
+          const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { items: { headline: string; summary: string }[] };
+          if (parsed.items?.length) {
+            logger.info('ai.translate_hindi', { provider: 'openai', count: parsed.items.length });
+            return parsed.items;
+          }
+        } catch (err) { logger.warn('ai.translate_openai_failed', { error: err instanceof Error ? err.message : String(err) }); }
+      }
+
+      logger.warn('ai.translate_all_failed', { message: 'All providers failed, returning original items' });
+      return items; // Return originals if all translation fails
     },
   };
 }

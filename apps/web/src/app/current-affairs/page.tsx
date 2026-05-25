@@ -30,7 +30,12 @@ export default function CurrentAffairsPage() {
     if (!user) return;
     (async () => {
       try {
-        const res = await api.getCurrentAffairs();
+        let lang: 'en' | 'hi' = 'en';
+        try {
+          const meRes = await api.me();
+          lang = meRes.user.language || 'en';
+        } catch { /* default to en */ }
+        const res = await api.getCurrentAffairs(lang);
         setItems(res.items);
         setWinner(res.yesterdayWinner);
       } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load current affairs'); }
