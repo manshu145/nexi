@@ -32,7 +32,8 @@ export default function CurrentAffairsQuizPage() {
       startTimeRef.current = Date.now();
       setTimeLeft(600);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load quiz');
+      const msg = e instanceof Error ? e.message : 'Failed to load quiz';
+      setError(msg === 'Failed to fetch' ? 'Server is generating quiz questions. Please wait 10 seconds and try again.' : msg);
       setPhase('rules');
     }
   };
