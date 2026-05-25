@@ -1,110 +1,18 @@
 'use client';
-
-import {
-  GoogleAuthProvider,
-  onAuthStateChanged,
-  signInWithEmailAndPassword as fbSignInWithEmailAndPassword,
-  signInWithPopup,
-  signOut as firebaseSignOut,
-  type User as FirebaseUser,
-} from 'firebase/auth';
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from 'react';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { onAuthStateChanged, signInWithPopup, signOut as fbSignOut, GoogleAuthProvider, type User } from 'firebase/auth';
 import { getFirebaseAuthClient } from './firebase';
 
-/**
- * Auth state for the whole app.
- *
- * Wraps Firebase Auth onAuthStateChanged so any client component can read
- * the current Firebase user via `useAuth()` without prop-drilling.
- *
- * Three sign-in surfaces share this context:
- *   - student Google sign-in           -> signInWithGoogle
- *   - student phone OTP                -> handled inline in /signin (Firebase
- *                                         signInWithPhoneNumber + RecaptchaVerifier)
- *   - admin email + password sign-in   -> signInWithEmailAndPassword
- */
-
-interface AuthState {
-  user: FirebaseUser | null;
-  loading: boolean;
-  signInWithGoogle: () => Promise<void>;
-  /**
-   * Email + password sign-in for the admin login page only. Throws on
-   * invalid credentials so the caller can surface a friendly message.
-   */
-  signInWithEmailAndPassword: (email: string, password: string) => Promise<void>;
-  signOut: () => Promise<void>;
-  /** Latest ID token, refreshed on demand. Throws if not signed in. */
-  getIdToken: (forceRefresh?: boolean) => Promise<string>;
-}
-
-const AuthContext = createContext<AuthState | null>(null);
+interface AuthCtx { user: User | null; loading: boolean; signInWithGoogle: () => Promise<void>; signOut: () => Promise<void>; }
+const AuthContext = createContext<AuthCtx>({ user: null, loading: true, signInWithGoogle: async () => {}, signOut: async () => {} });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const auth = getFirebaseAuthClient();
-    const unsub = onAuthStateChanged(auth, (next) => {
-      setUser(next);
-      setLoading(false);
-    });
-    return () => unsub();
-  }, []);
-
-  const signInWithGoogle = useCallback(async () => {
-    const auth = getFirebaseAuthClient();
-    const provider = new GoogleAuthProvider();
-    provider.setCustomParameters({ prompt: 'select_account' });
-    await signInWithPopup(auth, provider);
-  }, []);
-
-  const signInWithEmailAndPassword = useCallback(
-    async (email: string, password: string) => {
-      const auth = getFirebaseAuthClient();
-      await fbSignInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
-    },
-    [],
-  );
-
-  const signOut = useCallback(async () => {
-    const auth = getFirebaseAuthClient();
-    await firebaseSignOut(auth);
-  }, []);
-
-  const getIdToken = useCallback(async (forceRefresh = false) => {
-    const auth = getFirebaseAuthClient();
-    const current = auth.currentUser;
-    if (!current) throw new Error('not signed in');
-    return current.getIdToken(forceRefresh);
-  }, []);
-
-  const value = useMemo<AuthState>(
-    () => ({
-      user,
-      loading,
-      signInWithGoogle,
-      signInWithEmailAndPassword,
-      signOut,
-      getIdToken,
-    }),
-    [user, loading, signInWithGoogle, signInWithEmailAndPassword, signOut, getIdToken],
-  );
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  useEffect(() => { const unsub = onAuthStateChanged(getFirebaseAuthClient(), (u) => { setUser(u); setLoading(false); }); return unsub; }, []);
+  const signInWithGoogle = async () => { await signInWithPopup(getFirebaseAuthClient(), new GoogleAuthProvider()); };
+  const signOut = async () => { await fbSignOut(getFirebaseAuthClient()); };
+  return <AuthContext.Provider value={{ user, loading, signInWithGoogle, signOut }}>{children}</AuthContext.Provider>;
 }
 
-export function useAuth(): AuthState {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuth must be used inside <AuthProvider>');
-  return ctx;
-}
+export function useAuth() { return useContext(AuthContext); }

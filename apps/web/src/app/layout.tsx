@@ -1,35 +1,21 @@
-import type { Metadata, Viewport } from 'next';
-import { AuthProvider } from '~/lib/auth-context';
-import { ThemeProvider } from '~/lib/theme-context';
-import { MobileNav } from '~/components/MobileNav';
-import { ChatWidget } from '~/components/ChatWidget';
+import type { Metadata } from 'next';
+import { NextIntlClientProvider } from 'next-intl';
+import { getLocale, getMessages } from 'next-intl/server';
+import { Providers } from '~/components/providers';
+import { Toaster } from '~/components/toaster';
 import './globals.css';
 
-export const metadata: Metadata = {
-  title: 'Nexigrate — Study smart. Verified facts. Zero distractions.',
-  description: 'The free, distraction-free study OS for Indian students.',
-  icons: {
-    icon: [{ url: '/favicon.svg', type: 'image/svg+xml' }],
-  },
-};
+export const metadata: Metadata = { title: 'Nexigrate — AI-Powered Exam Prep', description: 'AI-powered exam preparation platform for Indian students.' };
 
-export const viewport: Viewport = {
-  themeColor: '#F5ECD7',
-  width: 'device-width',
-  initialScale: 1,
-};
-
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const locale = await getLocale();
+  const messages = await getMessages();
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body>
-        <ThemeProvider>
-          <AuthProvider>
-            {children}
-            <MobileNav />
-            <ChatWidget />
-          </AuthProvider>
-        </ThemeProvider>
+    <html lang={locale} suppressHydrationWarning>
+      <body className="min-h-screen bg-[var(--background)] text-[var(--foreground)] antialiased">
+        <NextIntlClientProvider messages={messages}>
+          <Providers>{children}<Toaster /></Providers>
+        </NextIntlClientProvider>
       </body>
     </html>
   );
