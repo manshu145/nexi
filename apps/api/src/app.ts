@@ -18,6 +18,7 @@ import { InMemoryChatStore, FirestoreChatStore, type ChatStore } from './lib/cha
 import { makeChatRoutes } from './routes/chat.js';
 import { makeCreditsRoutes } from './routes/credits.js';
 import { makeBillingRoutes } from './routes/billing.js';
+import { makeAdminRoutes } from './routes/admin.js';
 
 export interface AppDeps { env: Env; logger: Logger; users?: UserStore; aiEngine?: AIEngine; chapters?: ChapterStore; currentAffairs?: CurrentAffairsStore; chatStore?: ChatStore; }
 
@@ -74,6 +75,7 @@ export function buildApp(deps: AppDeps): Hono {
   v1.route('/chat', makeChatRoutes({ users, aiEngine, chat: chatStore, logger }));
   v1.route('/credits', makeCreditsRoutes({ users, logger }));
   v1.route('/billing', makeBillingRoutes({ users, env, logger }));
+  v1.route('/admin', makeAdminRoutes({ users, env, logger }));
   app.route('/v1', v1);
 
   app.onError((err, c) => {

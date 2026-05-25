@@ -106,8 +106,8 @@ export default function SupportPage() {
         {showContact && (
           <div className="paper-card mt-3 p-4 text-center">
             <p className="text-sm text-ink-700 dark:text-paper-200">For billing or account issues, email:</p>
-            <a href="mailto:manshu.ibc24@gmail.com" className="mt-2 inline-block font-medium text-amber-600 dark:text-amber-400 underline">
-              manshu.ibc24@gmail.com
+            <a href="mailto:help@nexigrate.com" className="mt-2 inline-block font-medium text-amber-600 dark:text-amber-400 underline">
+              help@nexigrate.com
             </a>
           </div>
         )}

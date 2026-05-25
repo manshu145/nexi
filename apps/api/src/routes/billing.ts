@@ -47,7 +47,7 @@ export function makeBillingRoutes(deps: BillingRoutesDeps): Hono {
     } catch (err) {
       if (err instanceof HTTPException) throw err;
       deps.logger.error('billing.order_error', { error: err instanceof Error ? err.message : String(err) });
-      throw new HTTPException(503, { message: 'Failed to create payment order' });
+      throw new HTTPException(503, { message: err instanceof Error ? err.message : 'Failed to create payment order' });
     }
   });
 
