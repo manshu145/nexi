@@ -13,11 +13,16 @@ export default function StudyPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [pageLoading, setPageLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lang, setLang] = useState<'en' | 'hi'>('en');
 
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
 
   useEffect(() => {
     if (!user) return;
+    // Detect language
+    const m = document.cookie.match(/nexigrate-language=(en|hi)/);
+    const detected = m ? m[1] as 'en' | 'hi' : (localStorage.getItem('nexigrate-language') as 'en' | 'hi') || 'en';
+    setLang(detected);
     (async () => {
       try {
         const meRes = await api.me();
@@ -60,7 +65,7 @@ export default function StudyPage() {
     const [subSlug, chSlug] = progress.currentChapter.split('/');
     const sub = syllabus.subjects.find(s => s.slug === subSlug);
     const ch = sub?.chapters.find(c => c.slug === chSlug);
-    if (sub && ch) continueChapter = { subject: sub.slug, chapter: ch.slug, name: ch.name };
+    if (sub && ch) continueChapter = { subject: sub.slug, chapter: ch.slug, name: lang === 'hi' && ch.nameHi ? ch.nameHi : ch.name };
   }
 
   return (
@@ -111,7 +116,7 @@ export default function StudyPage() {
               >
                 <span className="text-xl">{subject.icon}</span>
                 <div className="flex-1">
-                  <h3 className="font-serif font-semibold text-ink-900">{subject.name}</h3>
+                <h3 className="font-serif font-semibold text-ink-900">{lang === 'hi' && subject.nameHi ? subject.nameHi : subject.name}</h3>
                   <div className="mt-1 flex items-center gap-2">
                     <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-paper-300">
                       <div className="h-full rounded-full bg-gold-500 transition-all" style={{ width: `${subjectPct}%` }} />
@@ -148,7 +153,7 @@ export default function StudyPage() {
                           {isCompleted ? '✓' : !isUnlocked ? '🔒' : ch.order}
                         </span>
                         <div className="flex-1 min-w-0">
-                          <p className={`text-sm font-medium truncate ${isCompleted ? 'text-ink-900' : isUnlocked ? 'text-ink-800' : 'text-muted-500'}`}>{ch.name}</p>
+                          <p className={`text-sm font-medium truncate ${isCompleted ? 'text-ink-900' : isUnlocked ? 'text-ink-800' : 'text-muted-500'}`}>{lang === 'hi' && ch.nameHi ? ch.nameHi : ch.name}</p>
                           <p className="text-xs text-muted-400">{ch.estimatedMinutes} min</p>
                         </div>
                         {score !== undefined && (
