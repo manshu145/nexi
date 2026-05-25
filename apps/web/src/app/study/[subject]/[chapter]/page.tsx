@@ -23,6 +23,8 @@ export default function KindleReaderPage() {
   const [vizLoading, setVizLoading] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [flipClass, setFlipClass] = useState('');
+  const [selectedText, setSelectedText] = useState('');
+  const [showSelectionViz, setShowSelectionViz] = useState(false);
   const touchStartX = useRef(0);
 
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
@@ -76,6 +78,37 @@ export default function KindleReaderPage() {
     if (diff > 50) goPrev();
   };
 
+  // Text selection detection
+  const handleTextSelection = () => {
+    const sel = window.getSelection()?.toString().trim() ?? '';
+    setSelectedText(sel);
+    setShowSelectionViz(sel.length > 10);
+  };
+
+  const handleVisualize = async (mode: 'page' | 'selection') => {
+    setVizLoading(true); setShowViz(true); setShowSelectionViz(false);
+    try {
+      let mermaidResult: string;
+      if (mode === 'selection' && selectedText) {
+        const lang = (localStorage.getItem('nexigrate-language') as 'en'|'hi') || 'en';
+        const res = await api.visualizeSelection(selectedText, subject, lang);
+        mermaidResult = res.mermaid;
+      } else {
+        const meRes = await api.me();
+        const exam = meRes.user.targetExam ?? 'jee-main';
+        const res = await api.getChapterDiagram(exam, subject, chapter);
+        mermaidResult = res.mermaid;
+      }
+      setMermaidCode(mermaidResult);
+      // Render mermaid to SVG
+      const mermaidLib = await import('mermaid');
+      mermaidLib.default.initialize({ startOnLoad: false, theme: 'neutral', fontFamily: 'Inter, sans-serif' });
+      const { svg } = await mermaidLib.default.render('mermaid-viz-' + Date.now(), mermaidResult);
+      setMermaidSvg(svg);
+    } catch { setMermaidSvg('<p style="text-align:center;color:#7A6F5C">Failed to generate diagram. Try again.</p>'); }
+    finally { setVizLoading(false); }
+  };
+
   const handleTTS = () => {
     if (speaking) { window.speechSynthesis.cancel(); setSpeaking(false); return; }
     const text = pages[currentPage]?.replace(/[#*`$\[\]]/g, '') ?? '';
@@ -85,23 +118,6 @@ export default function KindleReaderPage() {
     utterance.onend = () => setSpeaking(false);
     window.speechSynthesis.speak(utterance);
     setSpeaking(true);
-  };
-
-  const handleVisualize = async () => {
-    if (mermaidSvg) { setShowViz(true); return; }
-    setVizLoading(true); setShowViz(true);
-    try {
-      const meRes = await api.me();
-      const exam = meRes.user.targetExam ?? 'jee-main';
-      const res = await api.getChapterDiagram(exam, subject, chapter);
-      setMermaidCode(res.mermaid);
-      // Render mermaid to SVG
-      const mermaidLib = await import('mermaid');
-      mermaidLib.default.initialize({ startOnLoad: false, theme: 'neutral', fontFamily: 'Inter, sans-serif' });
-      const { svg } = await mermaidLib.default.render('mermaid-viz', res.mermaid);
-      setMermaidSvg(svg);
-    } catch { setMermaidSvg('<p style="text-align:center;color:#7A6F5C">Failed to generate diagram</p>'); }
-    finally { setVizLoading(false); }
   };
 
   if (loading || !user || pageLoading) return (
@@ -128,16 +144,25 @@ export default function KindleReaderPage() {
           <button onClick={handleTTS} className={`tts-btn ${speaking ? 'playing' : ''}`}>
             {speaking ? '⏸ Pause' : '🔊 Listen'}
           </button>
-          <button onClick={handleVisualize} className="tts-btn">🔍 Visualize</button>
+          <button onClick={() => handleVisualize('page')} className="tts-btn">🔍 Full Page</button>
         </div>
       </div>
 
-      {/* Book content with page flip */}
+      {/* Book content with 3D page flip */}
       <div className="kindle-book-wrapper">
-        <div className={`kindle-page ${flipClass}`}>
+        <div className={`kindle-page ${flipClass}`} onMouseUp={handleTextSelection} onTouchEnd={(e) => { handleTouchEnd(e); setTimeout(handleTextSelection, 100); }}>
           <div className="reader">
             <div className="reader-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(pages[currentPage] ?? '') }} />
           </div>
+          {/* Floating selection visualize button */}
+          {showSelectionViz && (
+            <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-40 flex gap-2">
+              <button onClick={() => handleVisualize('selection')} className="btn-primary gap-2 shadow-lg" style={{ borderRadius: '999px', padding: '0.6rem 1.2rem', fontSize: '0.82rem' }}>
+                🔍 Visualize Selection
+              </button>
+              <button onClick={() => { setShowSelectionViz(false); setSelectedText(''); }} className="btn-ghost-sm shadow-lg" style={{ borderRadius: '999px' }}>✕</button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -160,7 +185,14 @@ export default function KindleReaderPage() {
             {vizLoading ? (
               <div className="flex flex-col items-center justify-center py-12"><span className="spinner" /><p className="mt-3 text-sm text-muted-500">Generating visualization...</p></div>
             ) : mermaidSvg ? (
-              <div dangerouslySetInnerHTML={{ __html: mermaidSvg }} />
+              <>
+                <div dangerouslySetInnerHTML={{ __html: mermaidSvg }} />
+                <div className="mt-4 flex items-center justify-center gap-3">
+                  <button onClick={() => { if (mermaidSvg) { const blob = new Blob([mermaidSvg], { type: 'image/svg+xml' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${chapter}-diagram.svg`; a.click(); URL.revokeObjectURL(url); } }} className="btn-ghost-sm">💾 Save SVG</button>
+                  <button onClick={() => { if (mermaidSvg) navigator.clipboard.writeText(mermaidCode ?? ''); }} className="btn-ghost-sm">📋 Copy Code</button>
+                  <button onClick={() => { if (navigator.share) navigator.share({ title: `${chapterName} - Diagram`, text: mermaidCode ?? '' }); }} className="btn-ghost-sm">🔗 Share</button>
+                </div>
+              </>
             ) : null}
             <button onClick={() => setShowViz(false)} className="btn-ghost-sm mt-4 mx-auto block">Close</button>
           </div>
