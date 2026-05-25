@@ -51,6 +51,18 @@ export const api = {
   async visualizeSelection(text: string, subject: string, language: 'en'|'hi') { return (await authedFetch('/v1/study/visualize', { method: 'POST', body: JSON.stringify({ text, subject, language }) })).json() as Promise<{mermaid:string}>; },
   async completeChapter(exam: string, subject: string, chapter: string, score: number) { return (await authedFetch(`/v1/study/${exam}/${subject}/${chapter}/complete`, { method: 'POST', body: JSON.stringify({ score }) })).json() as Promise<CompleteResult>; },
   async getStudyProgress(examSlug: string) { return (await authedFetch(`/v1/study/progress/${examSlug}`)).json() as Promise<{progress:StudyProgress}>; },
+
+  // Current Affairs
+  async getCurrentAffairs() { return (await authedFetch('/v1/current-affairs')).json() as Promise<CurrentAffairsResponse>; },
+  async getCurrentAffairsQuiz() { return (await authedFetch('/v1/current-affairs/quiz')).json() as Promise<{date:string; questions:GeneratedMCQ[]}>; },
+  async submitCurrentAffairsQuiz(answers: number[], timeTaken: number) { return (await authedFetch('/v1/current-affairs/quiz/submit', { method: 'POST', body: JSON.stringify({ answers, timeTaken }) })).json() as Promise<QuizSubmitResult>; },
+  async getCurrentAffairsLeaderboard() { return (await authedFetch('/v1/current-affairs/leaderboard')).json() as Promise<LeaderboardResponse>; },
 };
+
+export interface CurrentAffairsItem { id: string; headline: string; body: string; category: string; sources: string[]; summary: string; factChecked: boolean; date: string; publishedAt: string; }
+export interface LeaderboardEntry { userId: string; userName: string; score: number; timeTaken: number; date: string; }
+export interface CurrentAffairsResponse { date: string; items: CurrentAffairsItem[]; yesterdayWinner: LeaderboardEntry | null; }
+export interface QuizSubmitResult { score: number; correct: number; total: number; timeTaken: number; rank: number; }
+export interface LeaderboardResponse { date: string; leaderboard: LeaderboardEntry[]; yesterdayWinner: LeaderboardEntry | null; }
 
 export { ApiError };
