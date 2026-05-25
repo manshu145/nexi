@@ -101,7 +101,7 @@ export default function UpgradePage() {
       {error && <div className="banner banner-error mt-6">{error}</div>}
 
       {/* Plan cards */}
-      <div className="mt-8 grid gap-4 sm:grid-cols-3">
+      <div className="mt-8 grid gap-4 grid-cols-1 sm:grid-cols-3">
         {PLANS.map(plan => {
           const isCurrent = currentPlan === plan.id;
           const price = period === 'monthly' ? plan.price : plan.yearlyPrice;

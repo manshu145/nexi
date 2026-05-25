@@ -38,7 +38,7 @@ export function makeBillingRoutes(deps: BillingRoutesDeps): Hono {
       const res = await fetch('https://api.razorpay.com/v1/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Basic ${Buffer.from(`${deps.env.RAZORPAY_KEY_ID}:${deps.env.RAZORPAY_KEY_SECRET}`).toString('base64')}` },
-        body: JSON.stringify({ amount, currency: 'INR', receipt: `${principal.userId}-${body.planId}-${Date.now()}` }),
+        body: JSON.stringify({ amount, currency: 'INR', receipt: `${principal.userId.slice(0, 12)}-${body.planId.slice(0, 8)}-${Date.now().toString(36)}` }),
       });
       if (!res.ok) { const err = await res.text().catch(() => ''); throw new Error(`Razorpay ${res.status}: ${err.slice(0, 100)}`); }
       const order = await res.json() as { id: string; amount: number; currency: string };

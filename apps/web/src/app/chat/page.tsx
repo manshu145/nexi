@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import ReactMarkdown from 'react-markdown';
 import { useAuth } from '~/lib/auth-context';
 import { api, type ChatSessionSummary, type ChatMessage } from '~/lib/api';
 import { Logo } from '~/components/Logo';
@@ -14,6 +15,7 @@ export default function ChatPage() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [vizContent, setVizContent] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
@@ -68,6 +70,14 @@ export default function ChatPage() {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   };
 
+  const handleVisualize = async (text: string) => {
+    try {
+      const lang = (localStorage.getItem('nexigrate-language') as 'en' | 'hi') || 'en';
+      const res = await api.visualizeSelection(text.slice(0, 500), 'general', lang);
+      setVizContent(res.mermaid);
+    } catch { /* ignore */ }
+  };
+
   const prompts = ['Explain Article 370 in simple terms', 'What is the current fiscal deficit?', 'Compare parliamentary vs presidential systems'];
 
   if (loading || !user) return <main className="flex min-h-dvh items-center justify-center"><span className="spinner" /></main>;
@@ -78,7 +88,7 @@ export default function ChatPage() {
       {sidebarOpen && <div className="fixed inset-0 z-30 bg-black/40 md:hidden" onClick={() => setSidebarOpen(false)} />}
 
       {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-paper-200 bg-paper-100 dark:border-ink-700 dark:bg-ink-800 transition-transform md:static md:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`fixed inset-y-0 left-0 z-40 flex w-64 max-w-[80vw] flex-col border-r border-paper-200 bg-paper-100 dark:border-ink-700 dark:bg-ink-800 transition-transform md:static md:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex items-center justify-between p-4 border-b border-paper-200 dark:border-ink-700">
           <Logo />
           <button onClick={() => setSidebarOpen(false)} className="btn-ghost-sm md:hidden">✕</button>
@@ -97,7 +107,7 @@ export default function ChatPage() {
       </aside>
 
       {/* Main chat area */}
-      <main className="flex flex-1 flex-col min-w-0">
+      <main className="flex flex-1 flex-col min-w-0 h-dvh">
         {/* Top bar */}
         <header className="flex items-center gap-3 border-b border-paper-200 dark:border-ink-700 px-4 py-3">
           <button onClick={() => setSidebarOpen(true)} className="btn-ghost-sm md:hidden">☰</button>
@@ -121,10 +131,24 @@ export default function ChatPage() {
             </div>
           )}
           {messages.map((msg, i) => (
-            <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${msg.role === 'user' ? 'bg-amber-500 text-white dark:bg-amber-600' : 'paper-card text-ink-900 dark:text-paper-100'}`}>
-                <p className="whitespace-pre-wrap">{msg.content}</p>
+            <div key={i} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+              <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${msg.role === 'user' ? 'bg-ember-500 text-white dark:bg-ember-600' : 'paper-card text-ink-900 dark:text-paper-100'}`}>
+                {msg.role === 'assistant' ? (
+                  <div className="prose prose-sm dark:prose-invert max-w-none">
+                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                  </div>
+                ) : (
+                  <p className="whitespace-pre-wrap">{msg.content}</p>
+                )}
               </div>
+              {msg.role === 'assistant' && msg.content.length > 100 && (
+                <button
+                  onClick={() => handleVisualize(msg.content)}
+                  className="mt-1 text-xs text-ember-600 dark:text-amber-400 hover:underline"
+                >
+                  🔍 Visualize this
+                </button>
+              )}
             </div>
           ))}
           {sending && (
@@ -142,15 +166,15 @@ export default function ChatPage() {
         </div>
 
         {/* Input area */}
-        <div className="border-t border-paper-200 dark:border-ink-700 p-4">
+        <div className="border-t border-paper-200 dark:border-ink-700 p-3 sm:p-4">
           <div className="mx-auto flex max-w-2xl items-end gap-2">
             <textarea
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Type your message..."
-              rows={1}
-              className="flex-1 resize-none rounded-xl border border-paper-300 dark:border-ink-600 bg-paper-50 dark:bg-ink-800 px-4 py-3 text-sm text-ink-900 dark:text-paper-50 placeholder:text-muted-500 focus:outline-none focus:ring-2 focus:ring-amber-500"
+              rows={2}
+              className="flex-1 resize-none rounded-xl border border-paper-300 dark:border-ink-600 bg-paper-50 dark:bg-ink-800 px-4 py-3 text-sm text-ink-900 dark:text-paper-50 placeholder:text-muted-500 focus:outline-none focus:ring-2 focus:ring-ember-500 min-h-[44px]"
             />
             <button onClick={sendMessage} disabled={!input.trim() || sending} className="btn-primary h-11 w-11 flex-shrink-0 rounded-xl p-0 flex items-center justify-center disabled:opacity-50">
               ➤
@@ -158,6 +182,17 @@ export default function ChatPage() {
           </div>
         </div>
       </main>
+
+      {/* Visualize modal */}
+      {vizContent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setVizContent(null)}>
+          <div className="paper-card max-w-lg w-full max-h-[80vh] overflow-auto p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="font-serif text-lg font-bold text-ink-900 dark:text-paper-50">Visualization</h3>
+            <pre className="mt-4 text-xs bg-paper-200 dark:bg-ink-700 p-4 rounded-lg overflow-auto whitespace-pre-wrap">{vizContent}</pre>
+            <button onClick={() => setVizContent(null)} className="btn-ghost mt-4 w-full">Close</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

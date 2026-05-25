@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '~/lib/auth-context';
 import { api, type CurrentAffairsItem, type LeaderboardEntry } from '~/lib/api';
 import { Logo } from '~/components/Logo';
+import { Skeleton, ListSkeleton } from '~/components/Skeleton';
 
 const CATEGORY_TABS = [
   { key: 'all', label: 'All' },
@@ -40,7 +41,13 @@ export default function CurrentAffairsPage() {
   }, [user]);
 
   if (loading || !user || pageLoading) return (
-    <main className="flex min-h-dvh items-center justify-center"><span className="spinner" /></main>
+    <main className="mx-auto flex min-h-dvh max-w-2xl flex-col px-5 pt-6 pb-28">
+      <div className="space-y-4 mt-8">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-4 w-32" />
+        <ListSkeleton count={5} />
+      </div>
+    </main>
   );
 
   if (error) return (
