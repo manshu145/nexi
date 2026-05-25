@@ -1,0 +1,209 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
+import { toast } from 'sonner';
+import { EXAM_BY_SLUG } from '@nexigrate/shared';
+import { Logo } from '~/components/Logo';
+import { useAuth } from '~/lib/auth-context';
+import { api, type StoredUser } from '~/lib/api';
+
+export default function ProfilePage() {
+  const t = useTranslations('profile');
+  const tc = useTranslations('common');
+  const { user, loading } = useAuth();
+  const router = useRouter();
+
+  const [me, setMe] = useState<StoredUser | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
+
+  // Editable fields
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [dob, setDob] = useState('');
+  const [school, setSchool] = useState('');
+  const [aim, setAim] = useState('');
+
+  useEffect(() => {
+    if (!loading && !user) router.replace('/signin');
+  }, [user, loading, router]);
+
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      try {
+        const res = await api.me();
+        setMe(res.user);
+        setName(res.user.name);
+        setPhone(res.user.phone ?? '');
+        setDob(res.user.dob ?? '');
+        setSchool(res.user.school ?? '');
+        setAim(res.user.aim ?? '');
+      } catch {
+        toast.error('Failed to load profile');
+      } finally {
+        setPageLoading(false);
+      }
+    })();
+  }, [user]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await api.updateProfile({
+        name: name.trim(),
+        phone: phone.trim() || undefined,
+        dob: dob || undefined,
+        school: school.trim() || undefined,
+        aim: aim.trim() || undefined,
+      });
+      setMe(res.user);
+      setEditing(false);
+      toast.success(t('saved'));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading || !user || pageLoading) {
+    return (
+      <main className="mx-auto flex min-h-screen max-w-lg flex-col px-4 pt-8">
+        <div className="skeleton h-6 w-32" />
+        <div className="mt-8 space-y-4">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="skeleton h-12 w-full rounded-lg" />
+          ))}
+        </div>
+      </main>
+    );
+  }
+
+  const examName = me?.targetExam
+    ? EXAM_BY_SLUG.get(me.targetExam)?.name ?? me.targetExam
+    : 'Not set';
+
+  return (
+    <main className="mx-auto flex min-h-screen max-w-lg flex-col px-4 pt-8 pb-16">
+      <header className="flex items-center justify-between">
+        <button type="button" onClick={() => router.back()} className="btn-ghost">
+          &larr; {tc('back')}
+        </button>
+        <Logo />
+      </header>
+
+      {/* Avatar + Name */}
+      <section className="mt-8 flex flex-col items-center">
+        <div className="h-20 w-20 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+          {me?.photoURL ? (
+            <img src={me.photoURL} alt="" className="h-full w-full object-cover" />
+          ) : (
+            <span className="flex h-full w-full items-center justify-center text-2xl font-bold text-slate-500">
+              {me?.name?.[0]?.toUpperCase()}
+            </span>
+          )}
+        </div>
+        <h1 className="mt-4 text-xl font-bold text-slate-900 dark:text-white">
+          {me?.name}
+        </h1>
+        <p className="text-sm text-slate-500 dark:text-slate-400">{me?.email}</p>
+      </section>
+
+      {/* Edit / View */}
+      <section className="mt-8">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            {t('personalInfo')}
+          </h2>
+          {!editing && (
+            <button type="button" onClick={() => setEditing(true)} className="btn-ghost text-xs text-amber-600">
+              {t('editProfile')}
+            </button>
+          )}
+        </div>
+
+        {editing ? (
+          <div className="mt-4 space-y-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">{t('name')}</label>
+              <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="input" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">{t('phone')}</label>
+              <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className="input" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">{t('dob')}</label>
+              <input type="date" value={dob} onChange={(e) => setDob(e.target.value)} className="input" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">{t('school')}</label>
+              <input type="text" value={school} onChange={(e) => setSchool(e.target.value)} className="input" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">{t('aim')}</label>
+              <input type="text" value={aim} onChange={(e) => setAim(e.target.value)} className="input" />
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button type="button" onClick={handleSave} disabled={saving} className="btn-primary flex-1">
+                {saving ? tc('loading') : tc('save')}
+              </button>
+              <button type="button" onClick={() => setEditing(false)} className="btn-secondary flex-1">
+                {tc('cancel')}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-4 space-y-3">
+            <ProfileRow label={t('name')} value={me?.name} />
+            <ProfileRow label={t('email')} value={me?.email} />
+            <ProfileRow label={t('phone')} value={me?.phone ?? 'Not set'} />
+            <ProfileRow label={t('dob')} value={me?.dob ?? 'Not set'} />
+            <ProfileRow label={t('school')} value={me?.school ?? 'Not set'} />
+            <ProfileRow label={t('aim')} value={me?.aim ?? 'Not set'} />
+          </div>
+        )}
+      </section>
+
+      {/* Academic */}
+      <section className="mt-8">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+          {t('academicInfo')}
+        </h2>
+        <div className="mt-4 space-y-3">
+          <ProfileRow label={t('targetExam')} value={examName} />
+          <ProfileRow label={t('level')} value={me?.onboardingLevel ?? 'Not assessed'} />
+          <ProfileRow label={t('classLevel')} value={me?.classLevel ?? 'Not set'} />
+          <ProfileRow label={t('board')} value={me?.board ?? 'Not set'} />
+        </div>
+      </section>
+
+      {/* Account */}
+      <section className="mt-8">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+          {t('accountInfo')}
+        </h2>
+        <div className="mt-4 space-y-3">
+          <ProfileRow label={t('plan')} value={me?.plan ?? 'free'} />
+          <ProfileRow label={t('credits')} value={String(me?.credits ?? 0)} />
+          <ProfileRow label={t('memberSince')} value={me?.createdAt ? new Date(me.createdAt).toLocaleDateString() : 'N/A'} />
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function ProfileRow({ label, value }: { label: string; value?: string | null }) {
+  return (
+    <div className="flex items-center justify-between rounded-lg border border-slate-100 px-4 py-3 dark:border-slate-700/50">
+      <span className="text-sm text-slate-500 dark:text-slate-400">{label}</span>
+      <span className="text-sm font-medium capitalize text-slate-900 dark:text-white">
+        {value || 'Not set'}
+      </span>
+    </div>
+  );
+}

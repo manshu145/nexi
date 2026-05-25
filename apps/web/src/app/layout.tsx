@@ -1,26 +1,33 @@
-import type { Metadata, Viewport } from 'next';
-import { AuthProvider } from '~/lib/auth-context';
+import type { Metadata } from 'next';
+import { NextIntlClientProvider } from 'next-intl';
+import { getLocale, getMessages } from 'next-intl/server';
+import { Providers } from '~/components/providers';
+import { Toaster } from '~/components/toaster';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Nexigrate — Study smart. Verified facts. Zero distractions.',
-  description: 'The free, distraction-free study OS for Indian students.',
-  icons: {
-    icon: [{ url: '/favicon.svg', type: 'image/svg+xml' }],
-  },
+  title: 'Nexigrate — AI-Powered Exam Prep',
+  description:
+    'AI-powered exam preparation platform for Indian students. Prepare for UPSC, JEE, NEET, SSC and more.',
 };
 
-export const viewport: Viewport = {
-  themeColor: '#F5ECD7',
-  width: 'device-width',
-  initialScale: 1,
-};
+export default async function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const locale = await getLocale();
+  const messages = await getMessages();
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body>
-        <AuthProvider>{children}</AuthProvider>
+    <html lang={locale} suppressHydrationWarning>
+      <body className="min-h-screen bg-[var(--background)] text-[var(--foreground)] antialiased">
+        <NextIntlClientProvider messages={messages}>
+          <Providers>
+            {children}
+            <Toaster />
+          </Providers>
+        </NextIntlClientProvider>
       </body>
     </html>
   );

@@ -2,29 +2,23 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { EXAM_BY_SLUG, type CreditBalance } from '@nexigrate/shared';
+import { useTranslations } from 'next-intl';
+import { useTheme } from 'next-themes';
+import { EXAM_BY_SLUG } from '@nexigrate/shared';
 import { Logo } from '~/components/Logo';
 import { useAuth } from '~/lib/auth-context';
-import { api, type MeResponse } from '~/lib/api';
+import { api, type StoredUser } from '~/lib/api';
 
-/**
- * Student dashboard.
- *
- * Three things on screen, always:
- *   1. Today's MCQ card -- one tap to start
- *   2. Credits balance, plus an "expiring soon" hint when relevant
- *   3. Sign out (small, in the top-right)
- *
- * No nav, no notifications, no algorithmic feed. The whole product
- * principle is to keep this page calm.
- */
 export default function DashboardPage() {
+  const t = useTranslations('dashboard');
+  const tc = useTranslations('common');
   const { user, loading, signOut } = useAuth();
+  const { theme, setTheme } = useTheme();
   const router = useRouter();
 
-  const [me, setMe] = useState<MeResponse['user'] | null>(null);
-  const [balance, setBalance] = useState<CreditBalance | null>(null);
+  const [me, setMe] = useState<StoredUser | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pageLoading, setPageLoading] = useState(true);
 
   useEffect(() => {
     if (!loading && !user) router.replace('/signin');
@@ -35,159 +29,225 @@ export default function DashboardPage() {
     let cancelled = false;
     (async () => {
       try {
-        const [meRes, balRes] = await Promise.all([api.me(), api.getBalance()]);
+        const res = await api.me();
         if (cancelled) return;
-        setMe(meRes.user);
-        setBalance(balRes);
-        if (!meRes.user.targetExam) {
-          router.replace('/onboarding');
+        setMe(res.user);
+        // If user hasn't completed onboarding, redirect
+        if (!res.user.targetExam) {
+          router.replace('/onboarding/language');
+          return;
         }
       } catch (e) {
         if (cancelled) return;
-        setError(e instanceof Error ? e.message : 'failed to load');
+        setError(e instanceof Error ? e.message : 'Failed to load');
+      } finally {
+        if (!cancelled) setPageLoading(false);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [user, router]);
 
-  if (loading || !user) {
+  if (loading || !user || pageLoading) {
     return (
-      <main className="flex min-h-[60vh] items-center justify-center px-6">
-        <span className="inline-flex items-center gap-2 text-sm text-muted-500">
-          <span className="spinner" aria-hidden="true" />
-          Loading…
-        </span>
+      <main className="mx-auto flex min-h-screen max-w-2xl flex-col px-4 pt-8">
+        <div className="flex items-center justify-between">
+          <div className="skeleton h-6 w-24" />
+          <div className="skeleton h-8 w-8 rounded-full" />
+        </div>
+        <div className="mt-10 skeleton h-8 w-48" />
+        <div className="mt-2 skeleton h-5 w-64" />
+        <div className="mt-8 grid gap-4 sm:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="skeleton h-40 rounded-xl" />
+          ))}
+        </div>
       </main>
     );
   }
 
-  const examName = me?.targetExam ? EXAM_BY_SLUG.get(me.targetExam)?.name : null;
+  const examName = me?.targetExam
+    ? EXAM_BY_SLUG.get(me.targetExam)?.name ?? me.targetExam
+    : null;
+
+  const greeting = (() => {
+    const istHour = (new Date().getUTCHours() + 5.5) % 24;
+    if (istHour < 12) return t('greeting.morning');
+    if (istHour < 17) return t('greeting.afternoon');
+    return t('greeting.evening');
+  })();
+
+  const firstName = (me?.name ?? user.displayName ?? 'Student').split(' ')[0];
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col px-6 pt-8 pb-16">
-      <header className="flex items-start justify-between">
+    <main className="mx-auto flex min-h-screen max-w-2xl flex-col px-4 pt-8 pb-16">
+      {/* Header */}
+      <header className="flex items-center justify-between">
         <Logo />
         <div className="flex items-center gap-2">
+          {/* Credits badge */}
           <button
             type="button"
             onClick={() => router.push('/upgrade')}
-            className="btn-ghost-sm"
+            className="flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700 transition-colors hover:bg-amber-100 dark:bg-amber-500/10 dark:text-amber-400"
           >
-            Upgrade
+            <span>&#x1F48E;</span> {me?.credits ?? 0}
           </button>
+
+          {/* Dark mode toggle */}
+          <button
+            type="button"
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            className="btn-ghost h-8 w-8 rounded-full p-0"
+            aria-label="Toggle dark mode"
+          >
+            {theme === 'dark' ? (
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+              </svg>
+            ) : (
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+              </svg>
+            )}
+          </button>
+
+          {/* Profile avatar */}
+          <button
+            type="button"
+            onClick={() => router.push('/profile')}
+            className="h-8 w-8 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"
+          >
+            {me?.photoURL ? (
+              <img src={me.photoURL} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <span className="flex h-full w-full items-center justify-center text-xs font-bold text-slate-500">
+                {firstName?.[0]?.toUpperCase()}
+              </span>
+            )}
+          </button>
+
           <button
             type="button"
             onClick={() => signOut().then(() => router.replace('/signin'))}
-            className="btn-ghost-sm"
+            className="btn-ghost text-xs"
           >
-            Sign out
+            {tc('signOut')}
           </button>
         </div>
       </header>
 
+      {/* Greeting */}
       <section className="mt-10">
-        <p className="text-sm text-muted-500">
-          {greeting()}, {firstName(me?.name ?? user.displayName ?? 'student')}
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          {greeting}, {firstName}
         </p>
-        <h1 className="font-serif mt-1 text-3xl font-semibold leading-tight text-ink-900 sm:text-4xl">
-          Today’s study slate
+        <h1 className="mt-1 text-2xl font-bold text-slate-900 dark:text-white sm:text-3xl">
+          {t('todaySlate')}
         </h1>
-        {examName ? (
-          <p className="mt-2 text-sm text-muted-500">
-            Tracking <span className="font-medium text-ink-800">{examName}</span>
+        {examName && (
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            {t('tracking')} <span className="font-medium text-slate-700 dark:text-slate-200">{examName}</span>
           </p>
-        ) : null}
+        )}
       </section>
 
-      <section className="paper-card mt-8 p-6 sm:p-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ember-600">
-          Daily MCQ · 10 questions
-        </p>
-        <h2 className="font-serif mt-3 text-2xl font-semibold leading-snug text-ink-900">
-          Take today’s questions, earn credits.
-        </h2>
-        <p className="mt-3 text-ink-800">
-          Pass with 7/10 or more to earn <span className="font-medium">+50 credits</span>.
-          Even a failed attempt earns +5 — nobody gets locked out.
-        </p>
+      {/* 3 Action Cards */}
+      <section className="mt-8 grid gap-4 sm:grid-cols-3">
         <button
           type="button"
-          onClick={() => router.push('/mcq')}
-          className="btn-primary mt-6"
+          onClick={() => router.push('/study')}
+          className="card cursor-pointer text-left transition-all hover:border-amber-500/50 hover:shadow-md active:scale-[0.98]"
         >
-          Start daily MCQ
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+            </svg>
+          </div>
+          <h3 className="mt-3 font-semibold text-slate-900 dark:text-white">{t('study')}</h3>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{t('studyDesc')}</p>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => router.push('/current-affairs')}
+          className="card cursor-pointer text-left transition-all hover:border-amber-500/50 hover:shadow-md active:scale-[0.98]"
+        >
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400">
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
+            </svg>
+          </div>
+          <h3 className="mt-3 font-semibold text-slate-900 dark:text-white">{t('currentAffairs')}</h3>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{t('currentAffairsDesc')}</p>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => router.push('/chat')}
+          className="card cursor-pointer text-left transition-all hover:border-amber-500/50 hover:shadow-md active:scale-[0.98]"
+        >
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400">
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+            </svg>
+          </div>
+          <h3 className="mt-3 font-semibold text-slate-900 dark:text-white">{t('nexiAI')}</h3>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{t('nexiAIDesc')}</p>
         </button>
       </section>
 
+      {/* Stats Row */}
       <section className="mt-6 grid gap-4 sm:grid-cols-3">
-        <div className="paper-card p-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-500">
-            Credits balance
+        <div className="card">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            {t('statsCredits')}
           </p>
-          <p className="font-serif mt-2 text-3xl font-semibold tabular-nums text-ink-900">
-            {balance ? balance.total : '\u2014'}
+          <p className="mt-2 text-2xl font-bold tabular-nums text-slate-900 dark:text-white">
+            {me?.credits ?? 0}
           </p>
-          {balance && balance.expiringSoon > 0 ? (
-            <p className="mt-1 text-xs text-ember-600">
-              {balance.expiringSoon} expiring within 7 days
-            </p>
-          ) : (
-            <p className="mt-1 text-xs text-muted-500">Earn more by taking the daily MCQ</p>
-          )}
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            {t('earnMore')}
+          </p>
         </div>
-        <div className="paper-card p-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-500">
-            Daily streak
+
+        <div className="card">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            {t('statsStreak')}
           </p>
-          <p className="font-serif mt-2 text-3xl font-semibold tabular-nums text-ink-900">
+          <p className="mt-2 text-2xl font-bold tabular-nums text-slate-900 dark:text-white">
             {(me?.currentStreak ?? 0) > 0 ? (
               <>
-                {me?.currentStreak}
-                <span className="ml-1 text-base text-muted-500">days</span>
+                {me?.currentStreak} <span className="text-sm font-normal text-slate-500">{tc('days')}</span>
               </>
             ) : (
-              <span className="text-muted-500">—</span>
+              <span className="text-slate-400">&mdash;</span>
             )}
           </p>
-          <p className="mt-1 text-xs text-muted-500">
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             {(me?.bestStreak ?? 0) > 0
-              ? `Best: ${me?.bestStreak} days`
-              : 'Take today\u2019s MCQ to start a streak'}
+              ? t('best', { days: String(me?.bestStreak ?? 0) })
+              : t('startStreak')}
           </p>
         </div>
-        <div className="paper-card p-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-500">
-            Verification
+
+        <div className="card">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            {t('statsLevel')}
           </p>
-          <p className="mt-2 text-ink-800">
-            {me?.isVerified
-              ? 'You\u2019re verified.'
-              : 'You\u2019re in our private beta. Identity verification arrives by end of June.'}
+          <p className="mt-2 text-2xl font-bold capitalize text-slate-900 dark:text-white">
+            {me?.onboardingLevel ?? <span className="text-slate-400">&mdash;</span>}
+          </p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            {me?.plan === 'free' ? tc('level') : me?.plan}
           </p>
         </div>
       </section>
 
-      {error ? (
-        <p className="mt-8 text-sm text-ember-600" role="alert">
+      {error && (
+        <p className="mt-8 text-sm text-red-600 dark:text-red-400" role="alert">
           {error}
         </p>
-      ) : null}
+      )}
     </main>
   );
-}
-
-function firstName(full: string): string {
-  const trimmed = full.trim();
-  const space = trimmed.indexOf(' ');
-  return space < 0 ? trimmed : trimmed.slice(0, space);
-}
-
-function greeting(): string {
-  // IST hour (rough)
-  const istHour = (new Date().getUTCHours() + 5.5) % 24;
-  if (istHour < 12) return 'Good morning';
-  if (istHour < 17) return 'Good afternoon';
-  return 'Good evening';
 }
