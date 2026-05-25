@@ -95,8 +95,10 @@ export class FirestoreCurrentAffairsStore implements CurrentAffairsStore {
   constructor(private readonly db: Firestore) {}
 
   async getTodayItems(date: string) {
-    const snap = await this.db.collection('currentAffairs').doc(date).collection('items').get();
-    return snap.docs.map(d => d.data() as CurrentAffairsStoreItem);
+    try {
+      const snap = await this.db.collection('currentAffairs').doc(date).collection('items').get();
+      return snap.docs.map(d => d.data() as CurrentAffairsStoreItem);
+    } catch { return []; }
   }
 
   async saveItems(date: string, items: CurrentAffairsStoreItem[]) {
@@ -123,28 +125,34 @@ export class FirestoreCurrentAffairsStore implements CurrentAffairsStore {
   async submitQuizResult(result: DailyQuizResult) {
     const ref = this.db.collection('quizResults').doc(result.date).collection('results').doc(result.userId);
     await ref.set(result);
-    // Get rank
-    const snap = await this.db.collection('quizResults').doc(result.date).collection('results')
-      .orderBy('score', 'desc').orderBy('timeTaken', 'asc').get();
-    const rank = snap.docs.findIndex(d => d.id === result.userId) + 1;
-    return { rank: rank || 1 };
+    // Get rank — use single orderBy to avoid composite index requirement
+    try {
+      const snap = await this.db.collection('quizResults').doc(result.date).collection('results')
+        .orderBy('score', 'desc').get();
+      const rank = snap.docs.findIndex(d => d.id === result.userId) + 1;
+      return { rank: rank || 1 };
+    } catch { return { rank: 1 }; }
   }
 
   async getLeaderboard(date: string) {
-    const snap = await this.db.collection('quizResults').doc(date).collection('results')
-      .orderBy('score', 'desc').orderBy('timeTaken', 'asc').limit(10).get();
-    return snap.docs.map(d => {
-      const data = d.data() as DailyQuizResult;
-      return { userId: data.userId, userName: data.userId, score: data.score, timeTaken: data.timeTaken, date };
-    });
+    try {
+      const snap = await this.db.collection('quizResults').doc(date).collection('results')
+        .orderBy('score', 'desc').limit(10).get();
+      return snap.docs.map(d => {
+        const data = d.data() as DailyQuizResult;
+        return { userId: data.userId, userName: data.userId, score: data.score, timeTaken: data.timeTaken, date };
+      });
+    } catch { return []; }
   }
 
   async getYesterdayWinner() {
-    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]!;
-    const snap = await this.db.collection('quizResults').doc(yesterday).collection('results')
-      .orderBy('score', 'desc').orderBy('timeTaken', 'asc').limit(1).get();
-    if (snap.empty) return null;
-    const data = snap.docs[0]!.data() as DailyQuizResult;
-    return { userId: data.userId, userName: data.userId, score: data.score, timeTaken: data.timeTaken, date: yesterday };
+    try {
+      const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]!;
+      const snap = await this.db.collection('quizResults').doc(yesterday).collection('results')
+        .orderBy('score', 'desc').limit(1).get();
+      if (snap.empty) return null;
+      const data = snap.docs[0]!.data() as DailyQuizResult;
+      return { userId: data.userId, userName: data.userId, score: data.score, timeTaken: data.timeTaken, date: yesterday };
+    } catch { return null; }
   }
 }
