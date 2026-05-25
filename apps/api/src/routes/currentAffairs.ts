@@ -38,25 +38,31 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
 
   // GET /v1/current-affairs/quiz — daily 20 MCQs
   app.get('/quiz', async (c) => {
-    requireAuth(c);
-    const today = new Date().toISOString().split('T')[0]!;
+    try {
+      requireAuth(c);
+      const today = new Date().toISOString().split('T')[0]!;
 
-    // Check if quiz already generated for today
-    let questions = await deps.currentAffairs.getDailyQuiz(today);
-    if (!questions) {
-      // Generate quiz from today's items
-      const items = await deps.currentAffairs.getTodayItems(today);
-      if (items.length === 0) {
-        throw new HTTPException(404, { message: 'No current affairs available for today. Try again later.' });
+      // Check if quiz already generated for today
+      let questions = await deps.currentAffairs.getDailyQuiz(today);
+      if (!questions) {
+        // Generate quiz from today's items
+        const items = await deps.currentAffairs.getTodayItems(today);
+        if (items.length === 0) {
+          throw new HTTPException(404, { message: 'No current affairs available for today. Try again later.' });
+        }
+        // Generate 20 MCQs from today's current affairs
+        const headlines = items.map(item => `[${item.category}] ${item.headline}: ${item.summary}`).join('\n');
+        questions = await deps.aiEngine.generateCurrentAffairsQuiz(headlines, 20);
+        await deps.currentAffairs.saveDailyQuiz(today, questions);
+        deps.logger.info('ca.quiz_generated', { date: today, count: questions.length });
       }
-      // Generate 20 MCQs from today's current affairs
-      const headlines = items.map(item => `[${item.category}] ${item.headline}: ${item.summary}`).join('\n');
-      questions = await deps.aiEngine.generateCurrentAffairsQuiz(headlines, 20);
-      await deps.currentAffairs.saveDailyQuiz(today, questions);
-      deps.logger.info('ca.quiz_generated', { date: today, count: questions.length });
-    }
 
-    return c.json({ date: today, questions });
+      return c.json({ date: today, questions });
+    } catch (e) {
+      if (e instanceof HTTPException) throw e;
+      deps.logger.error('ca.quiz_error', { error: e instanceof Error ? e.message : String(e), stack: e instanceof Error ? e.stack : '' });
+      throw new HTTPException(503, { message: 'Quiz generation failed. AI service may be busy. Try again in a minute.' });
+    }
   });
 
   // POST /v1/current-affairs/quiz/submit — submit answers, update leaderboard
