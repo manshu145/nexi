@@ -119,6 +119,24 @@ import Logo from './Logo.astro';
 </script>
 
 
+<!-- Sticky mobile CTA (shows after scroll) -->
+<div id="sticky-cta" class="fixed bottom-0 inset-x-0 z-50 p-3 bg-paper-100/95 backdrop-blur-sm border-t border-line hidden sm:hidden">
+  <a href="https://app.nexigrate.com/signin" class="btn-primary w-full text-center py-3 shadow-lg">
+    Start free →
+  </a>
+</div>
+
+<script>
+  const stickyCta = document.getElementById('sticky-cta');
+  const heroSection = document.getElementById('waitlist');
+  if (stickyCta && heroSection) {
+    const obs = new IntersectionObserver(([entry]) => {
+      stickyCta.classList.toggle('hidden', entry.isIntersecting);
+    }, { threshold: 0 });
+    obs.observe(heroSection);
+  }
+</script>
+
 <script>
   // Theme toggle for marketing site
   const toggle = document.getElementById('theme-toggle');
