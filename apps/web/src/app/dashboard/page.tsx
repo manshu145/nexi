@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { EXAM_BY_SLUG } from '@nexigrate/shared';
 import { Logo } from '~/components/Logo';
+import { ThemeToggle } from '~/components/ThemeToggle';
 import { useAuth } from '~/lib/auth-context';
 import { api, type MeResponse } from '~/lib/api';
 import { useTranslation } from '~/lib/useTranslation';
@@ -16,7 +17,6 @@ export default function DashboardPage() {
   const [progress, setProgress] = useState<any>(null);
   const [balance, setBalance] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'main' | 'profile' | 'stats'>('main');
 
   useEffect(() => {
     if (!loading && !user) router.replace('/signin');
@@ -70,8 +70,9 @@ export default function DashboardPage() {
       <header className="flex items-center justify-between">
         <Logo />
         <div className="flex items-center gap-2">
+          <ThemeToggle />
           <button
-            onClick={() => setActiveTab(activeTab === 'profile' ? 'main' : 'profile')}
+            onClick={() => router.push('/profile')}
             className="flex h-8 w-8 items-center justify-center rounded-full bg-paper-200 text-ink-800 hover:bg-paper-300 transition"
             title={t('dashboard.profile', 'Profile')}
           >
@@ -131,21 +132,24 @@ export default function DashboardPage() {
         <StatCard value={me?.bestStreak ?? 0} label={t('dashboard.stat.best_streak', 'Best')} icon="🏆" />
       </section>
 
-      {/* ═══ Profile Panel (toggle) ═══ */}
-      {activeTab === 'profile' && (
-        <section className="mt-6 paper-card p-5 animate-in fade-in slide-in-from-top-2 duration-200">
-          <h2 className="font-serif text-lg font-semibold text-ink-900 mb-4">
-            {t('dashboard.profile', 'Profile')}
-          </h2>
-          <div className="space-y-3 text-sm">
-            <ProfileRow label={lang === 'hi' ? 'नाम' : 'Name'} value={me?.name ?? user.displayName ?? '—'} />
-            <ProfileRow label={lang === 'hi' ? 'ईमेल' : 'Email'} value={me?.email ?? user.email ?? '—'} />
-            <ProfileRow label={lang === 'hi' ? 'परीक्षा' : 'Exam'} value={examName || '—'} />
-            <ProfileRow label={lang === 'hi' ? 'स्तर' : 'Level'} value={skillLevel} />
-            <ProfileRow label={lang === 'hi' ? 'क्रेडिट' : 'Credits'} value={String(balance)} />
+      {/* ═══ Credits & Upgrade Bar ═══ */}
+      <section className="mt-5">
+        <button
+          onClick={() => router.push('/upgrade')}
+          className="w-full paper-card flex items-center justify-between p-4 group hover:border-ember-500/50 transition-all"
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-xl">💎</span>
+            <div className="text-left">
+              <p className="text-sm font-semibold text-ink-900">{balance.toLocaleString('en-IN')} {t('dashboard.credits', 'Credits')}</p>
+              <p className="text-xs text-muted-500">{lang === 'hi' ? 'अनलिमिटेड के लिए अपग्रेड करें' : 'Upgrade for unlimited access'}</p>
+            </div>
           </div>
-        </section>
-      )}
+          <span className="text-xs font-bold text-ember-600 bg-ember-50 px-3 py-1.5 rounded-full group-hover:bg-ember-100 transition">
+            {lang === 'hi' ? 'प्लान देखें' : 'View Plans'} →
+          </span>
+        </button>
+      </section>
 
       {/* ═══ 3 Main Actions ═══ */}
       <section className="mt-6 flex flex-col gap-3">
@@ -181,18 +185,19 @@ export default function DashboardPage() {
       {/* ═══ Upcoming Exams (compact) ═══ */}
       <section className="mt-6">
         <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-500 mb-2">
-          {t('dashboard.upcoming_exams', 'Upcoming Exams')}
+          {t('dashboard.more', 'More')}
         </h3>
-        <div className="paper-card p-4">
-          <p className="text-sm text-ink-800">
-            {examName && (
-              <span className="font-medium">{examName}</span>
-            )}
-            {!examName && <span className="text-muted-500">{t('no_data', 'No data available')}</span>}
-          </p>
-          <p className="text-xs text-muted-500 mt-1">
-            {lang === 'hi' ? 'AI द्वारा परीक्षा तिथि अपडेट जल्द आ रहे हैं' : 'AI-powered exam date updates coming soon'}
-          </p>
+        <div className="grid grid-cols-2 gap-3">
+          <button onClick={() => router.push('/mcq')} className="paper-card p-4 text-left hover:shadow-md transition group">
+            <span className="text-lg">📝</span>
+            <p className="text-sm font-semibold text-ink-900 mt-2">{t('dashboard.daily_mcq', 'Daily MCQ')}</p>
+            <p className="text-xs text-muted-500 mt-0.5">{lang === 'hi' ? '10 सवाल, क्रेडिट कमाओ' : '10 Qs, earn credits'}</p>
+          </button>
+          <button onClick={() => router.push('/upgrade')} className="paper-card p-4 text-left hover:shadow-md transition group">
+            <span className="text-lg">⭐</span>
+            <p className="text-sm font-semibold text-ink-900 mt-2">{lang === 'hi' ? 'अपग्रेड' : 'Upgrade'}</p>
+            <p className="text-xs text-muted-500 mt-0.5">{lang === 'hi' ? '₹99/माह से शुरू' : 'Plans from ₹99/mo'}</p>
+          </button>
         </div>
       </section>
 
@@ -211,15 +216,6 @@ function StatCard({ value, label, icon }: { value: number; label: string; icon: 
       <span className="text-base">{icon}</span>
       <p className="font-serif text-lg font-bold text-ink-900 mt-1">{value.toLocaleString('en-IN')}</p>
       <p className="text-[9px] text-muted-500 uppercase tracking-wide leading-tight mt-0.5">{label}</p>
-    </div>
-  );
-}
-
-function ProfileRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between border-b border-paper-200 pb-2 last:border-0 last:pb-0">
-      <span className="text-muted-500">{label}</span>
-      <span className="font-medium text-ink-900 capitalize">{value}</span>
     </div>
   );
 }
