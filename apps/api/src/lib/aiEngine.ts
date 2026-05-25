@@ -7,12 +7,20 @@ export interface MCQOption { key: 'A' | 'B' | 'C' | 'D'; text: string; }
 export interface GeneratedMCQ { id: string; question: string; options: MCQOption[]; correctOption: 'A' | 'B' | 'C' | 'D'; explanation: string; difficulty: 'easy' | 'medium' | 'hard'; subject?: string; topic?: string; }
 export interface AssessmentResult { score: number; total: number; level: 'beginner' | 'intermediate' | 'advanced'; message: string; messageHi: string; }
 
+export interface GeneratedSyllabus {
+  exam: string;
+  examName: string;
+  subjects: { slug: string; name: string; nameHi: string; icon: string; chapters: { slug: string; name: string; nameHi: string; order: number; estimatedMinutes: number; }[]; }[];
+}
+
 export interface AIEngine {
   generateAssessmentQuestions(examSlug: string, language: 'en' | 'hi', count?: number): Promise<GeneratedMCQ[]>;
   scoreAssessment(questions: GeneratedMCQ[], answers: { questionId: string; chosen: string | null }[]): Promise<AssessmentResult>;
   generateChapterContent(chapter: string, subject: string, exam: string, language: 'en' | 'hi'): Promise<string>;
   generateChapterMCQs(chapter: string, subject: string, exam: string, language: 'en' | 'hi', count?: number): Promise<GeneratedMCQ[]>;
   generateMermaidDiagram(chapter: string, subject: string, exam: string): Promise<string>;
+  generateSyllabus(examSlug: string, examName: string, level: string): Promise<GeneratedSyllabus>;
+  generateSelectionDiagram(selectedText: string, subject: string, language: 'en' | 'hi'): Promise<string>;
 }
 
 export function createAIEngine(env: Env, logger: Logger): AIEngine {
@@ -81,6 +89,28 @@ export function createAIEngine(env: Env, logger: Logger): AIEngine {
         logger.info('ai.mermaid', { chapter, subject, exam });
         return cleaned;
       } catch (err) { logger.error('ai.mermaid_error', { error: err instanceof Error ? err.message : String(err) }); throw new Error('Failed to generate diagram'); }
+    },
+
+    async generateSyllabus(examSlug: string, examName: string, level: string) {
+      const prompt = `You are an expert Indian education curriculum designer.\n\nGenerate a complete study syllabus for "${examName}" exam.\nStudent level: ${level}.\n\nRequirements:\n- 3-5 subjects relevant to this exam\n- 5-8 chapters per subject, ordered from basic to advanced\n- Each chapter: slug (kebab-case), name (English), nameHi (Hindi Devanagari), estimated study time in minutes\n- Each subject: slug, name, nameHi, icon (single emoji)\n- Order chapters logically for progressive learning\n\nRespond ONLY with valid JSON:\n{"exam":"${examSlug}","examName":"${examName}","subjects":[{"slug":"subject-slug","name":"Subject Name","nameHi":"विषय नाम","icon":"📚","chapters":[{"slug":"chapter-slug","name":"Chapter Name","nameHi":"अध्याय नाम","order":1,"estimatedMinutes":40}]}]}`;
+      try {
+        if (!openai) throw new Error("OPENAI_API_KEY not configured");
+        const c = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: 4000, response_format: { type: 'json_object' } });
+        const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as GeneratedSyllabus;
+        logger.info('ai.syllabus_generated', { examSlug, subjects: parsed.subjects?.length ?? 0 });
+        return parsed;
+      } catch (err) { logger.error('ai.syllabus_error', { error: err instanceof Error ? err.message : String(err) }); throw new Error('Failed to generate syllabus'); }
+    },
+
+    async generateSelectionDiagram(selectedText: string, subject: string, language: 'en' | 'hi') {
+      const langInstr = language === 'hi' ? 'Use Hindi labels in the diagram.' : 'Use English labels.';
+      const prompt = `Create a Mermaid.js flowchart (graph TD) that visually explains this concept:\n\n"${selectedText.slice(0, 500)}"\n\nSubject: ${subject}\n${langInstr}\nMax 10 nodes. Valid Mermaid syntax only. No markdown fences.`;
+      try {
+        if (!openai) throw new Error("OPENAI_API_KEY not configured");
+        const c = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 600 });
+        const raw = c.choices[0]?.message?.content ?? '';
+        return raw.replace(/```mermaid\n?/g, '').replace(/```\n?/g, '').trim();
+      } catch (err) { logger.error('ai.selection_diagram_error', { error: err instanceof Error ? err.message : String(err) }); throw new Error('Failed to generate diagram'); }
     },
   };
 }

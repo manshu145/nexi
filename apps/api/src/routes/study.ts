@@ -18,12 +18,38 @@ export interface StudyRoutesDeps {
 export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
   const app = new Hono();
 
-  // GET /v1/study/syllabus/:examSlug — full syllabus tree
+  // GET /v1/study/syllabus/:examSlug — full syllabus tree (hardcoded or AI-generated)
   app.get('/syllabus/:examSlug', async (c) => {
-    requireAuth(c);
+    const principal = requireAuth(c);
     const examSlug = c.req.param('examSlug');
-    const syllabus = getSyllabus(examSlug);
-    if (!syllabus) throw new HTTPException(404, { message: `No syllabus found for exam: ${examSlug}` });
+    
+    // Try hardcoded first
+    let syllabus = getSyllabus(examSlug);
+    
+    if (!syllabus) {
+      // Generate via AI based on user's level
+      const user = await deps.users.get(principal.userId);
+      const level = user?.onboardingLevel ?? 'intermediate';
+      const { EXAM_BY_SLUG } = await import('@nexigrate/shared');
+      const examInfo = EXAM_BY_SLUG.get(examSlug as any);
+      const examName = examInfo?.name ?? examSlug.replace(/-/g, ' ').replace(/\b\w/g, (ch: string) => ch.toUpperCase());
+      
+      deps.logger.info('study.generating_syllabus', { examSlug, level, userId: principal.userId });
+      const generated = await deps.aiEngine.generateSyllabus(examSlug, examName, level);
+      syllabus = { exam: examSlug as any, examName: generated.examName, subjects: generated.subjects };
+      
+      // Cache in chapter store for future requests
+      await deps.chapters.saveChapter({
+        exam: examSlug as any,
+        subject: '_syllabus',
+        chapter: '_tree',
+        language: 'en',
+        content: JSON.stringify(syllabus),
+        generatedAt: asISODateTime(new Date().toISOString()),
+        generatedBy: 'gpt-4o',
+      });
+    }
+    
     return c.json({ syllabus });
   });
 
@@ -63,11 +89,20 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
     return c.json({ questions });
   });
 
-  // GET /v1/study/:exam/:subject/:chapter/diagram — mermaid diagram
+  // GET /v1/study/:exam/:subject/:chapter/diagram — mermaid diagram (full chapter)
   app.get('/:exam/:subject/:chapter/diagram', async (c) => {
     requireAuth(c);
     const { exam, subject, chapter } = c.req.param();
     const mermaid = await deps.aiEngine.generateMermaidDiagram(chapter, subject, exam);
+    return c.json({ mermaid });
+  });
+
+  // POST /v1/study/visualize — selection-based visualization
+  app.post('/visualize', async (c) => {
+    requireAuth(c);
+    const body = await c.req.json().catch(() => null) as { text?: string; subject?: string; language?: 'en' | 'hi' } | null;
+    if (!body?.text) throw new HTTPException(400, { message: 'text is required' });
+    const mermaid = await deps.aiEngine.generateSelectionDiagram(body.text, body.subject ?? 'general', body.language ?? 'en');
     return c.json({ mermaid });
   });
 
