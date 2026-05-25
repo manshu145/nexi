@@ -13,8 +13,17 @@ export default function LanguagePage() {
 
   const handleSelect = async (language: 'en' | 'hi') => {
     setSaving(true);
-    try { await api.saveOnboarding({ language }); localStorage.setItem('nexigrate-language', language); router.push('/onboarding/profile'); }
-    catch (err) { toast.error(err instanceof Error ? err.message : 'Failed to save'); setSaving(false); }
+    try {
+      await api.saveOnboarding({ language });
+      // Set both localStorage and cookie for SSR
+      localStorage.setItem('nexigrate-language', language);
+      document.cookie = `nexigrate-language=${language};path=/;max-age=${365 * 24 * 60 * 60};samesite=lax`;
+      router.push('/onboarding/profile');
+      router.refresh(); // Force next-intl to re-read cookie
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save');
+      setSaving(false);
+    }
   };
 
   return (
