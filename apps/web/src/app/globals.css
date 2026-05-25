@@ -1,19 +1,903 @@
 @import 'tailwindcss';
+@import '@fontsource/lora/400.css';
+@import '@fontsource/lora/500.css';
+@import '@fontsource/lora/600.css';
+@import '@fontsource/lora/700.css';
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
 
+/*
+ * Brand tokens shared with the marketing site.
+ *
+ *   paper   : warm parchment background
+ *   ink     : deep warm-black body text
+ *   ember   : book-cover red, used sparingly for emphasis + CTAs
+ *   gold    : trust accents
+ *   line    : printed-paper hairline borders
+ */
 @theme {
-  --color-brand: #f59e0b;
-  --color-brand-light: #fbbf24;
-  --color-brand-dark: #d97706;
+  --color-paper-50: #FBF6E8;
+  --color-paper-100: #F8F1DD;
+  --color-paper-200: #F5ECD7;
+  --color-paper-300: #EFE4C7;
+  --color-paper-400: #E5D6AE;
+
+  --color-ink-700: #4A3F30;
+  --color-ink-800: #3A3225;
+  --color-ink-900: #2A241A;
+  --color-ink-950: #1A1610;
+
+  --color-ember-500: #B3461F;
+  --color-ember-600: #8B2E1A;
+  --color-ember-700: #6E2414;
+
+  --color-gold-500: #B8862F;
+  --color-gold-600: #8E6720;
+
+  --color-muted-500: #7A6F5C;
+  --color-muted-400: #9A8E78;
+
+  --color-line: #D9CDB0;
+
+  --font-serif: 'Lora', 'Georgia', 'Cambria', 'Times New Roman', serif;
+  --font-sans:  'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
-:root { --background: #ffffff; --foreground: #0f172a; --muted: #64748b; --card: #ffffff; --card-border: #e2e8f0; }
-.dark { --background: #0f172a; --foreground: #f1f5f9; --muted: #94a3b8; --card: #1e293b; --card-border: #334155; }
+/* ----- Dark mode overrides ----- */
+html.dark {
+  --color-paper-50: #1C1A17;
+  --color-paper-100: #23201B;
+  --color-paper-200: #2C2822;
+  --color-paper-300: #38332A;
+  --color-paper-400: #4A4336;
 
-body { background-color: var(--background); color: var(--foreground); font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+  --color-ink-700: #C4B89E;
+  --color-ink-800: #D8CCAD;
+  --color-ink-900: #EDDFBF;
+  --color-ink-950: #F8F1DD;
 
-.btn-primary { @apply inline-flex items-center justify-center rounded-lg bg-amber-500 px-6 py-3 text-sm font-semibold text-white transition-all hover:bg-amber-600 active:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500/50 disabled:opacity-50 disabled:cursor-not-allowed; }
-.btn-secondary { @apply inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-6 py-3 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-50 active:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700; }
-.btn-ghost { @apply inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium text-slate-600 transition-all hover:bg-slate-100 active:bg-slate-200 dark:text-slate-300 dark:hover:bg-slate-800; }
-.card { @apply rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800; }
-.input { @apply w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 transition-colors focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100; }
-.skeleton { @apply animate-pulse rounded bg-slate-200 dark:bg-slate-700; }
+  --color-ember-500: #E06030;
+  --color-ember-600: #C04A20;
+  --color-ember-700: #A03A18;
+
+  --color-gold-500: #D4A040;
+  --color-gold-600: #B88630;
+
+  --color-muted-500: #9A8E78;
+  --color-muted-400: #7A6F5C;
+
+  --color-line: #3D372D;
+}
+
+html, body {
+  background-color: var(--color-paper-100);
+  color: var(--color-ink-900);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background-image: radial-gradient(circle at 1px 1px, rgba(42, 36, 26, 0.04) 1px, transparent 0);
+  background-size: 24px 24px;
+  min-height: 100vh;
+}
+
+html.dark body {
+  background-image: radial-gradient(circle at 1px 1px, rgba(237, 223, 191, 0.03) 1px, transparent 0);
+}
+
+::selection {
+  background-color: var(--color-ember-500);
+  color: var(--color-paper-50);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-serif);
+  letter-spacing: -0.015em;
+  color: var(--color-ink-900);
+}
+
+.paper-card {
+  background-color: var(--color-paper-50);
+  border: 1px solid var(--color-line);
+  border-radius: 0.75rem;
+  box-shadow:
+    0 1px 0 rgba(42, 36, 26, 0.02),
+    0 8px 24px -12px rgba(42, 36, 26, 0.08);
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  border-radius: 999px;
+  background-color: var(--color-ink-900);
+  color: var(--color-paper-100);
+  font-weight: 500;
+  font-size: 0.95rem;
+  letter-spacing: 0.01em;
+  transition: transform 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.1) inset, 0 4px 12px -4px rgba(42, 36, 26, 0.4);
+}
+.btn-primary:hover { background-color: var(--color-ember-600); transform: translateY(-1px); }
+.btn-primary:active { transform: translateY(0); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  border-radius: 999px;
+  color: var(--color-ink-900);
+  font-weight: 500;
+  font-size: 0.95rem;
+  border: 1px solid var(--color-line);
+  background-color: transparent;
+  transition: background-color 120ms ease;
+  cursor: pointer;
+}
+.btn-ghost:hover { background-color: var(--color-paper-200); }
+
+/* Smaller variant for inline secondary actions (sign out, "Done", etc.). */
+.btn-ghost-sm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.85rem;
+  border-radius: 999px;
+  color: var(--color-ink-800);
+  font-weight: 500;
+  font-size: 0.82rem;
+  border: 1px solid var(--color-line);
+  background-color: transparent;
+  transition: background-color 120ms ease, color 120ms ease;
+  cursor: pointer;
+}
+.btn-ghost-sm:hover {
+  background-color: var(--color-paper-200);
+  color: var(--color-ink-900);
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  background-color: var(--color-paper-200);
+  color: var(--color-ink-800);
+  font-size: 0.8rem;
+  font-weight: 500;
+  border: 1px solid var(--color-line);
+}
+
+/* Pill state variants used in MCQ result review cards. */
+.pill-success {
+  background-color: var(--color-paper-300);
+  color: var(--color-ink-900);
+  border-color: var(--color-gold-500);
+}
+.pill-warn {
+  background-color: #F3D8C9;
+  color: var(--color-ember-700);
+  border-color: var(--color-ember-500);
+}
+.pill-neutral {
+  background-color: var(--color-paper-200);
+  color: var(--color-muted-500);
+  border-color: var(--color-line);
+  border-style: dashed;
+}
+
+/* ----------------------------------------------------------------------------
+ * Form controls (inputs, selects, textareas).
+ * Used everywhere -- onboarding, signin (phone/OTP), admin login, admin team,
+ * admin mcq-drafts generate form. Keeps native chrome out and brand tokens in.
+ * -------------------------------------------------------------------------- */
+.input {
+  display: block;
+  width: 100%;
+  padding: 0.55rem 0.85rem;
+  border-radius: 0.5rem;
+  background-color: var(--color-paper-50);
+  color: var(--color-ink-900);
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  line-height: 1.4;
+  border: 1px solid var(--color-line);
+  box-shadow: 0 1px 0 rgba(42, 36, 26, 0.02);
+  transition: border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.input::placeholder {
+  color: var(--color-muted-400);
+}
+.input:hover:not(:disabled) {
+  border-color: var(--color-muted-400);
+}
+.input:focus,
+.input:focus-visible {
+  outline: none;
+  border-color: var(--color-ember-500);
+  box-shadow: 0 0 0 3px rgba(179, 70, 31, 0.18);
+  background-color: var(--color-paper-50);
+}
+.input:disabled {
+  background-color: var(--color-paper-200);
+  color: var(--color-muted-500);
+  cursor: not-allowed;
+}
+/* Native select chevron, drawn in ink to stay on-brand. */
+select.input {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='none' stroke='%232A241A' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round' d='M1.5 1.75 6 6.25l4.5-4.5'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 0.85rem center;
+  padding-right: 2.25rem;
+}
+textarea.input {
+  resize: vertical;
+  min-height: 4.5rem;
+  line-height: 1.55;
+}
+
+/* ----------------------------------------------------------------------------
+ * Status banner (callouts for non-blocking errors / info / success).
+ * Replaces the inline `<p className="text-sm text-ember-600">` patterns that
+ * left errors looking like body text.
+ * -------------------------------------------------------------------------- */
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.75rem 0.95rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--color-line);
+  background-color: var(--color-paper-50);
+  color: var(--color-ink-800);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+.banner-error {
+  border-color: var(--color-ember-500);
+  background-color: #F5E1D6;
+  color: var(--color-ember-700);
+}
+.banner-success {
+  border-color: var(--color-gold-500);
+  background-color: var(--color-paper-300);
+  color: var(--color-ink-900);
+}
+.banner-info {
+  border-color: var(--color-line);
+  background-color: var(--color-paper-200);
+  color: var(--color-ink-800);
+}
+
+/* Tiny inline spinner used by buttons + loading states. */
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--color-paper-300);
+  border-top-color: var(--color-ink-900);
+  border-radius: 50%;
+  animation: spin 720ms linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ----------------------------------------------------------------------------
+ * Kindle-style reader (Phase 9-10).
+ * Used by /read/<exam>/<subject>/<slug>. Generous serif body, narrow column,
+ * page-like cream background, drop cap on first paragraph.
+ *
+ * Phase 10b adds true Kindle pagination: each section becomes its own page,
+ * the student flips with arrow keys / space / tap zones rather than scroll.
+ * -------------------------------------------------------------------------- */
+.reader {
+  font-family: var(--font-serif);
+  color: var(--color-ink-900);
+}
+.reader-section {
+  margin-top: 2.25rem;
+}
+.reader-section:first-child {
+  margin-top: 0;
+}
+.reader-heading {
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--color-ink-900);
+  margin-bottom: 0.85rem;
+  border-bottom: 1px solid var(--color-line);
+  padding-bottom: 0.4rem;
+}
+.reader-body {
+  font-size: 1.075rem;
+  line-height: 1.78;
+  color: var(--color-ink-900);
+  /* Justified, hyphenated body text matches a real printed book. */
+  text-align: justify;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+  -ms-hyphens: auto;
+  word-spacing: 0.02em;
+}
+.reader-paragraph + .reader-paragraph {
+  margin-top: 1rem;
+  text-indent: 1.5em;
+}
+/* Drop cap on the first paragraph of the first section. */
+.reader-dropcap::first-letter {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-size: 3.4rem;
+  line-height: 1;
+  float: left;
+  margin: 0.2rem 0.55rem -0.1rem 0;
+  color: var(--color-ember-600);
+}
+.reader-paragraph code {
+  background-color: var(--color-paper-200);
+  border: 1px solid var(--color-line);
+  border-radius: 0.3rem;
+  padding: 0.05rem 0.35rem;
+  font-size: 0.92em;
+}
+
+/* ----- Book-style Reader (Kindle redesign) ----- */
+.kindle-frame {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  background-color: var(--color-paper-200);
+}
+.kindle-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background-color: var(--color-paper-50);
+  border-bottom: 1px solid var(--color-line);
+}
+@media (min-width: 720px) {
+  .kindle-header { padding: 0.75rem 2rem; }
+}
+.kindle-book-wrapper {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  padding: 1rem 0.5rem 0;
+  min-height: 0;
+  overflow: hidden;
+}
+@media (min-width: 720px) {
+  .kindle-book-wrapper { padding: 2rem 2rem 0; }
+}
+.kindle-page {
+  width: 100%;
+  max-width: 42rem;
+  background-color: var(--color-paper-50);
+  border: 1px solid var(--color-line);
+  border-bottom: none;
+  border-radius: 0.75rem 0.75rem 0 0;
+  padding: 2.5rem 1.5rem 3.5rem;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  /* Book shadow — realistic depth with page edge effect */
+  box-shadow:
+    0 0 0 1px rgba(42, 36, 26, 0.04),
+    6px 0 12px -3px rgba(42, 36, 26, 0.1),
+    -6px 0 12px -3px rgba(42, 36, 26, 0.1),
+    0 -4px 16px -4px rgba(42, 36, 26, 0.12),
+    inset 0 0 80px -40px rgba(42, 36, 26, 0.03);
+}
+@media (min-width: 720px) {
+  .kindle-page {
+    padding: 3.5rem 3.5rem 4.5rem;
+    box-shadow:
+      0 0 0 1px rgba(42, 36, 26, 0.05),
+      10px 0 20px -5px rgba(42, 36, 26, 0.12),
+      -10px 0 20px -5px rgba(42, 36, 26, 0.12),
+      0 -6px 24px -6px rgba(42, 36, 26, 0.14),
+      inset 0 0 120px -60px rgba(42, 36, 26, 0.02);
+  }
+}
+@media (min-width: 1024px) {
+  .kindle-page { padding: 4rem 4.5rem 5rem; }
+}
+
+/* Cover page (page 1): centered hero with title + summary + source. */
+.kindle-cover {
+  display: flex;
+  min-height: 70vh;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+}
+.kindle-cover-eyebrow {
+  font-family: var(--font-sans);
+  font-size: 0.78rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-muted-500);
+}
+.kindle-cover-title {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--color-ink-900);
+  font-size: 2.4rem;
+  line-height: 1.15;
+  margin-top: 1rem;
+}
+@media (min-width: 720px) {
+  .kindle-cover-title { font-size: 3rem; }
+}
+.kindle-cover-summary {
+  font-family: var(--font-serif);
+  font-size: 1.075rem;
+  line-height: 1.65;
+  color: var(--color-ink-800);
+  margin-top: 1.5rem;
+}
+.kindle-cover-rule {
+  width: 4rem;
+  height: 1px;
+  background-color: var(--color-line);
+  margin: 2rem auto;
+}
+.kindle-cover-meta {
+  font-family: var(--font-sans);
+  font-size: 0.82rem;
+  color: var(--color-muted-500);
+}
+
+/* End page: shown after the last section. */
+.kindle-end {
+  display: flex;
+  min-height: 60vh;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+/* ----- Footer toolbar (page indicator + flip arrows) ----- */
+.kindle-toolbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  border-top: 1px solid var(--color-line);
+  background-color: var(--color-paper-50);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  font-family: var(--font-sans);
+  font-size: 0.82rem;
+  color: var(--color-muted-500);
+}
+@media (min-width: 720px) {
+  .kindle-toolbar { padding: 0.6rem 2rem; }
+}
+.kindle-toolbar button {
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--color-ink-900);
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  background-color: var(--color-paper-200);
+  border: 1px solid var(--color-line);
+  cursor: pointer;
+  transition: background-color 120ms ease, transform 80ms ease;
+}
+.kindle-toolbar button:hover:not(:disabled) {
+  background-color: var(--color-paper-300);
+}
+.kindle-toolbar button:active:not(:disabled) {
+  transform: scale(0.96);
+}
+.kindle-toolbar button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+.kindle-page-indicator {
+  font-weight: 500;
+  color: var(--color-ink-800);
+}
+.kindle-progress {
+  position: absolute;
+  top: -2px;
+  left: 0;
+  height: 2px;
+  background-color: var(--color-ember-500);
+  transition: width 300ms ease;
+  border-radius: 1px;
+}
+
+/* ----- Page flip animation ----- */
+
+
+
+/* ----- Dark mode component overrides ----- */
+html.dark .kindle-frame {
+  background-color: var(--color-paper-300);
+}
+html.dark .kindle-header {
+  background-color: var(--color-paper-100);
+}
+html.dark .kindle-page {
+  background-color: var(--color-paper-100);
+  box-shadow:
+    0 0 0 1px rgba(237, 223, 191, 0.04),
+    4px 0 12px -2px rgba(0, 0, 0, 0.2),
+    -4px 0 12px -2px rgba(0, 0, 0, 0.2);
+}
+html.dark .kindle-toolbar {
+  background-color: var(--color-paper-100);
+}
+html.dark .kindle-toolbar button {
+  background-color: var(--color-paper-300);
+}
+html.dark .spinner {
+  border-color: var(--color-paper-400);
+  border-top-color: var(--color-ink-900);
+}
+html.dark ::selection {
+  background-color: var(--color-ember-600);
+  color: var(--color-paper-50);
+}
+
+/* ----- Page flip animation ----- */
+@keyframes page-flip-forward {
+  0% { opacity: 1; transform: translateX(0); }
+  40% { opacity: 0.4; transform: translateX(-12px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+@keyframes page-flip-back {
+  0% { opacity: 1; transform: translateX(0); }
+  40% { opacity: 0.4; transform: translateX(12px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+.kindle-flip-next {
+  animation: page-flip-forward 300ms ease-out;
+}
+.kindle-flip-prev {
+  animation: page-flip-back 300ms ease-out;
+}
+
+/* ----- AI Visualization watermark (Phase H) ----- */
+.viz-container {
+  position: relative;
+  border: 1px solid var(--color-line);
+  border-radius: 0.75rem;
+  padding: 2rem 1.5rem;
+  margin: 2rem 0;
+  background: var(--color-paper-100);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.viz-container::after {
+  content: 'NEXIGRATE';
+  position: absolute;
+  bottom: 0.5rem;
+  right: 0.75rem;
+  font-family: var(--font-sans);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--color-muted-400);
+  opacity: 0.5;
+}
+.viz-container svg {
+  width: 100%;
+  height: auto;
+  max-height: 500px;
+  display: block;
+  margin: 0 auto;
+}
+
+/* ----- Text-to-Speech button (Phase I) ----- */
+.tts-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--color-ink-800);
+  background: var(--color-paper-200);
+  border: 1px solid var(--color-line);
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.tts-btn:hover { background: var(--color-paper-300); }
+.tts-btn.playing {
+  background: var(--color-ember-500);
+  color: var(--color-paper-50);
+  border-color: var(--color-ember-500);
+}
+
+/* ----- Selection state for cards/buttons (onboarding, quiz, etc.) ----- */
+.card-selected {
+  border-color: var(--color-ember-500) !important;
+  box-shadow: 0 0 0 2px var(--color-ember-500), 0 0 0 4px rgba(179, 70, 31, 0.15);
+  background-color: var(--color-paper-200);
+}
+.card-selectable {
+  cursor: pointer;
+  transition: border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+}
+.card-selectable:hover:not(.card-selected) {
+  border-color: var(--color-muted-400);
+  background-color: var(--color-paper-100);
+}
+
+/* ----- Global button improvements ----- */
+.btn-primary:focus-visible,
+.btn-ghost:focus-visible,
+.btn-ghost-sm:focus-visible {
+  outline: 2px solid var(--color-ember-500);
+  outline-offset: 2px;
+}
+
+/* Loading state for buttons */
+.btn-loading {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* ----- Mobile responsive utilities ----- */
+@media (max-width: 639px) {
+  .paper-card {
+    border-radius: 0.5rem;
+  }
+  h1 {
+    font-size: 1.5rem !important;
+  }
+  .kindle-toolbar {
+    padding: 0.4rem 0.75rem;
+  }
+  /* Make content full width on mobile — no wasted margins */
+  .mx-auto {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+  /* Larger touch targets for mobile */
+  .btn-primary, .btn-ghost {
+    padding: 0.85rem 1.25rem;
+    font-size: 0.9rem;
+  }
+  .btn-ghost-sm {
+    padding: 0.5rem 0.9rem;
+  }
+  /* Better spacing for grid cards */
+  .paper-card {
+    padding: 1rem;
+  }
+}
+
+/* ----- Bottom mobile navigation bar ----- */
+.mobile-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 0.5rem 0 calc(0.5rem + env(safe-area-inset-bottom, 0px));
+  background-color: var(--color-paper-50);
+  border-top: 1px solid var(--color-line);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+html.dark .mobile-nav {
+  background-color: rgba(28, 26, 23, 0.95);
+}
+.mobile-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: var(--color-muted-500);
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.5rem;
+  transition: color 120ms ease;
+}
+.mobile-nav-item.active {
+  color: var(--color-ember-500);
+}
+.mobile-nav-item:hover {
+  color: var(--color-ink-900);
+}
+@media (min-width: 768px) {
+  .mobile-nav {
+    display: none;
+  }
+}
+
+/* ----- Responsive grid container ----- */
+.container-responsive {
+  width: 100%;
+  max-width: 80rem;
+  margin: 0 auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+@media (min-width: 640px) {
+  .container-responsive { padding-left: 1.5rem; padding-right: 1.5rem; }
+}
+@media (min-width: 1024px) {
+  .container-responsive { padding-left: 2rem; padding-right: 2rem; }
+}
+
+/* ----- Interactive card hover state (used in MCQ options, dashboard tiles) ----- */
+.paper-card {
+  transition: border-color 150ms ease, box-shadow 150ms ease, transform 100ms ease;
+}
+.paper-card:hover {
+  border-color: var(--color-muted-400);
+}
+.paper-card:active {
+  transform: scale(0.98);
+}
+
+/* ----- Link-card (clickable cards in dashboard, library etc.) ----- */
+a.paper-card:hover,
+button.paper-card:hover {
+  border-color: var(--color-ember-500);
+  box-shadow: 0 2px 8px -2px rgba(179, 70, 31, 0.12);
+}
+
+/* ----- Pill hover/active ----- */
+.pill {
+  transition: background-color 120ms ease, border-color 120ms ease, transform 80ms ease;
+}
+.pill:hover {
+  background-color: var(--color-paper-300);
+}
+.pill:active {
+  transform: scale(0.95);
+}
+
+/* ----- Disabled state for all custom buttons ----- */
+.btn-ghost:disabled,
+.btn-ghost-sm:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ----- Active/pressed feedback ----- */
+.btn-ghost:active:not(:disabled) {
+  transform: scale(0.97);
+  background-color: var(--color-paper-300);
+}
+.btn-ghost-sm:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+
+/* ----- Admin Panel Layout ----- */
+.admin-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+@media (min-width: 1024px) {
+  .admin-layout {
+    flex-direction: row;
+  }
+}
+.admin-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 1rem;
+  background-color: var(--color-paper-50);
+  border-bottom: 1px solid var(--color-line);
+}
+@media (min-width: 1024px) {
+  .admin-topbar {
+    position: fixed;
+    top: 0;
+    left: 15rem;
+    right: 0;
+    border-bottom: 1px solid var(--color-line);
+  }
+}
+.admin-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 15rem;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-paper-50);
+  border-right: 1px solid var(--color-line);
+  transform: translateX(-100%);
+  transition: transform 200ms ease;
+}
+.admin-sidebar-open {
+  transform: translateX(0);
+}
+@media (min-width: 1024px) {
+  .admin-sidebar {
+    transform: translateX(0);
+    position: fixed;
+  }
+}
+.admin-nav-link {
+  display: block;
+  padding: 0.45rem 0.75rem;
+  border-radius: 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-ink-800);
+  transition: background-color 100ms ease, color 100ms ease;
+}
+.admin-nav-link:hover {
+  background-color: var(--color-paper-200);
+  color: var(--color-ink-900);
+}
+.admin-nav-active {
+  background-color: var(--color-ink-900);
+  color: var(--color-paper-100);
+}
+.admin-nav-active:hover {
+  background-color: var(--color-ink-900);
+  color: var(--color-paper-100);
+}
+.admin-main {
+  flex: 1;
+  padding: 1.5rem 1rem 3rem;
+  max-width: 100%;
+}
+@media (min-width: 1024px) {
+  .admin-main {
+    margin-left: 15rem;
+    margin-top: 3.25rem;
+    padding: 2rem 2.5rem 3rem;
+  }
+}
+@media (min-width: 1280px) {
+  .admin-main {
+    padding: 2rem 3.5rem 3rem;
+  }
+}

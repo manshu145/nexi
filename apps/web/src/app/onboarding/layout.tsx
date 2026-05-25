@@ -8,9 +8,9 @@ export default function OnboardingLayout({ children }: { children: React.ReactNo
   const { user, loading } = useAuth();
   const router = useRouter();
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
-  if (loading || !user) return <main className="flex min-h-screen items-center justify-center"><div className="skeleton h-8 w-32" /></main>;
+  if (loading || !user) return <main className="flex min-h-screen items-center justify-center"><span className="spinner" /></main>;
   return (
-    <main className="mx-auto flex min-h-screen max-w-lg flex-col px-4 pt-8 pb-16">
+    <main className="mx-auto flex min-h-screen max-w-lg flex-col px-4 pt-8 pb-16 sm:px-6">
       <header className="mb-8 text-center"><Logo className="text-2xl" /></header>
       {children}
     </main>

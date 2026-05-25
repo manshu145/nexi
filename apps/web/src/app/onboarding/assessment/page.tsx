@@ -29,7 +29,7 @@ export default function AssessmentPage() {
       const exam = meRes.user.targetExam ?? 'jee-main';
       const res = await api.getAssessmentQuestions(exam, lang);
       setQuestions(res.questions); setPhase('quiz'); setTimer(30);
-    } catch (err) { setError(err instanceof Error ? err.message : 'Failed to load'); toast.error('Failed to load questions'); }
+    } catch (err) { setError(err instanceof Error ? err.message : 'Failed'); toast.error('Failed to load questions'); }
     finally { setLoading(false); }
   };
 
@@ -57,20 +57,19 @@ export default function AssessmentPage() {
 
   if (phase === 'intro') return (
     <div className="flex flex-col items-center">
-      <p className="text-xs font-medium text-slate-500 dark:text-slate-400">{ts('step', { current: 4, total: 5 })}</p>
-      <div className="mt-2 h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"><div className="h-full w-[80%] rounded-full bg-amber-500" /></div>
-      <h1 className="mt-8 text-center text-2xl font-bold text-slate-900 dark:text-white">{t('title')}</h1>
-      <p className="mt-2 text-center text-sm text-slate-500 dark:text-slate-400">{t('subtitle')}</p>
-      <div className="card mt-8 w-full"><p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">{t('description')}</p></div>
-      <button type="button" onClick={startAssessment} disabled={loading} className="btn-primary mt-6 w-full">{loading ? tc('loading') : t('startButton')}</button>
-      {error && <p className="mt-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
+      <div className="pill">{ts('step', { current: 4, total: 5 })}</div>
+      <div className="mt-4 flex w-full max-w-xs gap-1">{[1,2,3,4,5].map(s => <div key={s} className={`h-1.5 flex-1 rounded-full ${s <= 4 ? 'bg-ember-500' : 'bg-paper-300'}`} />)}</div>
+      <h1 className="font-serif mt-8 text-center text-2xl font-semibold text-ink-900">{t('title')}</h1>
+      <p className="mt-2 text-center text-sm text-muted-500">{t('subtitle')}</p>
+      <div className="paper-card mt-8 w-full p-5"><p className="text-sm text-ink-800 leading-relaxed">{t('description')}</p></div>
+      <button type="button" onClick={startAssessment} disabled={loading} className="btn-primary mt-6 w-full">{loading ? <><span className="spinner" /> {tc('loading')}</> : t('startButton')}</button>
+      {error && <div className="banner banner-error mt-4">{error}</div>}
     </div>
   );
 
   if (phase === 'submitting') return (
     <div className="flex min-h-[40vh] flex-col items-center justify-center">
-      <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-amber-500" />
-      <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">{t('submitting')}</p>
+      <span className="spinner" /><p className="mt-4 text-sm text-muted-500">{t('submitting')}</p>
     </div>
   );
 
@@ -79,20 +78,20 @@ export default function AssessmentPage() {
 
   return (
     <div className="flex flex-col items-center">
-      <p className="text-xs font-medium text-slate-500 dark:text-slate-400">{ts('step', { current: 4, total: 5 })}</p>
-      <div className="mt-2 h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"><div className="h-full w-[80%] rounded-full bg-amber-500" /></div>
+      <div className="pill">{ts('step', { current: 4, total: 5 })}</div>
+      <div className="mt-4 flex w-full max-w-xs gap-1">{[1,2,3,4,5].map(s => <div key={s} className={`h-1.5 flex-1 rounded-full ${s <= 4 ? 'bg-ember-500' : 'bg-paper-300'}`} />)}</div>
       <div className="mt-6 flex w-full items-center justify-between">
-        <p className="text-sm font-medium text-slate-600 dark:text-slate-300">{t('question', { current: idx+1, total: questions.length })}</p>
-        <span className={`rounded-full px-3 py-1 text-xs font-bold ${timer <= 10 ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300'}`}>{t('timeLeft', { seconds: timer })}</span>
+        <p className="text-sm font-medium text-ink-800">{t('question', { current: idx+1, total: questions.length })}</p>
+        <span className={`pill ${timer <= 10 ? 'pill-warn' : ''}`}>{t('timeLeft', { seconds: timer })}</span>
       </div>
-      <div className="mt-3 flex w-full gap-1">{questions.map((_, i) => <div key={i} className={`h-1 flex-1 rounded-full ${i < idx ? 'bg-amber-500' : i === idx ? 'bg-amber-300' : 'bg-slate-200 dark:bg-slate-700'}`} />)}</div>
-      <div className="card mt-6 w-full">
-        <p className="text-base font-medium leading-relaxed text-slate-900 dark:text-white">{q.question}</p>
+      <div className="mt-3 flex w-full gap-1">{questions.map((_, i) => <div key={i} className={`h-2.5 w-2.5 rounded-full ${i < idx ? 'bg-ember-500' : i === idx ? 'bg-ember-500' : answers.get(questions[i]?.id ?? '') ? 'bg-ember-500/40' : 'bg-paper-300'}`} />)}</div>
+      <div className="paper-card mt-6 w-full p-5">
+        <p className="text-sm font-medium leading-relaxed text-ink-900">{q.question}</p>
         <div className="mt-4 space-y-2">
           {q.options.map((opt) => (
             <button key={opt.key} type="button" onClick={() => setAnswers(new Map(answers).set(q.id, opt.key))}
-              className={`w-full rounded-lg border px-4 py-3 text-left text-sm transition-all ${sel === opt.key ? 'border-amber-500 bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-300' : 'border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700/50'}`}>
-              <span className="mr-2 font-bold">{opt.key}.</span>{opt.text}
+              className={`paper-card card-selectable w-full px-4 py-3 text-left text-sm ${sel === opt.key ? 'card-selected' : ''}`}>
+              <span className="font-medium">{opt.key}.</span> {opt.text}
             </button>
           ))}
         </div>

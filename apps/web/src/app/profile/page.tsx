@@ -9,7 +9,10 @@ import { useAuth } from '~/lib/auth-context';
 import { api, type StoredUser } from '~/lib/api';
 
 function Row({ label, value }: { label: string; value?: string | null }) {
-  return (<div className="flex items-center justify-between rounded-lg border border-slate-100 px-4 py-3 dark:border-slate-700/50"><span className="text-sm text-slate-500 dark:text-slate-400">{label}</span><span className="text-sm font-medium capitalize text-slate-900 dark:text-white">{value || 'Not set'}</span></div>);
+  return (<div className="flex items-center justify-between border-b border-line py-3">
+    <span className="text-sm text-muted-500">{label}</span>
+    <span className="text-sm font-medium capitalize text-ink-900">{value || '—'}</span>
+  </div>);
 }
 
 export default function ProfilePage() {
@@ -27,40 +30,40 @@ export default function ProfilePage() {
   const [school, setSchool] = useState('');
   const [aim, setAim] = useState('');
 
+
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
   useEffect(() => { if (!user) return; (async () => { try { const r = await api.me(); setMe(r.user); setName(r.user.name); setPhone(r.user.phone ?? ''); setDob(r.user.dob ?? ''); setSchool(r.user.school ?? ''); setAim(r.user.aim ?? ''); } catch { toast.error('Failed to load'); } finally { setPageLoading(false); } })(); }, [user]);
 
   const handleSave = async () => { setSaving(true); try { const r = await api.updateProfile({ name: name.trim(), phone: phone.trim()||undefined, dob: dob||undefined, school: school.trim()||undefined, aim: aim.trim()||undefined }); setMe(r.user); setEditing(false); toast.success(t('saved')); } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed'); } finally { setSaving(false); } };
 
-  if (loading || !user || pageLoading) return <main className="mx-auto flex min-h-screen max-w-lg flex-col px-4 pt-8"><div className="skeleton h-6 w-32" /><div className="mt-8 space-y-4">{[1,2,3,4,5].map(i=><div key={i} className="skeleton h-12 w-full rounded-lg"/>)}</div></main>;
-  const examName = me?.targetExam ? EXAM_BY_SLUG.get(me.targetExam)?.name ?? me.targetExam : 'Not set';
+  if (loading || !user || pageLoading) return <main className="flex min-h-dvh items-center justify-center"><span className="spinner" /></main>;
+  const examName = me?.targetExam ? EXAM_BY_SLUG.get(me.targetExam)?.name ?? me.targetExam : '—';
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-lg flex-col px-4 pt-8 pb-16">
-
-      <header className="flex items-center justify-between"><button type="button" onClick={() => router.back()} className="btn-ghost">&larr; {tc('back')}</button><Logo /></header>
-      <section className="mt-8 flex flex-col items-center">
-        <div className="h-20 w-20 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">{me?.photoURL ? <img src={me.photoURL} alt="" className="h-full w-full object-cover" /> : <span className="flex h-full w-full items-center justify-center text-2xl font-bold text-slate-500">{me?.name?.[0]?.toUpperCase()}</span>}</div>
-        <h1 className="mt-4 text-xl font-bold text-slate-900 dark:text-white">{me?.name}</h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400">{me?.email}</p>
+    <main className="mx-auto flex min-h-dvh max-w-lg flex-col px-5 pt-6 pb-16">
+      <header className="flex items-center justify-between"><button type="button" onClick={() => router.back()} className="btn-ghost-sm">← {tc('back')}</button><Logo /></header>
+      <section className="mt-6 text-center">
+        <div className="mx-auto h-16 w-16 overflow-hidden rounded-full bg-paper-200 border border-line">{me?.photoURL ? <img src={me.photoURL} alt="" className="h-full w-full object-cover" /> : <span className="flex h-full w-full items-center justify-center text-xl font-bold text-ink-800">{me?.name?.[0]?.toUpperCase()}</span>}</div>
+        <h1 className="font-serif mt-3 text-xl font-semibold text-ink-900">{me?.name}</h1>
+        <p className="text-sm text-muted-500">{me?.email}</p>
       </section>
       <section className="mt-8">
-        <div className="flex items-center justify-between"><h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">{t('personalInfo')}</h2>{!editing && <button type="button" onClick={() => setEditing(true)} className="btn-ghost text-xs text-amber-600">{t('editProfile')}</button>}</div>
+        <div className="flex items-center justify-between"><h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">{t('personalInfo')}</h2>{!editing && <button type="button" onClick={() => setEditing(true)} className="btn-ghost-sm text-ember-500">{t('editProfile')}</button>}</div>
         {editing ? (
           <div className="mt-4 space-y-3">
-            <div><label className="mb-1 block text-xs font-medium text-slate-500">{t('name')}</label><input type="text" value={name} onChange={e=>setName(e.target.value)} className="input" /></div>
-            <div><label className="mb-1 block text-xs font-medium text-slate-500">{t('phone')}</label><input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} className="input" /></div>
-            <div><label className="mb-1 block text-xs font-medium text-slate-500">{t('dob')}</label><input type="date" value={dob} onChange={e=>setDob(e.target.value)} className="input" /></div>
-            <div><label className="mb-1 block text-xs font-medium text-slate-500">{t('school')}</label><input type="text" value={school} onChange={e=>setSchool(e.target.value)} className="input" /></div>
-            <div><label className="mb-1 block text-xs font-medium text-slate-500">{t('aim')}</label><input type="text" value={aim} onChange={e=>setAim(e.target.value)} className="input" /></div>
-            <div className="flex gap-2 pt-2"><button type="button" onClick={handleSave} disabled={saving} className="btn-primary flex-1">{saving ? tc('loading') : tc('save')}</button><button type="button" onClick={() => setEditing(false)} className="btn-secondary flex-1">{tc('cancel')}</button></div>
+            <div><label className="mb-1 block text-xs font-medium text-muted-500">{t('name')}</label><input type="text" value={name} onChange={e=>setName(e.target.value)} className="input" /></div>
+            <div><label className="mb-1 block text-xs font-medium text-muted-500">{t('phone')}</label><input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} className="input" /></div>
+            <div><label className="mb-1 block text-xs font-medium text-muted-500">{t('dob')}</label><input type="date" value={dob} onChange={e=>setDob(e.target.value)} className="input" /></div>
+            <div><label className="mb-1 block text-xs font-medium text-muted-500">{t('school')}</label><input type="text" value={school} onChange={e=>setSchool(e.target.value)} className="input" /></div>
+            <div><label className="mb-1 block text-xs font-medium text-muted-500">{t('aim')}</label><input type="text" value={aim} onChange={e=>setAim(e.target.value)} className="input" /></div>
+            <div className="flex gap-2 pt-2"><button type="button" onClick={handleSave} disabled={saving} className="btn-primary flex-1">{saving ? tc('loading') : tc('save')}</button><button type="button" onClick={() => setEditing(false)} className="btn-ghost flex-1">{tc('cancel')}</button></div>
           </div>
         ) : (
-          <div className="mt-4 space-y-3"><Row label={t('name')} value={me?.name} /><Row label={t('email')} value={me?.email} /><Row label={t('phone')} value={me?.phone} /><Row label={t('dob')} value={me?.dob} /><Row label={t('school')} value={me?.school} /><Row label={t('aim')} value={me?.aim} /></div>
+          <div className="mt-3"><Row label={t('name')} value={me?.name} /><Row label={t('email')} value={me?.email} /><Row label={t('phone')} value={me?.phone} /><Row label={t('dob')} value={me?.dob} /><Row label={t('school')} value={me?.school} /><Row label={t('aim')} value={me?.aim} /></div>
         )}
       </section>
-      <section className="mt-8"><h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">{t('academicInfo')}</h2><div className="mt-4 space-y-3"><Row label={t('targetExam')} value={examName} /><Row label={t('level')} value={me?.onboardingLevel} /></div></section>
-      <section className="mt-8"><h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">{t('accountInfo')}</h2><div className="mt-4 space-y-3"><Row label={t('plan')} value={me?.plan} /><Row label={t('credits')} value={String(me?.credits ?? 0)} /><Row label={t('memberSince')} value={me?.createdAt ? new Date(me.createdAt).toLocaleDateString() : 'N/A'} /></div></section>
+      <section className="mt-6"><h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">{t('academicInfo')}</h2><div className="mt-3"><Row label={t('targetExam')} value={examName} /><Row label={t('level')} value={me?.onboardingLevel} /></div></section>
+      <section className="mt-6"><h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">{t('accountInfo')}</h2><div className="mt-3"><Row label={t('plan')} value={me?.plan} /><Row label={t('credits')} value={String(me?.credits ?? 0)} /><Row label={t('memberSince')} value={me?.createdAt ? new Date(me.createdAt).toLocaleDateString() : '—'} /></div></section>
     </main>
   );
 }

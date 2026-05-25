@@ -27,17 +27,17 @@ export default function ProfilePage() {
 
   return (
     <div className="flex flex-col items-center">
-      <p className="text-xs font-medium text-slate-500 dark:text-slate-400">{ts('step', { current: 2, total: 5 })}</p>
-      <div className="mt-2 h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"><div className="h-full w-[40%] rounded-full bg-amber-500" /></div>
-      <h1 className="mt-8 text-center text-2xl font-bold text-slate-900 dark:text-white">{t('title')}</h1>
-      <p className="mt-2 text-center text-sm text-slate-500 dark:text-slate-400">{t('subtitle')}</p>
+      <div className="pill">{ts('step', { current: 2, total: 5 })}</div>
+      <div className="mt-4 flex w-full max-w-xs gap-1">{[1,2,3,4,5].map(s => <div key={s} className={`h-1.5 flex-1 rounded-full ${s <= 2 ? 'bg-ember-500' : 'bg-paper-300'}`} />)}</div>
+      <h1 className="font-serif mt-8 text-center text-2xl font-semibold text-ink-900">{t('title')}</h1>
+      <p className="mt-2 text-center text-sm text-muted-500">{t('subtitle')}</p>
       <form onSubmit={handleSubmit} className="mt-8 w-full space-y-4">
-        <div><label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">{t('name')} *</label><input type="text" value={name} onChange={(e) => setName(e.target.value)} className="input" required /></div>
-        <div><label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">{t('dob')} *</label><input type="date" value={dob} onChange={(e) => setDob(e.target.value)} className="input" required /></div>
-        <div><label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">{t('phone')} *</label><input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91 98765 43210" className="input" required /></div>
-        <div><label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">{t('school')}</label><input type="text" value={school} onChange={(e) => setSchool(e.target.value)} className="input" /></div>
-        <div><label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">{t('aim')}</label><input type="text" value={aim} onChange={(e) => setAim(e.target.value)} placeholder={t('aimPlaceholder')} className="input" /></div>
-        <button type="submit" disabled={saving} className="btn-primary mt-6 w-full">{saving ? tc('loading') : tc('next')}</button>
+        <div><label className="mb-1 block text-sm font-medium text-ink-800">{t('name')} *</label><input type="text" value={name} onChange={(e) => setName(e.target.value)} className="input" required /></div>
+        <div><label className="mb-1 block text-sm font-medium text-ink-800">{t('dob')} *</label><input type="date" value={dob} onChange={(e) => setDob(e.target.value)} className="input" required /></div>
+        <div><label className="mb-1 block text-sm font-medium text-ink-800">{t('phone')} *</label><input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91 98765 43210" className="input" required /></div>
+        <div><label className="mb-1 block text-sm font-medium text-ink-800">{t('school')}</label><input type="text" value={school} onChange={(e) => setSchool(e.target.value)} className="input" /></div>
+        <div><label className="mb-1 block text-sm font-medium text-ink-800">{t('aim')}</label><input type="text" value={aim} onChange={(e) => setAim(e.target.value)} placeholder={t('aimPlaceholder')} className="input" /></div>
+        <div className="flex gap-3 pt-2"><button type="button" onClick={() => router.back()} className="btn-ghost flex-1">{tc('back')}</button><button type="submit" disabled={saving} className="btn-primary flex-1">{saving ? tc('loading') : tc('next')}</button></div>
       </form>
     </div>
   );
