@@ -54,7 +54,7 @@ export const api = {
 
   // Current Affairs
   async getCurrentAffairs(lang: 'en' | 'hi' = 'en') { return (await authedFetch(`/v1/current-affairs?lang=${lang}`)).json() as Promise<CurrentAffairsResponse>; },
-  async getCurrentAffairsQuiz() { return (await authedFetch('/v1/current-affairs/quiz')).json() as Promise<{date:string; questions:GeneratedMCQ[]}>; },
+  async getCurrentAffairsQuiz(lang: 'en' | 'hi' = 'en') { return (await authedFetch(`/v1/current-affairs/quiz?lang=${lang}`)).json() as Promise<{date:string; questions:GeneratedMCQ[]}>; },
   async submitCurrentAffairsQuiz(answers: number[], timeTaken: number) { return (await authedFetch('/v1/current-affairs/quiz/submit', { method: 'POST', body: JSON.stringify({ answers, timeTaken }) })).json() as Promise<QuizSubmitResult>; },
   async getCurrentAffairsLeaderboard() { return (await authedFetch('/v1/current-affairs/leaderboard')).json() as Promise<LeaderboardResponse>; },
 };

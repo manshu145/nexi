@@ -88,20 +88,22 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
     try {
       requireAuth(c);
       const today = new Date().toISOString().split('T')[0]!;
+      const language = (c.req.query('lang') as 'en' | 'hi') || 'en';
+      const quizKey = language === 'hi' ? `${today}-hi` : today;
 
-      // Check if quiz already generated for today
-      let questions = await deps.currentAffairs.getDailyQuiz(today);
+      // Check if quiz already generated for today + language
+      let questions = await deps.currentAffairs.getDailyQuiz(quizKey);
       if (!questions) {
         // Generate quiz from today's items
         const items = await deps.currentAffairs.getTodayItems(today);
         if (items.length === 0) {
           throw new HTTPException(404, { message: 'No current affairs available for today. Try again later.' });
         }
-        // Generate 20 MCQs from today's current affairs
+        // Generate 20 MCQs from today's current affairs in user's language
         const headlines = items.map(item => `[${item.category}] ${item.headline}: ${item.summary}`).join('\n');
-        questions = await deps.aiEngine.generateCurrentAffairsQuiz(headlines, 20);
-        await deps.currentAffairs.saveDailyQuiz(today, questions);
-        deps.logger.info('ca.quiz_generated', { date: today, count: questions.length });
+        questions = await deps.aiEngine.generateCurrentAffairsQuiz(headlines, 20, language);
+        await deps.currentAffairs.saveDailyQuiz(quizKey, questions);
+        deps.logger.info('ca.quiz_generated', { date: today, language, count: questions.length });
       }
 
       return c.json({ date: today, questions });
