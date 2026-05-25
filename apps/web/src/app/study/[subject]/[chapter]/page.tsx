@@ -58,7 +58,7 @@ export default function KindleReaderPage() {
         setCurrentPage(p => p + 1);
         setFlipDirection(null);
         setIsFlipping(false);
-      }, 450);
+      }, 250);
     }
   }, [currentPage, pages.length, isFlipping]);
 
@@ -70,7 +70,7 @@ export default function KindleReaderPage() {
         setCurrentPage(p => p - 1);
         setFlipDirection(null);
         setIsFlipping(false);
-      }, 450);
+      }, 250);
     }
   }, [currentPage, isFlipping]);
 
@@ -155,18 +155,47 @@ export default function KindleReaderPage() {
         const res = await api.getChapterDiagram(exam, subject, chapter);
         mermaidStr = res.mermaid;
       }
-      // Render mermaid to SVG, then convert to PNG
-      const mermaidLib = await import('mermaid');
-      mermaidLib.default.initialize({
-        startOnLoad: false,
-        theme: 'neutral',
-        fontFamily: 'Inter, system-ui, sans-serif',
-        flowchart: { curve: 'basis', padding: 16 },
-      });
-      const { svg } = await mermaidLib.default.render('mermaid-viz-' + Date.now(), mermaidStr);
-      // Convert SVG to PNG using canvas
-      const pngUrl = await svgToPng(svg, 1200, 800);
-      setVizImageUrl(pngUrl);
+
+      if (!mermaidStr || mermaidStr.trim().length < 10) {
+        throw new Error('AI returned empty diagram. Try again.');
+      }
+
+      // Try rendering mermaid to SVG
+      let svg: string;
+      try {
+        const mermaidLib = await import('mermaid');
+        mermaidLib.default.initialize({
+          startOnLoad: false,
+          theme: 'neutral',
+          fontFamily: 'Inter, system-ui, sans-serif',
+          flowchart: { curve: 'basis', padding: 16 },
+          securityLevel: 'loose',
+        });
+        const rendered = await mermaidLib.default.render('mermaid-viz-' + Date.now(), mermaidStr);
+        svg = rendered.svg;
+      } catch (mermaidErr) {
+        // Mermaid syntax error — show as SVG fallback with the raw text
+        console.warn('Mermaid render failed:', mermaidErr);
+        // Create a simple fallback SVG showing the diagram as text
+        svg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="400" viewBox="0 0 800 400">
+          <rect width="800" height="400" fill="#FBF6E8" rx="8"/>
+          <text x="400" y="30" text-anchor="middle" font-family="Inter, sans-serif" font-size="14" fill="#7A6F5C">Diagram (text view)</text>
+          <foreignObject x="40" y="50" width="720" height="340">
+            <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:monospace;font-size:11px;white-space:pre-wrap;color:#2A241A;padding:8px">${escapeHtml(mermaidStr)}</div>
+          </foreignObject>
+        </svg>`;
+      }
+
+      // Try converting to PNG, fallback to showing SVG directly
+      try {
+        const pngUrl = await svgToPng(svg, 1200, 800);
+        setVizImageUrl(pngUrl);
+      } catch {
+        // PNG conversion failed — show SVG as data URL
+        const svgBlob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+        const svgUrl = URL.createObjectURL(svgBlob);
+        setVizImageUrl(svgUrl);
+      }
     } catch (err) {
       setVizError(err instanceof Error ? err.message : 'Failed to generate visualization. Try again.');
     } finally {
@@ -238,13 +267,16 @@ export default function KindleReaderPage() {
     <div className="kindle-frame" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
       {/* Header */}
       <div className="kindle-header">
-        <button onClick={() => router.back()} className="btn-ghost-sm">← Back</button>
-        <span className="text-xs font-medium text-muted-500 truncate max-w-[40%]">{chapterName}</span>
-        <div className="flex items-center gap-2">
+        <button onClick={() => router.back()} className="btn-ghost-sm">←</button>
+        <span className="text-xs font-medium text-muted-500 truncate max-w-[35%] sm:max-w-[40%] hidden sm:inline">{chapterName}</span>
+        <span className="text-xs font-medium text-muted-500 sm:hidden">{currentPage + 1}/{pages.length}</span>
+        <div className="flex items-center gap-1.5 sm:gap-2">
           <button onClick={handleTTS} className={`tts-btn ${speaking ? 'playing' : ''}`}>
-            {speaking ? '⏸ Pause' : '🔊 Listen'}
+            {speaking ? '⏸' : '🔊'}<span className="hidden sm:inline"> {speaking ? 'Pause' : 'Listen'}</span>
           </button>
-          <button onClick={() => handleVisualize('page')} className="tts-btn">📊 Visualize</button>
+          <button onClick={() => handleVisualize('page')} className="tts-btn">
+            📊<span className="hidden sm:inline"> Visualize</span>
+          </button>
         </div>
       </div>
 
