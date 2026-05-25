@@ -294,18 +294,20 @@ export default function DailyQuizPage() {
         <h2 className="font-serif text-lg font-semibold text-ink-900 mb-3">{lang === 'hi' ? 'समीक्षा' : 'Review'}</h2>
         <div className="space-y-3 mb-6">
           {questions.map((q, i) => {
-            const isCorrect = answers[i] === result.correctAnswers[i];
+            const correctIdx = result.correctAnswers[i] ?? 0;
+            const userIdx = answers[i] ?? -1;
+            const isCorrect = userIdx === correctIdx;
             return (
               <div key={i} className={`paper-card p-4 border-l-4 ${isCorrect ? 'border-l-green-500' : 'border-l-red-400'}`}>
                 <p className="text-xs text-muted-500 mb-1">Q{i + 1} &middot; {q.category}</p>
                 <p className="text-sm font-medium text-ink-900">{q.question}</p>
                 <p className="mt-2 text-xs">
                   {isCorrect ? (
-                    <span className="text-green-700">✓ {q.options[result.correctAnswers[i]]}</span>
+                    <span className="text-green-700">✓ {q.options[correctIdx]}</span>
                   ) : (
                     <>
-                      <span className="text-red-600">✗ {answers[i] >= 0 ? q.options[answers[i]] : 'Skipped'}</span>
-                      <span className="ml-2 text-green-700">→ {q.options[result.correctAnswers[i]]}</span>
+                      <span className="text-red-600">✗ {userIdx >= 0 ? q.options[userIdx] : 'Skipped'}</span>
+                      <span className="ml-2 text-green-700">→ {q.options[correctIdx]}</span>
                     </>
                   )}
                 </p>
