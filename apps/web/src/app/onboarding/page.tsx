@@ -251,6 +251,14 @@ export default function OnboardingPage() {
           <p className="mt-2 text-sm text-muted-500">Answer these 15 questions so we can personalize your study plan.</p>
           {assessmentLoading ? (
             <div className="mt-8 text-center py-12"><span className="spinner" aria-hidden="true" /><p className="mt-3 text-sm text-muted-500">Generating assessment questions with AI...</p></div>
+          ) : error && assessmentMcqs.length === 0 ? (
+            <div className="mt-8 text-center py-12">
+              <p className="text-sm text-ember-600 mb-4">{error}</p>
+              <button onClick={() => { setError(null); startAssessment(); }} className="btn-primary">
+                Retry Assessment
+              </button>
+              <p className="mt-3 text-xs text-muted-500">AI service may be busy. Try again in a moment.</p>
+            </div>
           ) : assessmentMcqs.length > 0 ? (
             <div className="mt-6">
               <div className="flex items-center justify-between text-xs text-muted-500 mb-4">

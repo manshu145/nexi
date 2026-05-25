@@ -99,8 +99,11 @@ export function createAIEngine(config: AIEngineConfig) {
 
     async generateChapter(ctx: StudentContext, topic: string): Promise<GeneratedChapter> {
       const lang = ctx.language === 'hi' ? 'Hindi' : 'English';
-      const prompt = `Create a study chapter on "${topic}" for ${ctx.exam} exam.\nStudent level: ${ctx.skillLevel}\nLanguage: ${lang}\nReturn JSON: { "title": "...", "sections": [{ "heading": "...", "content": "..." }], "summary": "...", "keyPoints": ["..."] }`;
-      const systemPrompt = `You are an expert educator creating study material for Indian students. Write clearly with Indian context examples.`;
+      const langInstruction = ctx.language === 'hi'
+        ? 'IMPORTANT: Write ALL content (title, headings, section content, summary, key points) ENTIRELY in Hindi (Devanagari script). Do NOT write in English.'
+        : 'Write all content in English.';
+      const prompt = `Create a study chapter on "${topic}" for ${ctx.exam} exam.\nStudent level: ${ctx.skillLevel}\n${langInstruction}\nReturn JSON: { "title": "...", "sections": [{ "heading": "...", "content": "..." }], "summary": "...", "keyPoints": ["..."] }`;
+      const systemPrompt = `You are an expert educator creating study material for Indian students. ${langInstruction} Write clearly with Indian context examples.`;
 
       const raw = await callOpenAI(prompt, systemPrompt);
       return JSON.parse(raw) as GeneratedChapter;

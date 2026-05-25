@@ -64,6 +64,8 @@ function ChapterReaderContent() {
   const [loadingChapter, setLoadingChapter] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [fromCache, setFromCache] = useState(false);
+  const [flipDir, setFlipDir] = useState<'next' | 'prev' | null>(null);
+  const [flipKey, setFlipKey] = useState(0);
 
   useEffect(() => {
     if (!loading && !user) router.replace('/signin');
@@ -102,12 +104,16 @@ function ChapterReaderContent() {
 
   function nextSection() {
     if (chapter && currentSection < chapter.sections.length) {
+      setFlipDir('next');
+      setFlipKey(k => k + 1);
       setCurrentSection((s) => s + 1);
     }
   }
 
   function prevSection() {
     if (currentSection > 0) {
+      setFlipDir('prev');
+      setFlipKey(k => k + 1);
       setCurrentSection((s) => s - 1);
     }
   }
@@ -171,7 +177,7 @@ function ChapterReaderContent() {
       </h1>
 
       {/* Content */}
-      <div className="mt-6">
+      <div key={flipKey} className={`mt-6 ${flipDir === 'next' ? 'kindle-flip-next' : flipDir === 'prev' ? 'kindle-flip-prev' : ''}`}>
         {!isOnSummaryPage ? (
           <article>
             <h2 className="text-lg font-semibold text-ink-800">

@@ -251,15 +251,29 @@ export function makeAIRoutes(deps: AIRoutesDeps): Hono {
     const language = await getUserLanguage(principal.userId);
     const exam = await getUserExam(principal.userId);
     const lang = language === 'hi' ? 'Hindi' : 'English';
+    const langInstruction = language === 'hi'
+      ? 'IMPORTANT: Write ALL content (titles, summaries, examRelevance) in Hindi (Devanagari script).'
+      : 'Write all content in English.';
 
-    const prompt = `Generate 8-10 current affairs items relevant to "${exam}" exam preparation in India.
-Each item should be a real, recent, important news/event.
-Language: ${lang}
-Categories to cover: polity, economy, science, international, sports, environment, defence, technology
-Return JSON: { "items": [{ "title": "Short headline", "summary": "2-3 sentence exam-focused summary", "category": "polity|economy|science|international|sports|environment|defence|technology", "date": "${new Date().toISOString().slice(0, 10)}", "examRelevance": "Why this matters for the exam" }] }
-Generate AT LEAST 8 items covering different categories.`;
+    // Step 1: Try to fetch real news from RSS feeds
+    let newsContext = '';
+    try {
+      const { ingestNewsFeeds } = await import('../lib/rssIngestion.js');
+      const ingestion = await ingestNewsFeeds(logger);
+      if (ingestion.rawNotes && ingestion.itemsIngested > 0) {
+        newsContext = `\n\nHere are REAL news items from today (from PIB, RBI, The Hindu, Indian Express, etc.):\n\n${ingestion.rawNotes}\n\nUse ONLY these real items to generate the current affairs digest. Summarize them for exam preparation.`;
+        logger.info('ai.current-affairs.feeds-used', { items: ingestion.itemsIngested, feeds: ingestion.feedsSucceeded });
+      }
+    } catch (feedErr) {
+      logger.warn('ai.current-affairs.feed-fetch-failed', { error: (feedErr as Error).message });
+    }
 
-    const systemPrompt = `You are an Indian current affairs expert creating daily digest for competitive exam students. Write factual, concise, exam-relevant summaries. Return ONLY valid JSON.`;
+    // Step 2: AI generates structured digest from real news (or general knowledge if feeds fail)
+    const prompt = newsContext
+      ? `Based on the following REAL news items, generate 8-10 current affairs items relevant to "${exam}" exam preparation.${newsContext}\n\n${langInstruction}\nReturn JSON: { "items": [{ "title": "Short headline", "summary": "2-3 sentence exam-focused summary", "category": "polity|economy|science|international|sports|environment|defence|technology", "date": "${new Date().toISOString().slice(0, 10)}", "examRelevance": "Why this matters for the exam" }] }`
+      : `Generate 8-10 current affairs items relevant to "${exam}" exam preparation in India.\nEach item should be a real, recent, important news/event.\n${langInstruction}\nCategories to cover: polity, economy, science, international, sports, environment, defence, technology\nReturn JSON: { "items": [{ "title": "Short headline", "summary": "2-3 sentence exam-focused summary", "category": "polity|economy|science|international|sports|environment|defence|technology", "date": "${new Date().toISOString().slice(0, 10)}", "examRelevance": "Why this matters for the exam" }] }\nGenerate AT LEAST 8 items covering different categories.`;
+
+    const systemPrompt = `You are an Indian current affairs expert creating daily digest for competitive exam students. ${langInstruction} Write factual, concise, exam-relevant summaries. Cite sources where possible. Return ONLY valid JSON.`;
 
     try {
       const openaiKey = deps.openaiApiKey ?? '';

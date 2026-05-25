@@ -80,9 +80,22 @@ export default function CurrentAffairsPage() {
           </svg>
         </button>
         <h1 className="font-serif text-xl font-bold text-ink-900">
-          📰 {t('ca.title', 'Current Affairs')}
+          {t('ca.title', 'Current Affairs')}
         </h1>
       </header>
+
+      {/* Daily Quiz Banner */}
+      <button
+        onClick={() => router.push('/current-affairs/quiz')}
+        className="w-full paper-card p-4 mb-5 flex items-center gap-4 bg-gradient-to-r from-gold-50 to-paper-50 border-gold-200 hover:shadow-lg hover:-translate-y-0.5 transition-all group"
+      >
+        <span className="text-3xl">🏆</span>
+        <div className="text-left flex-1">
+          <p className="font-serif text-sm font-bold text-ink-900">{lang === 'hi' ? 'दैनिक क्विज़ — 20 सवाल' : 'Daily Quiz — 20 Questions'}</p>
+          <p className="text-xs text-muted-500 mt-0.5">{lang === 'hi' ? '10 मिनट, सबसे तेज़ विजेता बने!' : '10 min timer, be the fastest winner!'}</p>
+        </div>
+        <span className="text-ember-600 font-bold text-sm group-hover:translate-x-1 transition-transform">&rarr;</span>
+      </button>
 
       {/* Category filter pills */}
       <nav className="flex gap-2 overflow-x-auto pb-3 mb-5 -mx-1 px-1 scrollbar-hide">
