@@ -223,7 +223,7 @@ export default function DailyQuizPage() {
               onClick={() => setCurrentQ(i)}
               className={`h-6 w-6 rounded-full text-[10px] font-bold flex items-center justify-center transition-all ${
                 i === currentQ ? 'bg-ember-500 text-white scale-110' :
-                answers[i] >= 0 ? 'bg-gold-200 text-gold-800' :
+                (answers[i] ?? -1) >= 0 ? 'bg-gold-200 text-gold-800' :
                 'bg-paper-300 text-muted-500'
               }`}
             >
