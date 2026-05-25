@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '~/lib/auth-context';
 import { api, type ChapterContent } from '~/lib/api';
@@ -17,10 +17,13 @@ export default function KindleReaderPage() {
   const [currentPage, setCurrentPage] = useState(0);
   const [pageLoading, setPageLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [mermaid, setMermaid] = useState<string | null>(null);
+  const [mermaidCode, setMermaidCode] = useState<string | null>(null);
+  const [mermaidSvg, setMermaidSvg] = useState<string | null>(null);
   const [showViz, setShowViz] = useState(false);
+  const [vizLoading, setVizLoading] = useState(false);
   const [speaking, setSpeaking] = useState(false);
-  const [flipDir, setFlipDir] = useState<'next' | 'prev' | null>(null);
+  const [flipClass, setFlipClass] = useState('');
+  const touchStartX = useRef(0);
 
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
 
@@ -33,13 +36,9 @@ export default function KindleReaderPage() {
         const lang = (localStorage.getItem('nexigrate-language') as 'en'|'hi') || 'en';
         const res = await api.getChapterContent(exam, subject, chapter, lang);
         setContent(res.chapter);
-        // Split into pages (~400 words each)
-        const words = res.chapter.content.split(/\s+/);
-        const pgs: string[] = [];
-        for (let i = 0; i < words.length; i += 400) {
-          pgs.push(words.slice(i, i + 400).join(' '));
-        }
-        setPages(pgs.length > 0 ? pgs : [res.chapter.content]);
+        // Split by ## headings into pages (each section = 1 page)
+        const sections = res.chapter.content.split(/(?=^## )/m).filter(s => s.trim());
+        setPages(sections.length > 0 ? sections : [res.chapter.content]);
       } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load chapter'); }
       finally { setPageLoading(false); }
     })();
@@ -47,31 +46,40 @@ export default function KindleReaderPage() {
 
   const goNext = useCallback(() => {
     if (currentPage < pages.length - 1) {
-      setFlipDir('next');
-      setTimeout(() => { setCurrentPage(p => p + 1); setFlipDir(null); }, 300);
+      setFlipClass('kindle-flip-next');
+      setTimeout(() => { setCurrentPage(p => p + 1); setFlipClass(''); }, 300);
     }
   }, [currentPage, pages.length]);
 
   const goPrev = useCallback(() => {
     if (currentPage > 0) {
-      setFlipDir('prev');
-      setTimeout(() => { setCurrentPage(p => p - 1); setFlipDir(null); }, 300);
+      setFlipClass('kindle-flip-prev');
+      setTimeout(() => { setCurrentPage(p => p - 1); setFlipClass(''); }, 300);
     }
   }, [currentPage]);
 
   // Keyboard navigation
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowRight' || e.key === ' ') goNext();
-      if (e.key === 'ArrowLeft') goPrev();
+      if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); goNext(); }
+      if (e.key === 'ArrowLeft') { e.preventDefault(); goPrev(); }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [goNext, goPrev]);
 
+  // Swipe gesture
+  const handleTouchStart = (e: React.TouchEvent) => { touchStartX.current = e.touches[0]?.clientX ?? 0; };
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    const diff = (e.changedTouches[0]?.clientX ?? 0) - touchStartX.current;
+    if (diff < -50) goNext();
+    if (diff > 50) goPrev();
+  };
+
   const handleTTS = () => {
     if (speaking) { window.speechSynthesis.cancel(); setSpeaking(false); return; }
-    const utterance = new SpeechSynthesisUtterance(pages[currentPage] ?? '');
+    const text = pages[currentPage]?.replace(/[#*`$\[\]]/g, '') ?? '';
+    const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = (localStorage.getItem('nexigrate-language') ?? 'en') === 'hi' ? 'hi-IN' : 'en-IN';
     utterance.rate = 0.9;
     utterance.onend = () => setSpeaking(false);
@@ -80,14 +88,20 @@ export default function KindleReaderPage() {
   };
 
   const handleVisualize = async () => {
-    if (mermaid) { setShowViz(true); return; }
+    if (mermaidSvg) { setShowViz(true); return; }
+    setVizLoading(true); setShowViz(true);
     try {
       const meRes = await api.me();
       const exam = meRes.user.targetExam ?? 'jee-main';
       const res = await api.getChapterDiagram(exam, subject, chapter);
-      setMermaid(res.mermaid);
-      setShowViz(true);
-    } catch { /* ignore */ }
+      setMermaidCode(res.mermaid);
+      // Render mermaid to SVG
+      const mermaidLib = await import('mermaid');
+      mermaidLib.default.initialize({ startOnLoad: false, theme: 'neutral', fontFamily: 'Inter, sans-serif' });
+      const { svg } = await mermaidLib.default.render('mermaid-viz', res.mermaid);
+      setMermaidSvg(svg);
+    } catch { setMermaidSvg('<p style="text-align:center;color:#7A6F5C">Failed to generate diagram</p>'); }
+    finally { setVizLoading(false); }
   };
 
   if (loading || !user || pageLoading) return (
@@ -105,11 +119,11 @@ export default function KindleReaderPage() {
   const progressPct = pages.length > 0 ? Math.round(((currentPage + 1) / pages.length) * 100) : 0;
 
   return (
-    <div className="kindle-frame">
+    <div className="kindle-frame" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
       {/* Header */}
       <div className="kindle-header">
         <button onClick={() => router.back()} className="btn-ghost-sm">← Back</button>
-        <span className="text-xs font-medium text-muted-500 truncate max-w-[50%]">{chapterName}</span>
+        <span className="text-xs font-medium text-muted-500 truncate max-w-[40%]">{chapterName}</span>
         <div className="flex items-center gap-2">
           <button onClick={handleTTS} className={`tts-btn ${speaking ? 'playing' : ''}`}>
             {speaking ? '⏸ Pause' : '🔊 Listen'}
@@ -118,11 +132,11 @@ export default function KindleReaderPage() {
         </div>
       </div>
 
-      {/* Book content */}
+      {/* Book content with page flip */}
       <div className="kindle-book-wrapper">
-        <div className={`kindle-page ${flipDir === 'next' ? 'kindle-flip-next' : flipDir === 'prev' ? 'kindle-flip-prev' : ''}`}>
+        <div className={`kindle-page ${flipClass}`}>
           <div className="reader">
-            <div className="reader-body" dangerouslySetInnerHTML={{ __html: markdownToHtml(pages[currentPage] ?? '') }} />
+            <div className="reader-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(pages[currentPage] ?? '') }} />
           </div>
         </div>
       </div>
@@ -133,18 +147,22 @@ export default function KindleReaderPage() {
         <button onClick={goPrev} disabled={currentPage === 0}>← Prev</button>
         <span className="kindle-page-indicator">{currentPage + 1} / {pages.length}</span>
         {currentPage === pages.length - 1 ? (
-          <button onClick={() => router.push(`/study/${subject}/${chapter}/quiz`)} className="!bg-ember-500 !text-paper-50 !border-ember-500">Take Quiz →</button>
+          <button onClick={() => router.push(`/study/${subject}/${chapter}/quiz`)} style={{ backgroundColor: 'var(--color-ember-500)', color: 'var(--color-paper-50)', borderColor: 'var(--color-ember-500)' }}>Take Quiz →</button>
         ) : (
           <button onClick={goNext}>Next →</button>
         )}
       </div>
 
       {/* Visualization Modal */}
-      {showViz && mermaid && (
+      {showViz && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/60 p-4" onClick={() => setShowViz(false)}>
-          <div className="viz-container max-w-2xl w-full max-h-[80vh] overflow-auto" onClick={e => e.stopPropagation()}>
-            <pre className="text-xs text-muted-500 whitespace-pre-wrap">{mermaid}</pre>
-            <p className="mt-4 text-xs text-muted-400 text-center">Mermaid diagram (render with mermaid.js)</p>
+          <div className="viz-container max-w-2xl w-full max-h-[80vh] overflow-auto bg-paper-50 rounded-xl p-6" onClick={e => e.stopPropagation()}>
+            {vizLoading ? (
+              <div className="flex flex-col items-center justify-center py-12"><span className="spinner" /><p className="mt-3 text-sm text-muted-500">Generating visualization...</p></div>
+            ) : mermaidSvg ? (
+              <div dangerouslySetInnerHTML={{ __html: mermaidSvg }} />
+            ) : null}
+            <button onClick={() => setShowViz(false)} className="btn-ghost-sm mt-4 mx-auto block">Close</button>
           </div>
         </div>
       )}
@@ -152,16 +170,30 @@ export default function KindleReaderPage() {
   );
 }
 
-/** Minimal markdown → HTML (headings, bold, paragraphs). */
-function markdownToHtml(md: string): string {
+/** Render markdown to styled HTML for the Kindle reader */
+function renderMarkdown(md: string): string {
   return md
-    .replace(/^### (.+)$/gm, '<h3 class="reader-heading" style="font-size:1.2rem">$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2 class="reader-heading">$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1 class="reader-heading" style="font-size:1.6rem">$1</h1>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    // Headings
+    .replace(/^### (.+)$/gm, '<h3 class="reader-heading" style="font-size:1.15rem;margin-top:1.5rem">$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2 class="reader-heading" style="margin-top:2rem">$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1 class="reader-heading" style="font-size:1.6rem;margin-top:2rem">$1</h1>')
+    // Bold and italic
+    .replace(/\*\*(.+?)\*\*/g, '<strong style="color:var(--color-ink-900)">$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/\$(.+?)\$/g, '<code>$1</code>')
-    .replace(/\n\n/g, '</p><p class="reader-paragraph">')
+    // Inline code / formulas
+    .replace(/\$(.+?)\$/g, '<code style="background:var(--color-paper-200);border:1px solid var(--color-line);border-radius:0.3rem;padding:0.1rem 0.35rem;font-size:0.9em">$1</code>')
+    .replace(/`(.+?)`/g, '<code style="background:var(--color-paper-200);border:1px solid var(--color-line);border-radius:0.3rem;padding:0.1rem 0.35rem;font-size:0.9em">$1</code>')
+    // Lists
+    .replace(/^- (.+)$/gm, '<li style="margin-left:1.5rem;margin-bottom:0.5rem;list-style-type:disc">$1</li>')
+    .replace(/^(\d+)\. (.+)$/gm, '<li style="margin-left:1.5rem;margin-bottom:0.5rem;list-style-type:decimal">$2</li>')
+    // Paragraphs (double newline)
+    .replace(/\n\n/g, '</p><p class="reader-paragraph" style="margin-top:1rem;text-indent:0">')
+    // Single newlines within paragraphs
+    .replace(/\n/g, '<br/>')
+    // Wrap in paragraph
     .replace(/^/, '<p class="reader-paragraph reader-dropcap">')
-    .replace(/$/, '</p>');
+    .replace(/$/, '</p>')
+    // Clean up empty paragraphs
+    .replace(/<p class="reader-paragraph"[^>]*><\/p>/g, '')
+    .replace(/<p class="reader-paragraph"[^>]*><br\/><\/p>/g, '');
 }
