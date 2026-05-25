@@ -139,15 +139,22 @@ Respond ONLY with valid JSON:
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: 2000, responseMimeType: 'application/json' },
+          generationConfig: { temperature: 0.3, maxOutputTokens: 2000 },
         }),
       });
 
-      if (!res.ok) { logger.warn('rss.gemini_error', { status: res.status }); continue; }
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        logger.warn('rss.gemini_error', { status: res.status, body: errText.slice(0, 200) });
+        continue;
+      }
 
       const data = await res.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-      const parsed = JSON.parse(text) as { items: { id: string; headline: string; summary: string; category: CurrentAffairsCategory; sources: string[]; factChecked: boolean }[] };
+      const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+      // Extract JSON from response (may have markdown fences)
+      const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) { logger.warn('rss.gemini_no_json', { raw: rawText.slice(0, 200) }); continue; }
+      const parsed = JSON.parse(jsonMatch[0]) as { items: { id: string; headline: string; summary: string; category: CurrentAffairsCategory; sources: string[]; factChecked: boolean }[] };
 
       for (const item of (parsed.items ?? [])) {
         allSummarized.push({
@@ -201,13 +208,15 @@ export async function ingestCurrentAffairs(
     return !isNaN(d) ? d > oneDayAgo : true;
   }).slice(0, 50); // Max 50 items to summarize
 
-  // 3. AI summarize (or fallback to raw items if no Gemini key)
+  // 3. AI summarize (or fallback to raw items if AI fails)
   let itemsToSave: CurrentAffairsStoreItem[];
-  if (env.GEMINI_API_KEY) {
-    itemsToSave = await summarizeItems(recentItems, env, logger);
+  const summarized = await summarizeItems(recentItems, env, logger);
+  
+  if (summarized.length > 0) {
+    itemsToSave = summarized;
   } else {
     // Fallback: save raw items without AI summarization
-    logger.info('rss.no_gemini_key_fallback', { message: 'Saving raw items without AI summarization' });
+    logger.info('rss.fallback_raw', { message: 'AI summarization returned 0 items, saving raw' });
     const today = new Date().toISOString().split('T')[0]!;
     itemsToSave = recentItems.slice(0, 30).map((item, i) => ({
       id: `${today}-raw-${i}-${Math.random().toString(36).slice(2, 6)}`,
