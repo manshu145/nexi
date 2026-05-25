@@ -21,6 +21,7 @@ export interface AIEngine {
   generateMermaidDiagram(chapter: string, subject: string, exam: string): Promise<string>;
   generateSyllabus(examSlug: string, examName: string, level: string): Promise<GeneratedSyllabus>;
   generateSelectionDiagram(selectedText: string, subject: string, language: 'en' | 'hi'): Promise<string>;
+  generateCurrentAffairsQuiz(headlines: string, count?: number): Promise<GeneratedMCQ[]>;
 }
 
 export function createAIEngine(env: Env, logger: Logger): AIEngine {
@@ -143,6 +144,17 @@ export function createAIEngine(env: Env, logger: Logger): AIEngine {
         logger.info('ai.selection_diagram_openai_fallback', { subject, language });
         return raw.replace(/```mermaid\n?/g, '').replace(/```\n?/g, '').trim();
       } catch (err) { logger.error('ai.selection_diagram_error', { error: err instanceof Error ? err.message : String(err) }); throw new Error('Failed to generate diagram'); }
+    },
+
+    async generateCurrentAffairsQuiz(headlines: string, count = 20) {
+      const prompt = `You are a current affairs quiz generator for Indian competitive exams (UPSC, SSC, Banking).\n\nBased on today's news headlines below, generate exactly ${count} MCQs.\n\nHeadlines:\n${headlines.slice(0, 3000)}\n\nRequirements:\n- Questions should test factual recall from these headlines\n- 4 options (A-D), one correct answer\n- Mix difficulty: 7 easy, 8 medium, 5 hard\n- Include brief explanation for correct answer\n- Cover different categories (national, international, economy, science, sports)\n\nRespond ONLY with JSON:\n{"questions":[{"id":"ca-q1","question":"...","options":[{"key":"A","text":"..."},{"key":"B","text":"..."},{"key":"C","text":"..."},{"key":"D","text":"..."}],"correctOption":"A","explanation":"...","difficulty":"easy","subject":"current-affairs","topic":"national"}]}`;
+      try {
+        if (!groq) throw new Error("GROQ_API_KEY not configured");
+        const c = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: 6000, response_format: { type: 'json_object' } });
+        const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
+        logger.info('ai.ca_quiz_generated', { count: parsed.questions?.length ?? 0 });
+        return parsed.questions ?? [];
+      } catch (err) { logger.error('ai.ca_quiz_error', { error: err instanceof Error ? err.message : String(err) }); throw new Error('Failed to generate current affairs quiz'); }
     },
   };
 }

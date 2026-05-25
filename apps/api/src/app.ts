@@ -6,14 +6,16 @@ import { getFirebaseAuth, getFirebaseFirestore } from './lib/firebaseAdmin.js';
 import { FirestoreUserStore, InMemoryUserStore, type UserStore } from './lib/userStore.js';
 import { createAIEngine, type AIEngine } from './lib/aiEngine.js';
 import { InMemoryChapterStore, FirestoreChapterStore, type ChapterStore } from './lib/chapterStore.js';
+import { InMemoryCurrentAffairsStore, FirestoreCurrentAffairsStore, type CurrentAffairsStore } from './lib/currentAffairsStore.js';
 import { authMiddleware } from './auth.js';
 import type { Logger } from './logger.js';
 import { makeHealthRoutes } from './routes/health.js';
 import { makeUsersRoutes } from './routes/users.js';
 import { makeAssessmentRoutes } from './routes/assessment.js';
 import { makeStudyRoutes } from './routes/study.js';
+import { makeCurrentAffairsRoutes } from './routes/currentAffairs.js';
 
-export interface AppDeps { env: Env; logger: Logger; users?: UserStore; aiEngine?: AIEngine; chapters?: ChapterStore; }
+export interface AppDeps { env: Env; logger: Logger; users?: UserStore; aiEngine?: AIEngine; chapters?: ChapterStore; currentAffairs?: CurrentAffairsStore; }
 
 export function buildApp(deps: AppDeps): Hono {
   const { env, logger } = deps;
@@ -22,6 +24,7 @@ export function buildApp(deps: AppDeps): Hono {
   const users = deps.users ?? (fs ? new FirestoreUserStore(fs) : new InMemoryUserStore());
   const aiEngine = deps.aiEngine ?? createAIEngine(env, logger);
   const chapters = deps.chapters ?? (fs ? new FirestoreChapterStore(fs) : new InMemoryChapterStore());
+  const currentAffairs = deps.currentAffairs ?? (fs ? new FirestoreCurrentAffairsStore(fs) : new InMemoryCurrentAffairsStore());
   const firebaseAuth = getFirebaseAuth(env);
 
   const app = new Hono();
@@ -49,6 +52,7 @@ export function buildApp(deps: AppDeps): Hono {
   v1.route('/users', makeUsersRoutes({ users, logger }));
   v1.route('/assessment', makeAssessmentRoutes({ users, aiEngine, logger }));
   v1.route('/study', makeStudyRoutes({ users, aiEngine, chapters, logger }));
+  v1.route('/current-affairs', makeCurrentAffairsRoutes({ users, aiEngine, currentAffairs, env, logger }));
   app.route('/v1', v1);
 
   app.onError((err, c) => {
