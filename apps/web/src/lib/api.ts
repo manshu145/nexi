@@ -53,7 +53,7 @@ export const api = {
   async getStudyProgress(examSlug: string) { return (await authedFetch(`/v1/study/progress/${examSlug}`)).json() as Promise<{progress:StudyProgress}>; },
 
   // Current Affairs
-  async getCurrentAffairs() { return (await authedFetch('/v1/current-affairs')).json() as Promise<CurrentAffairsResponse>; },
+  async getCurrentAffairs(lang: 'en' | 'hi' = 'en') { return (await authedFetch(`/v1/current-affairs?lang=${lang}`)).json() as Promise<CurrentAffairsResponse>; },
   async getCurrentAffairsQuiz() { return (await authedFetch('/v1/current-affairs/quiz')).json() as Promise<{date:string; questions:GeneratedMCQ[]}>; },
   async submitCurrentAffairsQuiz(answers: number[], timeTaken: number) { return (await authedFetch('/v1/current-affairs/quiz/submit', { method: 'POST', body: JSON.stringify({ answers, timeTaken }) })).json() as Promise<QuizSubmitResult>; },
   async getCurrentAffairsLeaderboard() { return (await authedFetch('/v1/current-affairs/leaderboard')).json() as Promise<LeaderboardResponse>; },

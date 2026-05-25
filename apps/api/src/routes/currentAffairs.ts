@@ -8,6 +8,39 @@ import type { CurrentAffairsStore } from '../lib/currentAffairsStore.js';
 import type { Env } from '../env.js';
 import { ingestCurrentAffairs } from '../lib/rssIngestion.js';
 
+/**
+ * Deduplicate current affairs items by normalized headline.
+ */
+function deduplicateItems(items: any[]): any[] {
+  if (items.length === 0) return [];
+  const seen = new Map<string, any>();
+  for (const item of items) {
+    const normalizedKey = normalizeHeadline(item.headline || '');
+    if (!normalizedKey) continue;
+    const existing = seen.get(normalizedKey);
+    if (!existing) {
+      seen.set(normalizedKey, item);
+    } else {
+      const existingSummary = existing.summary || existing.body || '';
+      const newSummary = item.summary || item.body || '';
+      if (newSummary.length > existingSummary.length) {
+        const mergedSources = [...new Set([...(existing.sources || []), ...(item.sources || [])])];
+        seen.set(normalizedKey, { ...item, sources: mergedSources, factChecked: existing.factChecked || item.factChecked });
+      } else {
+        existing.sources = [...new Set([...(existing.sources || []), ...(item.sources || [])])];
+        if (item.factChecked) existing.factChecked = true;
+      }
+    }
+  }
+  return Array.from(seen.values());
+}
+
+function normalizeHeadline(headline: string): string {
+  const stopWords = new Set(['the', 'a', 'an', 'is', 'are', 'was', 'were', 'in', 'on', 'at', 'to', 'for', 'of', 'and', 'or', 'but', 'not', 'with', 'from', 'by', 'as', 'it', 'its', 'that', 'this', 'has', 'have', 'had', 'be', 'been', 'will', 'can', 'may']);
+  const words = headline.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(w => w.length > 2 && !stopWords.has(w));
+  return words.slice(0, 8).join(' ');
+}
+
 export interface CurrentAffairsRoutesDeps {
   users: UserStore;
   aiEngine: AIEngine;
@@ -24,10 +57,30 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
     try {
       requireAuth(c);
       const today = new Date().toISOString().split('T')[0]!;
+      const language = (c.req.query('lang') as 'en' | 'hi') || 'en';
       let items: any[] = [];
       let winner: any = null;
       try { items = await deps.currentAffairs.getTodayItems(today); } catch (e) { deps.logger.error('ca.getTodayItems_error', { error: String(e) }); }
       try { winner = await deps.currentAffairs.getYesterdayWinner(); } catch (e) { deps.logger.error('ca.getWinner_error', { error: String(e) }); }
+
+      items = deduplicateItems(items);
+
+      // Translate to Hindi if requested
+      if (language === 'hi' && items.length > 0) {
+        try {
+          const toTranslate = items.map((it: any) => ({ headline: it.headline, summary: it.summary || it.body || '' }));
+          const translated = await deps.aiEngine.translateToHindi(toTranslate);
+          if (translated.length === items.length) {
+            items = items.map((it: any, i: number) => ({
+              ...it,
+              headline: translated[i]!.headline || it.headline,
+              summary: translated[i]!.summary || it.summary || it.body,
+              body: translated[i]!.summary || it.body,
+            }));
+          }
+        } catch (e) { deps.logger.warn('ca.translate_error', { error: e instanceof Error ? e.message : String(e) }); }
+      }
+
       return c.json({ date: today, items, yesterdayWinner: winner });
     } catch (e) {
       if (e instanceof HTTPException) throw e;
