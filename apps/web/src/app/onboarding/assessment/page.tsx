@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { api, type GeneratedMCQ } from '~/lib/api';
 
-type Phase = 'intro' | 'quiz' | 'submitting';
+type Phase = 'intro' | 'quiz' | 'submitting' | 'error';
 
 export default function AssessmentPage() {
   const t = useTranslations('onboarding.assessment');
@@ -22,15 +22,22 @@ export default function AssessmentPage() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const startAssessment = async () => {
-    setLoading(true); setError(null);
+    setLoading(true); setError(null); setPhase('intro');
     try {
       const lang = (typeof window !== 'undefined' ? localStorage.getItem('nexigrate-language') as 'en'|'hi' : null) || 'en';
       const meRes = await api.me();
       const exam = meRes.user.targetExam ?? 'jee-main';
       const res = await api.getAssessmentQuestions(exam, lang);
+      if (!res.questions || res.questions.length === 0) {
+        throw new Error('No questions received from AI. Service may be busy.');
+      }
       setQuestions(res.questions); setPhase('quiz'); setTimer(30);
-    } catch (err) { setError(err instanceof Error ? err.message : 'Failed'); toast.error('Failed to load questions'); }
-    finally { setLoading(false); }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to generate questions';
+      setError(msg);
+      setPhase('error');
+      toast.error(msg);
+    } finally { setLoading(false); }
   };
 
   const submitAssessment = useCallback(async () => {
@@ -55,6 +62,7 @@ export default function AssessmentPage() {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [phase, idx, handleNext]);
 
+  // INTRO phase
   if (phase === 'intro') return (
     <div className="flex flex-col items-center">
       <div className="pill">{ts('step', { current: 4, total: 5 })}</div>
@@ -62,17 +70,38 @@ export default function AssessmentPage() {
       <h1 className="font-serif mt-8 text-center text-2xl font-semibold text-ink-900">{t('title')}</h1>
       <p className="mt-2 text-center text-sm text-muted-500">{t('subtitle')}</p>
       <div className="paper-card mt-8 w-full p-5"><p className="text-sm text-ink-800 leading-relaxed">{t('description')}</p></div>
-      <button type="button" onClick={startAssessment} disabled={loading} className="btn-primary mt-6 w-full">{loading ? <><span className="spinner" /> {tc('loading')}</> : t('startButton')}</button>
-      {error && <div className="banner banner-error mt-4">{error}</div>}
+      <button type="button" onClick={startAssessment} disabled={loading} className="btn-primary mt-6 w-full">
+        {loading ? <><span className="spinner" /> {tc('loading')}</> : t('startButton')}
+      </button>
     </div>
   );
 
+  // ERROR phase — AI service unavailable
+  if (phase === 'error') return (
+    <div className="flex flex-col items-center">
+      <div className="pill">{ts('step', { current: 4, total: 5 })}</div>
+      <div className="mt-4 flex w-full max-w-xs gap-1">{[1,2,3,4,5].map(s => <div key={s} className={`h-1.5 flex-1 rounded-full ${s <= 4 ? 'bg-ember-500' : 'bg-paper-300'}`} />)}</div>
+      <div className="mt-12 text-center">
+        <span className="text-4xl">⚠️</span>
+        <h2 className="font-serif mt-4 text-xl font-semibold text-ink-900">Assessment could not be generated</h2>
+        <div className="banner banner-error mt-4">{error}</div>
+        <p className="mt-3 text-xs text-muted-500">AI service may be busy. Try again in a moment.</p>
+      </div>
+      <div className="mt-8 flex w-full flex-col gap-3">
+        <button type="button" onClick={startAssessment} className="btn-primary w-full">Retry Assessment</button>
+        <button type="button" onClick={() => router.push('/onboarding/complete')} className="btn-ghost w-full">Skip for now →</button>
+      </div>
+    </div>
+  );
+
+  // SUBMITTING phase
   if (phase === 'submitting') return (
     <div className="flex min-h-[40vh] flex-col items-center justify-center">
       <span className="spinner" /><p className="mt-4 text-sm text-muted-500">{t('submitting')}</p>
     </div>
   );
 
+  // QUIZ phase
   const q = questions[idx]; if (!q) return null;
   const sel = answers.get(q.id);
 
