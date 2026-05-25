@@ -89,7 +89,6 @@ export default function AssessmentPage() {
       </div>
       <div className="mt-8 flex w-full flex-col gap-3">
         <button type="button" onClick={startAssessment} className="btn-primary w-full">Retry Assessment</button>
-        <button type="button" onClick={() => router.push('/onboarding/complete')} className="btn-ghost w-full">Skip for now →</button>
       </div>
     </div>
   );
