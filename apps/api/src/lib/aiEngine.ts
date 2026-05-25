@@ -23,6 +23,7 @@ export interface AIEngine {
   generateSelectionDiagram(selectedText: string, subject: string, language: 'en' | 'hi'): Promise<string>;
   generateCurrentAffairsQuiz(headlines: string, count?: number, language?: 'en' | 'hi'): Promise<GeneratedMCQ[]>;
   translateToHindi(items: { headline: string; summary: string }[]): Promise<{ headline: string; summary: string }[]>;
+  chat(messages: { role: 'user' | 'assistant'; content: string }[], userContext: { exam: string; level: string; language: 'en' | 'hi' }): Promise<string>;
 }
 
 export function createAIEngine(env: Env, logger: Logger): AIEngine {
@@ -43,13 +44,35 @@ export function createAIEngine(env: Env, logger: Logger): AIEngine {
     async generateAssessmentQuestions(examSlug, language = 'en', count = 15) {
       const langInstr = language === 'hi' ? 'Generate all questions and options in Hindi (Devanagari script).' : 'Generate all questions and options in English.';
       const prompt = `You are an expert Indian competitive exam question creator.\n\nGenerate exactly ${count} MCQs for "${examSlug}" exam.\n${langInstr}\n\nRequirements:\n- Mix: 5 easy, 5 medium, 5 hard\n- 4 options (A-D), correct answer, brief explanation\n- Different subjects/topics\n\nRespond ONLY with JSON:\n{"questions":[{"id":"q1","question":"...","options":[{"key":"A","text":"..."},{"key":"B","text":"..."},{"key":"C","text":"..."},{"key":"D","text":"..."}],"correctOption":"A","explanation":"...","difficulty":"easy","subject":"...","topic":"..."}]}`;
-      try {
-        if (!groq) throw new Error('GROQ_API_KEY not configured');
-        const completion = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 4096, response_format: { type: 'json_object' } });
-        const parsed = JSON.parse(completion.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
-        logger.info('ai.questions_generated', { examSlug, language, count: parsed.questions?.length ?? 0 });
-        return parsed.questions ?? [];
-      } catch (err) { logger.error('ai.questions_error', { error: err instanceof Error ? err.message : String(err) }); throw new Error('Failed to generate assessment questions'); }
+      const errors: string[] = [];
+      // Attempt 1: Groq (fast)
+      if (groq) {
+        try {
+          const completion = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 4096, response_format: { type: 'json_object' } });
+          const parsed = JSON.parse(completion.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
+          if (parsed.questions?.length) { logger.info('ai.questions_generated', { provider: 'groq', examSlug, language, count: parsed.questions.length }); return parsed.questions; }
+          errors.push('Groq returned empty');
+        } catch (err) { errors.push(`Groq: ${err instanceof Error ? err.message : String(err)}`); }
+      } else { errors.push('Groq not configured'); }
+      // Attempt 2: OpenAI
+      if (openai) {
+        try {
+          const completion = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 4096, response_format: { type: 'json_object' } });
+          const parsed = JSON.parse(completion.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
+          if (parsed.questions?.length) { logger.info('ai.questions_generated', { provider: 'openai', examSlug, language, count: parsed.questions.length }); return parsed.questions; }
+          errors.push('OpenAI returned empty');
+        } catch (err) { errors.push(`OpenAI: ${err instanceof Error ? err.message : String(err)}`); }
+      } else { errors.push('OpenAI not configured'); }
+      // Attempt 3: Gemini
+      if (env.GEMINI_API_KEY && env.GEMINI_API_KEY.length > 5) {
+        try {
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.7, maxOutputTokens: 4096 } }) });
+          if (res.ok) { const data = await res.json() as any; const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''; const jsonMatch = rawText.match(/\{[\s\S]*\}/); if (jsonMatch) { const parsed = JSON.parse(jsonMatch[0]) as { questions: GeneratedMCQ[] }; if (parsed.questions?.length) { logger.info('ai.questions_generated', { provider: 'gemini', examSlug, language, count: parsed.questions.length }); return parsed.questions; } } }
+          errors.push('Gemini failed');
+        } catch (err) { errors.push(`Gemini: ${err instanceof Error ? err.message : String(err)}`); }
+      } else { errors.push('Gemini not configured'); }
+      logger.error('ai.questions_all_failed', { errors, examSlug, language });
+      throw new Error(`Failed to generate assessment questions: ${errors.join('; ')}`);
     },
 
     async scoreAssessment(questions, answers) {
@@ -245,6 +268,30 @@ export function createAIEngine(env: Env, logger: Logger): AIEngine {
 
       logger.error('ai.ca_quiz_all_failed', { errors });
       throw new Error(`All AI providers failed for quiz generation: ${errors.join('; ')}`);
+    },
+
+    async chat(messages: { role: 'user' | 'assistant'; content: string }[], userContext: { exam: string; level: string; language: 'en' | 'hi' }): Promise<string> {
+      const langInstr = userContext.language === 'hi' ? 'Reply in Hindi (Devanagari script). Be concise.' : 'Reply in English. Be concise.';
+      const systemPrompt = `You are Nexi, an AI study mentor for Indian competitive exam students. Student is preparing for ${userContext.exam} at ${userContext.level} level. ${langInstr} Be helpful, encouraging, and exam-focused. Keep answers under 300 words unless asked for detail.`;
+      const chatMessages = [{ role: 'system' as const, content: systemPrompt }, ...messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }))];
+
+      // Attempt 1: Groq (fast)
+      if (groq) {
+        try {
+          const c = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: chatMessages, temperature: 0.7, max_tokens: 1500 });
+          const reply = c.choices[0]?.message?.content ?? '';
+          if (reply) { logger.info('ai.chat', { provider: 'groq', length: reply.length }); return reply; }
+        } catch (err) { logger.warn('ai.chat_groq_failed', { error: err instanceof Error ? err.message : String(err) }); }
+      }
+      // Attempt 2: OpenAI
+      if (openai) {
+        try {
+          const c = await openai.chat.completions.create({ model: 'gpt-4o', messages: chatMessages, temperature: 0.7, max_tokens: 1500 });
+          const reply = c.choices[0]?.message?.content ?? '';
+          if (reply) { logger.info('ai.chat', { provider: 'openai', length: reply.length }); return reply; }
+        } catch (err) { logger.warn('ai.chat_openai_failed', { error: err instanceof Error ? err.message : String(err) }); }
+      }
+      throw new Error('Chat AI unavailable. Please try again.');
     },
 
     async translateToHindi(items: { headline: string; summary: string }[]) {
