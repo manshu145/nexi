@@ -9,6 +9,7 @@ import { getSyllabus, getSyllabusWithFallback, type SyllabusFallbackDeps } from 
 import { asISODateTime } from '@nexigrate/shared';
 import type { Firestore } from 'firebase-admin/firestore';
 import type { Env } from '../env.js';
+import { InMemoryMCQPoolStore, FirestoreMCQPoolStore, type MCQPoolStore } from '../lib/mcqPoolStore.js';
 
 export interface StudyRoutesDeps {
   users: UserStore;
@@ -17,10 +18,12 @@ export interface StudyRoutesDeps {
   logger: Logger;
   db: Firestore | null;
   env: Env;
+  mcqPool?: MCQPoolStore;
 }
 
 export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
   const app = new Hono();
+  const mcqPool = deps.mcqPool ?? (deps.db ? new FirestoreMCQPoolStore(deps.db) : new InMemoryMCQPoolStore());
 
   // GET /v1/study/syllabus/:examSlug — full syllabus tree (3-tier fallback)
   app.get('/syllabus/:examSlug', async (c) => {
@@ -64,13 +67,15 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
     return c.json({ chapter: content });
   });
 
-  // GET /v1/study/:exam/:subject/:chapter/quiz — 10 MCQs for chapter
+  // GET /v1/study/:exam/:subject/:chapter/quiz — unique MCQs from pool (never repeats)
   app.get('/:exam/:subject/:chapter/quiz', async (c) => {
-    requireAuth(c);
+    const principal = requireAuth(c);
     const { exam, subject, chapter } = c.req.param();
     const language = (c.req.query('lang') as 'en' | 'hi') || 'en';
     try {
-      const questions = await deps.aiEngine.generateChapterMCQs(chapter, subject, exam, language, 10);
+      const questions = await mcqPool.getChapterQuiz(
+        exam, subject, chapter, principal.userId, language, 10, deps.aiEngine, deps.logger,
+      );
       return c.json({ questions });
     } catch (err) {
       deps.logger.error('study.quiz_error', { exam, subject, chapter, language, error: err instanceof Error ? err.message : String(err) });
