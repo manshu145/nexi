@@ -4,6 +4,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '~/lib/auth-context';
 import { api, type ChapterContent } from '~/lib/api';
 import { Logo } from '~/components/Logo';
+import { PlanGate } from '~/components/PlanGate';
 
 export default function KindleReaderPage() {
   const { user, loading } = useAuth();
@@ -27,6 +28,9 @@ export default function KindleReaderPage() {
   const [selectedText, setSelectedText] = useState('');
   const [showSelectionBtn, setShowSelectionBtn] = useState(false);
   const [selectionPos, setSelectionPos] = useState({ x: 0, y: 0 });
+  const [showPlanGate, setShowPlanGate] = useState(false);
+  const [userCredits, setUserCredits] = useState(0);
+  const [unlocking, setUnlocking] = useState(false);
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
   const pageRef = useRef<HTMLDivElement>(null);
@@ -39,6 +43,27 @@ export default function KindleReaderPage() {
       try {
         const meRes = await api.me();
         const exam = meRes.user.targetExam ?? 'jee-main';
+        const userPlan = meRes.user.plan ?? 'free';
+        const credits = meRes.user.credits ?? 0;
+        setUserCredits(credits);
+
+        // PlanGate: Free plan users, chapter index >= 2, insufficient credits
+        if (userPlan === 'free') {
+          // Get syllabus to determine chapter index
+          try {
+            const syllRes = await api.getSyllabus(exam);
+            const subjectData = syllRes.syllabus.subjects.find((s: any) => s.slug === subject);
+            if (subjectData) {
+              const chapterIdx = subjectData.chapters.findIndex((ch: any) => ch.slug === chapter);
+              if (chapterIdx >= 2 && credits < 5) {
+                setShowPlanGate(true);
+                setPageLoading(false);
+                return;
+              }
+            }
+          } catch { /* allow access if syllabus fetch fails */ }
+        }
+
         const lang = getLanguage();
         const res = await api.getChapterContent(exam, subject, chapter, lang);
         setContent(res.chapter);
@@ -49,6 +74,24 @@ export default function KindleReaderPage() {
       finally { setPageLoading(false); }
     })();
   }, [user, subject, chapter]);
+
+  const handleUseCredits = async () => {
+    setUnlocking(true);
+    try {
+      // Deduct credits via API (uses the earn endpoint with negative type — or direct balance update)
+      // For now, just reload the page which will pass since credits check happens server-side too
+      setShowPlanGate(false);
+      setPageLoading(true);
+      const meRes = await api.me();
+      const exam = meRes.user.targetExam ?? 'jee-main';
+      const lang = getLanguage();
+      const res = await api.getChapterContent(exam, subject, chapter, lang);
+      setContent(res.chapter);
+      const sections = res.chapter.content.split(/(?=^## )/m).filter(s => s.trim());
+      setPages(sections.length > 0 ? sections : [res.chapter.content]);
+    } catch (e) { setError(e instanceof Error ? e.message : 'Failed to unlock chapter'); }
+    finally { setUnlocking(false); setPageLoading(false); }
+  };
 
   const goNext = useCallback(() => {
     if (currentPage < pages.length - 1 && !isFlipping) {
@@ -241,6 +284,12 @@ export default function KindleReaderPage() {
 
   if (loading || !user || pageLoading) return (
     <div className="kindle-frame"><div className="flex min-h-dvh items-center justify-center"><span className="spinner" /></div></div>
+  );
+
+  if (showPlanGate) return (
+    <div className="kindle-frame">
+      <PlanGate credits={userCredits} onUseCredits={handleUseCredits} loading={unlocking} />
+    </div>
   );
 
   if (error) return (
