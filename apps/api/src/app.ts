@@ -7,6 +7,7 @@ import { FirestoreUserStore, InMemoryUserStore, type UserStore } from './lib/use
 import { createAIEngine, type AIEngine } from './lib/aiEngine.js';
 import { InMemoryChapterStore, FirestoreChapterStore, type ChapterStore } from './lib/chapterStore.js';
 import { InMemoryCurrentAffairsStore, FirestoreCurrentAffairsStore, type CurrentAffairsStore } from './lib/currentAffairsStore.js';
+import { InMemoryAdminStore, FirestoreAdminStore, type AdminStore } from './lib/adminStore.js';
 import { authMiddleware } from './auth.js';
 import type { Logger } from './logger.js';
 import { makeHealthRoutes, makeDiagRoutes } from './routes/health.js';
@@ -21,7 +22,7 @@ import { makeBillingRoutes } from './routes/billing.js';
 import { makeAdminRoutes } from './routes/admin.js';
 import { makeSupportRoutes } from './routes/support.js';
 
-export interface AppDeps { env: Env; logger: Logger; users?: UserStore; aiEngine?: AIEngine; chapters?: ChapterStore; currentAffairs?: CurrentAffairsStore; chatStore?: ChatStore; }
+export interface AppDeps { env: Env; logger: Logger; users?: UserStore; aiEngine?: AIEngine; chapters?: ChapterStore; currentAffairs?: CurrentAffairsStore; chatStore?: ChatStore; adminStore?: AdminStore; }
 
 export function buildApp(deps: AppDeps): Hono {
   const { env, logger } = deps;
@@ -32,6 +33,7 @@ export function buildApp(deps: AppDeps): Hono {
   const chapters = deps.chapters ?? (fs ? new FirestoreChapterStore(fs) : new InMemoryChapterStore());
   const currentAffairs = deps.currentAffairs ?? (fs ? new FirestoreCurrentAffairsStore(fs) : new InMemoryCurrentAffairsStore());
   const chatStore = deps.chatStore ?? (fs ? new FirestoreChatStore(fs) : new InMemoryChatStore());
+  const adminStore = deps.adminStore ?? (fs ? new FirestoreAdminStore(fs) : new InMemoryAdminStore());
   const firebaseAuth = getFirebaseAuth(env);
 
   const app = new Hono();
@@ -77,13 +79,25 @@ export function buildApp(deps: AppDeps): Hono {
   v1.route('/chat', makeChatRoutes({ users, aiEngine, chat: chatStore, logger }));
   v1.route('/credits', makeCreditsRoutes({ users, logger, db: fs }));
   v1.route('/billing', makeBillingRoutes({ users, env, logger }));
-  v1.route('/admin', makeAdminRoutes({ users, env, logger }));
+  v1.route('/admin', makeAdminRoutes({ users, adminStore, env, logger }));
   v1.route('/support', makeSupportRoutes({ users, db: fs, logger }));
+
+  // POST /v1/logs/error — web app error reporting (no auth required for error boundary)
+  v1.post('/logs/error', async (c) => {
+    const body = await c.req.json().catch(() => null) as { message?: string; stack?: string; route?: string; userId?: string } | null;
+    if (body?.message) {
+      await adminStore.logError({ id: crypto.randomUUID(), message: body.message, stack: body.stack, route: body.route, userId: body.userId, timestamp: new Date().toISOString(), severity: 'warning' });
+    }
+    return c.json({ ok: true });
+  });
+
   app.route('/v1', v1);
 
   app.onError((err, c) => {
     if (err instanceof HTTPException) { logger.warn('http.error', { status: err.status, message: err.message }); return c.json({ error: err.message }, err.status); }
     logger.error('unhandled', { message: err.message, stack: err.stack });
+    // Log to admin store for error tracking
+    adminStore.logError({ id: crypto.randomUUID(), message: err.message, stack: err.stack, route: c.req.path, timestamp: new Date().toISOString(), severity: 'critical' }).catch(() => {});
     return c.json({ error: 'internal server error' }, 500);
   });
 
