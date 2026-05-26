@@ -141,14 +141,25 @@ export default function ChatPage() {
             </div>
           )}
           {messages.map((msg, i) => (
-            <div key={i} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-              <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${msg.role === 'user' ? 'bg-ember-500 text-paper-50' : 'paper-card text-ink-900'}`}>
+            <div key={i} className={`group flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+              <div className={`relative max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${msg.role === 'user' ? 'bg-ember-500 text-paper-50' : 'paper-card text-ink-900'}`}>
                 {msg.role === 'assistant' ? (
-                  <div className="prose prose-sm max-w-none">
+                  <div className="prose prose-sm max-w-none dark:prose-invert prose-headings:font-serif prose-blockquote:border-l-amber-500 prose-code:bg-paper-200 prose-code:px-1 prose-code:rounded">
                     <ReactMarkdown>{msg.content}</ReactMarkdown>
                   </div>
                 ) : (
                   <p className="whitespace-pre-wrap">{msg.content}</p>
+                )}
+                {/* Copy button — appears on hover for AI messages */}
+                {msg.role === 'assistant' && (
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(msg.content); }}
+                    className="absolute -top-2 -right-2 hidden group-hover:flex h-7 w-7 items-center justify-center rounded-full bg-paper-50 border border-line shadow-sm text-muted-500 hover:text-ink-900 transition-colors"
+                    aria-label="Copy message"
+                    title="Copy to clipboard"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  </button>
                 )}
               </div>
               {msg.role === 'assistant' && msg.content.length > 100 && (
@@ -160,12 +171,8 @@ export default function ChatPage() {
           ))}
           {sending && (
             <div className="flex justify-start">
-              <div className="paper-card max-w-[85%] rounded-2xl px-4 py-3">
-                <span className="inline-flex gap-1">
-                  <span className="h-2 w-2 rounded-full bg-muted-500 animate-bounce" />
-                  <span className="h-2 w-2 rounded-full bg-muted-500 animate-bounce [animation-delay:0.15s]" />
-                  <span className="h-2 w-2 rounded-full bg-muted-500 animate-bounce [animation-delay:0.3s]" />
-                </span>
+              <div className="paper-card max-w-[85%] rounded-2xl px-4 py-3 text-sm text-ink-900">
+                <span className="inline-block w-0.5 h-4 bg-ink-900 animate-pulse" />
               </div>
             </div>
           )}
