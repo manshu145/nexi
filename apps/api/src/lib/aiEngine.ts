@@ -170,7 +170,7 @@ export function createAIEngine(env: Env, logger: Logger): AIEngine {
     async generateVisualization(topic: string, subject: string, exam: string, type: VisualizationType): Promise<VisualizationResult> {
       // For image type, use DALL-E 3 via OpenAI
       if (type === 'image') {
-        if (!openai) throw new Error('OpenAI API key required for image generation');
+        if (!openai) throw new Error('AI Image generation requires OpenAI API key. Try Diagram or Mind Map instead.');
         try {
           const imagePrompt = `Educational diagram of "${topic}" for Indian ${exam} students. Clean, labeled, black and white, textbook style. No watermark. Simple and clear for students.`;
           const imageRes = await openai.images.generate({
@@ -187,8 +187,16 @@ export function createAIEngine(env: Env, logger: Logger): AIEngine {
           logger.info('ai.visualization_image', { topic, subject, exam });
           return { type: 'image', content: imageUrl };
         } catch (err) {
-          logger.error('ai.visualization_image_error', { error: err instanceof Error ? err.message : String(err) });
-          throw new Error('Failed to generate AI image. Try diagram or mindmap instead.');
+          const errMsg = err instanceof Error ? err.message : String(err);
+          logger.error('ai.visualization_image_error', { error: errMsg, topic, subject, exam });
+          // If it's a billing/quota/content_policy error, provide a clear message
+          if (errMsg.includes('billing') || errMsg.includes('quota')) {
+            throw new Error('AI Image generation is temporarily unavailable (quota reached). Try Diagram or Mind Map instead.');
+          }
+          if (errMsg.includes('content_policy') || errMsg.includes('safety')) {
+            throw new Error('AI Image could not be generated for this topic due to content policy. Try Diagram or Mind Map instead.');
+          }
+          throw new Error('AI Image generation failed. Try Diagram or Mind Map instead.');
         }
       }
 

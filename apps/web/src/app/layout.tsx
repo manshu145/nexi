@@ -5,6 +5,8 @@ import { Providers } from '~/components/providers';
 import { Toaster } from '~/components/toaster';
 import './globals.css';
 
+export const dynamic = 'force-dynamic';
+
 export const viewport: Viewport = {
   themeColor: '#F59E0B',
 };
