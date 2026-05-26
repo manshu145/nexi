@@ -90,7 +90,7 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
         }));
       }
 
-      return c.json({ date: today, items, yesterdayWinner: winner });
+      return c.json({ date: today, items, yesterdayWinner: winner, isFromYesterday: items.some((it: any) => it._isFromYesterday) });
     } catch (e) {
       if (e instanceof HTTPException) throw e;
       deps.logger.error('ca.route_error', { error: e instanceof Error ? e.message : String(e), stack: e instanceof Error ? e.stack : '' });

@@ -24,6 +24,7 @@ export default function CurrentAffairsPage() {
   const [activeTab, setActiveTab] = useState<string>('all');
   const [pageLoading, setPageLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isFromYesterday, setIsFromYesterday] = useState(false);
 
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
 
@@ -35,6 +36,7 @@ export default function CurrentAffairsPage() {
         const res = await api.getCurrentAffairs(lang);
         setItems(res.items);
         setWinner(res.yesterdayWinner);
+        if ((res as any).isFromYesterday) setIsFromYesterday(true);
       } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load current affairs'); }
       finally { setPageLoading(false); }
     })();
@@ -66,6 +68,12 @@ export default function CurrentAffairsPage() {
         <Logo />
         <button onClick={() => router.push('/dashboard')} className="btn-ghost-sm">← Dashboard</button>
       </header>
+
+      {isFromYesterday && (
+        <div className="mt-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-4 py-2.5 text-sm text-amber-700 dark:text-amber-300">
+          ⚠️ Today&apos;s news is being updated. Showing yesterday&apos;s current affairs.
+        </div>
+      )}
 
       <section className="mt-6">
         <h1 className="font-serif text-2xl font-bold text-ink-900">Current Affairs</h1>
