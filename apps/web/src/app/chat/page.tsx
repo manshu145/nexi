@@ -185,8 +185,23 @@ function ChatPage() {
   const handleGenerateDiagram = () => {
     const topic = input.trim();
     if (!topic) return;
-    // Send the current input as a diagram generation request via the visualize API
     handleVisualize(topic);
+  };
+
+  const [generatingImage, setGeneratingImage] = useState(false);
+  const [generatedImage, setGeneratedImage] = useState<{ type: string; content: string } | null>(null);
+
+  const handleGenerateImage = async () => {
+    const topic = input.trim();
+    if (!topic || generatingImage) return;
+    setGeneratingImage(true);
+    try {
+      const res = await api.generateImage(topic);
+      setGeneratedImage(res);
+    } catch {
+      // Fallback to diagram if image gen fails
+      handleVisualize(topic);
+    } finally { setGeneratingImage(false); }
   };
 
   const prompts = ['Explain Article 370 in simple terms', 'What is the current fiscal deficit?', 'Compare parliamentary vs presidential systems'];
@@ -372,6 +387,15 @@ function ChatPage() {
           {/* Quick action buttons row */}
           <div className="mx-auto max-w-2xl mb-2 flex items-center gap-2 overflow-x-auto pb-1">
             <button
+              onClick={handleGenerateImage}
+              disabled={!input.trim() || sending || generatingImage}
+              className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-line bg-paper-100 text-xs font-medium text-ink-700 hover:bg-paper-200 hover:text-ink-900 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Generate an AI image from your input text"
+            >
+              <span>&#x1F5BC;</span>
+              <span>{generatingImage ? 'Generating...' : 'Generate Image'}</span>
+            </button>
+            <button
               onClick={handleGenerateDiagram}
               disabled={!input.trim() || sending}
               className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-line bg-paper-100 text-xs font-medium text-ink-700 hover:bg-paper-200 hover:text-ink-900 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -440,6 +464,21 @@ function ChatPage() {
             <h3 className="font-serif text-lg font-bold text-ink-900">Visualization</h3>
             <pre className="mt-4 text-xs bg-paper-200 p-4 rounded-lg overflow-auto whitespace-pre-wrap">{vizContent}</pre>
             <button onClick={() => setVizContent(null)} className="btn-ghost mt-4 w-full">Close</button>
+          </div>
+        </div>
+      )}
+
+      {/* Generated Image modal */}
+      {generatedImage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setGeneratedImage(null)}>
+          <div className="paper-card max-w-lg w-full max-h-[80vh] overflow-auto p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="font-serif text-lg font-bold text-ink-900">Generated Image</h3>
+            {generatedImage.type === 'image' ? (
+              <img src={generatedImage.content} alt="AI Generated" className="mt-4 w-full rounded-xl border border-line" />
+            ) : (
+              <pre className="mt-4 text-xs bg-paper-200 p-4 rounded-lg overflow-auto whitespace-pre-wrap">{generatedImage.content}</pre>
+            )}
+            <button onClick={() => setGeneratedImage(null)} className="btn-ghost mt-4 w-full">Close</button>
           </div>
         </div>
       )}

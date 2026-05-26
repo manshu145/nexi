@@ -85,5 +85,23 @@ export function makeChatRoutes(deps: ChatRoutesDeps): Hono {
     return c.json({ success: true });
   });
 
+  // POST /v1/chat/generate-image — generate an educational image/diagram
+  app.post('/generate-image', async (c) => {
+    const principal = requireAuth(c);
+    const body = await c.req.json().catch(() => null) as { topic?: string } | null;
+    if (!body?.topic) throw new HTTPException(400, { message: 'topic is required' });
+
+    try {
+      const user = await deps.users.get(principal.userId);
+      const exam = user?.targetExam ?? 'general';
+      const result = await deps.aiEngine.generateVisualization(body.topic, 'general', exam, 'image');
+      deps.logger.info('chat.generate_image', { userId: principal.userId, topic: body.topic, type: result.type });
+      return c.json({ type: result.type, content: result.content });
+    } catch (err) {
+      deps.logger.error('chat.generate_image_error', { error: err instanceof Error ? err.message : String(err) });
+      throw new HTTPException(503, { message: 'Image generation failed. Try again.' });
+    }
+  });
+
   return app;
 }
