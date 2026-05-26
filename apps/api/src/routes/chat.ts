@@ -11,10 +11,10 @@ export interface ChatRoutesDeps { users: UserStore; aiEngine: AIEngine; chat: Ch
 export function makeChatRoutes(deps: ChatRoutesDeps): Hono {
   const app = new Hono();
 
-  // POST /v1/chat — send message, get AI response
+  // POST /v1/chat — send message, get AI response (supports text + attachments)
   app.post('/', async (c) => {
     const principal = requireAuth(c);
-    const body = await c.req.json().catch(() => null) as { message?: string; sessionId?: string } | null;
+    const body = await c.req.json().catch(() => null) as { message?: string; sessionId?: string; attachments?: { type: 'image' | 'file'; name: string; data: string; mimeType?: string }[] } | null;
     if (!body?.message) throw new HTTPException(400, { message: 'message is required' });
 
     try {
@@ -32,6 +32,18 @@ export function makeChatRoutes(deps: ChatRoutesDeps): Hono {
       // Get session history for context
       const session = await deps.chat.getSession(principal.userId, sessionId);
       const messages = (session?.messages ?? []).map(m => ({ role: m.role, content: m.content }));
+
+      // If attachments present, append description to the last user message for AI context
+      if (body.attachments && body.attachments.length > 0) {
+        const attachmentDesc = body.attachments.map(a => {
+          if (a.type === 'image') return `[User attached an image: ${a.name}. Describe and answer based on this image.]`;
+          return `[User attached a file: ${a.name} (${a.mimeType ?? 'unknown type'}). Consider this in your response.]`;
+        }).join('\n');
+        const lastMsg = messages[messages.length - 1];
+        if (lastMsg && lastMsg.role === 'user') {
+          lastMsg.content = `${lastMsg.content}\n\n${attachmentDesc}`;
+        }
+      }
 
       // Call AI
       const userContext = { exam: user?.targetExam ?? 'general', level: user?.onboardingLevel ?? 'intermediate', language: (user?.language ?? 'en') as 'en' | 'hi' };

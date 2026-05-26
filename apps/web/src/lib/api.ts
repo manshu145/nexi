@@ -64,7 +64,7 @@ export const api = {
   async getCurrentAffairsLeaderboard() { return (await authedFetch('/v1/current-affairs/leaderboard')).json() as Promise<LeaderboardResponse>; },
 
   // Chat
-  async sendChat(message: string, sessionId?: string) { return (await authedFetch('/v1/chat', { method: 'POST', body: JSON.stringify({ message, sessionId }) })).json() as Promise<{sessionId:string; response:string; title:string}>; },
+  async sendChat(message: string, sessionId?: string, attachments?: { type: 'image' | 'file'; name: string; data: string; mimeType?: string }[]) { return (await authedFetch('/v1/chat', { method: 'POST', body: JSON.stringify({ message, sessionId, attachments }) })).json() as Promise<{sessionId:string; response:string; title:string}>; },
   async getChatHistory() { return (await authedFetch('/v1/chat/history')).json() as Promise<{sessions:ChatSessionSummary[]}>; },
   async getChatSession(sessionId: string) { return (await authedFetch(`/v1/chat/history/${sessionId}`)).json() as Promise<{session:ChatSession}>; },
   async deleteChatSession(sessionId: string) { return (await authedFetch(`/v1/chat/history/${sessionId}`, { method: 'DELETE' })).json() as Promise<{success:boolean}>; },
