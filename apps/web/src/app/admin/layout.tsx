@@ -28,10 +28,10 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     if (!loading && user && !ADMIN_EMAILS.includes(user.email ?? '')) router.replace('/dashboard');
   }, [user, loading, router, isLoginPage]);
 
-  if (loading || !user) return <main className="flex min-h-dvh items-center justify-center"><span className="spinner" /></main>;
-
-  // If on login page, just render children without admin layout
+  // Login page renders independently — no auth/layout needed
   if (isLoginPage) return <>{children}</>;
+
+  if (loading || !user) return <main className="flex min-h-dvh items-center justify-center"><span className="spinner" /></main>;
 
   return (
     <div className="admin-layout">
