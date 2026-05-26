@@ -6,9 +6,13 @@ import { useEffect, useState, type ReactNode } from 'react';
 const NAV_ITEMS = [
   { label: 'Stats', href: '/admin', icon: '📊' },
   { label: 'Users', href: '/admin/users', icon: '👥' },
+  { label: 'Live Sessions', href: '/admin/sessions', icon: '🟢' },
   { label: 'Revenue', href: '/admin/revenue', icon: '💰' },
+  { label: 'AI & Logs', href: '/admin/logs', icon: '🤖' },
+  { label: 'Announcements', href: '/admin/announcements', icon: '📢' },
+  { label: 'Email', href: '/admin/email', icon: '📧' },
+  { label: 'WhatsApp', href: '/admin/whatsapp', icon: '💬' },
   { label: 'Support', href: '/admin/support', icon: '🎫' },
-  { label: 'Logs', href: '/admin/logs', icon: '📋' },
 ];
 
 const ADMIN_EMAILS = ['manshu.ibc24@gmail.com', 'manshusinha777@gmail.com'];

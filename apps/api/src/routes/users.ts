@@ -56,5 +56,32 @@ export function makeUsersRoutes(deps: UsersRoutesDeps): Hono {
     return c.json({ user });
   });
 
+  // Session tracking — for admin "who's online" and time-on-platform analytics
+  app.post('/me/session/start', async (c) => {
+    const principal = requireAuth(c);
+    // Update lastActiveAt on the user doc
+    await deps.users.update(principal.userId, { lastActiveAt: new Date().toISOString() } as any);
+    return c.json({ sessionId: crypto.randomUUID(), startedAt: new Date().toISOString() });
+  });
+
+  app.post('/me/session/ping', async (c) => {
+    const principal = requireAuth(c);
+    await deps.users.update(principal.userId, { lastActiveAt: new Date().toISOString() } as any);
+    return c.json({ ok: true });
+  });
+
+  app.post('/me/session/end', async (c) => {
+    const principal = requireAuth(c);
+    deps.logger.info('users.session_end', { userId: principal.userId });
+    return c.json({ ok: true });
+  });
+
+  // GET /v1/users/announcements — public: active announcements for current user
+  app.get('/announcements', async (c) => {
+    requireAuth(c);
+    // Return active announcements (placeholder — will be populated from Firestore)
+    return c.json({ announcements: [] });
+  });
+
   return app;
 }
