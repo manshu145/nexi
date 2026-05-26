@@ -30,8 +30,8 @@ const API = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com';
 function SkeletonCard() {
   return (
     <div className="paper-card p-5">
-      <div className="h-3 w-24 rounded bg-paper-300 dark:bg-ink-700 animate-pulse" />
-      <div className="mt-3 h-8 w-20 rounded bg-paper-300 dark:bg-ink-700 animate-pulse" />
+      <div className="h-3 w-24 rounded bg-paper-300 animate-pulse" />
+      <div className="mt-3 h-8 w-20 rounded bg-paper-300 animate-pulse" />
     </div>
   );
 }
@@ -39,10 +39,10 @@ function SkeletonCard() {
 function SkeletonHealthRow() {
   return (
     <div className="paper-card p-4 mt-6">
-      <div className="h-3 w-20 rounded bg-paper-300 dark:bg-ink-700 animate-pulse mb-3" />
+      <div className="h-3 w-20 rounded bg-paper-300 animate-pulse mb-3" />
       <div className="flex gap-3">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="h-6 w-20 rounded-full bg-paper-300 dark:bg-ink-700 animate-pulse" />
+          <div key={i} className="h-6 w-20 rounded-full bg-paper-300 animate-pulse" />
         ))}
       </div>
     </div>
@@ -54,7 +54,7 @@ function HealthBadge({ name, status }: { name: string; status: 'ok' | 'error' | 
   const colors: Record<string, string> = {
     up: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
     down: 'bg-ember-100 text-ember-700 dark:bg-ember-900/30 dark:text-ember-400',
-    unknown: 'bg-paper-200 text-muted-500 dark:bg-ink-700 dark:text-muted-400',
+    unknown: 'bg-paper-200 text-muted-500 dark:text-muted-400',
   };
   const dots: Record<string, string> = {
     up: 'bg-emerald-500',
@@ -136,7 +136,7 @@ export default function AdminStatsPage() {
   if (loading || !user) {
     return (
       <div className="space-y-6">
-        <div className="h-7 w-40 rounded bg-paper-300 dark:bg-ink-700 animate-pulse" />
+        <div className="h-7 w-40 rounded bg-paper-300 animate-pulse" />
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
         </div>
@@ -149,7 +149,7 @@ export default function AdminStatsPage() {
 
   return (
     <div>
-      <h1 className="font-serif text-2xl font-bold text-ink-900 dark:text-paper-50">Dashboard</h1>
+      <h1 className="font-serif text-2xl font-bold text-ink-900">Dashboard</h1>
       <p className="mt-1 text-sm text-muted-500">Overview of platform metrics</p>
 
       {/* KPI Cards */}
@@ -161,37 +161,37 @@ export default function AdminStatsPage() {
         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div className="paper-card p-5">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">Total Users</p>
-            <p className="font-serif mt-2 text-3xl font-bold text-ink-900 dark:text-paper-50">
+            <p className="font-serif mt-2 text-3xl font-bold text-ink-900">
               {stats?.totalUsers.toLocaleString() ?? '0'}
             </p>
           </div>
           <div className="paper-card p-5">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">DAU (Today)</p>
-            <p className="font-serif mt-2 text-3xl font-bold text-ink-900 dark:text-paper-50">
+            <p className="font-serif mt-2 text-3xl font-bold text-ink-900">
               {stats?.dau.toLocaleString() ?? '0'}
             </p>
           </div>
           <div className="paper-card p-5">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">Active Now</p>
-            <p className="font-serif mt-2 text-3xl font-bold text-ink-900 dark:text-paper-50">
+            <p className="font-serif mt-2 text-3xl font-bold text-ink-900">
               {stats?.activeNow.toLocaleString() ?? '0'}
             </p>
           </div>
           <div className="paper-card p-5">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">New Today</p>
-            <p className="font-serif mt-2 text-3xl font-bold text-ink-900 dark:text-paper-50">
+            <p className="font-serif mt-2 text-3xl font-bold text-ink-900">
               {stats?.newToday.toLocaleString() ?? '0'}
             </p>
           </div>
           <div className="paper-card p-5">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">Revenue (30d)</p>
-            <p className="font-serif mt-2 text-3xl font-bold text-ink-900 dark:text-paper-50">
+            <p className="font-serif mt-2 text-3xl font-bold text-ink-900">
               ₹{stats?.revenue30d.toLocaleString() ?? '0'}
             </p>
           </div>
           <div className="paper-card p-5">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">AI Cost Today</p>
-            <p className="font-serif mt-2 text-3xl font-bold text-ink-900 dark:text-paper-50">
+            <p className="font-serif mt-2 text-3xl font-bold text-ink-900">
               ₹{stats?.aiCostToday.toLocaleString() ?? '0'}
             </p>
           </div>

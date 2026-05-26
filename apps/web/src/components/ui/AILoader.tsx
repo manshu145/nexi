@@ -96,7 +96,7 @@ export function AILoader({ context = 'general', className = '' }: AILoaderProps)
         {displayed}<span className="animate-pulse">|</span>
       </p>
       {/* Indeterminate progress bar */}
-      <div className="mt-4 w-48 h-1 rounded-full bg-paper-200 dark:bg-ink-700 overflow-hidden">
+      <div className="mt-4 w-48 h-1 rounded-full bg-paper-200 overflow-hidden">
         <div className="h-full w-1/3 rounded-full bg-amber-500 animate-[slideBar_1.5s_ease-in-out_infinite]" />
       </div>
       <style jsx>{`

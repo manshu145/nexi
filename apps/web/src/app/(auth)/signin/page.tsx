@@ -97,8 +97,8 @@ export default function SignInPage() {
     }
   };
 
-  if (loading) return <main className="flex min-h-screen items-center justify-center"><div className="paper-card w-full max-w-sm p-8 animate-pulse space-y-4"><div className="h-6 w-24 mx-auto rounded bg-paper-200 dark:bg-ink-700" /><div className="h-4 w-32 mx-auto rounded bg-paper-200 dark:bg-ink-700" /><div className="h-10 w-full rounded-xl bg-paper-200 dark:bg-ink-700 mt-8" /><div className="h-10 w-full rounded-xl bg-paper-200 dark:bg-ink-700" /><div className="h-10 w-full rounded-xl bg-paper-200 dark:bg-ink-700" /></div></main>;
-  if (user) return <main className="flex min-h-screen items-center justify-center"><div className="paper-card w-full max-w-sm p-8 animate-pulse space-y-4"><div className="h-6 w-24 mx-auto rounded bg-paper-200 dark:bg-ink-700" /><div className="h-4 w-48 mx-auto rounded bg-paper-200 dark:bg-ink-700" /></div></main>;
+  if (loading) return <main className="flex min-h-screen items-center justify-center"><div className="paper-card w-full max-w-sm p-8 animate-pulse space-y-4"><div className="h-6 w-24 mx-auto rounded bg-paper-200" /><div className="h-4 w-32 mx-auto rounded bg-paper-200" /><div className="h-10 w-full rounded-xl bg-paper-200 mt-8" /><div className="h-10 w-full rounded-xl bg-paper-200" /><div className="h-10 w-full rounded-xl bg-paper-200" /></div></main>;
+  if (user) return <main className="flex min-h-screen items-center justify-center"><div className="paper-card w-full max-w-sm p-8 animate-pulse space-y-4"><div className="h-6 w-24 mx-auto rounded bg-paper-200" /><div className="h-4 w-48 mx-auto rounded bg-paper-200" /></div></main>;
 
   return (
     <main className="flex min-h-screen items-center justify-center px-4">

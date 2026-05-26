@@ -73,7 +73,7 @@ export default function AdminLoginPage() {
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
             </svg>
           </div>
-          <h1 className="font-serif mt-4 text-xl font-bold text-ink-900 dark:text-paper-50">Admin Access</h1>
+          <h1 className="font-serif mt-4 text-xl font-bold text-ink-900">Admin Access</h1>
           <p className="mt-1 text-sm text-muted-500">Nexigrate Control Panel</p>
         </div>
 

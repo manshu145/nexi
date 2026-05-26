@@ -110,10 +110,10 @@ export default function ChapterQuizPage() {
         <div className={`flex h-20 w-20 items-center justify-center rounded-full ${result.passed ? 'bg-paper-200 border-2 border-gold-500' : 'bg-paper-200 border border-line'}`}>
           <span className="text-3xl">{result.passed ? '🎉' : '📖'}</span>
         </div>
-        <h1 className="font-serif mt-6 text-2xl font-bold text-ink-900 dark:text-paper-50">
+        <h1 className="font-serif mt-6 text-2xl font-bold text-ink-900">
           {result.passed ? 'Chapter Complete!' : 'Keep Practicing!'}
         </h1>
-        <p className="mt-2 text-ink-800 dark:text-paper-200">
+        <p className="mt-2 text-ink-800">
           You scored <span className="font-bold text-ember-600">{result.score}%</span> ({Math.round(result.score * result.total / 100)}/{result.total} correct)
         </p>
         {result.passed ? (
@@ -139,7 +139,7 @@ export default function ChapterQuizPage() {
 
         {/* Show correct answers */}
         <section className="mt-10 w-full">
-          <h2 className="font-serif text-lg font-semibold text-ink-900 dark:text-paper-50">Review Answers</h2>
+          <h2 className="font-serif text-lg font-semibold text-ink-900">Review Answers</h2>
           <div className="mt-4 space-y-3">
             {questions.map((q, i) => {
               const chosen = answers.get(q.id);
@@ -151,7 +151,7 @@ export default function ChapterQuizPage() {
                       {isCorrect ? '✓' : '✗'}
                     </span>
                     <div>
-                      <p className="text-sm font-medium text-ink-900 dark:text-paper-50">{q.question}</p>
+                      <p className="text-sm font-medium text-ink-900">{q.question}</p>
                       <p className="mt-1 text-xs text-muted-500">Your answer: {chosen ?? 'Skipped'} · Correct: {q.correctOption}</p>
                       <p className="mt-1 text-xs text-ink-700">{q.explanation}</p>
                     </div>
@@ -179,7 +179,7 @@ export default function ChapterQuizPage() {
 
       {/* Progress dots */}
       <div className="mt-4 flex items-center justify-between">
-        <p className="text-sm font-medium text-ink-800 dark:text-paper-200">Question {idx + 1} / {questions.length}</p>
+        <p className="text-sm font-medium text-ink-800">Question {idx + 1} / {questions.length}</p>
         <p className="text-xs text-muted-500">{answers.size} answered</p>
       </div>
       <div className="mt-2 flex gap-1">
@@ -191,7 +191,7 @@ export default function ChapterQuizPage() {
       {/* Question card */}
       <div className="paper-card mt-6 p-5">
         <p className="text-xs text-muted-500 mb-2">{q.subject} · {q.difficulty}</p>
-        <p className="font-serif text-base font-medium leading-relaxed text-ink-900 dark:text-paper-50">{q.question}</p>
+        <p className="font-serif text-base font-medium leading-relaxed text-ink-900">{q.question}</p>
         <div className="mt-4 space-y-2">
           {q.options.map(opt => (
             <button
