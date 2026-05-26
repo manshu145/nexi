@@ -13,13 +13,15 @@ import type { CreditEarnSource, CreditSpendReason } from '../types/credit.js';
 
 /** Earn amounts in whole credits. */
 export const CREDIT_EARN_AMOUNTS: Readonly<Record<CreditEarnSource, number>> = {
-  signup_verified: 200,
+  signup_verified: 100,
   daily_login: 10,
-  mcq_pass: 50,
+  mcq_pass: 15,
   mcq_fail_attempted: 5,
-  streak_7d: 150,
-  referral_signup: 100,
+  streak_7d: 25,
+  streak_30d: 100,
+  referral_signup: 50,
   referral_retained_7d: 200,
+  referral_bonus: 25, // bonus credits for referred user on signup
   admin_grant: 0, // amount is supplied per-grant; this default is a sentinel
   subscription_grant: 0, // supplied per-tier; sentinel
 };
@@ -28,8 +30,8 @@ export const CREDIT_EARN_AMOUNTS: Readonly<Record<CreditEarnSource, number>> = {
 export const CREDIT_SPEND_AMOUNTS: Readonly<Record<CreditSpendReason, number>> = {
   read_chapter: 5,
   focus_session_1h: 10,
-  mock_test: 20,
-  ai_tutor_question: 5,
+  mock_test: 3,
+  ai_tutor_question: 2,
   concept_video: 5,
   long_answer_grading: 30,
   admin_revoke: 0, // supplied per-revoke
@@ -47,8 +49,10 @@ export const CREDIT_BUCKET_EXPIRY_DAYS: Readonly<Record<CreditEarnSource, number
   mcq_pass: 30,
   mcq_fail_attempted: 30,
   streak_7d: 60,
+  streak_30d: 90,
   referral_signup: 60,
   referral_retained_7d: 60,
+  referral_bonus: 30,
   admin_grant: null,
   subscription_grant: 35,
 };

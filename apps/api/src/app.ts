@@ -74,7 +74,7 @@ export function buildApp(deps: AppDeps): Hono {
   v1.route('/study', makeStudyRoutes({ users, aiEngine, chapters, logger, db: fs, env }));
   v1.route('/current-affairs', cronRoutes);
   v1.route('/chat', makeChatRoutes({ users, aiEngine, chat: chatStore, logger }));
-  v1.route('/credits', makeCreditsRoutes({ users, logger }));
+  v1.route('/credits', makeCreditsRoutes({ users, logger, db: fs }));
   v1.route('/billing', makeBillingRoutes({ users, env, logger }));
   v1.route('/admin', makeAdminRoutes({ users, env, logger }));
   v1.route('/support', makeSupportRoutes({ users, db: fs, logger }));
