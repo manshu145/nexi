@@ -6,8 +6,12 @@ import { useEffect, useState, type ReactNode } from 'react';
 const NAV_ITEMS = [
   { label: 'Stats', href: '/admin', icon: '📊' },
   { label: 'Users', href: '/admin/users', icon: '👥' },
+  { label: 'Revenue', href: '/admin/revenue', icon: '💰' },
+  { label: 'Support', href: '/admin/support', icon: '🎫' },
   { label: 'Logs', href: '/admin/logs', icon: '📋' },
 ];
+
+const ADMIN_EMAILS = ['manshu.ibc24@gmail.com', 'manshusinha777@gmail.com'];
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
@@ -15,14 +19,19 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const isAdmin = (email?: string | null) => email === 'manshu.ibc24@gmail.com' || email === 'manshusinha777@gmail.com';
+  // Allow /admin/login to render without auth
+  const isLoginPage = pathname === '/admin/login';
 
   useEffect(() => {
-    if (!loading && !user) router.replace('/signin');
-    if (!loading && user && !isAdmin(user.email)) router.replace('/dashboard');
-  }, [user, loading, router]);
+    if (isLoginPage) return; // Don't redirect on login page
+    if (!loading && !user) router.replace('/admin/login');
+    if (!loading && user && !ADMIN_EMAILS.includes(user.email ?? '')) router.replace('/dashboard');
+  }, [user, loading, router, isLoginPage]);
 
   if (loading || !user) return <main className="flex min-h-dvh items-center justify-center"><span className="spinner" /></main>;
+
+  // If on login page, just render children without admin layout
+  if (isLoginPage) return <>{children}</>;
 
   return (
     <div className="admin-layout">
