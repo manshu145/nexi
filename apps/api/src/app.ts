@@ -81,7 +81,7 @@ export function buildApp(deps: AppDeps): Hono {
   v1.route('/chat', makeChatRoutes({ users, aiEngine, chat: chatStore, logger }));
   v1.route('/credits', makeCreditsRoutes({ users, logger, db: fs }));
   v1.route('/billing', makeBillingRoutes({ users, env, logger, db: fs, coupons: couponStore }));
-  v1.route('/admin', makeAdminRoutes({ users, adminStore, env, logger }));
+  v1.route('/admin', makeAdminRoutes({ users, adminStore, env, logger, coupons: couponStore }));
   v1.route('/support', makeSupportRoutes({ users, db: fs, logger }));
 
   // POST /v1/logs/error — web app error reporting (no auth required for error boundary)

@@ -7,6 +7,7 @@ const NAV_ITEMS = [
   { label: 'Stats', href: '/admin', icon: '📊' },
   { label: 'Users', href: '/admin/users', icon: '👥' },
   { label: 'Live Sessions', href: '/admin/sessions', icon: '🟢' },
+  { label: 'Plans', href: '/admin/plans', icon: '💳' },
   { label: 'Revenue', href: '/admin/revenue', icon: '💰' },
   { label: 'AI & Logs', href: '/admin/logs', icon: '🤖' },
   { label: 'Announcements', href: '/admin/announcements', icon: '📢' },
