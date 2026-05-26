@@ -103,6 +103,22 @@ export default function StudyPage() {
         </div>
       </section>
 
+      {/* Free plan upgrade banner */}
+      {currentPlan === 'free' && (
+        <button
+          onClick={() => router.push('/upgrade')}
+          className="mt-4 w-full rounded-lg border border-gold-500/40 bg-gold-500/5 px-4 py-3 text-left transition-colors hover:bg-gold-500/10"
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-ink-900">⭐ Free Plan — 2 chapters free per subject</p>
+              <p className="mt-0.5 text-xs text-muted-500">Upgrade to Scholar for unlimited access</p>
+            </div>
+            <span className="text-xs font-semibold text-ember-500">Upgrade →</span>
+          </div>
+        </button>
+      )}
+
       {/* Continue card */}
       {continueChapter && (
         <button
@@ -154,27 +170,35 @@ export default function StudyPage() {
                     // Unlock logic: first chapter always unlocked, rest need previous completed
                     const prevKey = idx > 0 ? `${subject.slug}/${subject.chapters[idx - 1]!.slug}` : null;
                     const isUnlocked = idx === 0 || completedSet.has(prevKey!);
+                    // Free plan: chapters beyond index 1 are locked (need credits/upgrade)
+                    const isPlanLocked = currentPlan === 'free' && idx >= 2 && !isCompleted;
 
                     return (
                       <button
                         key={ch.slug}
-                        onClick={() => isUnlocked && router.push(`/study/${subject.slug}/${ch.slug}`)}
-                        disabled={!isUnlocked}
+                        onClick={() => {
+                          if (isPlanLocked) { router.push('/upgrade'); return; }
+                          if (isUnlocked) router.push(`/study/${subject.slug}/${ch.slug}`);
+                        }}
+                        disabled={!isUnlocked && !isPlanLocked}
                         className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors ${
-                          isUnlocked ? 'hover:bg-paper-200 cursor-pointer' : 'opacity-50 cursor-not-allowed'
+                          isPlanLocked ? 'hover:bg-paper-200 cursor-pointer' : isUnlocked ? 'hover:bg-paper-200 cursor-pointer' : 'opacity-50 cursor-not-allowed'
                         }`}
                       >
                         {/* Status icon */}
                         <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold"
-                          style={{ backgroundColor: isCompleted ? 'var(--color-gold-500)' : isUnlocked ? 'var(--color-paper-300)' : 'var(--color-paper-200)', color: isCompleted ? 'var(--color-paper-50)' : 'var(--color-ink-800)' }}>
-                          {isCompleted ? '✓' : !isUnlocked ? '🔒' : ch.order}
+                          style={{ backgroundColor: isCompleted ? 'var(--color-gold-500)' : isUnlocked && !isPlanLocked ? 'var(--color-paper-300)' : 'var(--color-paper-200)', color: isCompleted ? 'var(--color-paper-50)' : 'var(--color-ink-800)' }}>
+                          {isCompleted ? '✓' : isPlanLocked ? '🔒' : !isUnlocked ? '🔒' : ch.order}
                         </span>
                         <div className="flex-1 min-w-0">
-                          <p className={`text-sm font-medium truncate ${isCompleted ? 'text-ink-900' : isUnlocked ? 'text-ink-800' : 'text-muted-500'}`}>{lang === 'hi' && ch.nameHi ? ch.nameHi : ch.name}</p>
+                          <p className={`text-sm font-medium truncate ${isCompleted ? 'text-ink-900' : isUnlocked && !isPlanLocked ? 'text-ink-800' : 'text-muted-500'}`}>{lang === 'hi' && ch.nameHi ? ch.nameHi : ch.name}</p>
                           <p className="text-xs text-muted-400">{ch.estimatedMinutes} min</p>
                         </div>
                         {score !== undefined && (
                           <span className={`pill text-xs ${score >= 80 ? 'pill-success' : 'pill-warn'}`}>{score}%</span>
+                        )}
+                        {isPlanLocked && !isCompleted && (
+                          <span className="text-xs font-medium text-ember-500">Upgrade →</span>
                         )}
                       </button>
                     );
@@ -188,7 +212,14 @@ export default function StudyPage() {
                       return s !== undefined && s >= 80;
                     });
 
-                    if (!allCompleted) return null; // Hide if not all completed
+                    if (!allCompleted) {
+                      // Show a subtle hint about generating more chapters
+                      return (
+                        <p className="mt-3 text-center text-xs text-muted-400">
+                          Complete all chapters to unlock more content ✨
+                        </p>
+                      );
+                    }
 
                     if (currentPlan === 'free') {
                       return (
