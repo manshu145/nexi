@@ -30,8 +30,8 @@ const API = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com';
 function SkeletonCard() {
   return (
     <div className="paper-card p-5">
-      <div className="h-3 w-24 rounded bg-paper-300 animate-pulse" />
-      <div className="mt-3 h-8 w-20 rounded bg-paper-300 animate-pulse" />
+      <div className="h-3 w-24 rounded bg-paper-300 dark:bg-ink-700 animate-pulse" />
+      <div className="mt-3 h-8 w-20 rounded bg-paper-300 dark:bg-ink-700 animate-pulse" />
     </div>
   );
 }
@@ -39,10 +39,10 @@ function SkeletonCard() {
 function SkeletonHealthRow() {
   return (
     <div className="paper-card p-4 mt-6">
-      <div className="h-3 w-20 rounded bg-paper-300 animate-pulse mb-3" />
+      <div className="h-3 w-20 rounded bg-paper-300 dark:bg-ink-700 animate-pulse mb-3" />
       <div className="flex gap-3">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="h-6 w-20 rounded-full bg-paper-300 animate-pulse" />
+          <div key={i} className="h-6 w-20 rounded-full bg-paper-300 dark:bg-ink-700 animate-pulse" />
         ))}
       </div>
     </div>
@@ -52,12 +52,12 @@ function SkeletonHealthRow() {
 function HealthBadge({ name, status }: { name: string; status: 'ok' | 'error' | 'unconfigured' }) {
   const mapped = status === 'ok' ? 'up' : status === 'error' ? 'down' : 'unknown';
   const colors: Record<string, string> = {
-    up: 'bg-gold-500/10 text-gold-600 dark:text-gold-500',
-    down: 'bg-ember-500/10 text-ember-600 dark:text-ember-500',
-    unknown: 'bg-paper-200 text-muted-500',
+    up: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+    down: 'bg-ember-100 text-ember-700 dark:bg-ember-900/30 dark:text-ember-400',
+    unknown: 'bg-paper-200 text-muted-500 dark:bg-ink-700 dark:text-muted-400',
   };
   const dots: Record<string, string> = {
-    up: 'bg-gold-500',
+    up: 'bg-emerald-500',
     down: 'bg-ember-500',
     unknown: 'bg-muted-400',
   };
@@ -136,7 +136,7 @@ export default function AdminStatsPage() {
   if (loading || !user) {
     return (
       <div className="space-y-6">
-        <div className="h-7 w-40 rounded bg-paper-300 animate-pulse" />
+        <div className="h-7 w-40 rounded bg-paper-300 dark:bg-ink-700 animate-pulse" />
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
         </div>

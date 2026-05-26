@@ -47,7 +47,7 @@ export default function LevelPage() {
   );
 
   const levelLabel = userInfo?.onboardingLevel === 'advanced' ? 'Advanced' : userInfo?.onboardingLevel === 'intermediate' ? 'Intermediate' : 'Beginner';
-  const levelColor = userInfo?.onboardingLevel === 'advanced' ? 'text-gold-500' : userInfo?.onboardingLevel === 'intermediate' ? 'text-gold-600' : 'text-ember-500';
+  const levelColor = userInfo?.onboardingLevel === 'advanced' ? 'text-green-600' : userInfo?.onboardingLevel === 'intermediate' ? 'text-amber-600' : 'text-blue-600';
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-2xl flex-col px-5 pt-6 pb-28">
@@ -123,10 +123,10 @@ export default function LevelPage() {
       {/* Weak Areas */}
       {analysis && analysis.weakChapters.length > 0 && (
         <div className="paper-card mt-4 p-5">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-ember-500">Topics to Focus On</h2>
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-red-500">Topics to Focus On</h2>
           <ul className="mt-3 space-y-2">
             {analysis.weakChapters.slice(0, 5).map((ch) => (
-              <li key={`${ch.subject}/${ch.chapter}`} className="flex items-center justify-between rounded-lg bg-ember-500/5 px-3 py-2">
+              <li key={`${ch.subject}/${ch.chapter}`} className="flex items-center justify-between rounded-lg bg-red-50 px-3 py-2 dark:bg-red-950/20">
                 <span className="text-sm text-ink-800 dark:text-paper-200">{ch.chapterName}</span>
                 <span className="pill pill-warn text-xs">{ch.score}%</span>
               </li>
@@ -138,10 +138,10 @@ export default function LevelPage() {
       {/* Strong Areas */}
       {analysis && analysis.strongChapters.length > 0 && (
         <div className="paper-card mt-4 p-5">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-gold-500">Strong Areas</h2>
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-green-600">Strong Areas</h2>
           <ul className="mt-3 space-y-2">
             {analysis.strongChapters.slice(0, 5).map((ch) => (
-              <li key={`${ch.subject}/${ch.chapter}`} className="flex items-center justify-between rounded-lg bg-gold-500/5 px-3 py-2">
+              <li key={`${ch.subject}/${ch.chapter}`} className="flex items-center justify-between rounded-lg bg-green-50 px-3 py-2 dark:bg-green-950/20">
                 <span className="text-sm text-ink-800 dark:text-paper-200">{ch.chapterName}</span>
                 <span className="pill pill-success text-xs">{ch.score}%</span>
               </li>

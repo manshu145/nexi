@@ -189,11 +189,6 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--color-ember-700);
   border-color: var(--color-ember-500);
 }
-html.dark .pill-warn {
-  background-color: rgba(224, 96, 48, 0.15);
-  color: var(--color-ember-500);
-  border-color: var(--color-ember-600);
-}
 .pill-neutral {
   background-color: var(--color-paper-200);
   color: var(--color-muted-500);
@@ -274,11 +269,6 @@ textarea.input {
   border-color: var(--color-ember-500);
   background-color: #F5E1D6;
   color: var(--color-ember-700);
-}
-html.dark .banner-error {
-  background-color: rgba(224, 96, 48, 0.12);
-  border-color: var(--color-ember-600);
-  color: var(--color-ember-500);
 }
 .banner-success {
   border-color: var(--color-gold-500);

@@ -97,8 +97,8 @@ export default function SignInPage() {
     }
   };
 
-  if (loading) return <main className="flex min-h-screen items-center justify-center"><div className="paper-card w-full max-w-sm p-8 animate-pulse space-y-4"><div className="h-6 w-24 mx-auto rounded bg-paper-300" /><div className="h-4 w-32 mx-auto rounded bg-paper-300" /><div className="h-10 w-full rounded-xl bg-paper-300 mt-8" /><div className="h-10 w-full rounded-xl bg-paper-300" /><div className="h-10 w-full rounded-xl bg-paper-300" /></div></main>;
-  if (user) return <main className="flex min-h-screen items-center justify-center"><div className="paper-card w-full max-w-sm p-8 animate-pulse space-y-4"><div className="h-6 w-24 mx-auto rounded bg-paper-300" /><div className="h-4 w-48 mx-auto rounded bg-paper-300" /></div></main>;
+  if (loading) return <main className="flex min-h-screen items-center justify-center"><div className="paper-card w-full max-w-sm p-8 animate-pulse space-y-4"><div className="h-6 w-24 mx-auto rounded bg-paper-200 dark:bg-ink-700" /><div className="h-4 w-32 mx-auto rounded bg-paper-200 dark:bg-ink-700" /><div className="h-10 w-full rounded-xl bg-paper-200 dark:bg-ink-700 mt-8" /><div className="h-10 w-full rounded-xl bg-paper-200 dark:bg-ink-700" /><div className="h-10 w-full rounded-xl bg-paper-200 dark:bg-ink-700" /></div></main>;
+  if (user) return <main className="flex min-h-screen items-center justify-center"><div className="paper-card w-full max-w-sm p-8 animate-pulse space-y-4"><div className="h-6 w-24 mx-auto rounded bg-paper-200 dark:bg-ink-700" /><div className="h-4 w-48 mx-auto rounded bg-paper-200 dark:bg-ink-700" /></div></main>;
 
   return (
     <main className="flex min-h-screen items-center justify-center px-4">
@@ -161,7 +161,7 @@ export default function SignInPage() {
         </p>
 
         {error && <div className="banner banner-error mt-4">{error}</div>}
-        {resetSent && <div className="banner banner-success mt-4">Password reset email sent! Check your inbox.</div>}
+        {resetSent && <div className="banner mt-4 bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800 rounded-lg px-4 py-2 text-sm">Password reset email sent! Check your inbox.</div>}
       </div>
     </main>
   );

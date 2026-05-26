@@ -106,8 +106,8 @@ export default function AdminSupportPage() {
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className={`inline-block h-2 w-2 rounded-full ${ticket.status === 'open' ? 'bg-ember-500' : ticket.status === 'in_progress' ? 'bg-gold-500' : 'bg-gold-600'}`} />
-                    <p className="text-sm font-medium text-ink-900 dark:text-paper-50 truncate">{ticket.subject || 'Support Request'}</p>
+                    <span className={`inline-block h-2 w-2 rounded-full ${ticket.status === 'open' ? 'bg-ember-500' : ticket.status === 'in_progress' ? 'bg-gold-500' : 'bg-emerald-500'}`} />
+                    <p className="text-sm font-medium text-ink-900 truncate">{ticket.subject || 'Support Request'}</p>
                   </div>
                   <p className="mt-1 text-xs text-muted-500">{ticket.userName || ticket.userEmail} · {new Date(ticket.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</p>
                 </div>
@@ -121,7 +121,7 @@ export default function AdminSupportPage() {
                   {/* Original message */}
                   <div className="bg-paper-200 rounded-lg p-3">
                     <p className="text-xs font-medium text-muted-500 mb-1">User message:</p>
-                    <p className="text-sm text-ink-900 dark:text-paper-50 whitespace-pre-wrap">{ticket.message}</p>
+                    <p className="text-sm text-ink-900 whitespace-pre-wrap">{ticket.message}</p>
                   </div>
 
                   {/* Replies */}
@@ -130,7 +130,7 @@ export default function AdminSupportPage() {
                       {ticket.replies.map((reply, idx) => (
                         <div key={idx} className={`rounded-lg p-3 text-sm ${reply.role === 'admin' ? 'bg-ember-500/10 border border-ember-500/20' : 'bg-paper-200'}`}>
                           <p className="text-xs font-medium text-muted-500 mb-1">{reply.role === 'admin' ? 'Admin' : 'User'}:</p>
-                          <p className="text-ink-900 dark:text-paper-50 whitespace-pre-wrap">{reply.content}</p>
+                          <p className="text-ink-900 whitespace-pre-wrap">{reply.content}</p>
                         </div>
                       ))}
                     </div>

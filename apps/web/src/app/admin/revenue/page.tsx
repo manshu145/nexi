@@ -101,7 +101,7 @@ export default function AdminRevenuePage() {
             {payments.map((p) => (
               <div key={p.id} className="paper-card p-4 flex items-center justify-between">
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-ink-900 dark:text-paper-50 truncate">{p.userEmail || p.userId}</p>
+                  <p className="text-sm font-medium text-ink-900 truncate">{p.userEmail || p.userId}</p>
                   <p className="text-xs text-muted-500">
                     {p.planId} · {p.period} · {new Date(p.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                   </p>

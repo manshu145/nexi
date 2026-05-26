@@ -47,7 +47,7 @@ export default function AdminWhatsAppPage() {
     finally { setSending(false); }
   };
 
-  if (loading || !user) return <div className="space-y-4"><div className="h-7 w-32 rounded bg-paper-300 animate-pulse" /><div className="h-40 rounded bg-paper-300 animate-pulse" /></div>;
+  if (loading || !user) return <div className="space-y-4"><div className="h-7 w-32 rounded bg-paper-300 dark:bg-ink-700 animate-pulse" /><div className="h-40 rounded bg-paper-300 dark:bg-ink-700 animate-pulse" /></div>;
 
   return (
     <div>
@@ -67,8 +67,8 @@ export default function AdminWhatsAppPage() {
         </div>
       )}
       {configured === true && (
-        <span className="inline-flex items-center gap-1.5 mt-3 rounded-full bg-gold-500/10 px-3 py-1 text-xs font-medium text-gold-600 dark:text-gold-500">
-          <span className="h-2 w-2 rounded-full bg-gold-500" /> WhatsApp Connected
+        <span className="inline-flex items-center gap-1.5 mt-3 rounded-full bg-emerald-100 dark:bg-emerald-900/30 px-3 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+          <span className="h-2 w-2 rounded-full bg-emerald-500" /> WhatsApp Connected
         </span>
       )}
 

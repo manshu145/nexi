@@ -70,7 +70,7 @@ export default function CurrentAffairsPage() {
       </header>
 
       {isFromYesterday && (
-        <div className="mt-4 rounded-lg bg-gold-500/10 border border-gold-500/30 px-4 py-2.5 text-sm text-gold-600 dark:text-gold-500">
+        <div className="mt-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-4 py-2.5 text-sm text-amber-700 dark:text-amber-300">
           ⚠️ Today&apos;s news is being updated. Showing yesterday&apos;s current affairs.
         </div>
       )}

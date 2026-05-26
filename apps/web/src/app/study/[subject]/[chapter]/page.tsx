@@ -408,7 +408,7 @@ export default function KindleReaderPage() {
   };
 
   if (loading || !user || pageLoading) return (
-    <div className="kindle-frame"><div className="flex-1 p-6 space-y-4 animate-pulse"><div className="h-6 w-3/4 rounded bg-paper-300" /><div className="h-4 w-full rounded bg-paper-300" /><div className="h-4 w-full rounded bg-paper-300" /><div className="h-4 w-5/6 rounded bg-paper-300" /><div className="h-4 w-full rounded bg-paper-300" /><div className="h-4 w-2/3 rounded bg-paper-300" /><div className="h-6 w-1/2 rounded bg-paper-300 mt-6" /><div className="h-4 w-full rounded bg-paper-300" /><div className="h-4 w-full rounded bg-paper-300" /></div></div>
+    <div className="kindle-frame"><div className="flex-1 p-6 space-y-4 animate-pulse"><div className="h-6 w-3/4 rounded bg-paper-200 dark:bg-ink-700" /><div className="h-4 w-full rounded bg-paper-200 dark:bg-ink-700" /><div className="h-4 w-full rounded bg-paper-200 dark:bg-ink-700" /><div className="h-4 w-5/6 rounded bg-paper-200 dark:bg-ink-700" /><div className="h-4 w-full rounded bg-paper-200 dark:bg-ink-700" /><div className="h-4 w-2/3 rounded bg-paper-200 dark:bg-ink-700" /><div className="h-6 w-1/2 rounded bg-paper-200 dark:bg-ink-700 mt-6" /><div className="h-4 w-full rounded bg-paper-200 dark:bg-ink-700" /><div className="h-4 w-full rounded bg-paper-200 dark:bg-ink-700" /></div></div>
   );
 
   if (showPlanGate) return (
@@ -499,22 +499,22 @@ export default function KindleReaderPage() {
               <div className="flex border-t border-line">
                 <button
                   onClick={() => loadVisualizationTab('diagram')}
-                  className={`flex-1 px-4 py-2.5 text-xs font-medium transition-colors ${vizTab === 'diagram' ? 'text-gold-600 dark:text-gold-500 border-b-2 border-gold-500' : 'text-muted-500 hover:text-ink-700 dark:hover:text-paper-200'}`}
+                  className={`flex-1 px-4 py-2.5 text-xs font-medium transition-colors ${vizTab === 'diagram' ? 'text-amber-600 dark:text-amber-400 border-b-2 border-amber-500' : 'text-muted-500 hover:text-ink-700 dark:hover:text-paper-200'}`}
                 >📊 Diagram</button>
                 <button
                   onClick={() => loadVisualizationTab('mindmap')}
-                  className={`flex-1 px-4 py-2.5 text-xs font-medium transition-colors ${vizTab === 'mindmap' ? 'text-gold-600 dark:text-gold-500 border-b-2 border-gold-500' : 'text-muted-500 hover:text-ink-700 dark:hover:text-paper-200'}`}
+                  className={`flex-1 px-4 py-2.5 text-xs font-medium transition-colors ${vizTab === 'mindmap' ? 'text-amber-600 dark:text-amber-400 border-b-2 border-amber-500' : 'text-muted-500 hover:text-ink-700 dark:hover:text-paper-200'}`}
                 >🧠 Mind Map</button>
                 <button
                   onClick={() => loadVisualizationTab('image')}
-                  className={`flex-1 px-4 py-2.5 text-xs font-medium transition-colors ${vizTab === 'image' ? 'text-gold-600 dark:text-gold-500 border-b-2 border-gold-500' : 'text-muted-500 hover:text-ink-700 dark:hover:text-paper-200'}`}
+                  className={`flex-1 px-4 py-2.5 text-xs font-medium transition-colors ${vizTab === 'image' ? 'text-amber-600 dark:text-amber-400 border-b-2 border-amber-500' : 'text-muted-500 hover:text-ink-700 dark:hover:text-paper-200'}`}
                 >🎨 AI Image</button>
               </div>
             </div>
             <div className="p-5">
               {vizLoading ? (
                 <div className="flex flex-col items-center justify-center py-16">
-                  <div className="h-48 w-full rounded-lg bg-gradient-to-br from-gold-500/10 via-paper-100 to-paper-200 animate-pulse" />
+                  <div className="h-48 w-full rounded-lg bg-gradient-to-br from-amber-100 via-paper-100 to-amber-50 dark:from-amber-900/20 dark:via-ink-800 dark:to-amber-950/20 animate-pulse" />
                   <p className="mt-4 text-sm text-muted-500">{vizTab === 'image' ? '🎨 Generating AI image...' : '📊 Generating visualization...'}</p>
                 </div>
               ) : vizError ? (

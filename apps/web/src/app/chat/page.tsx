@@ -143,9 +143,9 @@ export default function ChatPage() {
           )}
           {messages.map((msg, i) => (
             <div key={i} className={`group flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-              <div className={`relative max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${msg.role === 'user' ? 'bg-ember-500 text-paper-50' : 'paper-card text-ink-900 dark:text-paper-50'}`}>
+              <div className={`relative max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${msg.role === 'user' ? 'bg-ember-500 text-paper-50' : 'paper-card text-ink-900'}`}>
                 {msg.role === 'assistant' ? (
-                  <div className="prose prose-sm max-w-none dark:prose-invert prose-headings:font-serif prose-blockquote:border-l-gold-500 prose-code:bg-paper-200 prose-code:px-1 prose-code:rounded">
+                  <div className="prose prose-sm max-w-none dark:prose-invert prose-headings:font-serif prose-blockquote:border-l-amber-500 prose-code:bg-paper-200 prose-code:px-1 prose-code:rounded">
                     <ReactMarkdown>{msg.content}</ReactMarkdown>
                   </div>
                 ) : (
@@ -173,7 +173,7 @@ export default function ChatPage() {
           {sending && (
             <div className="flex justify-start">
               <div className="paper-card max-w-[85%] rounded-2xl px-4 py-3 text-sm text-ink-900 dark:text-paper-50">
-                <span className="inline-block w-0.5 h-4 bg-ink-900 dark:bg-paper-50 animate-pulse" />
+                <span className="inline-block w-0.5 h-4 bg-ink-900 animate-pulse" />
               </div>
             </div>
           )}
