@@ -296,8 +296,18 @@ export default function KindleReaderPage() {
     if (speaking) { window.speechSynthesis.cancel(); setSpeaking(false); return; }
     const text = stripMarkdown(pages[currentPage] ?? '');
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = getLanguage() === 'hi' ? 'hi-IN' : 'en-IN';
+    const lang = getLanguage();
+    utterance.lang = lang === 'hi' ? 'hi-IN' : 'en-IN';
     utterance.rate = 0.9;
+    // Try to select a gendered voice matching user preference
+    const voices = window.speechSynthesis.getVoices();
+    const targetLang = lang === 'hi' ? 'hi' : 'en-IN';
+    const langVoices = voices.filter(v => v.lang.startsWith(targetLang));
+    if (langVoices.length > 0) {
+      // Prefer female voice (default for education apps)
+      const femaleVoice = langVoices.find(v => v.name.toLowerCase().includes('female') || v.name.toLowerCase().includes('woman'));
+      utterance.voice = femaleVoice ?? langVoices[0]!;
+    }
     utterance.onend = () => setSpeaking(false);
     window.speechSynthesis.speak(utterance);
     setSpeaking(true);
