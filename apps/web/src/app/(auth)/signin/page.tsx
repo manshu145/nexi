@@ -1,10 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useAuth } from '~/lib/auth-context';
 import { Logo } from '~/components/Logo';
+import { sendPasswordResetEmail } from 'firebase/auth';
+import { getFirebaseAuthClient } from '~/lib/firebase';
 
 type AuthMode = 'signin' | 'signup';
 
@@ -13,18 +15,45 @@ export default function SignInPage() {
   const tc = useTranslations('common');
   const { user, loading, signInWithGoogle, signUpWithEmail, signInWithEmail } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [mode, setMode] = useState<AuthMode>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [signingIn, setSigningIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resetSent, setResetSent] = useState(false);
+
+  // Store referral code from ?ref= query param
+  useEffect(() => {
+    const ref = searchParams.get('ref');
+    if (ref) {
+      localStorage.setItem('pendingReferral', ref);
+    }
+  }, [searchParams]);
 
   useEffect(() => { if (!loading && user) router.replace('/dashboard'); }, [user, loading, router]);
 
   const handleGoogleSignIn = async () => {
     setSigningIn(true); setError(null);
     try { await signInWithGoogle(); } catch (err) { setError(err instanceof Error ? err.message : 'Sign in failed'); setSigningIn(false); }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!email.trim()) {
+      setError('Please enter your email address first, then click Forgot password');
+      return;
+    }
+    setError(null);
+    try {
+      await sendPasswordResetEmail(getFirebaseAuthClient(), email.trim());
+      setResetSent(true);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to send reset email';
+      if (msg.includes('auth/user-not-found')) setError('No account found with this email.');
+      else if (msg.includes('auth/invalid-email')) setError('Please enter a valid email address.');
+      else setError(msg);
+    }
   };
 
   const handleEmailSubmit = async (e: React.FormEvent) => {
@@ -111,6 +140,11 @@ export default function SignInPage() {
           <button type="submit" disabled={signingIn} className="btn-primary w-full mt-2">
             {signingIn ? 'Please wait...' : mode === 'signup' ? 'Create Account' : 'Sign In with Email'}
           </button>
+          {mode === 'signin' && (
+            <button type="button" onClick={handleForgotPassword} className="mt-2 text-xs text-ember-600 hover:underline w-full text-right">
+              Forgot password?
+            </button>
+          )}
         </form>
 
         {/* Toggle mode */}
@@ -127,6 +161,7 @@ export default function SignInPage() {
         </p>
 
         {error && <div className="banner banner-error mt-4">{error}</div>}
+        {resetSent && <div className="banner mt-4 bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800 rounded-lg px-4 py-2 text-sm">Password reset email sent! Check your inbox.</div>}
       </div>
     </main>
   );
