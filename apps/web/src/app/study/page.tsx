@@ -194,7 +194,7 @@ export default function StudyPage() {
                       return (
                         <button
                           onClick={() => router.push('/upgrade')}
-                          className="mt-3 w-full rounded-lg border border-amber-500/50 bg-amber-500/5 py-3 text-center text-sm font-medium text-amber-700 dark:text-amber-400 transition-colors hover:bg-amber-500/10"
+                          className="mt-3 w-full rounded-lg border border-gold-500/50 bg-gold-500/5 py-3 text-center text-sm font-medium text-gold-600 dark:text-gold-500 transition-colors hover:bg-gold-500/10"
                         >
                           ⭐ Generate More Chapters — Scholar plan required
                         </button>
@@ -203,7 +203,7 @@ export default function StudyPage() {
 
                     if (!allPassed) {
                       return (
-                        <button disabled className="mt-3 w-full rounded-lg bg-paper-200 dark:bg-ink-700 py-3 text-center text-sm font-medium text-muted-500 cursor-not-allowed">
+                        <button disabled className="mt-3 w-full rounded-lg bg-paper-200 py-3 text-center text-sm font-medium text-muted-500 cursor-not-allowed">
                           🔒 Generate More Chapters — Pass all chapters first (80%+)
                         </button>
                       );
@@ -232,14 +232,14 @@ export default function StudyPage() {
                           finally { setGenerating(null); }
                         }}
                         disabled={generating === subject.slug}
-                        className="mt-3 w-full rounded-lg bg-amber-500 py-3 text-center text-sm font-semibold text-ink-900 transition-colors hover:bg-amber-600 disabled:opacity-60"
+                        className="mt-3 w-full rounded-lg bg-gold-500 py-3 text-center text-sm font-semibold text-paper-50 transition-colors hover:bg-gold-600 disabled:opacity-60"
                       >
                         {generating === subject.slug ? '✨ Generating...' : '✨ Generate More Chapters'}
                       </button>
                     );
                   })()}
                   {genSuccess && generating === null && (
-                    <p className="mt-2 text-center text-xs text-emerald-600 dark:text-emerald-400">{genSuccess}</p>
+                    <p className="mt-2 text-center text-xs text-gold-500">{genSuccess}</p>
                   )}
                 </div>
               )}

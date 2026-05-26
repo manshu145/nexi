@@ -69,8 +69,8 @@ export default function AdminAnnouncementsPage() {
 
   if (loading || !user) return (
     <div className="space-y-4">
-      <div className="h-7 w-40 rounded bg-paper-300 dark:bg-ink-700 animate-pulse" />
-      <div className="h-32 rounded bg-paper-300 dark:bg-ink-700 animate-pulse" />
+      <div className="h-7 w-40 rounded bg-paper-300 animate-pulse" />
+      <div className="h-32 rounded bg-paper-300 animate-pulse" />
     </div>
   );
 
@@ -129,8 +129,8 @@ export default function AdminAnnouncementsPage() {
         <div className="mt-6 space-y-3">
           {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="paper-card p-4 space-y-2">
-              <div className="h-4 w-40 rounded bg-paper-300 dark:bg-ink-700 animate-pulse" />
-              <div className="h-3 w-64 rounded bg-paper-300 dark:bg-ink-700 animate-pulse" />
+              <div className="h-4 w-40 rounded bg-paper-300 animate-pulse" />
+              <div className="h-3 w-64 rounded bg-paper-300 animate-pulse" />
             </div>
           ))}
         </div>
@@ -154,7 +154,7 @@ export default function AdminAnnouncementsPage() {
                     <span className="text-xs text-muted-400">{new Date(a.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
                   </div>
                 </div>
-                <span className={`h-2 w-2 rounded-full ${a.isActive ? 'bg-emerald-500' : 'bg-muted-400'}`} />
+                <span className={`h-2 w-2 rounded-full ${a.isActive ? 'bg-gold-500' : 'bg-muted-400'}`} />
               </div>
             </div>
           ))}

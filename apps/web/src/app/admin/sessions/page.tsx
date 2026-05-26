@@ -17,10 +17,10 @@ const API = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com';
 function SkeletonRow() {
   return (
     <tr>
-      <td className="px-4 py-3"><div className="h-4 w-28 rounded bg-paper-300 dark:bg-ink-700 animate-pulse" /></td>
-      <td className="px-4 py-3"><div className="h-4 w-20 rounded bg-paper-300 dark:bg-ink-700 animate-pulse" /></td>
-      <td className="px-4 py-3"><div className="h-4 w-16 rounded bg-paper-300 dark:bg-ink-700 animate-pulse" /></td>
-      <td className="px-4 py-3"><div className="h-4 w-14 rounded bg-paper-300 dark:bg-ink-700 animate-pulse" /></td>
+      <td className="px-4 py-3"><div className="h-4 w-28 rounded bg-paper-300 animate-pulse" /></td>
+      <td className="px-4 py-3"><div className="h-4 w-20 rounded bg-paper-300 animate-pulse" /></td>
+      <td className="px-4 py-3"><div className="h-4 w-16 rounded bg-paper-300 animate-pulse" /></td>
+      <td className="px-4 py-3"><div className="h-4 w-14 rounded bg-paper-300 animate-pulse" /></td>
     </tr>
   );
 }
@@ -67,8 +67,8 @@ export default function AdminSessionsPage() {
   if (loading || !user) {
     return (
       <div className="space-y-4">
-        <div className="h-7 w-48 rounded bg-paper-300 dark:bg-ink-700 animate-pulse" />
-        <div className="h-4 w-24 rounded bg-paper-300 dark:bg-ink-700 animate-pulse" />
+        <div className="h-7 w-48 rounded bg-paper-300 animate-pulse" />
+        <div className="h-4 w-24 rounded bg-paper-300 animate-pulse" />
       </div>
     );
   }
@@ -77,7 +77,7 @@ export default function AdminSessionsPage() {
     <div>
       <div className="flex items-center gap-3">
         <h1 className="font-serif text-2xl font-bold text-ink-900 dark:text-paper-50">Live Sessions</h1>
-        <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+        <span className="inline-flex items-center rounded-full bg-gold-500/10 px-2.5 py-0.5 text-xs font-medium text-gold-600 dark:text-gold-500">
           {count} online
         </span>
       </div>
@@ -125,9 +125,9 @@ export default function AdminSessionsPage() {
             </thead>
             <tbody className="divide-y divide-line">
               {sessions.map((s) => (
-                <tr key={s.userId} className="hover:bg-paper-100 dark:hover:bg-ink-800 transition-colors">
+                <tr key={s.userId} className="hover:bg-paper-200 transition-colors">
                   <td className="px-4 py-3 font-medium text-ink-900 dark:text-paper-50">{s.userName}</td>
-                  <td className="px-4 py-3 text-muted-600 dark:text-muted-400">{s.exam}</td>
+                  <td className="px-4 py-3 text-muted-500">{s.exam}</td>
                   <td className="px-4 py-3 text-muted-500">
                     {new Date(s.lastActiveAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
                   </td>

@@ -114,8 +114,8 @@ export default function AdminPlansPage() {
 
   if (loading || !user) return (
     <div className="space-y-4">
-      <div className="h-7 w-32 rounded bg-paper-300 dark:bg-ink-700 animate-pulse" />
-      <div className="h-40 rounded bg-paper-300 dark:bg-ink-700 animate-pulse" />
+      <div className="h-7 w-32 rounded bg-paper-300 animate-pulse" />
+      <div className="h-40 rounded bg-paper-300 animate-pulse" />
     </div>
   );
 
@@ -133,7 +133,7 @@ export default function AdminPlansPage() {
         </div>
         {fetching ? (
           <div className="p-4 space-y-3">
-            {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-10 rounded bg-paper-300 dark:bg-ink-700 animate-pulse" />)}
+            {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-10 rounded bg-paper-300 animate-pulse" />)}
           </div>
         ) : (
           <table className="w-full text-sm">
@@ -149,14 +149,14 @@ export default function AdminPlansPage() {
               {plans.map(p => (
                 <tr key={p.id}>
                   <td className="px-4 py-3 font-medium text-ink-900 dark:text-paper-50">{p.name}</td>
-                  <td className="px-4 py-3 text-muted-600 dark:text-muted-400">{p.price === 0 ? 'Free' : `₹${p.price}/mo`}</td>
+                  <td className="px-4 py-3 text-muted-500">{p.price === 0 ? 'Free' : `₹${p.price}/mo`}</td>
                   <td className="px-4 py-3">
                     {p.isActive ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 dark:bg-emerald-900/30 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />Active
+                      <span className="inline-flex items-center gap-1 rounded-full bg-gold-500/10 px-2 py-0.5 text-xs font-medium text-gold-600 dark:text-gold-500">
+                        <span className="h-1.5 w-1.5 rounded-full bg-gold-500" />Active
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 dark:bg-ink-700 px-2 py-0.5 text-xs font-medium text-muted-500">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-paper-200 px-2 py-0.5 text-xs font-medium text-muted-500">
                         Coming Soon
                       </span>
                     )}
@@ -232,23 +232,23 @@ export default function AdminPlansPage() {
               {coupons.map(c => (
                 <tr key={c.code}>
                   <td className="px-4 py-3 font-mono font-medium text-ink-900 dark:text-paper-50">{c.code}</td>
-                  <td className="px-4 py-3 text-muted-600 dark:text-muted-400">
+                  <td className="px-4 py-3 text-muted-500">
                     {c.discountType === 'percent' ? `${c.discountValue}%` : `₹${c.discountValue}`}
                   </td>
-                  <td className="px-4 py-3 text-muted-600 dark:text-muted-400">
+                  <td className="px-4 py-3 text-muted-500">
                     {c.usedCount}/{c.maxUses === 0 ? '∞' : c.maxUses}
                   </td>
                   <td className="px-4 py-3">
                     <button onClick={() => handleToggleCoupon(c.code, c.isActive)} className="text-xs">
                       {c.isActive ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 dark:bg-emerald-900/30 px-2 py-0.5 font-medium text-emerald-700 dark:text-emerald-400">Active</span>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-gold-500/10 px-2 py-0.5 font-medium text-gold-600 dark:text-gold-500">Active</span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 dark:bg-ink-700 px-2 py-0.5 font-medium text-muted-500">Inactive</span>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-paper-200 px-2 py-0.5 font-medium text-muted-500">Inactive</span>
                       )}
                     </button>
                   </td>
                   <td className="px-4 py-3">
-                    <button onClick={() => handleDeleteCoupon(c.code)} className="text-xs text-red-500 hover:text-red-700">Delete</button>
+                    <button onClick={() => handleDeleteCoupon(c.code)} className="text-xs text-ember-500 hover:text-ember-700">Delete</button>
                   </td>
                 </tr>
               ))}
