@@ -30,6 +30,7 @@ export interface LeaderboardEntry {
 
 export interface CurrentAffairsStore {
   getTodayItems(date: string): Promise<CurrentAffairsStoreItem[]>;
+  getItemById(date: string, itemId: string): Promise<CurrentAffairsStoreItem | null>;
   saveItems(date: string, items: CurrentAffairsStoreItem[]): Promise<void>;
   getDailyQuiz(date: string): Promise<GeneratedMCQ[] | null>;
   saveDailyQuiz(date: string, questions: GeneratedMCQ[]): Promise<void>;
@@ -40,6 +41,16 @@ export interface CurrentAffairsStore {
   getLastIngestedAt(): Promise<string | null>;
   /** Set last ingestion timestamp */
   setLastIngestedAt(timestamp: string): Promise<void>;
+  /** Like/unlike an item. Returns new like count */
+  toggleLike(itemId: string, userId: string): Promise<{ liked: boolean; count: number }>;
+  /** Bookmark/unbookmark an item */
+  toggleBookmark(itemId: string, userId: string): Promise<{ bookmarked: boolean }>;
+  /** Get user's bookmarked item IDs */
+  getUserBookmarks(userId: string): Promise<string[]>;
+  /** Get user's liked item IDs */
+  getUserLikes(userId: string): Promise<string[]>;
+  /** Get like count for items */
+  getLikeCounts(itemIds: string[]): Promise<Record<string, number>>;
 }
 
 // ---------- in-memory implementation ----------------------------------------
@@ -48,9 +59,16 @@ export class InMemoryCurrentAffairsStore implements CurrentAffairsStore {
   private items = new Map<string, CurrentAffairsStoreItem[]>();
   private quizzes = new Map<string, GeneratedMCQ[]>();
   private results = new Map<string, DailyQuizResult[]>();
+  private likes = new Map<string, Set<string>>(); // itemId -> Set<userId>
+  private bookmarks = new Map<string, Set<string>>(); // userId -> Set<itemId>
 
   async getTodayItems(date: string) {
     return this.items.get(date) ?? [];
+  }
+
+  async getItemById(date: string, itemId: string) {
+    const items = this.items.get(date) ?? [];
+    return items.find(i => i.id === itemId) ?? null;
   }
 
   async saveItems(date: string, items: CurrentAffairsStoreItem[]) {
@@ -97,6 +115,38 @@ export class InMemoryCurrentAffairsStore implements CurrentAffairsStore {
   private lastIngestedAt: string | null = null;
   async getLastIngestedAt() { return this.lastIngestedAt; }
   async setLastIngestedAt(timestamp: string) { this.lastIngestedAt = timestamp; }
+
+  async toggleLike(itemId: string, userId: string) {
+    if (!this.likes.has(itemId)) this.likes.set(itemId, new Set());
+    const set = this.likes.get(itemId)!;
+    if (set.has(userId)) { set.delete(userId); return { liked: false, count: set.size }; }
+    set.add(userId);
+    return { liked: true, count: set.size };
+  }
+
+  async toggleBookmark(itemId: string, userId: string) {
+    if (!this.bookmarks.has(userId)) this.bookmarks.set(userId, new Set());
+    const set = this.bookmarks.get(userId)!;
+    if (set.has(itemId)) { set.delete(itemId); return { bookmarked: false }; }
+    set.add(itemId);
+    return { bookmarked: true };
+  }
+
+  async getUserBookmarks(userId: string) {
+    return Array.from(this.bookmarks.get(userId) ?? []);
+  }
+
+  async getUserLikes(userId: string) {
+    const liked: string[] = [];
+    for (const [itemId, set] of this.likes) { if (set.has(userId)) liked.push(itemId); }
+    return liked;
+  }
+
+  async getLikeCounts(itemIds: string[]) {
+    const counts: Record<string, number> = {};
+    for (const id of itemIds) { counts[id] = this.likes.get(id)?.size ?? 0; }
+    return counts;
+  }
 }
 
 // ---------- firestore implementation ----------------------------------------
@@ -208,5 +258,87 @@ export class FirestoreCurrentAffairsStore implements CurrentAffairsStore {
 
   async setLastIngestedAt(timestamp: string): Promise<void> {
     await this.db.collection('system').doc('ingestionStatus').set({ lastIngestedAt: timestamp }, { merge: true });
+  }
+
+  async getItemById(date: string, itemId: string): Promise<CurrentAffairsStoreItem | null> {
+    try {
+      // Try today's IST bucket first
+      const now = new Date();
+      const istOffset = 5.5 * 60 * 60 * 1000;
+      const istNow = new Date(now.getTime() + istOffset);
+      const istTodayKey = istNow.toISOString().split('T')[0]!;
+
+      let snap = await this.db.collection('currentAffairs').doc(istTodayKey).collection('items').doc(itemId).get();
+      if (snap.exists) return snap.data() as CurrentAffairsStoreItem;
+
+      // Try provided date
+      if (date !== istTodayKey) {
+        snap = await this.db.collection('currentAffairs').doc(date).collection('items').doc(itemId).get();
+        if (snap.exists) return snap.data() as CurrentAffairsStoreItem;
+      }
+
+      // Try yesterday
+      const yesterdayKey = new Date(istNow.getTime() - 24 * 60 * 60 * 1000).toISOString().split('T')[0]!;
+      snap = await this.db.collection('currentAffairs').doc(yesterdayKey).collection('items').doc(itemId).get();
+      if (snap.exists) return snap.data() as CurrentAffairsStoreItem;
+
+      return null;
+    } catch { return null; }
+  }
+
+  async toggleLike(itemId: string, userId: string) {
+    const ref = this.db.collection('newsLikes').doc(`${itemId}_${userId}`);
+    const countRef = this.db.collection('newsLikeCounts').doc(itemId);
+    const snap = await ref.get();
+    if (snap.exists) {
+      await ref.delete();
+      const countSnap = await countRef.get();
+      const current = countSnap.exists ? (countSnap.data()?.count ?? 1) : 1;
+      const newCount = Math.max(0, current - 1);
+      await countRef.set({ count: newCount }, { merge: true });
+      return { liked: false, count: newCount };
+    }
+    await ref.set({ itemId, userId, createdAt: new Date().toISOString() });
+    const countSnap = await countRef.get();
+    const current = countSnap.exists ? (countSnap.data()?.count ?? 0) : 0;
+    const newCount = current + 1;
+    await countRef.set({ count: newCount }, { merge: true });
+    return { liked: true, count: newCount };
+  }
+
+  async toggleBookmark(itemId: string, userId: string) {
+    const ref = this.db.collection('newsBookmarks').doc(`${userId}_${itemId}`);
+    const snap = await ref.get();
+    if (snap.exists) {
+      await ref.delete();
+      return { bookmarked: false };
+    }
+    await ref.set({ itemId, userId, createdAt: new Date().toISOString() });
+    return { bookmarked: true };
+  }
+
+  async getUserBookmarks(userId: string) {
+    try {
+      const snap = await this.db.collection('newsBookmarks').where('userId', '==', userId).get();
+      return snap.docs.map(d => d.data().itemId as string);
+    } catch { return []; }
+  }
+
+  async getUserLikes(userId: string) {
+    try {
+      const snap = await this.db.collection('newsLikes').where('userId', '==', userId).get();
+      return snap.docs.map(d => d.data().itemId as string);
+    } catch { return []; }
+  }
+
+  async getLikeCounts(itemIds: string[]) {
+    const counts: Record<string, number> = {};
+    try {
+      for (const id of itemIds) {
+        const snap = await this.db.collection('newsLikeCounts').doc(id).get();
+        counts[id] = snap.exists ? (snap.data()?.count ?? 0) : 0;
+      }
+    } catch { /* fallback to zeros */ }
+    return counts;
   }
 }
