@@ -25,6 +25,21 @@ interface Attachment {
   preview?: string; // for images: object URL for preview
 }
 
+/** Format relative time (e.g., "just now", "2m ago", "1h ago") */
+function formatRelativeTime(timestamp: string): string {
+  const now = Date.now();
+  const then = new Date(timestamp).getTime();
+  const diffSec = Math.floor((now - then) / 1000);
+  if (diffSec < 30) return 'just now';
+  if (diffSec < 60) return `${diffSec}s ago`;
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  return `${diffDay}d ago`;
+}
+
 function ChatPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -167,6 +182,28 @@ function ChatPage() {
     } catch { /* ignore */ }
   };
 
+  const handleGenerateDiagram = () => {
+    const topic = input.trim();
+    if (!topic) return;
+    handleVisualize(topic);
+  };
+
+  const [generatingImage, setGeneratingImage] = useState(false);
+  const [generatedImage, setGeneratedImage] = useState<{ type: string; content: string } | null>(null);
+
+  const handleGenerateImage = async () => {
+    const topic = input.trim();
+    if (!topic || generatingImage) return;
+    setGeneratingImage(true);
+    try {
+      const res = await api.generateImage(topic);
+      setGeneratedImage(res);
+    } catch {
+      // Fallback to diagram if image gen fails
+      handleVisualize(topic);
+    } finally { setGeneratingImage(false); }
+  };
+
   const prompts = ['Explain Article 370 in simple terms', 'What is the current fiscal deficit?', 'Compare parliamentary vs presidential systems'];
 
   if (loading || !user) return <main className="flex min-h-dvh items-center justify-center"><AILoader context="chat" /></main>;
@@ -179,7 +216,7 @@ function ChatPage() {
       <aside className={`fixed inset-y-0 left-0 z-40 flex w-64 max-w-[80vw] flex-col border-r border-line bg-paper-50 transition-transform md:static md:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex items-center justify-between p-4 border-b border-line">
           <Logo />
-          <button onClick={() => setSidebarOpen(false)} className="btn-ghost-sm md:hidden" aria-label="Close sidebar">✕</button>
+          <button onClick={() => setSidebarOpen(false)} className="btn-ghost-sm md:hidden" aria-label="Close sidebar">&#x2715;</button>
         </div>
         <button onClick={startNewChat} className="btn-primary mx-3 mt-3">+ New Chat</button>
         <nav className="mt-3 flex-1 overflow-y-auto px-3 space-y-1">
@@ -196,26 +233,32 @@ function ChatPage() {
           ))}
         </nav>
         <div className="border-t border-line p-3">
-          <button onClick={() => router.push('/dashboard')} className="btn-ghost w-full text-sm">← Dashboard</button>
+          <button onClick={() => router.push('/dashboard')} className="btn-ghost w-full text-sm">&larr; Dashboard</button>
         </div>
       </aside>
 
       {/* Main chat area */}
       <main className="flex flex-1 flex-col min-w-0 h-dvh bg-paper-100">
+        {/* Header with model indicator */}
         <header className="flex items-center gap-3 border-b border-line px-4 py-3 bg-paper-50">
-          <button onClick={() => setSidebarOpen(true)} className="btn-ghost-sm md:hidden" aria-label="Open sidebar">☰</button>
-          <h1 className="font-serif text-lg font-semibold text-ink-900 truncate">Nexi AI</h1>
+          <button onClick={() => setSidebarOpen(true)} className="btn-ghost-sm md:hidden" aria-label="Open sidebar">&#x2630;</button>
+          <div className="flex items-center gap-2 min-w-0">
+            <h1 className="font-serif text-lg font-semibold text-ink-900 truncate">Nexi AI</h1>
+            <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full bg-paper-200 border border-line text-[10px] font-medium text-muted-500 whitespace-nowrap">
+              GPT-4o
+            </span>
+          </div>
         </header>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
+        <div className="flex-1 overflow-y-auto px-3 sm:px-4 lg:px-6 py-6 space-y-4">
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center h-full text-center px-4">
               <div className="w-12 h-12 rounded-2xl bg-gold-500/10 flex items-center justify-center">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 2L13.5 8.5L20 10L13.5 11.5L12 18L10.5 11.5L4 10L10.5 8.5L12 2Z" fill="currentColor" className="text-gold-500"/></svg>
               </div>
               <h2 className="font-serif mt-4 text-xl font-bold text-ink-900">Hi, I&apos;m Nexi</h2>
-              <p className="mt-2 text-sm text-muted-500">Ask me anything about your exam. You can also attach images!</p>
+              <p className="mt-2 text-sm text-muted-500 max-w-sm">Ask me anything about your exam. You can also attach images or generate diagrams!</p>
               <div className="mt-6 flex flex-wrap justify-center gap-2">
                 {prompts.map(p => (<button key={p} onClick={() => { setInput(p); }} className="pill text-xs">{p}</button>))}
               </div>
@@ -223,23 +266,23 @@ function ChatPage() {
           )}
           {messages.map((msg, i) => (
             <div key={i} className={`group flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-              <div className={`relative max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${msg.role === 'user' ? 'bg-ember-500 text-paper-50' : 'paper-card text-ink-900'}`}>
+              <div className={`relative max-w-[90%] sm:max-w-[80%] lg:max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${msg.role === 'user' ? 'bg-ember-500 text-paper-50' : 'paper-card text-ink-900'}`}>
                 {msg.role === 'assistant' ? (
                   <div className="prose prose-sm max-w-none dark:prose-invert prose-headings:font-serif prose-blockquote:border-l-ember-500">
                     <ReactMarkdown
                       rehypePlugins={[rehypeHighlight]}
                       components={{
-                        // Code block with copy button
+                        // Code block with ALWAYS VISIBLE copy button
                         pre({ children }) {
                           const codeContent = extractCodeText(children);
                           return (
-                            <div className="relative group/code my-3">
-                              <pre className="!bg-paper-200 dark:!bg-ink-950 !rounded-xl !p-4 !text-xs overflow-x-auto border border-line">
+                            <div className="relative my-3">
+                              <pre className="!bg-paper-200 dark:!bg-ink-950 !rounded-xl !p-4 !pr-16 !text-xs overflow-x-auto border border-line">
                                 {children}
                               </pre>
                               <button
                                 onClick={() => handleCopy(codeContent)}
-                                className="absolute top-2 right-2 opacity-0 group-hover/code:opacity-100 transition-opacity px-2 py-1 rounded-md bg-paper-50/90 border border-line text-[10px] font-medium text-ink-700 hover:text-ink-900"
+                                className="absolute top-2 right-2 px-2 py-1 rounded-md bg-paper-300/80 border border-line text-[10px] font-medium text-ink-700 hover:text-ink-900 hover:bg-paper-300 transition-colors"
                               >
                                 Copy
                               </button>
@@ -287,23 +330,27 @@ function ChatPage() {
                   </button>
                 )}
               </div>
-              {msg.role === 'assistant' && msg.content.length > 100 && (
-                <button onClick={() => handleVisualize(msg.content)} className="mt-1 text-xs text-ember-600 hover:underline">
-                  Visualize this
-                </button>
-              )}
+              {/* Timestamp + Visualize action row */}
+              <div className={`flex items-center gap-2 mt-1 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                <span className="text-[10px] text-muted-400">{formatRelativeTime(msg.timestamp)}</span>
+                {msg.role === 'assistant' && msg.content.length > 100 && (
+                  <button onClick={() => handleVisualize(msg.content)} className="text-xs text-ember-600 hover:underline">
+                    Visualize
+                  </button>
+                )}
+              </div>
             </div>
           ))}
           {sending && (
             <div className="flex justify-start">
-              <div className="paper-card max-w-[85%] rounded-2xl px-4 py-3 text-sm text-ink-900">
-                <div className="flex items-center gap-2">
-                  <span className="flex gap-0.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-ink-900 animate-bounce" />
-                    <span className="w-1.5 h-1.5 rounded-full bg-ink-900 animate-bounce" style={{ animationDelay: '0.15s' }} />
-                    <span className="w-1.5 h-1.5 rounded-full bg-ink-900 animate-bounce" style={{ animationDelay: '0.3s' }} />
+              <div className="paper-card max-w-[90%] sm:max-w-[80%] lg:max-w-[75%] rounded-2xl px-4 py-3">
+                <div className="flex items-center gap-2.5">
+                  <span className="flex gap-1 items-center">
+                    <span className="w-2 h-2 rounded-full bg-ember-500/70 animate-bounce" />
+                    <span className="w-2 h-2 rounded-full bg-ember-500/70 animate-bounce" style={{ animationDelay: '0.15s' }} />
+                    <span className="w-2 h-2 rounded-full bg-ember-500/70 animate-bounce" style={{ animationDelay: '0.3s' }} />
                   </span>
-                  <span className="text-xs text-muted-500">Thinking...</span>
+                  <span className="text-xs text-muted-500">Nexi is thinking...</span>
                 </div>
               </div>
             </div>
@@ -313,7 +360,7 @@ function ChatPage() {
 
         {/* Attachment previews */}
         {attachments.length > 0 && (
-          <div className="border-t border-line px-4 py-2 bg-paper-50 flex gap-2 overflow-x-auto">
+          <div className="border-t border-line px-3 sm:px-4 py-2 bg-paper-50 flex gap-2 overflow-x-auto">
             {attachments.map((att, i) => (
               <div key={i} className="relative flex-shrink-0 group/att">
                 {att.type === 'image' && att.preview ? (
@@ -326,17 +373,48 @@ function ChatPage() {
                 )}
                 <button
                   onClick={() => removeAttachment(i)}
-                  className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-ember-500 text-white flex items-center justify-center text-[10px] opacity-0 group-hover/att:opacity-100 transition-opacity"
+                  className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-ember-500 text-white flex items-center justify-center text-[10px]"
                 >
-                  ✕
+                  &#x2715;
                 </button>
               </div>
             ))}
           </div>
         )}
 
-        {/* Input area */}
-        <div className="border-t border-line p-3 sm:p-4 bg-paper-50">
+        {/* Quick action bar + Input area */}
+        <div className="border-t border-line p-2 sm:p-4 bg-paper-50">
+          {/* Quick action buttons row */}
+          <div className="mx-auto max-w-2xl mb-2 flex items-center gap-2 overflow-x-auto pb-1">
+            <button
+              onClick={handleGenerateImage}
+              disabled={!input.trim() || sending || generatingImage}
+              className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-line bg-paper-100 text-xs font-medium text-ink-700 hover:bg-paper-200 hover:text-ink-900 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Generate an AI image from your input text"
+            >
+              <span>&#x1F5BC;</span>
+              <span>{generatingImage ? 'Generating...' : 'Generate Image'}</span>
+            </button>
+            <button
+              onClick={handleGenerateDiagram}
+              disabled={!input.trim() || sending}
+              className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-line bg-paper-100 text-xs font-medium text-ink-700 hover:bg-paper-200 hover:text-ink-900 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Generate a diagram from your input text"
+            >
+              <span>&#x1F3A8;</span>
+              <span>Generate Diagram</span>
+            </button>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-line bg-paper-100 text-xs font-medium text-ink-700 hover:bg-paper-200 hover:text-ink-900 transition-colors"
+              title="Attach a file or image"
+            >
+              <span>&#x1F4CE;</span>
+              <span>Attach</span>
+            </button>
+          </div>
+
+          {/* Input row */}
           <div className="mx-auto max-w-2xl relative flex items-end gap-2">
             {/* Attachment button */}
             <button
@@ -372,7 +450,7 @@ function ChatPage() {
                 className="absolute right-2 bottom-2 btn-primary h-8 w-8 rounded-lg p-0 flex items-center justify-center disabled:opacity-50 text-sm"
                 aria-label="Send message"
               >
-                ➤
+                &#x27A4;
               </button>
             </div>
           </div>
@@ -390,10 +468,25 @@ function ChatPage() {
         </div>
       )}
 
+      {/* Generated Image modal */}
+      {generatedImage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setGeneratedImage(null)}>
+          <div className="paper-card max-w-lg w-full max-h-[80vh] overflow-auto p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="font-serif text-lg font-bold text-ink-900">Generated Image</h3>
+            {generatedImage.type === 'image' ? (
+              <img src={generatedImage.content} alt="AI Generated" className="mt-4 w-full rounded-xl border border-line" />
+            ) : (
+              <pre className="mt-4 text-xs bg-paper-200 p-4 rounded-lg overflow-auto whitespace-pre-wrap">{generatedImage.content}</pre>
+            )}
+            <button onClick={() => setGeneratedImage(null)} className="btn-ghost mt-4 w-full">Close</button>
+          </div>
+        </div>
+      )}
+
       {/* Copy toast */}
       {copyToast && (
         <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg bg-ink-900 text-paper-50 text-sm shadow-xl animate-fadeIn">
-          ✓ Copied to clipboard
+          &#x2713; Copied to clipboard
         </div>
       )}
     </div>
