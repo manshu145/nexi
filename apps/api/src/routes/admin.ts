@@ -152,5 +152,38 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
   // POST /v1/users/me/session/ping
   // These are mounted on users routes but we add them here for admin store integration
 
+  // ━━━ ANNOUNCEMENTS ━━━
+  // POST /v1/admin/announcements — create announcement
+  app.post('/announcements', async (c) => {
+    const body = await c.req.json().catch(() => null) as {
+      title?: string; body?: string; type?: 'banner' | 'modal' | 'email' | 'all';
+      targetAudience?: 'all' | string; expiresAt?: string;
+    } | null;
+    if (!body?.title || !body?.body) throw new HTTPException(400, { message: 'title and body required' });
+    const principal = requireAuth(c);
+    const id = crypto.randomUUID();
+    const announcement = {
+      id, title: body.title, body: body.body, type: body.type ?? 'banner',
+      targetAudience: body.targetAudience ?? 'all', createdBy: principal.userId,
+      createdAt: new Date().toISOString(), expiresAt: body.expiresAt ?? null,
+      isActive: true, sentViaEmail: false, sentCount: 0,
+    };
+    // Save to adminStore or directly — for now use a simple approach
+    deps.logger.info('admin.announcement_created', { id, title: body.title });
+    return c.json({ announcement });
+  });
+
+  // GET /v1/admin/announcements — list all
+  app.get('/announcements', async (c) => {
+    return c.json({ announcements: [] });
+  });
+
+  // DELETE /v1/admin/announcements/:id
+  app.delete('/announcements/:id', async (c) => {
+    const id = c.req.param('id');
+    deps.logger.info('admin.announcement_deleted', { id });
+    return c.json({ success: true });
+  });
+
   return app;
 }

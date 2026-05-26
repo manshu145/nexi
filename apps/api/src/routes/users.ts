@@ -76,5 +76,12 @@ export function makeUsersRoutes(deps: UsersRoutesDeps): Hono {
     return c.json({ ok: true });
   });
 
+  // GET /v1/users/announcements — public: active announcements for current user
+  app.get('/announcements', async (c) => {
+    requireAuth(c);
+    // Return active announcements (placeholder — will be populated from Firestore)
+    return c.json({ announcements: [] });
+  });
+
   return app;
 }
