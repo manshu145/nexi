@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import { useAuth } from '~/lib/auth-context';
 import { api, type ChatMessage } from '~/lib/api';
 import { Logo } from '~/components/Logo';
+import { AILoader } from '~/components/ui/AILoader';
 
 export default function SupportPage() {
   const { user, loading } = useAuth();
@@ -43,7 +44,7 @@ export default function SupportPage() {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   };
 
-  if (loading || !user) return <main className="flex min-h-dvh items-center justify-center"><span className="spinner" /></main>;
+  if (loading || !user) return <main className="flex min-h-dvh items-center justify-center"><AILoader context="general" /></main>;
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-lg flex-col px-5 pt-6 pb-4">

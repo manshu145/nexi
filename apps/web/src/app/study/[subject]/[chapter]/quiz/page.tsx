@@ -4,6 +4,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '~/lib/auth-context';
 import { api, type GeneratedMCQ } from '~/lib/api';
 import { Logo } from '~/components/Logo';
+import { AILoader } from '~/components/ui/AILoader';
 
 type Phase = 'loading' | 'quiz' | 'submitting' | 'result';
 
@@ -85,11 +86,11 @@ export default function ChapterQuizPage() {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [phase, idx, handleNext]);
 
-  if (loading || !user) return <main className="flex min-h-dvh items-center justify-center"><span className="spinner" /></main>;
+  if (loading || !user) return <main className="flex min-h-dvh items-center justify-center"><AILoader context="quiz" /></main>;
 
   if (phase === 'loading') return (
     <main className="flex min-h-dvh flex-col items-center justify-center gap-3">
-      <span className="spinner" />
+      <AILoader context="quiz" />
       <p className="text-sm text-muted-500">Loading quiz questions...</p>
       {error && <div className="banner banner-error mt-4">{error}</div>}
     </main>
@@ -97,7 +98,7 @@ export default function ChapterQuizPage() {
 
   if (phase === 'submitting') return (
     <main className="flex min-h-dvh flex-col items-center justify-center gap-3">
-      <span className="spinner" />
+      <AILoader context="quiz" />
       <p className="text-sm text-muted-500">Calculating your score...</p>
     </main>
   );

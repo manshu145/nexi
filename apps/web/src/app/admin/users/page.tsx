@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '~/lib/auth-context';
 import { getFirebaseAuthClient } from '~/lib/firebase';
+import { AILoader } from '~/components/ui/AILoader';
 
 interface AdminUser {
   id: string;
@@ -53,7 +54,7 @@ export default function AdminUsersPage() {
     return () => { cancelled = true; };
   }, [user, page]);
 
-  if (loading || !user) return <div className="flex items-center justify-center py-20"><span className="spinner" /></div>;
+  if (loading || !user) return <div className="flex items-center justify-center py-20"><AILoader context="general" /></div>;
   if (error) return <div className="banner banner-error">{error}</div>;
 
   return (
@@ -62,7 +63,7 @@ export default function AdminUsersPage() {
       <p className="mt-1 text-sm text-muted-500">{total} total users</p>
 
       {fetching ? (
-        <div className="flex items-center justify-center py-12"><span className="spinner" /></div>
+        <div className="flex items-center justify-center py-12"><AILoader context="general" /></div>
       ) : (
         <div className="mt-6 space-y-2">
           {users.map((u) => (

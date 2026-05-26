@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { api, type GeneratedMCQ } from '~/lib/api';
+import { AILoader } from '~/components/ui/AILoader';
 
 type Phase = 'intro' | 'quiz' | 'submitting' | 'error';
 
@@ -75,7 +76,7 @@ export default function AssessmentPage() {
       <p className="mt-2 text-center text-sm text-muted-500">{t('subtitle')}</p>
       <div className="paper-card mt-8 w-full p-5"><p className="text-sm text-ink-800 leading-relaxed">{t('description')}</p></div>
       <button type="button" onClick={startAssessment} disabled={loading} className="btn-primary mt-6 w-full">
-        {loading ? <><span className="spinner" /> {tc('loading')}</> : t('startButton')}
+        {loading ? tc('loading') : t('startButton')}
       </button>
     </div>
   );
@@ -100,7 +101,7 @@ export default function AssessmentPage() {
   // SUBMITTING phase
   if (phase === 'submitting') return (
     <div className="flex min-h-[40vh] flex-col items-center justify-center">
-      <span className="spinner" /><p className="mt-4 text-sm text-muted-500">{t('submitting')}</p>
+      <AILoader context="assessment" /><p className="mt-4 text-sm text-muted-500">{t('submitting')}</p>
     </div>
   );
 

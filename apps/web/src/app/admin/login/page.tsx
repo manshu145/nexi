@@ -1,4 +1,5 @@
 'use client';
+import { AILoader } from '~/components/ui/AILoader';
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -60,7 +61,7 @@ export default function AdminLoginPage() {
     }
   };
 
-  if (loading) return <main className="flex min-h-screen items-center justify-center"><span className="spinner" /></main>;
+  if (loading) return <main className="flex min-h-screen items-center justify-center"><AILoader context="general" /></main>;
 
   return (
     <main className="flex min-h-screen items-center justify-center px-4 bg-paper-100">

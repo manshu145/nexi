@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import type { AssessmentResult } from '~/lib/api';
+import { AILoader } from '~/components/ui/AILoader';
 
 export default function CompletePage() {
   const t = useTranslations('onboarding.complete');
@@ -35,7 +36,7 @@ export default function CompletePage() {
   if (pageLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-24">
-        <span className="spinner" />
+        <AILoader context="general" />
         <p className="mt-3 text-sm text-muted-500">Loading results...</p>
       </div>
     );

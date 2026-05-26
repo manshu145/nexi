@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import { useAuth } from '~/lib/auth-context';
 import { api, type ChatSessionSummary, type ChatMessage } from '~/lib/api';
 import { Logo } from '~/components/Logo';
+import { AILoader } from '~/components/ui/AILoader';
 
 export default function ChatPage() {
   const { user, loading } = useAuth();
@@ -80,7 +81,7 @@ export default function ChatPage() {
 
   const prompts = ['Explain Article 370 in simple terms', 'What is the current fiscal deficit?', 'Compare parliamentary vs presidential systems'];
 
-  if (loading || !user) return <main className="flex min-h-dvh items-center justify-center"><span className="spinner" /></main>;
+  if (loading || !user) return <main className="flex min-h-dvh items-center justify-center"><AILoader context="chat" /></main>;
 
   return (
     <div className="flex h-dvh overflow-hidden bg-paper-100">
