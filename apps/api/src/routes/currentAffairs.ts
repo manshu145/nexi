@@ -55,7 +55,7 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
   // GET /v1/current-affairs — today's items
   app.get('/', async (c) => {
     try {
-      requireAuth(c);
+      const principal = requireAuth(c);
       const today = new Date().toISOString().split('T')[0]!;
       const language = (c.req.query('lang') as 'en' | 'hi') || 'en';
       let items: any[] = [];
@@ -65,11 +65,11 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
 
       items = deduplicateItems(items);
 
-      // 4-hour refresh check: trigger background re-ingestion if stale
+      // 30-min refresh check: trigger background re-ingestion if stale
       try {
         const lastIngested = await deps.currentAffairs.getLastIngestedAt();
-        const fourHoursMs = 4 * 60 * 60 * 1000;
-        if (!lastIngested || (Date.now() - Date.parse(lastIngested)) > fourHoursMs) {
+        const thirtyMinMs = 30 * 60 * 1000;
+        if (!lastIngested || (Date.now() - Date.parse(lastIngested)) > thirtyMinMs) {
           deps.logger.info('ca.stale_triggering_reingest', { lastIngested });
           // Fire-and-forget background re-ingestion
           import('../lib/rssIngestion.js').then(({ ingestCurrentAffairs }) => {
@@ -90,7 +90,20 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
         }));
       }
 
-      return c.json({ date: today, items, yesterdayWinner: winner, isFromYesterday: items.some((it: any) => it._isFromYesterday) });
+      // Fetch user's social data (likes, bookmarks, counts)
+      let userLikes: string[] = [];
+      let userBookmarks: string[] = [];
+      let likeCounts: Record<string, number> = {};
+      try {
+        const itemIds = items.map((it: any) => it.id);
+        [userLikes, userBookmarks, likeCounts] = await Promise.all([
+          deps.currentAffairs.getUserLikes(principal.userId),
+          deps.currentAffairs.getUserBookmarks(principal.userId),
+          deps.currentAffairs.getLikeCounts(itemIds),
+        ]);
+      } catch (e) { deps.logger.warn('ca.social_fetch_error', { error: String(e) }); }
+
+      return c.json({ date: today, items, yesterdayWinner: winner, isFromYesterday: items.some((it: any) => it._isFromYesterday), userLikes, userBookmarks, likeCounts });
     } catch (e) {
       if (e instanceof HTTPException) throw e;
       deps.logger.error('ca.route_error', { error: e instanceof Error ? e.message : String(e), stack: e instanceof Error ? e.stack : '' });
@@ -169,6 +182,54 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
     const leaderboard = await deps.currentAffairs.getLeaderboard(today);
     const winner = await deps.currentAffairs.getYesterdayWinner();
     return c.json({ date: today, leaderboard, yesterdayWinner: winner });
+  });
+
+  // GET /v1/current-affairs/bookmarks — user's bookmarked items
+  app.get('/bookmarks', async (c) => {
+    const principal = requireAuth(c);
+    const bookmarks = await deps.currentAffairs.getUserBookmarks(principal.userId);
+    return c.json({ bookmarks });
+  });
+
+  // GET /v1/current-affairs/:id — single item detail
+  app.get('/:id', async (c) => {
+    try {
+      requireAuth(c);
+      const id = c.req.param('id');
+      const today = new Date().toISOString().split('T')[0]!;
+      const item = await deps.currentAffairs.getItemById(today, id);
+      if (!item) throw new HTTPException(404, { message: 'Article not found' });
+
+      const language = (c.req.query('lang') as 'en' | 'hi') || 'en';
+
+      // If Hindi, swap fields
+      if (language === 'hi') {
+        if (item.headlineHi) (item as any).headline = item.headlineHi;
+        if (item.summaryHi) { (item as any).summary = item.summaryHi; (item as any).body = item.summaryHi; }
+      }
+
+      return c.json({ item });
+    } catch (e) {
+      if (e instanceof HTTPException) throw e;
+      deps.logger.error('ca.detail_error', { error: String(e) });
+      throw new HTTPException(500, { message: 'Failed to load article' });
+    }
+  });
+
+  // POST /v1/current-affairs/:id/like — toggle like
+  app.post('/:id/like', async (c) => {
+    const principal = requireAuth(c);
+    const id = c.req.param('id');
+    const result = await deps.currentAffairs.toggleLike(id, principal.userId);
+    return c.json(result);
+  });
+
+  // POST /v1/current-affairs/:id/bookmark — toggle bookmark
+  app.post('/:id/bookmark', async (c) => {
+    const principal = requireAuth(c);
+    const id = c.req.param('id');
+    const result = await deps.currentAffairs.toggleBookmark(id, principal.userId);
+    return c.json(result);
   });
 
   // POST /v1/current-affairs/ingest — cron trigger (protected by CRON_SECRET or admin)
