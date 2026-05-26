@@ -96,22 +96,56 @@ export default function KindleReaderPage() {
     finally { setUnlocking(false); setPageLoading(false); }
   };
 
-  /** Play a subtle paper-rustle sound using Web Audio API (no external file needed) */
+  /** Play a realistic paper page-turn sound using Web Audio API */
   const playPageTurnSound = useCallback(() => {
     try {
       const ctx = new AudioContext();
-      const buffer = ctx.createBuffer(1, ctx.sampleRate * 0.08, ctx.sampleRate);
+      const sampleRate = ctx.sampleRate;
+      const duration = 0.25; // 250ms for a natural page flip
+      const buffer = ctx.createBuffer(1, sampleRate * duration, sampleRate);
       const data = buffer.getChannelData(0);
+
+      // Generate shaped noise that mimics paper friction
       for (let i = 0; i < data.length; i++) {
-        data[i] = (Math.random() * 2 - 1) * (1 - i / data.length) * 0.3;
+        const t = i / data.length;
+        // Envelope: quick attack, sustained rustle, gentle fade
+        const envelope = t < 0.05
+          ? t / 0.05 // attack
+          : t < 0.4
+            ? 1.0 - (t - 0.05) * 0.3 // slight decay during rustle
+            : Math.max(0, 1.0 - ((t - 0.4) / 0.6) ** 1.5); // natural release
+        // Filtered noise with some "crinkle" character
+        const noise = (Math.random() * 2 - 1);
+        const crinkle = Math.sin(i * 0.15) * 0.3 + Math.sin(i * 0.08) * 0.2;
+        data[i] = (noise * 0.6 + crinkle * noise) * envelope * 0.4;
       }
+
       const source = ctx.createBufferSource();
       source.buffer = buffer;
+
+      // Low-pass filter to make it sound like paper (remove harsh high frequencies)
+      const lpFilter = ctx.createBiquadFilter();
+      lpFilter.type = 'lowpass';
+      lpFilter.frequency.value = 3500;
+      lpFilter.Q.value = 0.7;
+
+      // High-pass to remove rumble
+      const hpFilter = ctx.createBiquadFilter();
+      hpFilter.type = 'highpass';
+      hpFilter.frequency.value = 200;
+      hpFilter.Q.value = 0.5;
+
       const gain = ctx.createGain();
-      gain.gain.value = 0.15;
-      source.connect(gain);
+      gain.gain.value = 0.18;
+
+      source.connect(hpFilter);
+      hpFilter.connect(lpFilter);
+      lpFilter.connect(gain);
       gain.connect(ctx.destination);
       source.start();
+
+      // Cleanup
+      source.onended = () => { ctx.close().catch(() => {}); };
     } catch { /* AudioContext not available, silently skip */ }
   }, []);
 

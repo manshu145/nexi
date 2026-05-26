@@ -103,11 +103,12 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
     // If type is specified with chapter context, use generateVisualization
     if (body?.type && body.chapterSlug && body.subjectSlug && body.examSlug) {
       const topic = body.chapterSlug.replace(/-/g, ' ');
-      const result = await deps.aiEngine.generateVisualization(topic, body.subjectSlug, body.examSlug, body.type);
+      try {
+        const result = await deps.aiEngine.generateVisualization(topic, body.subjectSlug, body.examSlug, body.type);
 
-      // Cache mermaid visualizations in Firestore
-      if (result.type === 'mermaid' && deps.db) {
-        const cacheKey = `${body.examSlug}_${body.subjectSlug}_${body.chapterSlug}_${body.type}`;
+        // Cache mermaid visualizations in Firestore
+        if (result.type === 'mermaid' && deps.db) {
+          const cacheKey = `${body.examSlug}_${body.subjectSlug}_${body.chapterSlug}_${body.type}`;
         try {
           await deps.db.collection('visualizationCache').doc(cacheKey).set({
             ...result,
@@ -122,6 +123,10 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
       }
 
       return c.json({ visualization: result });
+      } catch (err) {
+        deps.logger.error('study.visualize_error', { type: body.type, chapter: body.chapterSlug, error: err instanceof Error ? err.message : String(err) });
+        throw new HTTPException(503, { message: err instanceof Error ? err.message : 'Visualization generation failed. Please try again.' });
+      }
     }
 
     // Legacy: selection-based visualization (text required)
