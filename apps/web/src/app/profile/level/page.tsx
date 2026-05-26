@@ -5,6 +5,7 @@ import { useAuth } from '~/lib/auth-context';
 import { api } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 import { Skeleton } from '~/components/Skeleton';
+import { AILoader } from '~/components/ui/AILoader';
 
 interface SubjectBreakdown { subject: string; subjectName: string; completed: number; total: number; avgScore: number; }
 interface ChapterInfo { subject: string; chapter: string; chapterName: string; score: number; }
@@ -56,7 +57,7 @@ export default function LevelPage() {
       </header>
 
       <section className="mt-6">
-        <h1 className="font-serif text-2xl font-bold text-ink-900">Your Learning Profile</h1>
+        <h1 className="font-serif text-2xl font-bold text-ink-900 dark:text-paper-50">Your Learning Profile</h1>
       </section>
 
       {/* Assessment Result */}
@@ -65,11 +66,11 @@ export default function LevelPage() {
         <div className="mt-3 grid grid-cols-2 gap-4">
           <div>
             <p className="text-xs text-muted-400">Exam</p>
-            <p className="text-sm font-medium text-ink-900">{userInfo?.targetExam?.replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</p>
+            <p className="text-sm font-medium text-ink-900 dark:text-paper-50">{userInfo?.targetExam?.replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</p>
           </div>
           <div>
             <p className="text-xs text-muted-400">Score</p>
-            <p className="text-sm font-medium text-ink-900">{userInfo?.onboardingScore ?? '—'}/15</p>
+            <p className="text-sm font-medium text-ink-900 dark:text-paper-50">{userInfo?.onboardingScore ?? '—'}/15</p>
           </div>
           <div>
             <p className="text-xs text-muted-400">Level Assigned</p>
@@ -77,7 +78,7 @@ export default function LevelPage() {
           </div>
           <div>
             <p className="text-xs text-muted-400">Date</p>
-            <p className="text-sm font-medium text-ink-900">{userInfo?.createdAt ? new Date(userInfo.createdAt).toLocaleDateString('en-IN') : '—'}</p>
+            <p className="text-sm font-medium text-ink-900 dark:text-paper-50">{userInfo?.createdAt ? new Date(userInfo.createdAt).toLocaleDateString('en-IN') : '—'}</p>
           </div>
         </div>
       </div>
@@ -92,7 +93,7 @@ export default function LevelPage() {
                 <circle cx="18" cy="18" r="15.9" fill="none" stroke="var(--color-paper-300)" strokeWidth="3" />
                 <circle cx="18" cy="18" r="15.9" fill="none" stroke="var(--color-ember-500)" strokeWidth="3" strokeDasharray={`${analysis.overallPercent} ${100 - analysis.overallPercent}`} strokeLinecap="round" />
               </svg>
-              <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-ink-900">{analysis.overallPercent}%</span>
+              <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-ink-900 dark:text-paper-50">{analysis.overallPercent}%</span>
             </div>
             <p className="text-sm text-muted-500">Overall progress toward your exam goal</p>
           </div>
@@ -107,7 +108,7 @@ export default function LevelPage() {
             {analysis.subjectBreakdown.map((sub) => (
               <div key={sub.subject}>
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-ink-800">{sub.subjectName}</p>
+                  <p className="text-sm font-medium text-ink-800 dark:text-paper-200">{sub.subjectName}</p>
                   <span className="text-xs text-muted-500">{sub.completed}/{sub.total} chapters · {sub.avgScore}% avg</span>
                 </div>
                 <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-paper-300">
@@ -126,7 +127,7 @@ export default function LevelPage() {
           <ul className="mt-3 space-y-2">
             {analysis.weakChapters.slice(0, 5).map((ch) => (
               <li key={`${ch.subject}/${ch.chapter}`} className="flex items-center justify-between rounded-lg bg-red-50 px-3 py-2 dark:bg-red-950/20">
-                <span className="text-sm text-ink-800">{ch.chapterName}</span>
+                <span className="text-sm text-ink-800 dark:text-paper-200">{ch.chapterName}</span>
                 <span className="pill pill-warn text-xs">{ch.score}%</span>
               </li>
             ))}
@@ -141,7 +142,7 @@ export default function LevelPage() {
           <ul className="mt-3 space-y-2">
             {analysis.strongChapters.slice(0, 5).map((ch) => (
               <li key={`${ch.subject}/${ch.chapter}`} className="flex items-center justify-between rounded-lg bg-green-50 px-3 py-2 dark:bg-green-950/20">
-                <span className="text-sm text-ink-800">{ch.chapterName}</span>
+                <span className="text-sm text-ink-800 dark:text-paper-200">{ch.chapterName}</span>
                 <span className="pill pill-success text-xs">{ch.score}%</span>
               </li>
             ))}

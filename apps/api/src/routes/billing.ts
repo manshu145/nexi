@@ -43,8 +43,10 @@ export function makeBillingRoutes(deps: BillingRoutesDeps): Hono {
     if (!plan.isActive) throw new HTTPException(400, { message: 'This plan is not available yet. Coming soon!' });
     if (planId === 'free') throw new HTTPException(400, { message: 'Cannot purchase free plan' });
 
-    if (!deps.env.RAZORPAY_KEY_ID || !deps.env.RAZORPAY_KEY_SECRET) {
-      throw new HTTPException(503, { message: 'Payment system not configured' });
+    // RAZORPAY_KEY_ID is a public key (not secret). Default to test key if not set.
+    const razorpayKeyId = deps.env.RAZORPAY_KEY_ID || 'rzp_test_SsPfzbJUMaK7Ow';
+    if (!deps.env.RAZORPAY_KEY_SECRET) {
+      throw new HTTPException(503, { message: 'Payment system not configured. RAZORPAY_KEY_SECRET missing.' });
     }
 
     const baseAmount = plan.price * 100; // paise (monthly only for now)
@@ -67,7 +69,7 @@ export function makeBillingRoutes(deps: BillingRoutesDeps): Hono {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Basic ${Buffer.from(`${deps.env.RAZORPAY_KEY_ID}:${deps.env.RAZORPAY_KEY_SECRET}`).toString('base64')}`,
+          'Authorization': `Basic ${Buffer.from(`${razorpayKeyId}:${deps.env.RAZORPAY_KEY_SECRET}`).toString('base64')}`,
         },
         body: JSON.stringify({
           amount: finalAmount,
@@ -101,7 +103,7 @@ export function makeBillingRoutes(deps: BillingRoutesDeps): Hono {
       }
 
       deps.logger.info('billing.order_created', { userId: principal.userId, planId, orderId: order.id, amount: finalAmount, couponCode });
-      return c.json({ orderId: order.id, amount: finalAmount, currency: order.currency, keyId: deps.env.RAZORPAY_KEY_ID });
+      return c.json({ orderId: order.id, amount: finalAmount, currency: order.currency, keyId: razorpayKeyId });
     } catch (err) {
       if (err instanceof HTTPException) throw err;
       deps.logger.error('billing.order_error', { error: err instanceof Error ? err.message : String(err) });

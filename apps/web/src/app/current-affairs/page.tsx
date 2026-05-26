@@ -76,7 +76,7 @@ export default function CurrentAffairsPage() {
       )}
 
       <section className="mt-6">
-        <h1 className="font-serif text-2xl font-bold text-ink-900">Current Affairs</h1>
+        <h1 className="font-serif text-2xl font-bold text-ink-900 dark:text-paper-50">Current Affairs</h1>
         <p className="mt-1 text-sm text-muted-500">{today}</p>
       </section>
 
@@ -86,8 +86,8 @@ export default function CurrentAffairsPage() {
           <span className="text-2xl">🏆</span>
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-gold-600">Yesterday's Winner</p>
-            <p className="mt-0.5 text-sm text-ink-800">
-              Scored <span className="font-bold text-ink-900">{winner.score}%</span> in{' '}
+            <p className="mt-0.5 text-sm text-ink-800 dark:text-paper-200">
+              Scored <span className="font-bold text-ink-900 dark:text-paper-50">{winner.score}%</span> in{' '}
               <span className="font-medium">{Math.floor(winner.timeTaken / 60)}:{String(winner.timeTaken % 60).padStart(2, '0')}</span>
             </p>
           </div>
@@ -120,7 +120,7 @@ export default function CurrentAffairsPage() {
       {filtered.length === 0 ? (
         <div className="mt-12 flex flex-col items-center text-center">
           <span className="text-4xl">📰</span>
-          <p className="mt-3 font-serif text-lg font-semibold text-ink-900">No news yet</p>
+          <p className="mt-3 font-serif text-lg font-semibold text-ink-900 dark:text-paper-50">No news yet</p>
           <p className="mt-1 text-sm text-muted-500">Current affairs refresh every 4 hours. Check back soon!</p>
         </div>
       ) : (
@@ -133,8 +133,8 @@ export default function CurrentAffairsPage() {
                     <span className="pill text-xs">{item.category}</span>
                     {item.factChecked && <span className="text-xs text-gold-600">✓ verified</span>}
                   </div>
-                  <h3 className="mt-2 font-serif text-sm font-semibold leading-snug text-ink-900">{item.headline}</h3>
-                  <p className="mt-1.5 text-xs leading-relaxed text-ink-700">{item.summary || item.body}</p>
+                  <h3 className="mt-2 font-serif text-sm font-semibold leading-snug text-ink-900 dark:text-paper-50">{item.headline}</h3>
+                  <p className="mt-1.5 text-xs leading-relaxed text-ink-700 dark:text-paper-300">{item.summary || item.body}</p>
                   {item.sources.length > 0 && (
                     <p className="mt-2 text-xs text-muted-400">Source: {item.sources.join(', ')}</p>
                   )}
