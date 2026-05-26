@@ -141,5 +141,64 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
     return c.json({ progress });
   });
 
+  // GET /v1/study/analysis/:examSlug — detailed learning profile analysis
+  app.get('/analysis/:examSlug', async (c) => {
+    const principal = requireAuth(c);
+    const examSlug = c.req.param('examSlug');
+
+    const [progress, syllabus] = await Promise.all([
+      deps.chapters.getProgress(principal.userId, examSlug),
+      Promise.resolve(getSyllabus(examSlug)),
+    ]);
+
+    if (!syllabus) {
+      return c.json({ overallPercent: 0, subjectBreakdown: [], weakChapters: [], strongChapters: [] });
+    }
+
+    // Calculate total chapters across all subjects
+    let totalChapters = 0;
+    const subjectBreakdown: { subject: string; subjectName: string; completed: number; total: number; avgScore: number }[] = [];
+    const weakChapters: { subject: string; chapter: string; chapterName: string; score: number }[] = [];
+    const strongChapters: { subject: string; chapter: string; chapterName: string; score: number }[] = [];
+
+    for (const sub of syllabus.subjects) {
+      const subChapters = sub.chapters.length;
+      totalChapters += subChapters;
+
+      let subCompleted = 0;
+      let subScoreSum = 0;
+      let subScoreCount = 0;
+
+      for (const ch of sub.chapters) {
+        const key = `${sub.slug}/${ch.slug}`;
+        const score = progress.chapterScores[key];
+        if (progress.completedChapters.includes(key)) subCompleted++;
+        if (score !== undefined) {
+          subScoreSum += score;
+          subScoreCount++;
+          if (score < 60) {
+            weakChapters.push({ subject: sub.slug, chapter: ch.slug, chapterName: ch.name, score });
+          } else if (score >= 80) {
+            strongChapters.push({ subject: sub.slug, chapter: ch.slug, chapterName: ch.name, score });
+          }
+        }
+      }
+
+      subjectBreakdown.push({
+        subject: sub.slug,
+        subjectName: sub.name,
+        completed: subCompleted,
+        total: subChapters,
+        avgScore: subScoreCount > 0 ? Math.round(subScoreSum / subScoreCount) : 0,
+      });
+    }
+
+    const overallPercent = totalChapters > 0
+      ? Math.round((progress.completedChapters.length / totalChapters) * 100)
+      : 0;
+
+    return c.json({ overallPercent, subjectBreakdown, weakChapters, strongChapters });
+  });
+
   return app;
 }
