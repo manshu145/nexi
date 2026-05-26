@@ -7,19 +7,30 @@ import { Logo } from '~/components/Logo';
 import { Skeleton } from '~/components/Skeleton';
 
 const CATEGORY_EMOJIS: Record<string, string> = {
-  national: '🇮🇳', international: '🌍', economy: '💰', 'science-tech': '🔬',
-  sports: '🏏', environment: '🌱', politics: '🏛️', defence: '🛡️', all: '📰',
+  national: '\u{1F1EE}\u{1F1F3}', international: '\u{1F30D}', economy: '\u{1F4B0}', 'science-tech': '\u{1F52C}',
+  sports: '\u{1F3CF}', environment: '\u{1F331}', politics: '\u{1F3DB}\u{FE0F}', defence: '\u{1F6E1}\u{FE0F}', all: '\u{1F4F0}',
 };
 
 const CATEGORIES = [
-  { key: 'all', label: 'All', emoji: '📰' },
-  { key: 'national', label: 'National', emoji: '🇮🇳' },
-  { key: 'international', label: 'International', emoji: '🌍' },
-  { key: 'economy', label: 'Economy', emoji: '💰' },
-  { key: 'science-tech', label: 'Science', emoji: '🔬' },
-  { key: 'sports', label: 'Sports', emoji: '🏏' },
-  { key: 'environment', label: 'Environment', emoji: '🌱' },
+  { key: 'all', label: 'All', emoji: '\u{1F4F0}' },
+  { key: 'national', label: 'National', emoji: '\u{1F1EE}\u{1F1F3}' },
+  { key: 'international', label: 'International', emoji: '\u{1F30D}' },
+  { key: 'economy', label: 'Economy', emoji: '\u{1F4B0}' },
+  { key: 'science-tech', label: 'Science', emoji: '\u{1F52C}' },
+  { key: 'sports', label: 'Sports', emoji: '\u{1F3CF}' },
+  { key: 'environment', label: 'Environment', emoji: '\u{1F331}' },
 ];
+
+const CATEGORY_IMAGES: Record<string, string> = {
+  national: 'https://images.unsplash.com/photo-1532375810709-75b1da00537c?w=600&h=300&fit=crop&q=80',
+  international: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=600&h=300&fit=crop&q=80',
+  economy: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=600&h=300&fit=crop&q=80',
+  'science-tech': 'https://images.unsplash.com/photo-1507413245164-6160d8298b31?w=600&h=300&fit=crop&q=80',
+  sports: 'https://images.unsplash.com/photo-1461896836934-bd45ea8f5a65?w=600&h=300&fit=crop&q=80',
+  environment: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=600&h=300&fit=crop&q=80',
+  politics: 'https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?w=600&h=300&fit=crop&q=80',
+  defence: 'https://images.unsplash.com/photo-1579912437766-7896df6d3cd3?w=600&h=300&fit=crop&q=80',
+};
 
 export default function CurrentAffairsShortsPage() {
   const { user, loading } = useAuth();
@@ -37,6 +48,7 @@ export default function CurrentAffairsShortsPage() {
   const touchStartY = useRef(0);
   const touchStartX = useRef(0);
   const isTransitioning = useRef(false);
+  const wheelTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
 
@@ -63,7 +75,7 @@ export default function CurrentAffairsShortsPage() {
     if (currentIdx < filtered.length - 1) {
       isTransitioning.current = true;
       setCurrentIdx(i => i + 1);
-      setTimeout(() => { isTransitioning.current = false; }, 350);
+      setTimeout(() => { isTransitioning.current = false; }, 400);
     }
   }, [currentIdx, filtered.length]);
 
@@ -72,11 +84,11 @@ export default function CurrentAffairsShortsPage() {
     if (currentIdx > 0) {
       isTransitioning.current = true;
       setCurrentIdx(i => i - 1);
-      setTimeout(() => { isTransitioning.current = false; }, 350);
+      setTimeout(() => { isTransitioning.current = false; }, 400);
     }
   }, [currentIdx]);
 
-  // Touch handlers for swipe
+  // Touch handlers for swipe (mobile)
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartY.current = e.touches[0]!.clientY;
     touchStartX.current = e.touches[0]!.clientX;
@@ -85,34 +97,38 @@ export default function CurrentAffairsShortsPage() {
   const handleTouchEnd = (e: React.TouchEvent) => {
     const deltaY = touchStartY.current - e.changedTouches[0]!.clientY;
     const deltaX = Math.abs(touchStartX.current - e.changedTouches[0]!.clientX);
-    // Only swipe vertically (not horizontal scrolls)
-    if (Math.abs(deltaY) > 60 && deltaX < 100) {
-      if (deltaY > 0) goNext(); // swipe up = next
-      else goPrev(); // swipe down = prev
+    if (Math.abs(deltaY) > 50 && deltaX < 120) {
+      if (deltaY > 0) goNext();
+      else goPrev();
     }
   };
+
+  // Mouse wheel handler (desktop)
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    if (wheelTimeout.current) return;
+    if (Math.abs(e.deltaY) < 30) return;
+    if (e.deltaY > 0) goNext();
+    else goPrev();
+    wheelTimeout.current = setTimeout(() => { wheelTimeout.current = null; }, 400);
+  }, [goNext, goPrev]);
 
   // Keyboard navigation
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowDown' || e.key === 'j') goNext();
-      if (e.key === 'ArrowUp' || e.key === 'k') goPrev();
+      if (e.key === 'ArrowDown' || e.key === 'j') { e.preventDefault(); goNext(); }
+      if (e.key === 'ArrowUp' || e.key === 'k') { e.preventDefault(); goPrev(); }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [goNext, goPrev]);
 
-  // Reset index on tab change
   useEffect(() => { setCurrentIdx(0); }, [activeTab]);
 
   const handleLike = async (id: string) => {
     try {
       const res = await api.toggleNewsLike(id);
-      setUserLikes(prev => {
-        const next = new Set(prev);
-        if (res.liked) next.add(id); else next.delete(id);
-        return next;
-      });
+      setUserLikes(prev => { const next = new Set(prev); if (res.liked) next.add(id); else next.delete(id); return next; });
       setLikeCounts(prev => ({ ...prev, [id]: res.count }));
     } catch { /* silent */ }
   };
@@ -120,16 +136,12 @@ export default function CurrentAffairsShortsPage() {
   const handleBookmark = async (id: string) => {
     try {
       const res = await api.toggleNewsBookmark(id);
-      setUserBookmarks(prev => {
-        const next = new Set(prev);
-        if (res.bookmarked) next.add(id); else next.delete(id);
-        return next;
-      });
+      setUserBookmarks(prev => { const next = new Set(prev); if (res.bookmarked) next.add(id); else next.delete(id); return next; });
     } catch { /* silent */ }
   };
 
   const handleShare = async (item: CurrentAffairsItem) => {
-    const text = `${item.headline}\n\nRead more on Nexigrate - AI-powered exam prep`;
+    const text = `${item.headline}\n\nRead more on Nexigrate`;
     if (navigator.share) {
       try { await navigator.share({ title: item.headline, text, url: window.location.origin + `/current-affairs/${item.id}` }); } catch { /* cancelled */ }
     } else {
@@ -138,50 +150,50 @@ export default function CurrentAffairsShortsPage() {
   };
 
   if (loading || !user || pageLoading) return (
-    <main className="flex min-h-dvh items-center justify-center bg-ink-900">
+    <main className="shorts-shell flex min-h-dvh items-center justify-center">
       <div className="space-y-4 w-64">
-        <Skeleton className="h-8 w-48 bg-paper-200/10" />
-        <Skeleton className="h-64 w-full rounded-2xl bg-paper-200/10" />
+        <Skeleton className="h-8 w-48 !bg-white/10" />
+        <Skeleton className="h-64 w-full rounded-2xl !bg-white/10" />
       </div>
     </main>
   );
 
   if (error) return (
-    <main className="mx-auto flex min-h-dvh max-w-lg flex-col items-center justify-center px-5">
-      <div className="banner banner-error">{error}</div>
-      <button onClick={() => router.back()} className="btn-ghost mt-4">← Back</button>
+    <main className="shorts-shell flex min-h-dvh items-center justify-center px-5">
+      <div className="text-center">
+        <p className="text-white/80 text-sm">{error}</p>
+        <button onClick={() => router.back()} className="mt-4 px-4 py-2 rounded-full bg-white/10 text-white text-sm">← Back</button>
+      </div>
     </main>
   );
 
-  const currentItem = filtered[currentIdx];
-
   return (
-    <main className="fixed inset-0 flex flex-col bg-ink-900 overflow-hidden select-none">
+    <main className="shorts-shell fixed inset-0 flex flex-col overflow-hidden select-none">
       {/* Top bar */}
-      <header className="relative z-20 flex items-center justify-between px-4 pt-3 pb-2 safe-top">
-        <button onClick={() => router.push('/dashboard')} className="flex items-center gap-1.5 text-paper-50/80 text-sm font-medium">
+      <header className="relative z-20 flex items-center justify-between px-4 pt-3 pb-2">
+        <button onClick={() => router.push('/dashboard')} className="flex items-center gap-1.5 text-white/80 text-sm font-medium hover:text-white transition-colors">
           <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
           Back
         </button>
-        <div className="flex items-center gap-1">
-          <span className="text-paper-50 text-sm font-semibold">Today&apos;s News</span>
-          {isFromYesterday && <span className="text-[10px] px-1.5 py-0.5 rounded bg-gold-500/20 text-gold-400">Yesterday</span>}
+        <div className="flex items-center gap-2">
+          <span className="text-white text-sm font-semibold">Today&apos;s News</span>
+          {isFromYesterday && <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-300">Yesterday</span>}
         </div>
-        <button onClick={() => router.push('/current-affairs/quiz')} className="text-paper-50/80 text-sm font-medium">
-          📝 Quiz
+        <button onClick={() => router.push('/current-affairs/quiz')} className="text-white/80 text-sm font-medium hover:text-white transition-colors">
+          Quiz
         </button>
       </header>
 
-      {/* Category pills — horizontal scrollable */}
-      <div className="relative z-20 px-3 pb-2 flex gap-1.5 overflow-x-auto scrollbar-hide">
+      {/* Category pills */}
+      <div className="relative z-20 px-3 pb-3 flex gap-1.5 overflow-x-auto scrollbar-hide">
         {CATEGORIES.map(cat => (
           <button
             key={cat.key}
             onClick={() => setActiveTab(cat.key)}
             className={`flex items-center gap-1 whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
               activeTab === cat.key
-                ? 'bg-paper-50 text-ink-900 shadow-md'
-                : 'bg-paper-50/10 text-paper-50/70 hover:bg-paper-50/20'
+                ? 'bg-white text-gray-900 shadow-lg shadow-white/10'
+                : 'bg-white/10 text-white/70 hover:bg-white/20 hover:text-white'
             }`}
           >
             <span>{cat.emoji}</span>
@@ -194,8 +206,8 @@ export default function CurrentAffairsShortsPage() {
       {filtered.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center text-center px-6">
           <span className="text-5xl">📰</span>
-          <p className="mt-4 font-serif text-xl font-semibold text-paper-50">No news yet</p>
-          <p className="mt-2 text-sm text-paper-50/60">Refreshes every 30 minutes. Check back soon!</p>
+          <p className="mt-4 font-serif text-xl font-semibold text-white">No news yet</p>
+          <p className="mt-2 text-sm text-white/50">Refreshes every 30 minutes. Check back soon!</p>
         </div>
       ) : (
         <div
@@ -203,62 +215,83 @@ export default function CurrentAffairsShortsPage() {
           className="flex-1 relative overflow-hidden"
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
+          onWheel={handleWheel}
         >
-          {/* Card stack */}
-          <div
-            className="absolute inset-0 transition-transform duration-300 ease-out"
-            style={{ transform: `translateY(-${currentIdx * 100}%)` }}
-          >
-            {filtered.map((item, idx) => (
-              <ShortCard
-                key={item.id}
-                item={item}
-                isActive={idx === currentIdx}
-                liked={userLikes.has(item.id)}
-                bookmarked={userBookmarks.has(item.id)}
-                likeCount={likeCounts[item.id] ?? 0}
-                onLike={() => handleLike(item.id)}
-                onBookmark={() => handleBookmark(item.id)}
-                onShare={() => handleShare(item)}
-                onTap={() => router.push(`/current-affairs/${item.id}`)}
-                onAskNexi={() => router.push(`/chat?topic=${encodeURIComponent(item.headline)}`)}
-              />
-            ))}
+          {/* Desktop layout: centered card + sidebar */}
+          <div className="absolute inset-0 flex items-stretch justify-center">
+            {/* Card column */}
+            <div className="relative w-full max-w-[480px] lg:max-w-[420px] h-full overflow-hidden">
+              <div
+                className="absolute inset-0 transition-transform duration-[350ms] ease-[cubic-bezier(0.25,0.1,0.25,1)]"
+                style={{ transform: `translateY(-${currentIdx * 100}%)` }}
+              >
+                {filtered.map((item, idx) => (
+                  <ShortCard
+                    key={item.id}
+                    item={item}
+                    isActive={idx === currentIdx}
+                    liked={userLikes.has(item.id)}
+                    bookmarked={userBookmarks.has(item.id)}
+                    likeCount={likeCounts[item.id] ?? 0}
+                    onLike={() => handleLike(item.id)}
+                    onBookmark={() => handleBookmark(item.id)}
+                    onShare={() => handleShare(item)}
+                    onTap={() => router.push(`/current-affairs/${item.id}`)}
+                    onAskNexi={() => router.push(`/chat?topic=${encodeURIComponent(item.headline)}`)}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* Desktop sidebar: action buttons */}
+            <div className="hidden lg:flex flex-col items-center justify-center gap-6 pl-6 pr-4">
+              {filtered[currentIdx] && (
+                <>
+                  <ActionBtn icon={userLikes.has(filtered[currentIdx]!.id) ? '❤️' : '🤍'} label={String(likeCounts[filtered[currentIdx]!.id] || '')} active={userLikes.has(filtered[currentIdx]!.id)} onClick={() => handleLike(filtered[currentIdx]!.id)} />
+                  <ActionBtn icon={userBookmarks.has(filtered[currentIdx]!.id) ? '🔖' : '📑'} label="Save" active={userBookmarks.has(filtered[currentIdx]!.id)} onClick={() => handleBookmark(filtered[currentIdx]!.id)} />
+                  <ActionBtn icon="↗️" label="Share" onClick={() => handleShare(filtered[currentIdx]!)} />
+                  <ActionBtn icon="🤖" label="Ask AI" onClick={() => router.push(`/chat?topic=${encodeURIComponent(filtered[currentIdx]!.headline)}`)} />
+                </>
+              )}
+            </div>
           </div>
 
-          {/* Progress dots (right side) */}
-          <div className="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col gap-1 z-10">
+          {/* Mobile progress dots */}
+          <div className="absolute right-2 top-1/2 -translate-y-1/2 flex flex-col gap-1 z-10 lg:hidden">
             {filtered.slice(Math.max(0, currentIdx - 3), currentIdx + 4).map((item, i) => {
               const realIdx = Math.max(0, currentIdx - 3) + i;
               return (
-                <div
-                  key={item.id}
-                  className={`rounded-full transition-all duration-300 ${
-                    realIdx === currentIdx ? 'w-1.5 h-4 bg-paper-50' : 'w-1.5 h-1.5 bg-paper-50/30'
-                  }`}
-                />
+                <div key={item.id} className={`rounded-full transition-all duration-300 ${realIdx === currentIdx ? 'w-1.5 h-4 bg-white' : 'w-1.5 h-1.5 bg-white/30'}`} />
               );
             })}
           </div>
 
           {/* Counter */}
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10">
-            <span className="px-3 py-1 rounded-full bg-paper-50/10 backdrop-blur text-paper-50/80 text-xs font-medium">
+            <span className="px-3 py-1.5 rounded-full bg-black/30 backdrop-blur-sm text-white/90 text-xs font-medium">
               {currentIdx + 1} / {filtered.length}
             </span>
           </div>
 
-          {/* Swipe hint (only on first card) */}
+          {/* Swipe hint */}
           {currentIdx === 0 && (
-            <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-10 animate-bounce">
-              <svg width="24" height="24" fill="none" stroke="white" strokeWidth="2" viewBox="0 0 24 24" opacity="0.5">
-                <path d="M12 5v14M5 12l7 7 7-7"/>
-              </svg>
+            <div className="absolute bottom-14 left-1/2 -translate-x-1/2 z-10 animate-bounce opacity-50">
+              <svg width="20" height="20" fill="none" stroke="white" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
             </div>
           )}
         </div>
       )}
     </main>
+  );
+}
+
+/* ─── Desktop Action Button ─── */
+function ActionBtn({ icon, label, active, onClick }: { icon: string; label: string; active?: boolean; onClick: () => void }) {
+  return (
+    <button onClick={onClick} className={`flex flex-col items-center gap-1 group transition-transform hover:scale-110 active:scale-95 ${active ? 'scale-105' : ''}`}>
+      <span className="text-2xl">{icon}</span>
+      <span className="text-[11px] text-white/60 group-hover:text-white/90 font-medium">{label}</span>
+    </button>
   );
 }
 
@@ -278,83 +311,69 @@ interface ShortCardProps {
 
 function ShortCard({ item, isActive, liked, bookmarked, likeCount, onLike, onBookmark, onShare, onTap, onAskNexi }: ShortCardProps) {
   const emoji = CATEGORY_EMOJIS[item.category] ?? '📰';
-  
-  // Extract key points from summary (split by sentences or bullet points)
   const keyPoints = extractKeyPoints(item.summary || item.body);
+  const imageUrl = CATEGORY_IMAGES[item.category] ?? CATEGORY_IMAGES['national']!;
 
   return (
-    <div className="h-full w-full flex items-center justify-center px-4 py-2">
+    <div className="h-full w-full flex items-center justify-center px-3 py-2 lg:px-0 lg:py-3">
       <div
-        className={`relative w-full max-w-md h-full rounded-3xl overflow-hidden transition-all duration-300 ${
-          isActive ? 'scale-100 opacity-100' : 'scale-95 opacity-50'
+        className={`relative w-full h-full rounded-2xl lg:rounded-3xl overflow-hidden shadow-2xl transition-all duration-300 cursor-pointer ${
+          isActive ? 'scale-100 opacity-100' : 'scale-[0.97] opacity-40'
         }`}
-        style={{
-          background: `linear-gradient(165deg, var(--color-paper-100) 0%, var(--color-paper-50) 100%)`,
-        }}
+        style={{ background: '#FFFFFF' }}
+        onClick={onTap}
       >
-        {/* Category badge + emoji header */}
-        <div className="absolute top-0 left-0 right-0 h-28 flex items-center justify-center"
-          style={{ background: getCategoryGradient(item.category) }}>
-          <span className="text-5xl opacity-80">{emoji}</span>
+        {/* Image header */}
+        <div className="relative h-[35%] min-h-[140px] max-h-[200px] overflow-hidden">
+          <img src={imageUrl} alt={item.category} className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
+          <div className="absolute inset-0" style={{ background: `linear-gradient(180deg, ${getCategoryOverlay(item.category)}80 0%, ${getCategoryOverlay(item.category)}40 50%, transparent 100%)` }} />
+          <div className="absolute top-3 left-3 flex items-center gap-2">
+            <span className="px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider bg-white/90 text-gray-800 backdrop-blur-sm shadow-sm">
+              {emoji} {item.category}
+            </span>
+            {item.factChecked && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-500/90 text-white">✓</span>
+            )}
+          </div>
         </div>
 
         {/* Content area */}
-        <div className="absolute inset-0 flex flex-col pt-28 px-5 pb-20" onClick={onTap}>
-          {/* Category pill + verified */}
-          <div className="flex items-center gap-2 mt-3">
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-ink-900/8 text-ink-700">
-              {item.category}
-            </span>
-            {item.factChecked && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-gold-500/10 text-gold-700">✓ Verified</span>
-            )}
-          </div>
-
-          {/* Headline */}
-          <h2 className="mt-3 font-serif text-lg font-bold leading-snug text-ink-900 line-clamp-3">
+        <div className="flex flex-col px-4 pt-3 pb-4 h-[65%] overflow-hidden">
+          <h2 className="font-serif text-[15px] lg:text-base font-bold leading-snug text-gray-900 line-clamp-3">
             {item.headline}
           </h2>
-
-          {/* Key points as bullet list */}
-          <div className="mt-3 flex-1 overflow-hidden">
+          <div className="mt-2.5 flex-1 overflow-hidden">
             <ul className="space-y-1.5">
-              {keyPoints.slice(0, 4).map((point, i) => (
-                <li key={i} className="flex items-start gap-2 text-sm text-ink-700 leading-relaxed">
-                  <span className="mt-1 h-1.5 w-1.5 rounded-full bg-ember-500 flex-shrink-0" />
+              {keyPoints.slice(0, 3).map((point, i) => (
+                <li key={i} className="flex items-start gap-2 text-[13px] text-gray-600 leading-relaxed">
+                  <span className="mt-1.5 h-1 w-1 rounded-full bg-orange-500 flex-shrink-0" />
                   <span className="line-clamp-2">{point}</span>
                 </li>
               ))}
             </ul>
           </div>
-
-          {/* Sources */}
-          {item.sources.length > 0 && (
-            <p className="mt-auto pt-2 text-[11px] text-muted-400 truncate">
-              📎 {item.sources.slice(0, 2).join(' · ')}
-            </p>
-          )}
-
-          {/* Tap to read more hint */}
-          <p className="text-center text-[11px] text-muted-400 mt-2">Tap to read full article →</p>
+          <div className="mt-auto pt-2 flex items-center justify-between">
+            {item.sources.length > 0 && (
+              <p className="text-[10px] text-gray-400 truncate max-w-[60%]">{item.sources.slice(0, 2).join(' · ')}</p>
+            )}
+            <span className="text-[11px] text-orange-600 font-semibold">Read more →</span>
+          </div>
         </div>
 
-        {/* Action buttons (right side, vertical) */}
-        <div className="absolute right-3 bottom-24 flex flex-col items-center gap-4 z-10">
-          <button onClick={(e) => { e.stopPropagation(); onLike(); }} className="flex flex-col items-center gap-0.5">
-            <span className={`text-xl transition-transform ${liked ? 'scale-125' : ''}`}>{liked ? '❤️' : '🤍'}</span>
-            <span className="text-[10px] text-ink-600 font-medium">{likeCount || ''}</span>
+        {/* Mobile action buttons */}
+        <div className="absolute right-2 bottom-16 flex flex-col items-center gap-3 z-10 lg:hidden">
+          <button onClick={(e) => { e.stopPropagation(); onLike(); }} className="flex flex-col items-center gap-0.5 bg-black/20 backdrop-blur-sm rounded-full p-2">
+            <span className={`text-lg transition-transform ${liked ? 'scale-125' : ''}`}>{liked ? '❤️' : '🤍'}</span>
+            {likeCount > 0 && <span className="text-[9px] text-white font-medium">{likeCount}</span>}
           </button>
-          <button onClick={(e) => { e.stopPropagation(); onBookmark(); }} className="flex flex-col items-center gap-0.5">
-            <span className={`text-xl transition-transform ${bookmarked ? 'scale-110' : ''}`}>{bookmarked ? '🔖' : '📑'}</span>
-            <span className="text-[10px] text-ink-600 font-medium">Save</span>
+          <button onClick={(e) => { e.stopPropagation(); onBookmark(); }} className="bg-black/20 backdrop-blur-sm rounded-full p-2">
+            <span className={`text-lg ${bookmarked ? 'scale-110' : ''}`}>{bookmarked ? '🔖' : '📑'}</span>
           </button>
-          <button onClick={(e) => { e.stopPropagation(); onShare(); }} className="flex flex-col items-center gap-0.5">
-            <span className="text-xl">↗️</span>
-            <span className="text-[10px] text-ink-600 font-medium">Share</span>
+          <button onClick={(e) => { e.stopPropagation(); onShare(); }} className="bg-black/20 backdrop-blur-sm rounded-full p-2">
+            <span className="text-lg">↗️</span>
           </button>
-          <button onClick={(e) => { e.stopPropagation(); onAskNexi(); }} className="flex flex-col items-center gap-0.5">
-            <span className="text-xl">🤖</span>
-            <span className="text-[10px] text-ink-600 font-medium">Ask</span>
+          <button onClick={(e) => { e.stopPropagation(); onAskNexi(); }} className="bg-black/20 backdrop-blur-sm rounded-full p-2">
+            <span className="text-lg">🤖</span>
           </button>
         </div>
       </div>
@@ -365,24 +384,17 @@ function ShortCard({ item, isActive, liked, bookmarked, likeCount, onLike, onBoo
 /* ─── Helpers ─── */
 function extractKeyPoints(text: string): string[] {
   if (!text) return [];
-  // Try splitting by bullet markers first
   const bullets = text.split(/[•\-\*]\s+/).filter(s => s.trim().length > 10);
   if (bullets.length >= 2) return bullets.slice(0, 5);
-  // Fall back to sentences
   const sentences = text.split(/[.!?]+\s+/).filter(s => s.trim().length > 15);
   return sentences.slice(0, 5);
 }
 
-function getCategoryGradient(category: string): string {
-  const gradients: Record<string, string> = {
-    national: 'linear-gradient(135deg, #FF9933 0%, #FFB366 100%)',
-    international: 'linear-gradient(135deg, #4A90D9 0%, #7BB3E8 100%)',
-    economy: 'linear-gradient(135deg, #2ECC71 0%, #66E8A3 100%)',
-    'science-tech': 'linear-gradient(135deg, #9B59B6 0%, #BB8FCC 100%)',
-    sports: 'linear-gradient(135deg, #E74C3C 0%, #F1948A 100%)',
-    environment: 'linear-gradient(135deg, #27AE60 0%, #7DCEA0 100%)',
-    politics: 'linear-gradient(135deg, #8E44AD 0%, #BB8FCE 100%)',
-    defence: 'linear-gradient(135deg, #2C3E50 0%, #5D6D7E 100%)',
+function getCategoryOverlay(category: string): string {
+  const colors: Record<string, string> = {
+    national: '#FF9933', international: '#2563EB', economy: '#059669',
+    'science-tech': '#7C3AED', sports: '#DC2626', environment: '#16A34A',
+    politics: '#7C3AED', defence: '#1E3A5F',
   };
-  return gradients[category] ?? 'linear-gradient(135deg, #34495E 0%, #5D6D7E 100%)';
+  return colors[category] ?? '#1E293B';
 }

@@ -156,6 +156,12 @@ export default function CurrentAffairsDetailPage() {
         )}
       </div>
 
+      {/* Category image */}
+      <div className="mt-4 relative h-40 sm:h-52 rounded-2xl overflow-hidden">
+        <img src={getCategoryImage(item.category)} alt={item.category} className="absolute inset-0 w-full h-full object-cover" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+      </div>
+
       {/* Headline */}
       <h1 className="mt-4 font-serif text-2xl font-bold leading-tight text-ink-900">
         {item.headline}
@@ -290,4 +296,18 @@ function getCategoryColor(category: string): string {
     politics: '#8E44AD', defence: '#2C3E50',
   };
   return colors[category] ?? '#34495E';
+}
+
+function getCategoryImage(category: string): string {
+  const images: Record<string, string> = {
+    national: 'https://images.unsplash.com/photo-1532375810709-75b1da00537c?w=800&h=400&fit=crop&q=80',
+    international: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=800&h=400&fit=crop&q=80',
+    economy: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=800&h=400&fit=crop&q=80',
+    'science-tech': 'https://images.unsplash.com/photo-1507413245164-6160d8298b31?w=800&h=400&fit=crop&q=80',
+    sports: 'https://images.unsplash.com/photo-1461896836934-bd45ea8f5a65?w=800&h=400&fit=crop&q=80',
+    environment: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800&h=400&fit=crop&q=80',
+    politics: 'https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?w=800&h=400&fit=crop&q=80',
+    defence: 'https://images.unsplash.com/photo-1579912437766-7896df6d3cd3?w=800&h=400&fit=crop&q=80',
+  };
+  return images[category] ?? images['national']!;
 }
