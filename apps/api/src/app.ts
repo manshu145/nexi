@@ -21,8 +21,9 @@ import { makeCreditsRoutes } from './routes/credits.js';
 import { makeBillingRoutes } from './routes/billing.js';
 import { makeAdminRoutes } from './routes/admin.js';
 import { makeSupportRoutes } from './routes/support.js';
+import { InMemoryCouponStore, FirestoreCouponStore, type CouponStore } from './lib/couponStore.js';
 
-export interface AppDeps { env: Env; logger: Logger; users?: UserStore; aiEngine?: AIEngine; chapters?: ChapterStore; currentAffairs?: CurrentAffairsStore; chatStore?: ChatStore; adminStore?: AdminStore; }
+export interface AppDeps { env: Env; logger: Logger; users?: UserStore; aiEngine?: AIEngine; chapters?: ChapterStore; currentAffairs?: CurrentAffairsStore; chatStore?: ChatStore; adminStore?: AdminStore; couponStore?: CouponStore; }
 
 export function buildApp(deps: AppDeps): Hono {
   const { env, logger } = deps;
@@ -34,6 +35,7 @@ export function buildApp(deps: AppDeps): Hono {
   const currentAffairs = deps.currentAffairs ?? (fs ? new FirestoreCurrentAffairsStore(fs) : new InMemoryCurrentAffairsStore());
   const chatStore = deps.chatStore ?? (fs ? new FirestoreChatStore(fs) : new InMemoryChatStore());
   const adminStore = deps.adminStore ?? (fs ? new FirestoreAdminStore(fs) : new InMemoryAdminStore());
+  const couponStore = deps.couponStore ?? (fs ? new FirestoreCouponStore(fs) : new InMemoryCouponStore());
   const firebaseAuth = getFirebaseAuth(env);
 
   const app = new Hono();
@@ -78,8 +80,8 @@ export function buildApp(deps: AppDeps): Hono {
   v1.route('/current-affairs', cronRoutes);
   v1.route('/chat', makeChatRoutes({ users, aiEngine, chat: chatStore, logger }));
   v1.route('/credits', makeCreditsRoutes({ users, logger, db: fs }));
-  v1.route('/billing', makeBillingRoutes({ users, env, logger }));
-  v1.route('/admin', makeAdminRoutes({ users, adminStore, env, logger }));
+  v1.route('/billing', makeBillingRoutes({ users, env, logger, db: fs, coupons: couponStore }));
+  v1.route('/admin', makeAdminRoutes({ users, adminStore, env, logger, coupons: couponStore }));
   v1.route('/support', makeSupportRoutes({ users, db: fs, logger }));
 
   // POST /v1/logs/error — web app error reporting (no auth required for error boundary)

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '~/lib/auth-context';
 import { getFirebaseAuthClient } from '~/lib/firebase';
+import { AILoader } from '~/components/ui/AILoader';
 
 interface Payment {
   id: string;
@@ -50,7 +51,7 @@ export default function AdminRevenuePage() {
     return () => { cancelled = true; };
   }, [user]);
 
-  if (loading || !user) return <div className="flex items-center justify-center py-20"><span className="spinner" /></div>;
+  if (loading || !user) return <div className="flex items-center justify-center py-20"><AILoader context="general" /></div>;
 
   // Calculate summary stats
   const totalRevenue = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
@@ -89,7 +90,7 @@ export default function AdminRevenuePage() {
         <h2 className="text-sm font-semibold text-ink-800">Recent Payments</h2>
 
         {fetching ? (
-          <div className="flex items-center justify-center py-12"><span className="spinner" /></div>
+          <div className="flex items-center justify-center py-12"><AILoader context="general" /></div>
         ) : payments.length === 0 ? (
           <div className="paper-card mt-4 p-8 text-center">
             <p className="text-sm text-muted-500">No payments recorded yet.</p>

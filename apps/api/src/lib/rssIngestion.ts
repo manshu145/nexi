@@ -282,5 +282,36 @@ export async function ingestCurrentAffairs(
   }
 
   logger.info('rss.ingestion_complete', { fetched: rawItems.length, saved: itemsToSave.length });
+
+  // 6. Cleanup: delete currentAffairs buckets older than 48 hours
+  try {
+    const istOffset = 5.5 * 60 * 60 * 1000;
+    const istNow = new Date(Date.now() + istOffset);
+    const cutoff = new Date(istNow.getTime() - 48 * 60 * 60 * 1000);
+    const cutoffKey = cutoff.toISOString().split('T')[0]!;
+
+    // Use Firestore from store if available (duck-type check for db property)
+    const db = (store as any).db as import('firebase-admin/firestore').Firestore | undefined;
+    if (db) {
+      const allDates = await db.collection('currentAffairs').listDocuments();
+      for (const dateDoc of allDates) {
+        if (dateDoc.id < cutoffKey && dateDoc.id.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          const items = await dateDoc.collection('items').listDocuments();
+          if (items.length > 0) {
+            const batch = db.batch();
+            items.forEach(item => batch.delete(item));
+            batch.delete(dateDoc);
+            await batch.commit();
+          } else {
+            await dateDoc.delete();
+          }
+          logger.info('rss.cleanup_deleted', { date: dateDoc.id });
+        }
+      }
+    }
+  } catch (err) {
+    logger.warn('rss.cleanup_error', { error: err instanceof Error ? err.message : String(err) });
+  }
+
   return { fetched: rawItems.length, saved: itemsToSave.length };
 }

@@ -106,8 +106,35 @@ export class FirestoreCurrentAffairsStore implements CurrentAffairsStore {
 
   async getTodayItems(date: string) {
     try {
-      const snap = await this.db.collection('currentAffairs').doc(date).collection('items').get();
-      return snap.docs.map(d => d.data() as CurrentAffairsStoreItem);
+      // Use IST date for Indian users (UTC+5:30)
+      const now = new Date();
+      const istOffset = 5.5 * 60 * 60 * 1000;
+      const istNow = new Date(now.getTime() + istOffset);
+      const istTodayKey = istNow.toISOString().split('T')[0]!;
+
+      // Try today's IST bucket first
+      const snap = await this.db.collection('currentAffairs').doc(istTodayKey).collection('items').get();
+      if (!snap.empty) {
+        return snap.docs.map(d => d.data() as CurrentAffairsStoreItem);
+      }
+
+      // Fallback: if today's bucket is empty, try the provided date key
+      if (date !== istTodayKey) {
+        const fallbackSnap = await this.db.collection('currentAffairs').doc(date).collection('items').get();
+        if (!fallbackSnap.empty) {
+          return fallbackSnap.docs.map(d => ({ ...d.data(), _isFromYesterday: true } as CurrentAffairsStoreItem & { _isFromYesterday?: boolean }));
+        }
+      }
+
+      // Last resort: try yesterday's IST bucket
+      const yesterdayIst = new Date(istNow.getTime() - 24 * 60 * 60 * 1000);
+      const yesterdayKey = yesterdayIst.toISOString().split('T')[0]!;
+      const yesterdaySnap = await this.db.collection('currentAffairs').doc(yesterdayKey).collection('items').get();
+      if (!yesterdaySnap.empty) {
+        return yesterdaySnap.docs.map(d => ({ ...d.data(), _isFromYesterday: true } as CurrentAffairsStoreItem & { _isFromYesterday?: boolean }));
+      }
+
+      return [];
     } catch { return []; }
   }
 

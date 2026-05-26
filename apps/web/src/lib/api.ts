@@ -71,9 +71,9 @@ export const api = {
 
   // Billing
   async getPlans() { return (await authedFetch('/v1/billing/plans')).json() as Promise<{plans:Plan[]}>; },
-  async createOrder(planId: string, period: 'monthly'|'yearly') { return (await authedFetch('/v1/billing/order', { method: 'POST', body: JSON.stringify({ planId, period }) })).json() as Promise<{orderId:string; amount:number; currency:string; key:string}>; },
-  async verifyPayment(data: {razorpay_order_id:string; razorpay_payment_id:string; razorpay_signature:string; planId:string; period:'monthly'|'yearly'}) { return (await authedFetch('/v1/billing/verify', { method: 'POST', body: JSON.stringify(data) })).json() as Promise<{success:boolean; plan:string; expiresAt:string}>; },
-  async getSubscription() { return (await authedFetch('/v1/billing/subscription')).json() as Promise<{plan:string; planExpiresAt:string|null; credits:number}>; },
+  async createOrder(planId: string, period: 'monthly'|'yearly') { return (await authedFetch('/v1/billing/order', { method: 'POST', body: JSON.stringify({ planId, period }) })).json() as Promise<{orderId:string; amount:number; currency:string; key:string; keyId?:string}>; },
+  async verifyPayment(data: {razorpay_order_id:string; razorpay_payment_id:string; razorpay_signature:string; planId?:string; period?:'monthly'|'yearly'}) { return (await authedFetch('/v1/billing/verify', { method: 'POST', body: JSON.stringify(data) })).json() as Promise<{success:boolean; plan:string; expiresAt:string}>; },
+  async getSubscription() { return (await authedFetch('/v1/billing/subscription')).json() as Promise<{plan:string; planExpiresAt:string|null; isActive:boolean; daysRemaining:number; credits:number}>; },
 };
 
 export interface CurrentAffairsItem { id: string; headline: string; body: string; category: string; sources: string[]; summary: string; factChecked: boolean; date: string; publishedAt: string; }

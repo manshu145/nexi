@@ -61,10 +61,10 @@ describe('award()', () => {
 
     expect(result.kind).toBe('awarded');
     if (result.kind !== 'awarded') return;
-    expect(result.event.amount).toBe(200);
+    expect(result.event.amount).toBe(100);
     expect(result.event.event).toEqual({ kind: 'earn', source: 'signup_verified' });
     expect(result.event.expiresAt).toBe('2026-01-15T00:00:00.000Z');
-    expect(result.newBalance).toBe(200);
+    expect(result.newBalance).toBe(100);
   });
 
   it('returns kind=duplicate for the same idempotency key without re-awarding', () => {
@@ -86,7 +86,7 @@ describe('award()', () => {
     expect(second.kind).toBe('duplicate');
     if (second.kind !== 'duplicate') return;
     expect(second.event.id).toBe(first.event.id);
-    expect(second.balance).toBe(50);
+    expect(second.balance).toBe(15);
   });
 
   it('respects the amount override for admin_grant', () => {
@@ -161,14 +161,14 @@ describe('spend()', () => {
 
     expect(result.kind).toBe('spent');
     if (result.kind !== 'spent') return;
-    expect(result.event.amount).toBe(-20);
-    expect(result.newBalance).toBe(180);
+    expect(result.event.amount).toBe(-3);
+    expect(result.newBalance).toBe(97);
   });
 
   it('rejects when the balance is insufficient', () => {
     const deps = makeDeps('2026-01-01T00:00:00.000Z');
     const earn = award(
-      { userId: userA, source: 'mcq_pass', idempotencyKey: 'mcq:1' }, // +50
+      { userId: userA, source: 'mcq_pass', idempotencyKey: 'mcq:1' }, // +15
       [],
       deps,
     );
@@ -188,7 +188,7 @@ describe('spend()', () => {
 
     expect(result.kind).toBe('insufficient');
     if (result.kind !== 'insufficient') return;
-    expect(result.balance).toBe(50);
+    expect(result.balance).toBe(15);
     expect(result.required).toBe(100);
   });
 
@@ -219,7 +219,7 @@ describe('spend()', () => {
     expect(retry.kind).toBe('duplicate');
     if (retry.kind !== 'duplicate') return;
     expect(retry.event.id).toBe(first.event.id);
-    expect(retry.balance).toBe(180);
+    expect(retry.balance).toBe(97);
   });
 
   it('does not let user A spend from user B\'s buckets', () => {
@@ -252,7 +252,7 @@ describe('FIFO and expiry behavior', () => {
   it('drains the oldest bucket first across multiple buckets', () => {
     const deps = makeDeps('2026-01-01T00:00:00.000Z');
     const e1 = award(
-      { userId: userA, source: 'mcq_pass', idempotencyKey: 'm:1' }, // +50, exp 31 days
+      { userId: userA, source: 'mcq_pass', idempotencyKey: 'm:1' }, // +15, exp 31 days
       [],
       deps,
     );
@@ -260,19 +260,19 @@ describe('FIFO and expiry behavior', () => {
 
     deps.setNow('2026-01-02T00:00:00.000Z');
     const e2 = award(
-      { userId: userA, source: 'mcq_pass', idempotencyKey: 'm:2' }, // +50, exp 31 days
+      { userId: userA, source: 'mcq_pass', idempotencyKey: 'm:2' }, // +15, exp 31 days
       [e1.event],
       deps,
     );
     if (e2.kind !== 'awarded') throw new Error('setup');
 
-    // Spend 60 -- should drain bucket 1 (50) then take 10 from bucket 2.
+    // Spend 20 -- should drain bucket 1 (15) then take 5 from bucket 2.
     deps.setNow('2026-01-03T00:00:00.000Z');
     const sp = spend(
       {
         userId: userA,
         reason: 'admin_revoke',
-        amount: 60,
+        amount: 20,
         idempotencyKey: 'r:1',
       },
       [e1.event, e2.event],
@@ -289,13 +289,13 @@ describe('FIFO and expiry behavior', () => {
     expect(buckets[0]!.eventId).toBe(e1.event.id);
     expect(buckets[0]!.remaining).toBe(0);
     expect(buckets[1]!.eventId).toBe(e2.event.id);
-    expect(buckets[1]!.remaining).toBe(40);
+    expect(buckets[1]!.remaining).toBe(10);
   });
 
   it('expired buckets do not contribute to balance and are reported as remaining=0', () => {
     const deps = makeDeps('2026-01-01T00:00:00.000Z');
     const earn = award(
-      { userId: userA, source: 'signup_verified', idempotencyKey: 's' }, // +200, expires 2026-01-15
+      { userId: userA, source: 'signup_verified', idempotencyKey: 's' }, // +100, expires 2026-01-15
       [],
       deps,
     );
@@ -313,7 +313,7 @@ describe('FIFO and expiry behavior', () => {
   it('expiringSoon counts only buckets within the 7-day window', () => {
     const deps = makeDeps('2026-01-01T00:00:00.000Z');
     const e1 = award(
-      { userId: userA, source: 'signup_verified', idempotencyKey: 's' }, // +200, exp 2026-01-15
+      { userId: userA, source: 'signup_verified', idempotencyKey: 's' }, // +100, exp 2026-01-15
       [],
       deps,
     );
@@ -321,7 +321,7 @@ describe('FIFO and expiry behavior', () => {
 
     deps.setNow('2026-01-02T00:00:00.000Z');
     const e2 = award(
-      { userId: userA, source: 'mcq_pass', idempotencyKey: 'm' }, // +50, exp 2026-02-01
+      { userId: userA, source: 'mcq_pass', idempotencyKey: 'm' }, // +15, exp 2026-02-01
       [e1.event],
       deps,
     );
@@ -335,14 +335,14 @@ describe('FIFO and expiry behavior', () => {
       userA,
       day('2026-01-10T00:00:00.000Z'),
     );
-    expect(balance.total).toBe(250);
-    expect(balance.expiringSoon).toBe(200);
+    expect(balance.total).toBe(115);
+    expect(balance.expiringSoon).toBe(100);
   });
 
   it('a spend before expiry consumes the soon-to-expire bucket and survives expiry', () => {
     const deps = makeDeps('2026-01-01T00:00:00.000Z');
     const earn1 = award(
-      { userId: userA, source: 'signup_verified', idempotencyKey: 's' }, // +200, expires 2026-01-15
+      { userId: userA, source: 'signup_verified', idempotencyKey: 's' }, // +100, expires 2026-01-15
       [],
       deps,
     );
@@ -350,18 +350,18 @@ describe('FIFO and expiry behavior', () => {
 
     deps.setNow('2026-01-10T00:00:00.000Z');
     const earn2 = award(
-      { userId: userA, source: 'mcq_pass', idempotencyKey: 'm' }, // +50, exp 2026-02-09
+      { userId: userA, source: 'mcq_pass', idempotencyKey: 'm' }, // +15, exp 2026-02-09
       [earn1.event],
       deps,
     );
     if (earn2.kind !== 'awarded') throw new Error('setup');
 
-    // Spend 200 on Jan 10 -- entirely from the signup bucket (FIFO, oldest first)
+    // Spend 100 on Jan 10 -- entirely from the signup bucket (FIFO, oldest first)
     const sp = spend(
       {
         userId: userA,
         reason: 'admin_revoke',
-        amount: 200,
+        amount: 100,
         idempotencyKey: 'rev',
       },
       [earn1.event, earn2.event],
@@ -369,13 +369,13 @@ describe('FIFO and expiry behavior', () => {
     );
     if (sp.kind !== 'spent') throw new Error('setup');
 
-    // After signup bucket expiry, the 50 from mcq should still be there.
+    // After signup bucket expiry, the 15 from mcq should still be there.
     const balance = computeBalance(
       [earn1.event, earn2.event, sp.event],
       userA,
       day('2026-02-01T00:00:00.000Z'),
     );
-    expect(balance.total).toBe(50);
+    expect(balance.total).toBe(15);
   });
 });
 
@@ -385,7 +385,7 @@ describe('ledger integrity', () => {
   it('throws InvalidLedgerError for an over-spending ledger', () => {
     const deps = makeDeps('2026-01-01T00:00:00.000Z');
     const earn = award(
-      { userId: userA, source: 'mcq_pass', idempotencyKey: 'm' }, // +50
+      { userId: userA, source: 'mcq_pass', idempotencyKey: 'm' }, // +15
       [],
       deps,
     );

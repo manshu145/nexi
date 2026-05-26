@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '~/lib/auth-context';
 import { Logo } from '~/components/Logo';
+import { AILoader } from '~/components/ui/AILoader';
 import type { ConfirmationResult } from 'firebase/auth';
 
 export default function VerifyPhonePage() {
@@ -111,8 +112,8 @@ export default function VerifyPhonePage() {
     }
   };
 
-  if (loading) return <main className="flex min-h-screen items-center justify-center"><span className="spinner" /></main>;
-  if (!user) return <main className="flex min-h-screen items-center justify-center"><span className="spinner" /></main>;
+  if (loading) return <main className="flex min-h-screen items-center justify-center"><AILoader context="general" /></main>;
+  if (!user) return <main className="flex min-h-screen items-center justify-center"><AILoader context="general" /></main>;
 
   return (
     <main className="flex min-h-screen items-center justify-center px-4">

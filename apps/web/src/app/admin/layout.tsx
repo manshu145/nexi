@@ -2,11 +2,13 @@
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '~/lib/auth-context';
 import { useEffect, useState, type ReactNode } from 'react';
+import { AILoader } from '~/components/ui/AILoader';
 
 const NAV_ITEMS = [
   { label: 'Stats', href: '/admin', icon: '📊' },
   { label: 'Users', href: '/admin/users', icon: '👥' },
   { label: 'Live Sessions', href: '/admin/sessions', icon: '🟢' },
+  { label: 'Plans', href: '/admin/plans', icon: '💳' },
   { label: 'Revenue', href: '/admin/revenue', icon: '💰' },
   { label: 'AI & Logs', href: '/admin/logs', icon: '🤖' },
   { label: 'Announcements', href: '/admin/announcements', icon: '📢' },
@@ -35,7 +37,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   // Login page renders independently — no auth/layout wrapper needed
   if (isLoginPage) return <>{children}</>;
 
-  if (loading || !user) return <main className="flex min-h-dvh items-center justify-center"><span className="spinner" /></main>;
+  if (loading || !user) return <main className="flex min-h-dvh items-center justify-center"><AILoader context="general" /></main>;
 
   return (
     <div className="admin-layout">

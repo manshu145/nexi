@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '~/lib/auth-context';
 import { getFirebaseAuthClient } from '~/lib/firebase';
+import { AILoader } from '~/components/ui/AILoader';
 
 interface Ticket {
   id: string;
@@ -73,7 +74,7 @@ export default function AdminSupportPage() {
     }
   };
 
-  if (loading || !user) return <div className="flex items-center justify-center py-20"><span className="spinner" /></div>;
+  if (loading || !user) return <div className="flex items-center justify-center py-20"><AILoader context="general" /></div>;
 
   const openTickets = tickets.filter(t => t.status === 'open' || t.status === 'in_progress');
   const closedTickets = tickets.filter(t => t.status === 'resolved' || t.status === 'closed');
@@ -86,7 +87,7 @@ export default function AdminSupportPage() {
       {error && <div className="banner banner-error mt-4">{error}</div>}
 
       {fetching ? (
-        <div className="flex items-center justify-center py-12"><span className="spinner" /></div>
+        <div className="flex items-center justify-center py-12"><AILoader context="general" /></div>
       ) : tickets.length === 0 ? (
         <div className="paper-card mt-6 p-8 text-center">
           <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="mx-auto text-muted-400">

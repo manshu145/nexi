@@ -5,6 +5,7 @@ import { useAuth } from '~/lib/auth-context';
 import { api, type SyllabusTree, type StudyProgress } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 import { Skeleton, ListSkeleton } from '~/components/Skeleton';
+import { AILoader } from '~/components/ui/AILoader';
 
 export default function StudyPage() {
   const { user, loading } = useAuth();
@@ -15,6 +16,9 @@ export default function StudyPage() {
   const [pageLoading, setPageLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lang, setLang] = useState<'en' | 'hi'>('en');
+  const [generating, setGenerating] = useState<string | null>(null);
+  const [genSuccess, setGenSuccess] = useState<string | null>(null);
+  const [currentPlan, setCurrentPlan] = useState<string>('free');
 
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
 
@@ -29,6 +33,7 @@ export default function StudyPage() {
         const meRes = await api.me();
         const exam = meRes.user.targetExam;
         if (!exam) { router.replace('/onboarding/language'); return; }
+        setCurrentPlan(meRes.user.plan ?? 'free');
         const [syllRes, progRes] = await Promise.all([
           api.getSyllabus(exam),
           api.getStudyProgress(exam),
@@ -174,6 +179,68 @@ export default function StudyPage() {
                       </button>
                     );
                   })}
+
+                  {/* Generate More Chapters Button */}
+                  {(() => {
+                    const allCompleted = subjectCompleted >= subject.chapters.length;
+                    const allPassed = subject.chapters.every(ch => {
+                      const s = scores[`${subject.slug}/${ch.slug}`];
+                      return s !== undefined && s >= 80;
+                    });
+
+                    if (!allCompleted) return null; // Hide if not all completed
+
+                    if (currentPlan === 'free') {
+                      return (
+                        <button
+                          onClick={() => router.push('/upgrade')}
+                          className="mt-3 w-full rounded-lg border border-amber-500/50 bg-amber-500/5 py-3 text-center text-sm font-medium text-amber-700 dark:text-amber-400 transition-colors hover:bg-amber-500/10"
+                        >
+                          ⭐ Generate More Chapters — Scholar plan required
+                        </button>
+                      );
+                    }
+
+                    if (!allPassed) {
+                      return (
+                        <button disabled className="mt-3 w-full rounded-lg bg-paper-200 dark:bg-ink-700 py-3 text-center text-sm font-medium text-muted-500 cursor-not-allowed">
+                          🔒 Generate More Chapters — Pass all chapters first (80%+)
+                        </button>
+                      );
+                    }
+
+                    return (
+                      <button
+                        onClick={async () => {
+                          setGenerating(subject.slug);
+                          setGenSuccess(null);
+                          try {
+                            const res = await fetch(`${process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com'}/v1/study/generate-chapters`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await (await import('~/lib/firebase')).getFirebaseAuthClient().currentUser?.getIdToken()}` },
+                              body: JSON.stringify({ examSlug: syllabus!.exam, subjectSlug: subject.slug }),
+                            });
+                            if (!res.ok) throw new Error('Failed');
+                            const data = await res.json() as { newChapters: any[]; message: string };
+                            setGenSuccess(data.message);
+                            // Refresh syllabus
+                            const meRes = await api.me();
+                            const exam = meRes.user.targetExam!;
+                            const syllRes = await api.getSyllabus(exam);
+                            setSyllabus(syllRes.syllabus);
+                          } catch { setGenSuccess('Failed to generate. Try again.'); }
+                          finally { setGenerating(null); }
+                        }}
+                        disabled={generating === subject.slug}
+                        className="mt-3 w-full rounded-lg bg-amber-500 py-3 text-center text-sm font-semibold text-ink-900 transition-colors hover:bg-amber-600 disabled:opacity-60"
+                      >
+                        {generating === subject.slug ? '✨ Generating...' : '✨ Generate More Chapters'}
+                      </button>
+                    );
+                  })()}
+                  {genSuccess && generating === null && (
+                    <p className="mt-2 text-center text-xs text-emerald-600 dark:text-emerald-400">{genSuccess}</p>
+                  )}
                 </div>
               )}
             </div>

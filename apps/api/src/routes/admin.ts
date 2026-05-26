@@ -7,7 +7,10 @@ import type { AdminStore } from '../lib/adminStore.js';
 import type { Env } from '../env.js';
 import { asUserId } from '@nexigrate/shared';
 
-export interface AdminRoutesDeps { users: UserStore; adminStore: AdminStore; env: Env; logger: Logger; }
+import type { CouponStore } from '../lib/couponStore.js';
+import { PLANS } from '@nexigrate/shared';
+
+export interface AdminRoutesDeps { users: UserStore; adminStore: AdminStore; env: Env; logger: Logger; coupons: CouponStore; }
 
 export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
   const app = new Hono();
@@ -226,6 +229,65 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
     if (!wa.isConfigured()) throw new HTTPException(503, { message: 'WhatsApp not configured. Set WHATSAPP_TOKEN and WHATSAPP_PHONE_NUMBER_ID.' });
     const result = await wa.sendMessage(body.to, body.message);
     return c.json(result);
+  });
+
+  // ━━━ PLANS & COUPONS ━━━
+  // GET /v1/admin/plans — all plans with subscriber counts
+  app.get('/plans', async (c) => {
+    const users = await deps.users.listAll?.() ?? [];
+    const planCounts: Record<string, number> = { free: 0, scholar: 0, aspirant: 0, achiever: 0 };
+    for (const u of users) planCounts[u.plan] = (planCounts[u.plan] ?? 0) + 1;
+    const plans = Object.values(PLANS).map(p => ({ ...p, subscribers: planCounts[p.id] ?? 0 }));
+    return c.json({ plans });
+  });
+
+  // GET /v1/admin/coupons — list all coupons
+  app.get('/coupons', async (c) => {
+    const coupons = await deps.coupons.listAll();
+    return c.json({ coupons });
+  });
+
+  // POST /v1/admin/coupons — create coupon
+  app.post('/coupons', async (c) => {
+    const body = await c.req.json().catch(() => null) as {
+      code?: string; discountType?: 'percent' | 'flat'; discountValue?: number;
+      maxUses?: number; expiresAt?: string; applicablePlans?: string[];
+    } | null;
+    if (!body?.code || !body?.discountType || !body?.discountValue) {
+      throw new HTTPException(400, { message: 'code, discountType, and discountValue required' });
+    }
+    const coupon = {
+      code: body.code.toUpperCase(),
+      discountType: body.discountType,
+      discountValue: body.discountValue,
+      maxUses: body.maxUses ?? 0,
+      usedCount: 0,
+      expiresAt: body.expiresAt ?? null,
+      isActive: true,
+      applicablePlans: (body.applicablePlans ?? []) as any[],
+      createdAt: new Date().toISOString(),
+    };
+    await deps.coupons.create(coupon);
+    deps.logger.info('admin.coupon_created', { code: coupon.code });
+    return c.json({ coupon });
+  });
+
+  // PATCH /v1/admin/coupons/:code — activate/deactivate
+  app.patch('/coupons/:code', async (c) => {
+    const code = c.req.param('code');
+    const body = await c.req.json().catch(() => null) as { isActive?: boolean } | null;
+    if (body?.isActive === false) {
+      await deps.coupons.deactivate(code);
+    }
+    return c.json({ success: true });
+  });
+
+  // DELETE /v1/admin/coupons/:code — delete
+  app.delete('/coupons/:code', async (c) => {
+    const code = c.req.param('code');
+    await deps.coupons.delete(code);
+    deps.logger.info('admin.coupon_deleted', { code });
+    return c.json({ success: true });
   });
 
   return app;

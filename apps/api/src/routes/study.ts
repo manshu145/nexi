@@ -46,6 +46,20 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
     const { exam, subject, chapter } = c.req.param();
     const language = (c.req.query('lang') as 'en' | 'hi') || 'en';
 
+    // Credit deduction for free plan users
+    const user = await deps.users.get(principal.userId);
+    if (user) {
+      const { shouldDeductCredits } = await import('@nexigrate/shared');
+      if (shouldDeductCredits(user.plan, user.planExpiresAt)) {
+        // Free plan: deduct 5 credits per chapter open
+        if (user.credits < 5) {
+          throw new HTTPException(402, { message: 'insufficient_credits' });
+        }
+        await deps.users.update(principal.userId, { credits: user.credits - 5 } as any);
+        deps.logger.info('study.credits_deducted', { userId: principal.userId, amount: 5, newBalance: user.credits - 5 });
+      }
+    }
+
     // Check cache first
     let content = await deps.chapters.getChapter(exam, subject, chapter, language);
     if (!content) {
@@ -233,6 +247,84 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
       : 0;
 
     return c.json({ overallPercent, subjectBreakdown, weakChapters, strongChapters });
+  });
+
+  // POST /v1/study/generate-chapters — generate advanced chapters for Scholar+ users
+  app.post('/generate-chapters', async (c) => {
+    const principal = requireAuth(c);
+    const body = await c.req.json().catch(() => null) as { examSlug?: string; subjectSlug?: string } | null;
+    if (!body?.examSlug || !body?.subjectSlug) throw new HTTPException(400, { message: 'examSlug and subjectSlug required' });
+
+    // Plan check: must be paid plan (scholar or above)
+    const user = await deps.users.get(principal.userId);
+    if (!user || user.plan === 'free') {
+      throw new HTTPException(403, { message: 'Scholar plan required to generate advanced chapters. Upgrade at /upgrade' });
+    }
+
+    // Get current syllabus
+    const syllabus = getSyllabus(body.examSlug);
+    if (!syllabus) throw new HTTPException(404, { message: 'Syllabus not found for this exam' });
+
+    const subjectData = syllabus.subjects.find(s => s.slug === body.subjectSlug);
+    if (!subjectData) throw new HTTPException(404, { message: 'Subject not found in syllabus' });
+
+    const existingChapters = subjectData.chapters.map(ch => ch.name).join(', ');
+    const nextOrder = subjectData.chapters.length + 1;
+
+    try {
+      const prompt = `The student has completed all standard chapters for "${subjectData.name}" in "${syllabus.examName}".
+Generate 5 advanced/additional chapter topics that go beyond the standard syllabus but are highly relevant for ${syllabus.examName} preparation.
+Existing chapters: ${existingChapters}. Do not repeat any.
+Return ONLY valid JSON array: [{"name":"Chapter Name","slug":"chapter-slug","nameHi":"Hindi Name","estimatedMinutes":45,"order":${nextOrder},"isAdvanced":true}]`;
+
+      let newChapters: { name: string; slug: string; nameHi: string; estimatedMinutes: number; order: number; isAdvanced: boolean }[] = [];
+
+      // Use GPT-4o for deep generation
+      if (deps.env.OPENAI_API_KEY && deps.env.OPENAI_API_KEY.length > 5) {
+        const OpenAI = (await import('openai')).default;
+        const openai = new OpenAI({ apiKey: deps.env.OPENAI_API_KEY });
+        const completion = await openai.chat.completions.create({
+          model: 'gpt-4o',
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.7,
+          max_tokens: 1500,
+          response_format: { type: 'json_object' },
+        });
+        const raw = completion.choices[0]?.message?.content ?? '[]';
+        const parsed = JSON.parse(raw);
+        newChapters = Array.isArray(parsed) ? parsed : parsed.chapters ?? [];
+      } else {
+        throw new Error('OpenAI API key required for chapter generation');
+      }
+
+      if (newChapters.length === 0) throw new Error('AI returned no chapters');
+
+      // Assign correct order numbers
+      newChapters = newChapters.map((ch, i) => ({
+        ...ch,
+        order: nextOrder + i,
+        isAdvanced: true,
+      }));
+
+      // Save to Firestore (append to syllabus)
+      if (deps.db) {
+        const syllabusRef = deps.db.collection('syllabi').doc(`${body.examSlug}_${body.subjectSlug}`);
+        const snap = await syllabusRef.get();
+        const existing = snap.exists ? (snap.data()?.chapters ?? []) : subjectData.chapters;
+        await syllabusRef.set({
+          examSlug: body.examSlug,
+          subjectSlug: body.subjectSlug,
+          chapters: [...existing, ...newChapters],
+          updatedAt: new Date().toISOString(),
+        }, { merge: true });
+      }
+
+      deps.logger.info('study.chapters_generated', { userId: principal.userId, exam: body.examSlug, subject: body.subjectSlug, count: newChapters.length });
+      return c.json({ newChapters, message: `${newChapters.length} new advanced chapters added!` });
+    } catch (err) {
+      deps.logger.error('study.generate_chapters_error', { error: err instanceof Error ? err.message : String(err) });
+      throw new HTTPException(503, { message: 'Failed to generate chapters. Please try again.' });
+    }
   });
 
   return app;

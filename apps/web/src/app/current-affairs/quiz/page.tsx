@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '~/lib/auth-context';
 import { api, type GeneratedMCQ } from '~/lib/api';
 import { Logo } from '~/components/Logo';
+import { AILoader } from '~/components/ui/AILoader';
 
 type Phase = 'rules' | 'loading' | 'quiz' | 'submitting' | 'result';
 
@@ -65,7 +66,7 @@ export default function CurrentAffairsQuizPage() {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [phase, submitQuiz]);
 
-  if (loading || !user) return <main className="flex min-h-dvh items-center justify-center"><span className="spinner" /></main>;
+  if (loading || !user) return <main className="flex min-h-dvh items-center justify-center"><AILoader context="quiz" /></main>;
 
   // RULES screen
   if (phase === 'rules') return (
@@ -87,7 +88,7 @@ export default function CurrentAffairsQuizPage() {
   // LOADING
   if (phase === 'loading') return (
     <main className="flex min-h-dvh flex-col items-center justify-center gap-3">
-      <span className="spinner" />
+      <AILoader context="quiz" />
       <p className="text-sm text-muted-500">Loading today's quiz...</p>
     </main>
   );
@@ -95,7 +96,7 @@ export default function CurrentAffairsQuizPage() {
   // SUBMITTING
   if (phase === 'submitting') return (
     <main className="flex min-h-dvh flex-col items-center justify-center gap-3">
-      <span className="spinner" />
+      <AILoader context="quiz" />
       <p className="text-sm text-muted-500">Calculating results...</p>
     </main>
   );
