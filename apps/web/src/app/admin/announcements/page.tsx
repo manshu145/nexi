@@ -38,7 +38,10 @@ export default function AdminAnnouncementsPage() {
       if (!res.ok) throw new Error(`Failed: ${res.status}`);
       const data = (await res.json()) as { announcements: Announcement[] };
       setAnnouncements(data.announcements);
-    } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Failed';
+      if (!msg.includes('404')) setError(msg);
+    }
     finally { setFetching(false); }
   };
 
