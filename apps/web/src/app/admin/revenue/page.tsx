@@ -64,7 +64,7 @@ export default function AdminRevenuePage() {
 
   return (
     <div>
-      <h1 className="font-serif text-2xl font-bold text-ink-900">Revenue</h1>
+      <h1 className="font-serif text-2xl font-bold text-ink-900 dark:text-paper-50">Revenue</h1>
       <p className="mt-1 text-sm text-muted-500">Payment history and revenue overview</p>
 
       {error && <div className="banner banner-error mt-4">{error}</div>}
@@ -73,21 +73,21 @@ export default function AdminRevenuePage() {
       <div className="mt-6 grid gap-4 sm:grid-cols-3">
         <div className="paper-card p-5">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">Total Revenue</p>
-          <p className="font-serif mt-2 text-3xl font-bold text-ink-900">₹{totalRevenue.toLocaleString('en-IN')}</p>
+          <p className="font-serif mt-2 text-3xl font-bold text-ink-900 dark:text-paper-50">₹{totalRevenue.toLocaleString('en-IN')}</p>
         </div>
         <div className="paper-card p-5">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">This Month</p>
-          <p className="font-serif mt-2 text-3xl font-bold text-ink-900">₹{monthRevenue.toLocaleString('en-IN')}</p>
+          <p className="font-serif mt-2 text-3xl font-bold text-ink-900 dark:text-paper-50">₹{monthRevenue.toLocaleString('en-IN')}</p>
         </div>
         <div className="paper-card p-5">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">Total Transactions</p>
-          <p className="font-serif mt-2 text-3xl font-bold text-ink-900">{total || payments.length}</p>
+          <p className="font-serif mt-2 text-3xl font-bold text-ink-900 dark:text-paper-50">{total || payments.length}</p>
         </div>
       </div>
 
       {/* Payments List */}
       <div className="mt-8">
-        <h2 className="text-sm font-semibold text-ink-800">Recent Payments</h2>
+        <h2 className="text-sm font-semibold text-ink-800 dark:text-paper-200">Recent Payments</h2>
 
         {fetching ? (
           <div className="flex items-center justify-center py-12"><AILoader context="general" /></div>
@@ -107,7 +107,7 @@ export default function AdminRevenuePage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  <span className="font-serif font-bold text-ink-900">₹{p.amount}</span>
+                  <span className="font-serif font-bold text-ink-900 dark:text-paper-50">₹{p.amount}</span>
                   <span className={`pill text-xs ${p.status === 'success' || p.status === 'verified' ? 'pill-success' : p.status === 'failed' ? 'pill-warn' : ''}`}>
                     {p.status}
                   </span>
