@@ -50,7 +50,10 @@ export default function AdminSessionsPage() {
       setSessions(data.sessions);
       setCount(data.count);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load sessions');
+      const msg = e instanceof Error ? e.message : 'Failed to load sessions';
+      // 404 means API not yet deployed with this endpoint
+      if (msg.includes('404')) { setFetching(false); return; }
+      setError(msg);
     } finally {
       setFetching(false);
     }
