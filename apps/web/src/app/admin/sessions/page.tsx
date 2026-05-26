@@ -50,7 +50,8 @@ export default function AdminSessionsPage() {
       setSessions(data.sessions);
       setCount(data.count);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load sessions');
+      const msg = e instanceof Error ? e.message : 'Failed to load sessions';
+      if (!msg.includes('404')) setError(msg);
     } finally {
       setFetching(false);
     }
