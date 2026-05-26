@@ -93,8 +93,28 @@ export default function KindleReaderPage() {
     finally { setUnlocking(false); setPageLoading(false); }
   };
 
+  /** Play a subtle paper-rustle sound using Web Audio API (no external file needed) */
+  const playPageTurnSound = useCallback(() => {
+    try {
+      const ctx = new AudioContext();
+      const buffer = ctx.createBuffer(1, ctx.sampleRate * 0.08, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < data.length; i++) {
+        data[i] = (Math.random() * 2 - 1) * (1 - i / data.length) * 0.3;
+      }
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      const gain = ctx.createGain();
+      gain.gain.value = 0.15;
+      source.connect(gain);
+      gain.connect(ctx.destination);
+      source.start();
+    } catch { /* AudioContext not available, silently skip */ }
+  }, []);
+
   const goNext = useCallback(() => {
     if (currentPage < pages.length - 1 && !isFlipping) {
+      playPageTurnSound();
       setIsFlipping(true);
       setFlipDirection('next');
       setTimeout(() => {
@@ -107,6 +127,7 @@ export default function KindleReaderPage() {
 
   const goPrev = useCallback(() => {
     if (currentPage > 0 && !isFlipping) {
+      playPageTurnSound();
       setIsFlipping(true);
       setFlipDirection('prev');
       setTimeout(() => {
