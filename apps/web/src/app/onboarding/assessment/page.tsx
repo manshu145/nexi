@@ -72,7 +72,7 @@ export default function AssessmentPage() {
     <div className="flex flex-col items-center">
       <div className="pill">{ts('step', { current: 4, total: 5 })}</div>
       <div className="mt-4 flex w-full max-w-xs gap-1">{[1,2,3,4,5].map(s => <div key={s} className={`h-1.5 flex-1 rounded-full ${s <= 4 ? 'bg-ember-500' : 'bg-paper-300'}`} />)}</div>
-      <h1 className="font-serif mt-8 text-center text-2xl font-semibold text-ink-900">{t('title')}</h1>
+      <h1 className="font-serif mt-8 text-center text-2xl font-semibold text-ink-900 dark:text-paper-50">{t('title')}</h1>
       <p className="mt-2 text-center text-sm text-muted-500">{t('subtitle')}</p>
       <div className="paper-card mt-8 w-full p-5"><p className="text-sm text-ink-800 leading-relaxed">{t('description')}</p></div>
       <button type="button" onClick={startAssessment} disabled={loading} className="btn-primary mt-6 w-full">
@@ -88,7 +88,7 @@ export default function AssessmentPage() {
       <div className="mt-4 flex w-full max-w-xs gap-1">{[1,2,3,4,5].map(s => <div key={s} className={`h-1.5 flex-1 rounded-full ${s <= 4 ? 'bg-ember-500' : 'bg-paper-300'}`} />)}</div>
       <div className="mt-12 text-center">
         <span className="text-4xl">⚠️</span>
-        <h2 className="font-serif mt-4 text-xl font-semibold text-ink-900">Assessment could not be generated</h2>
+        <h2 className="font-serif mt-4 text-xl font-semibold text-ink-900 dark:text-paper-50">Assessment could not be generated</h2>
         <div className="banner banner-error mt-4">{error}</div>
         <p className="mt-3 text-xs text-muted-500">AI service may be busy. Try again in a moment.</p>
       </div>
@@ -114,12 +114,12 @@ export default function AssessmentPage() {
       <div className="pill">{ts('step', { current: 4, total: 5 })}</div>
       <div className="mt-4 flex w-full max-w-xs gap-1">{[1,2,3,4,5].map(s => <div key={s} className={`h-1.5 flex-1 rounded-full ${s <= 4 ? 'bg-ember-500' : 'bg-paper-300'}`} />)}</div>
       <div className="mt-6 flex w-full items-center justify-between">
-        <p className="text-sm font-medium text-ink-800">{t('question', { current: idx+1, total: questions.length })}</p>
+        <p className="text-sm font-medium text-ink-800 dark:text-paper-200">{t('question', { current: idx+1, total: questions.length })}</p>
         <span className={`pill ${timer <= 10 ? 'pill-warn' : ''}`}>{t('timeLeft', { seconds: timer })}</span>
       </div>
       <div className="mt-3 flex w-full gap-1">{questions.map((_, i) => <div key={i} className={`h-2.5 w-2.5 rounded-full ${i < idx ? 'bg-ember-500' : i === idx ? 'bg-ember-500' : answers.get(questions[i]?.id ?? '') ? 'bg-ember-500/40' : 'bg-paper-300'}`} />)}</div>
       <div className="paper-card mt-6 w-full p-5">
-        <p className="text-sm font-medium leading-relaxed text-ink-900">{q.question}</p>
+        <p className="text-sm font-medium leading-relaxed text-ink-900 dark:text-paper-50">{q.question}</p>
         <div className="mt-4 space-y-2">
           {q.options.map((opt) => (
             <button key={opt.key} type="button" onClick={() => setAnswers(new Map(answers).set(q.id, opt.key))}

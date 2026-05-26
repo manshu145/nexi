@@ -130,7 +130,7 @@ export default function ChatPage() {
                   <path d="M12 2L13.5 8.5L20 10L13.5 11.5L12 18L10.5 11.5L4 10L10.5 8.5L12 2Z" fill="currentColor" className="text-gold-500"/>
                 </svg>
               </div>
-              <h2 className="font-serif mt-4 text-xl font-bold text-ink-900">Hi, I&apos;m Nexi</h2>
+              <h2 className="font-serif mt-4 text-xl font-bold text-ink-900 dark:text-paper-50">Hi, I&apos;m Nexi</h2>
               <p className="mt-2 text-sm text-muted-500">Ask me anything about your exam.</p>
               <div className="mt-6 flex flex-wrap justify-center gap-2">
                 {prompts.map(p => (
@@ -172,7 +172,7 @@ export default function ChatPage() {
           ))}
           {sending && (
             <div className="flex justify-start">
-              <div className="paper-card max-w-[85%] rounded-2xl px-4 py-3 text-sm text-ink-900">
+              <div className="paper-card max-w-[85%] rounded-2xl px-4 py-3 text-sm text-ink-900 dark:text-paper-50">
                 <span className="inline-block w-0.5 h-4 bg-ink-900 animate-pulse" />
               </div>
             </div>
@@ -195,7 +195,7 @@ export default function ChatPage() {
       {vizContent && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setVizContent(null)}>
           <div className="paper-card max-w-lg w-full max-h-[80vh] overflow-auto p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="font-serif text-lg font-bold text-ink-900">Visualization</h3>
+            <h3 className="font-serif text-lg font-bold text-ink-900 dark:text-paper-50">Visualization</h3>
             <pre className="mt-4 text-xs bg-paper-200 p-4 rounded-lg overflow-auto whitespace-pre-wrap">{vizContent}</pre>
             <button onClick={() => setVizContent(null)} className="btn-ghost mt-4 w-full">Close</button>
           </div>
