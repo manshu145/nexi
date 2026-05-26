@@ -12,7 +12,7 @@ import { AILoader } from '~/components/ui/AILoader';
 function Row({ label, value }: { label: string; value?: string | null }) {
   return (<div className="flex items-center justify-between border-b border-line py-3">
     <span className="text-sm text-muted-500">{label}</span>
-    <span className="text-sm font-medium capitalize text-ink-900">{value || '—'}</span>
+    <span className="text-sm font-medium capitalize text-ink-900 dark:text-paper-50">{value || '—'}</span>
   </div>);
 }
 
@@ -44,8 +44,8 @@ export default function ProfilePage() {
     <main className="mx-auto flex min-h-dvh max-w-lg flex-col px-5 pt-6 pb-16">
       <header className="flex items-center justify-between"><button type="button" onClick={() => router.back()} className="btn-ghost-sm">← {tc('back')}</button><Logo /></header>
       <section className="mt-6 text-center">
-        <div className="mx-auto h-16 w-16 overflow-hidden rounded-full bg-paper-200 border border-line">{me?.photoURL ? <img src={me.photoURL} alt="" className="h-full w-full object-cover" /> : <span className="flex h-full w-full items-center justify-center text-xl font-bold text-ink-800">{me?.name?.[0]?.toUpperCase()}</span>}</div>
-        <h1 className="font-serif mt-3 text-xl font-semibold text-ink-900">{me?.name}</h1>
+        <div className="mx-auto h-16 w-16 overflow-hidden rounded-full bg-paper-200 border border-line">{me?.photoURL ? <img src={me.photoURL} alt="" className="h-full w-full object-cover" /> : <span className="flex h-full w-full items-center justify-center text-xl font-bold text-ink-800 dark:text-paper-200">{me?.name?.[0]?.toUpperCase()}</span>}</div>
+        <h1 className="font-serif mt-3 text-xl font-semibold text-ink-900 dark:text-paper-50">{me?.name}</h1>
         <p className="text-sm text-muted-500">{me?.email}</p>
       </section>
       <section className="mt-8">
@@ -83,7 +83,7 @@ export default function ProfilePage() {
           <div>
             <div className="flex items-center justify-between text-xs">
               <span className="text-muted-500">Credits</span>
-              <span className="font-medium text-ink-900">{me?.credits ?? 0}</span>
+              <span className="font-medium text-ink-900 dark:text-paper-50">{me?.credits ?? 0}</span>
             </div>
             <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-paper-300">
               <div className="h-full rounded-full bg-gold-500 transition-all" style={{ width: `${Math.min(100, ((me?.credits ?? 0) / 200) * 100)}%` }} />
@@ -100,7 +100,7 @@ export default function ProfilePage() {
       <section className="mt-6" id="referral">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">Refer & Earn</h2>
         <div className="mt-3 paper-card p-4 space-y-3">
-          <p className="text-sm text-muted-500">Invite friends and earn <span className="font-bold text-ink-900">50 credits</span> for each referral!</p>
+          <p className="text-sm text-muted-500">Invite friends and earn <span className="font-bold text-ink-900 dark:text-paper-50">50 credits</span> for each referral!</p>
           <div className="flex items-center gap-2">
             <input type="text" readOnly value={`https://app.nexigrate.com/signin?ref=YOUR_CODE`} className="input flex-1 text-xs" />
             <button onClick={() => { navigator.clipboard.writeText(`https://app.nexigrate.com/signin?ref=YOUR_CODE`); toast.success('Copied!'); }} className="btn-ghost-sm text-xs">Copy</button>

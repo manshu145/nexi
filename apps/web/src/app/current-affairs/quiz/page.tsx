@@ -72,12 +72,12 @@ export default function CurrentAffairsQuizPage() {
   if (phase === 'rules') return (
     <main className="mx-auto flex min-h-dvh max-w-lg flex-col items-center justify-center px-5 py-12">
       <span className="text-5xl">📝</span>
-      <h1 className="font-serif mt-6 text-2xl font-bold text-ink-900">Daily Current Affairs Quiz</h1>
+      <h1 className="font-serif mt-6 text-2xl font-bold text-ink-900 dark:text-paper-50">Daily Current Affairs Quiz</h1>
       <div className="paper-card mt-6 w-full p-5 space-y-3">
-        <div className="flex items-center gap-3"><span className="text-lg">📋</span><p className="text-sm text-ink-800">20 questions from today's news</p></div>
-        <div className="flex items-center gap-3"><span className="text-lg">⏱️</span><p className="text-sm text-ink-800">10 minutes total time</p></div>
-        <div className="flex items-center gap-3"><span className="text-lg">🚫</span><p className="text-sm text-ink-800">No going back once you move forward</p></div>
-        <div className="flex items-center gap-3"><span className="text-lg">🏆</span><p className="text-sm text-ink-800">Compete on the daily leaderboard</p></div>
+        <div className="flex items-center gap-3"><span className="text-lg">📋</span><p className="text-sm text-ink-800 dark:text-paper-200">20 questions from today's news</p></div>
+        <div className="flex items-center gap-3"><span className="text-lg">⏱️</span><p className="text-sm text-ink-800 dark:text-paper-200">10 minutes total time</p></div>
+        <div className="flex items-center gap-3"><span className="text-lg">🚫</span><p className="text-sm text-ink-800 dark:text-paper-200">No going back once you move forward</p></div>
+        <div className="flex items-center gap-3"><span className="text-lg">🏆</span><p className="text-sm text-ink-800 dark:text-paper-200">Compete on the daily leaderboard</p></div>
       </div>
       {error && <div className="banner banner-error mt-4 w-full">{error}</div>}
       <button onClick={startQuiz} className="btn-primary mt-6 w-full">Start Quiz →</button>
@@ -107,8 +107,8 @@ export default function CurrentAffairsQuizPage() {
       <div className="flex h-20 w-20 items-center justify-center rounded-full bg-paper-200 border-2 border-gold-500">
         <span className="text-3xl">{result.score >= 70 ? '🎉' : result.score >= 40 ? '👍' : '📖'}</span>
       </div>
-      <h1 className="font-serif mt-6 text-2xl font-bold text-ink-900">Quiz Complete!</h1>
-      <p className="mt-3 text-lg text-ink-800">
+      <h1 className="font-serif mt-6 text-2xl font-bold text-ink-900 dark:text-paper-50">Quiz Complete!</h1>
+      <p className="mt-3 text-lg text-ink-800 dark:text-paper-200">
         Score: <span className="font-bold text-ember-600">{result.score}%</span> ({result.correct}/{result.total})
       </p>
       <p className="mt-1 text-sm text-muted-500">
@@ -121,7 +121,7 @@ export default function CurrentAffairsQuizPage() {
 
       {/* Answer review */}
       <section className="mt-10 w-full">
-        <h2 className="font-serif text-lg font-semibold text-ink-900">Review</h2>
+        <h2 className="font-serif text-lg font-semibold text-ink-900 dark:text-paper-50">Review</h2>
         <div className="mt-4 space-y-3">
           {questions.map((q, i) => {
             const userAns = answers[i];
@@ -134,11 +134,11 @@ export default function CurrentAffairsQuizPage() {
                     {isCorrect ? '✓' : '✗'}
                   </span>
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-ink-900">{q.question}</p>
+                    <p className="text-sm font-medium text-ink-900 dark:text-paper-50">{q.question}</p>
                     <p className="mt-1 text-xs text-muted-500">
                       Your: {userAns != null && userAns >= 0 ? ansKeys[userAns] : 'Skipped'} · Correct: {q.correctOption}
                     </p>
-                    <p className="mt-1 text-xs text-ink-700">{q.explanation}</p>
+                    <p className="mt-1 text-xs text-ink-700 dark:text-paper-300">{q.explanation}</p>
                   </div>
                 </div>
               </div>
@@ -166,7 +166,7 @@ export default function CurrentAffairsQuizPage() {
 
       {/* Progress */}
       <div className="mt-4 flex items-center justify-between">
-        <p className="text-sm font-medium text-ink-800">Question {idx + 1} / {questions.length}</p>
+        <p className="text-sm font-medium text-ink-800 dark:text-paper-200">Question {idx + 1} / {questions.length}</p>
         <p className="text-xs text-muted-500">{answers.filter(a => a >= 0).length} answered</p>
       </div>
       <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-paper-300">
@@ -183,7 +183,7 @@ export default function CurrentAffairsQuizPage() {
       {/* Question card */}
       <div className="paper-card mt-5 p-5">
         <p className="text-xs text-muted-500 mb-2">{q.topic ?? 'Current Affairs'} · {q.difficulty}</p>
-        <p className="font-serif text-base font-medium leading-relaxed text-ink-900">{q.question}</p>
+        <p className="font-serif text-base font-medium leading-relaxed text-ink-900 dark:text-paper-50">{q.question}</p>
         <div className="mt-4 space-y-2">
           {q.options.map((opt, optIdx) => (
             <button
