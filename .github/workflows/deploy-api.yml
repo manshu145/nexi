@@ -1,6 +1,14 @@
 name: Deploy api to Cloud Run
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/api/**'
+      - 'packages/shared/**'
+      - 'packages/credits/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/deploy-api.yml'
   workflow_dispatch:
 
 concurrency:
