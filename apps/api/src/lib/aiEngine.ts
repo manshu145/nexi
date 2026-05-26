@@ -28,6 +28,8 @@ export interface AIEngine {
   generateCurrentAffairsQuiz(headlines: string, count?: number, language?: 'en' | 'hi'): Promise<GeneratedMCQ[]>;
   translateToHindi(items: { headline: string; summary: string }[]): Promise<{ headline: string; summary: string }[]>;
   chat(messages: { role: 'user' | 'assistant'; content: string }[], userContext: { exam: string; level: string; language: 'en' | 'hi' }): Promise<string>;
+  /** Quick single-prompt generation for small tasks */
+  quickGenerate(prompt: string): Promise<string | null>;
 }
 
 export function createAIEngine(env: Env, logger: Logger): AIEngine {
@@ -485,6 +487,36 @@ Rules for your responses:
 
       logger.warn('ai.translate_all_failed', { message: 'All providers failed, returning original items' });
       return items; // Return originals if all translation fails
+    },
+
+    async quickGenerate(prompt: string): Promise<string | null> {
+      // Fast single-prompt generation using Gemini Flash (cheapest + fastest)
+      if (env.GEMINI_API_KEY) {
+        try {
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: { temperature: 0.3, maxOutputTokens: 1500 },
+            }),
+          });
+          if (res.ok) {
+            const data = await res.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+            const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+            if (text) { logger.info('ai.quickGenerate', { provider: 'gemini', length: text.length }); return text; }
+          }
+        } catch (err) { logger.warn('ai.quickGenerate_gemini_failed', { error: err instanceof Error ? err.message : String(err) }); }
+      }
+      // Fallback: Groq
+      if (groq) {
+        try {
+          const c = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.3, max_tokens: 1500 });
+          const reply = c.choices[0]?.message?.content ?? '';
+          if (reply) { logger.info('ai.quickGenerate', { provider: 'groq', length: reply.length }); return reply; }
+        } catch (err) { logger.warn('ai.quickGenerate_groq_failed', { error: err instanceof Error ? err.message : String(err) }); }
+      }
+      return null;
     },
   };
 }

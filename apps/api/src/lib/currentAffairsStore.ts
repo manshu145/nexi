@@ -40,6 +40,12 @@ export interface CurrentAffairsStore {
   getLastIngestedAt(): Promise<string | null>;
   /** Set last ingestion timestamp */
   setLastIngestedAt(timestamp: string): Promise<void>;
+  /** Toggle like on a news item */
+  toggleLike(userId: string, itemId: string): Promise<{ liked: boolean; likeCount: number }>;
+  /** Toggle bookmark on a news item */
+  toggleBookmark(userId: string, itemId: string): Promise<{ bookmarked: boolean }>;
+  /** Get user's bookmarked items */
+  getUserBookmarks(userId: string): Promise<CurrentAffairsStoreItem[]>;
 }
 
 // ---------- in-memory implementation ----------------------------------------
@@ -48,6 +54,8 @@ export class InMemoryCurrentAffairsStore implements CurrentAffairsStore {
   private items = new Map<string, CurrentAffairsStoreItem[]>();
   private quizzes = new Map<string, GeneratedMCQ[]>();
   private results = new Map<string, DailyQuizResult[]>();
+  private likes = new Map<string, Set<string>>(); // itemId -> Set<userId>
+  private bookmarks = new Map<string, Set<string>>(); // userId -> Set<itemId>
 
   async getTodayItems(date: string) {
     return this.items.get(date) ?? [];
@@ -97,6 +105,33 @@ export class InMemoryCurrentAffairsStore implements CurrentAffairsStore {
   private lastIngestedAt: string | null = null;
   async getLastIngestedAt() { return this.lastIngestedAt; }
   async setLastIngestedAt(timestamp: string) { this.lastIngestedAt = timestamp; }
+
+  async toggleLike(userId: string, itemId: string) {
+    const itemLikes = this.likes.get(itemId) ?? new Set();
+    const liked = !itemLikes.has(userId);
+    if (liked) itemLikes.add(userId); else itemLikes.delete(userId);
+    this.likes.set(itemId, itemLikes);
+    return { liked, likeCount: itemLikes.size };
+  }
+
+  async toggleBookmark(userId: string, itemId: string) {
+    const userBookmarks = this.bookmarks.get(userId) ?? new Set();
+    const bookmarked = !userBookmarks.has(itemId);
+    if (bookmarked) userBookmarks.add(itemId); else userBookmarks.delete(itemId);
+    this.bookmarks.set(userId, userBookmarks);
+    return { bookmarked };
+  }
+
+  async getUserBookmarks(userId: string) {
+    const userBookmarks = this.bookmarks.get(userId) ?? new Set();
+    const allItems: CurrentAffairsStoreItem[] = [];
+    for (const items of this.items.values()) {
+      for (const item of items) {
+        if (userBookmarks.has(item.id)) allItems.push(item);
+      }
+    }
+    return allItems;
+  }
 }
 
 // ---------- firestore implementation ----------------------------------------
@@ -208,5 +243,53 @@ export class FirestoreCurrentAffairsStore implements CurrentAffairsStore {
 
   async setLastIngestedAt(timestamp: string): Promise<void> {
     await this.db.collection('system').doc('ingestionStatus').set({ lastIngestedAt: timestamp }, { merge: true });
+  }
+
+  async toggleLike(userId: string, itemId: string) {
+    const ref = this.db.collection('newsLikes').doc(itemId).collection('users').doc(userId);
+    const snap = await ref.get();
+    if (snap.exists) {
+      await ref.delete();
+      const countSnap = await this.db.collection('newsLikes').doc(itemId).get();
+      const likeCount = Math.max(0, ((countSnap.data()?.count as number) || 1) - 1);
+      await this.db.collection('newsLikes').doc(itemId).set({ count: likeCount }, { merge: true });
+      return { liked: false, likeCount };
+    } else {
+      await ref.set({ userId, likedAt: new Date().toISOString() });
+      const countSnap = await this.db.collection('newsLikes').doc(itemId).get();
+      const likeCount = ((countSnap.data()?.count as number) || 0) + 1;
+      await this.db.collection('newsLikes').doc(itemId).set({ count: likeCount }, { merge: true });
+      return { liked: true, likeCount };
+    }
+  }
+
+  async toggleBookmark(userId: string, itemId: string) {
+    const ref = this.db.collection('users').doc(userId).collection('bookmarks').doc(itemId);
+    const snap = await ref.get();
+    if (snap.exists) {
+      await ref.delete();
+      return { bookmarked: false };
+    } else {
+      await ref.set({ itemId, bookmarkedAt: new Date().toISOString() });
+      return { bookmarked: true };
+    }
+  }
+
+  async getUserBookmarks(userId: string) {
+    try {
+      const snap = await this.db.collection('users').doc(userId).collection('bookmarks')
+        .orderBy('bookmarkedAt', 'desc').limit(50).get();
+      if (snap.empty) return [];
+      const itemIds = snap.docs.map(d => d.id);
+      // Fetch items from current affairs (today + yesterday)
+      const today = new Date().toISOString().split('T')[0]!;
+      const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]!;
+      const [todaySnap, yesterdaySnap] = await Promise.all([
+        this.db.collection('currentAffairs').doc(today).collection('items').get(),
+        this.db.collection('currentAffairs').doc(yesterday).collection('items').get(),
+      ]);
+      const allItems = [...todaySnap.docs, ...yesterdaySnap.docs].map(d => d.data() as CurrentAffairsStoreItem);
+      return allItems.filter(item => itemIds.includes(item.id));
+    } catch { return []; }
   }
 }

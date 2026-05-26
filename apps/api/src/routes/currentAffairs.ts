@@ -68,8 +68,8 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
       // 4-hour refresh check: trigger background re-ingestion if stale
       try {
         const lastIngested = await deps.currentAffairs.getLastIngestedAt();
-        const fourHoursMs = 4 * 60 * 60 * 1000;
-        if (!lastIngested || (Date.now() - Date.parse(lastIngested)) > fourHoursMs) {
+        const thirtyMinMs = 30 * 60 * 1000;
+        if (!lastIngested || (Date.now() - Date.parse(lastIngested)) > thirtyMinMs) {
           deps.logger.info('ca.stale_triggering_reingest', { lastIngested });
           // Fire-and-forget background re-ingestion
           import('../lib/rssIngestion.js').then(({ ingestCurrentAffairs }) => {
@@ -96,6 +96,93 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
       deps.logger.error('ca.route_error', { error: e instanceof Error ? e.message : String(e), stack: e instanceof Error ? e.stack : '' });
       return c.json({ date: new Date().toISOString().split('T')[0], items: [], yesterdayWinner: null });
     }
+  });
+
+  // GET /v1/current-affairs/:id — single item detail with AI-enriched summary
+  app.get('/:id', async (c) => {
+    try {
+      requireAuth(c);
+      const id = c.req.param('id');
+      const today = new Date().toISOString().split('T')[0]!;
+      const language = (c.req.query('lang') as 'en' | 'hi') || 'en';
+      const items = await deps.currentAffairs.getTodayItems(today);
+      const item = items.find((it: any) => it.id === id);
+      if (!item) throw new HTTPException(404, { message: 'News item not found' });
+
+      // Generate AI-enriched detailed summary combining all available info
+      let detailedSummary = item.body || item.summary || '';
+      let keyPoints: string[] = [];
+      let examRelevance: string[] = [];
+
+      try {
+        const enrichPrompt = `You are an exam preparation assistant for Indian competitive exams (UPSC, SSC, Banking, RBI Grade B).
+
+Given this news item, provide:
+1. A detailed 4-6 sentence summary explaining the significance
+2. 4-5 key bullet points for exam preparation
+3. Which exams this is most relevant for (from: UPSC Prelims, UPSC Mains, SSC CGL, SSC CHSL, Banking PO, RBI Grade B, State PSC)
+
+News: "${item.headline}"
+Context: "${item.body || item.summary}"
+Category: ${item.category}
+Source: ${(item.sources || []).join(', ')}
+
+Respond in JSON:
+{"summary":"...","keyPoints":["point1","point2",...],"examRelevance":["UPSC Prelims","SSC CGL",...]}`;
+
+        const aiResponse = await deps.aiEngine.quickGenerate(enrichPrompt);
+        if (aiResponse) {
+          const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]) as { summary?: string; keyPoints?: string[]; examRelevance?: string[] };
+            if (parsed.summary) detailedSummary = parsed.summary;
+            if (parsed.keyPoints) keyPoints = parsed.keyPoints;
+            if (parsed.examRelevance) examRelevance = parsed.examRelevance;
+          }
+        }
+      } catch { /* AI enrichment failed, use raw data */ }
+
+      // Hindi support
+      const responseItem = language === 'hi' ? {
+        ...item,
+        headline: (item as any).headlineHi || item.headline,
+        summary: (item as any).summaryHi || item.summary || item.body,
+      } : item;
+
+      return c.json({
+        item: responseItem,
+        detailedSummary,
+        keyPoints,
+        examRelevance,
+      });
+    } catch (e) {
+      if (e instanceof HTTPException) throw e;
+      deps.logger.error('ca.detail_error', { error: e instanceof Error ? e.message : String(e) });
+      throw new HTTPException(500, { message: 'Failed to load news detail' });
+    }
+  });
+
+  // POST /v1/current-affairs/:id/like — toggle like
+  app.post('/:id/like', async (c) => {
+    const principal = requireAuth(c);
+    const id = c.req.param('id');
+    const result = await deps.currentAffairs.toggleLike(principal.userId, id);
+    return c.json(result);
+  });
+
+  // POST /v1/current-affairs/:id/bookmark — toggle bookmark
+  app.post('/:id/bookmark', async (c) => {
+    const principal = requireAuth(c);
+    const id = c.req.param('id');
+    const result = await deps.currentAffairs.toggleBookmark(principal.userId, id);
+    return c.json(result);
+  });
+
+  // GET /v1/current-affairs/bookmarks — user's bookmarked items
+  app.get('/bookmarks/list', async (c) => {
+    const principal = requireAuth(c);
+    const bookmarks = await deps.currentAffairs.getUserBookmarks(principal.userId);
+    return c.json({ bookmarks });
   });
 
   // GET /v1/current-affairs/quiz — daily 20 MCQs
