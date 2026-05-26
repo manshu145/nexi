@@ -13,12 +13,16 @@ export interface GeneratedSyllabus {
   subjects: { slug: string; name: string; nameHi: string; icon: string; chapters: { slug: string; name: string; nameHi: string; order: number; estimatedMinutes: number; }[]; }[];
 }
 
+export type VisualizationType = 'diagram' | 'mindmap' | 'flowchart' | 'timeline' | 'image';
+export interface VisualizationResult { type: 'mermaid' | 'image'; content: string; /* mermaid code or image URL */ }
+
 export interface AIEngine {
   generateAssessmentQuestions(examSlug: string, language: 'en' | 'hi', count?: number): Promise<GeneratedMCQ[]>;
   scoreAssessment(questions: GeneratedMCQ[], answers: { questionId: string; chosen: string | null }[]): Promise<AssessmentResult>;
   generateChapterContent(chapter: string, subject: string, exam: string, language: 'en' | 'hi'): Promise<string>;
   generateChapterMCQs(chapter: string, subject: string, exam: string, language: 'en' | 'hi', count?: number, seed?: string): Promise<GeneratedMCQ[]>;
   generateMermaidDiagram(chapter: string, subject: string, exam: string): Promise<string>;
+  generateVisualization(topic: string, subject: string, exam: string, type: VisualizationType): Promise<VisualizationResult>;
   generateSyllabus(examSlug: string, examName: string, level: string): Promise<GeneratedSyllabus>;
   generateSelectionDiagram(selectedText: string, subject: string, language: 'en' | 'hi'): Promise<string>;
   generateCurrentAffairsQuiz(headlines: string, count?: number, language?: 'en' | 'hi'): Promise<GeneratedMCQ[]>;
@@ -161,6 +165,97 @@ export function createAIEngine(env: Env, logger: Logger): AIEngine {
         logger.info('ai.mermaid_openai_fallback', { chapter, subject, exam });
         return cleaned;
       } catch (err) { logger.error('ai.mermaid_error', { error: err instanceof Error ? err.message : String(err) }); throw new Error('Failed to generate diagram'); }
+    },
+
+    async generateVisualization(topic: string, subject: string, exam: string, type: VisualizationType): Promise<VisualizationResult> {
+      // For image type, use DALL-E 3 via OpenAI
+      if (type === 'image') {
+        if (!openai) throw new Error('OpenAI API key required for image generation');
+        try {
+          const imagePrompt = `Educational diagram of "${topic}" for Indian ${exam} students. Clean, labeled, black and white, textbook style. No watermark. Simple and clear for students.`;
+          const imageRes = await openai.images.generate({
+            model: 'dall-e-3',
+            prompt: imagePrompt,
+            n: 1,
+            size: '1024x1024',
+            quality: 'standard',
+          });
+          const imageUrl = imageRes.data?.[0]?.url;
+          if (!imageUrl) throw new Error('DALL-E returned no image');
+          // Return the DALL-E URL directly (temporary, 1hr expiry)
+          // In production with Firebase Storage, we'd download + watermark + re-upload
+          logger.info('ai.visualization_image', { topic, subject, exam });
+          return { type: 'image', content: imageUrl };
+        } catch (err) {
+          logger.error('ai.visualization_image_error', { error: err instanceof Error ? err.message : String(err) });
+          throw new Error('Failed to generate AI image. Try diagram or mindmap instead.');
+        }
+      }
+
+      // For diagram/mindmap/flowchart/timeline, use Mermaid syntax via Gemini/OpenAI
+      let mermaidType: string;
+      let mermaidExample: string;
+      switch (type) {
+        case 'mindmap':
+          mermaidType = 'mindmap';
+          mermaidExample = `mindmap\n  root((${topic}))\n    Branch 1\n      Sub-topic A\n      Sub-topic B\n    Branch 2\n      Sub-topic C`;
+          break;
+        case 'timeline':
+          mermaidType = 'timeline';
+          mermaidExample = `timeline\n    title Timeline of ${topic}\n    section Phase 1\n      Event 1 : Description\n    section Phase 2\n      Event 2 : Description`;
+          break;
+        case 'flowchart':
+          mermaidType = 'flowchart (graph TD)';
+          mermaidExample = `graph TD\n    A[Start] --> B{Decision}\n    B -->|Yes| C[Action 1]\n    B -->|No| D[Action 2]`;
+          break;
+        default: // 'diagram'
+          mermaidType = 'flowchart (graph TD)';
+          mermaidExample = `graph TD\n    A[Main Concept] --> B[Sub-concept 1]\n    A --> C[Sub-concept 2]\n    B --> D[Detail]`;
+      }
+
+      const prompt = `Create a Mermaid.js ${mermaidType} that visually explains key concepts of "${topic}" (${subject}, ${exam}).
+
+Requirements:
+- Use ${mermaidType} syntax
+- Max 12-15 nodes with clear, concise labels
+- Use meaningful connections with labels where helpful
+- Valid Mermaid syntax ONLY, no markdown fences, no backticks
+- Make it educational and easy to understand for students
+
+Example format:
+${mermaidExample}
+
+Generate ONLY the Mermaid code, nothing else.`;
+
+      try {
+        // Use Gemini Flash for mermaid generation (cheap + fast)
+        if (env.GEMINI_API_KEY) {
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.5, maxOutputTokens: 1000 } }),
+          });
+          if (res.ok) {
+            const data = await res.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+            const raw = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+            const cleaned = raw.replace(/```mermaid\n?/g, '').replace(/```\n?/g, '').trim();
+            if (cleaned) {
+              logger.info('ai.visualization_mermaid', { type, topic, subject, exam, provider: 'gemini' });
+              return { type: 'mermaid', content: cleaned };
+            }
+          }
+        }
+        // Fallback to OpenAI
+        if (!openai) throw new Error('No AI API key configured');
+        const c = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 1000 });
+        const raw = c.choices[0]?.message?.content ?? '';
+        const cleaned = raw.replace(/```mermaid\n?/g, '').replace(/```\n?/g, '').trim();
+        logger.info('ai.visualization_mermaid', { type, topic, subject, exam, provider: 'openai' });
+        return { type: 'mermaid', content: cleaned };
+      } catch (err) {
+        logger.error('ai.visualization_error', { type, error: err instanceof Error ? err.message : String(err) });
+        throw new Error(`Failed to generate ${type} visualization`);
+      }
     },
 
     async generateSyllabus(examSlug: string, examName: string, level: string) {

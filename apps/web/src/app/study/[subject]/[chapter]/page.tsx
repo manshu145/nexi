@@ -21,7 +21,10 @@ export default function KindleReaderPage() {
   const [showViz, setShowViz] = useState(false);
   const [vizLoading, setVizLoading] = useState(false);
   const [vizSvgHtml, setVizSvgHtml] = useState<string | null>(null);
+  const [vizImageUrl, setVizImageUrl] = useState<string | null>(null);
   const [vizError, setVizError] = useState<string | null>(null);
+  const [vizTab, setVizTab] = useState<'diagram' | 'mindmap' | 'image'>('diagram');
+  const [vizCache, setVizCache] = useState<Record<string, { type: 'mermaid' | 'image'; content: string }>>({});
   const [speaking, setSpeaking] = useState(false);
   const [flipDirection, setFlipDirection] = useState<'next' | 'prev' | null>(null);
   const [isFlipping, setIsFlipping] = useState(false);
@@ -207,89 +210,146 @@ export default function KindleReaderPage() {
     setShowSelectionBtn(false);
     setVizError(null);
     setVizSvgHtml(null);
-    try {
-      let mermaidStr: string;
-      if (mode === 'selection' && selectedText) {
+    setVizImageUrl(null);
+
+    if (mode === 'selection' && selectedText) {
+      // Selection-based: always uses diagram
+      try {
         const lang = getLanguage();
         const res = await api.visualizeSelection(selectedText, subject, lang);
-        mermaidStr = res.mermaid;
+        const mermaidStr = res.mermaid;
+        if (!mermaidStr || mermaidStr.trim().length < 10) throw new Error('AI returned empty diagram. Try again.');
+        await renderMermaidToSvg(mermaidStr);
+      } catch (err) {
+        setVizError(err instanceof Error ? err.message : 'Failed to generate visualization. Try again.');
+      } finally { setVizLoading(false); }
+      return;
+    }
+
+    // Page/chapter-level: use tabbed approach
+    await loadVisualizationTab(vizTab);
+  };
+
+  const loadVisualizationTab = async (tab: 'diagram' | 'mindmap' | 'image') => {
+    setVizTab(tab);
+    setVizError(null);
+    setVizSvgHtml(null);
+    setVizImageUrl(null);
+
+    // Check cache first
+    if (vizCache[tab]) {
+      const cached = vizCache[tab];
+      if (cached.type === 'image') {
+        setVizImageUrl(cached.content);
+        setVizLoading(false);
+        return;
+      }
+      await renderMermaidToSvg(cached.content);
+      setVizLoading(false);
+      return;
+    }
+
+    setVizLoading(true);
+    try {
+      const meRes = await api.me();
+      const exam = meRes.user.targetExam ?? 'jee-main';
+      const vizType = tab === 'image' ? 'image' : tab === 'mindmap' ? 'mindmap' : 'diagram';
+      const res = await api.visualizeChapter(exam, subject, chapter, vizType);
+      const result = res.visualization;
+
+      // Cache the result
+      setVizCache(prev => ({ ...prev, [tab]: result }));
+
+      if (result.type === 'image') {
+        setVizImageUrl(result.content);
       } else {
-        const meRes = await api.me();
-        const exam = meRes.user.targetExam ?? 'jee-main';
-        const res = await api.getChapterDiagram(exam, subject, chapter);
-        mermaidStr = res.mermaid;
-      }
-
-      if (!mermaidStr || mermaidStr.trim().length < 10) {
-        throw new Error('AI returned empty diagram. Try again.');
-      }
-
-      // Render mermaid to SVG and display directly (most reliable)
-      try {
-        const mermaidLib = await import('mermaid');
-        mermaidLib.default.initialize({
-          startOnLoad: false,
-          theme: 'neutral',
-          fontFamily: 'Inter, system-ui, sans-serif',
-          flowchart: { curve: 'basis', padding: 16 },
-          securityLevel: 'loose',
-        });
-        const { svg } = await mermaidLib.default.render('mermaid-viz-' + Date.now(), mermaidStr);
-        setVizSvgHtml(svg);
-      } catch (mermaidErr) {
-        // Mermaid parse failed — show raw code in a styled box
-        console.warn('Mermaid render failed, showing raw:', mermaidErr);
-        setVizSvgHtml(`<div style="background:var(--color-paper-100);border:1px solid var(--color-paper-300);border-radius:8px;padding:16px;font-family:monospace;font-size:12px;white-space:pre-wrap;color:var(--color-ink-900);max-height:400px;overflow:auto"><p style="color:var(--color-muted-500);margin-bottom:8px;font-family:Inter,sans-serif;font-size:13px">Diagram code (render failed):</p>${escapeHtml(mermaidStr)}</div>`);
+        if (!result.content || result.content.trim().length < 10) throw new Error('AI returned empty diagram. Try again.');
+        await renderMermaidToSvg(result.content);
       }
     } catch (err) {
       setVizError(err instanceof Error ? err.message : 'Failed to generate visualization. Try again.');
-    } finally {
-      setVizLoading(false);
+    } finally { setVizLoading(false); }
+  };
+
+  const renderMermaidToSvg = async (mermaidStr: string) => {
+    try {
+      const mermaidLib = await import('mermaid');
+      mermaidLib.default.initialize({
+        startOnLoad: false,
+        theme: 'neutral',
+        fontFamily: 'Inter, system-ui, sans-serif',
+        flowchart: { curve: 'basis', padding: 16 },
+        securityLevel: 'loose',
+      });
+      const { svg } = await mermaidLib.default.render('mermaid-viz-' + Date.now(), mermaidStr);
+      setVizSvgHtml(svg);
+    } catch {
+      // Mermaid parse failed — show raw code
+      setVizSvgHtml(`<div style="background:var(--color-paper-100);border:1px solid var(--color-paper-300);border-radius:8px;padding:16px;font-family:monospace;font-size:12px;white-space:pre-wrap;color:var(--color-ink-900);max-height:400px;overflow:auto"><p style="color:var(--color-muted-500);margin-bottom:8px;font-family:Inter,sans-serif;font-size:13px">Diagram code (render failed):</p>${escapeHtml(mermaidStr)}</div>`);
     }
   };
 
   const handleShareViz = async () => {
-    if (!vizSvgHtml) return;
     try {
-      // Create SVG blob for sharing
-      const blob = new Blob([vizSvgHtml], { type: 'image/svg+xml' });
-      const file = new File([blob], `${chapter}-diagram.svg`, { type: 'image/svg+xml' });
-      if (navigator.share && navigator.canShare({ files: [file] })) {
-        await navigator.share({
-          title: `${chapterName} — Nexigrate`,
-          text: `Study diagram for ${chapterName}`,
-          files: [file],
-        });
-      } else {
-        // Fallback: download
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${chapter}-diagram.svg`;
-        a.click();
-        URL.revokeObjectURL(url);
+      if (vizImageUrl) {
+        // Share image URL
+        if (navigator.share) {
+          await navigator.share({ title: `${chapterName} — Nexigrate`, text: `Study visualization for ${chapterName}`, url: vizImageUrl });
+        } else {
+          handleSaveViz();
+        }
+      } else if (vizSvgHtml) {
+        const blob = new Blob([vizSvgHtml], { type: 'image/svg+xml' });
+        const file = new File([blob], `${chapter}-diagram.svg`, { type: 'image/svg+xml' });
+        if (navigator.share && navigator.canShare({ files: [file] })) {
+          await navigator.share({ title: `${chapterName} — Nexigrate`, text: `Study diagram for ${chapterName}`, files: [file] });
+        } else {
+          handleSaveViz();
+        }
       }
-    } catch {
-      // Fallback: download
-      const blob = new Blob([vizSvgHtml], { type: 'image/svg+xml' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${chapter}-diagram.svg`;
-      a.click();
-      URL.revokeObjectURL(url);
-    }
+    } catch { handleSaveViz(); }
   };
 
   const handleSaveViz = () => {
-    if (!vizSvgHtml) return;
-    const blob = new Blob([vizSvgHtml], { type: 'image/svg+xml' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${chapter}-diagram.svg`;
-    a.click();
-    URL.revokeObjectURL(url);
+    if (vizImageUrl) {
+      // Download image as PNG
+      const a = document.createElement('a');
+      a.href = vizImageUrl;
+      a.download = `${chapter}-${vizTab}.png`;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.click();
+      return;
+    }
+    if (vizSvgHtml) {
+      // Convert SVG to PNG for download
+      const svgBlob = new Blob([vizSvgHtml], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(svgBlob);
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width * 2;
+        canvas.height = img.height * 2;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          // Add watermark
+          ctx.font = '14px Inter, sans-serif';
+          ctx.fillStyle = 'rgba(0,0,0,0.3)';
+          ctx.textAlign = 'right';
+          ctx.fillText('nexigrate.com', canvas.width - 16, canvas.height - 12);
+          const pngUrl = canvas.toDataURL('image/png');
+          const a = document.createElement('a');
+          a.href = pngUrl;
+          a.download = `${chapter}-${vizTab}.png`;
+          a.click();
+        }
+        URL.revokeObjectURL(url);
+      };
+      img.src = url;
+    }
   };
 
   const handleTTS = () => {
@@ -392,30 +452,58 @@ export default function KindleReaderPage() {
         )}
       </div>
 
-      {/* Visualization Modal */}
+      {/* Visualization Modal — Tabbed */}
       {showViz && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/70 p-4 backdrop-blur-sm" onClick={() => setShowViz(false)}>
-          <div className="viz-modal max-w-2xl w-full max-h-[85vh] overflow-auto bg-paper-50 rounded-xl shadow-2xl" onClick={e => e.stopPropagation()}>
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-line bg-paper-50 px-5 py-3 rounded-t-xl">
-              <h3 className="font-serif text-sm font-semibold text-ink-900">Chapter Visualization</h3>
-              <button onClick={() => setShowViz(false)} className="flex h-7 w-7 items-center justify-center rounded-full text-muted-500 hover:bg-paper-200 hover:text-ink-900 transition-colors">✕</button>
+          <div className="viz-modal max-w-2xl w-full max-h-[85vh] overflow-auto bg-paper-50 dark:bg-ink-900 rounded-xl shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="sticky top-0 z-10 flex flex-col border-b border-line bg-paper-50 dark:bg-ink-900 rounded-t-xl">
+              <div className="flex items-center justify-between px-5 py-3">
+                <h3 className="font-serif text-sm font-semibold text-ink-900 dark:text-paper-50">Chapter Visualization</h3>
+                <button onClick={() => setShowViz(false)} className="flex h-7 w-7 items-center justify-center rounded-full text-muted-500 hover:bg-paper-200 dark:hover:bg-ink-700 hover:text-ink-900 dark:hover:text-paper-50 transition-colors">✕</button>
+              </div>
+              {/* Tabs */}
+              <div className="flex border-t border-line">
+                <button
+                  onClick={() => loadVisualizationTab('diagram')}
+                  className={`flex-1 px-4 py-2.5 text-xs font-medium transition-colors ${vizTab === 'diagram' ? 'text-amber-600 dark:text-amber-400 border-b-2 border-amber-500' : 'text-muted-500 hover:text-ink-700 dark:hover:text-paper-200'}`}
+                >📊 Diagram</button>
+                <button
+                  onClick={() => loadVisualizationTab('mindmap')}
+                  className={`flex-1 px-4 py-2.5 text-xs font-medium transition-colors ${vizTab === 'mindmap' ? 'text-amber-600 dark:text-amber-400 border-b-2 border-amber-500' : 'text-muted-500 hover:text-ink-700 dark:hover:text-paper-200'}`}
+                >🧠 Mind Map</button>
+                <button
+                  onClick={() => loadVisualizationTab('image')}
+                  className={`flex-1 px-4 py-2.5 text-xs font-medium transition-colors ${vizTab === 'image' ? 'text-amber-600 dark:text-amber-400 border-b-2 border-amber-500' : 'text-muted-500 hover:text-ink-700 dark:hover:text-paper-200'}`}
+                >🎨 AI Image</button>
+              </div>
             </div>
             <div className="p-5">
               {vizLoading ? (
                 <div className="flex flex-col items-center justify-center py-16">
-                  <span className="spinner" style={{ width: 20, height: 20 }} />
-                  <p className="mt-3 text-sm text-muted-500">Generating visualization...</p>
+                  <div className="h-48 w-full rounded-lg bg-gradient-to-br from-amber-100 via-paper-100 to-amber-50 dark:from-amber-900/20 dark:via-ink-800 dark:to-amber-950/20 animate-pulse" />
+                  <p className="mt-4 text-sm text-muted-500">{vizTab === 'image' ? '🎨 Generating AI image...' : '📊 Generating visualization...'}</p>
                 </div>
               ) : vizError ? (
                 <div className="flex flex-col items-center justify-center py-12">
                   <div className="banner banner-error">{vizError}</div>
-                  <button onClick={() => handleVisualize('page')} className="btn-ghost-sm mt-4">Try Again</button>
+                  <button onClick={() => loadVisualizationTab(vizTab)} className="btn-ghost-sm mt-4">Try Again</button>
+                </div>
+              ) : vizImageUrl ? (
+                <div className="flex flex-col items-center">
+                  <div className="relative w-full overflow-hidden rounded-lg border border-line bg-paper-100 dark:bg-ink-800">
+                    <img src={vizImageUrl} alt={`${chapterName} visualization`} className="w-full h-auto" />
+                    <div className="absolute bottom-2 right-2 text-[10px] font-medium text-white/60 bg-black/30 px-2 py-0.5 rounded">nexigrate.com</div>
+                  </div>
+                  <div className="mt-4 flex items-center gap-3">
+                    <button onClick={handleSaveViz} className="btn-ghost-sm">📥 Download PNG</button>
+                    <button onClick={handleShareViz} className="btn-ghost-sm">📤 Share</button>
+                  </div>
                 </div>
               ) : vizSvgHtml ? (
                 <div className="flex flex-col items-center">
-                  <div className="w-full overflow-auto rounded-lg border border-line bg-paper-100 p-4" dangerouslySetInnerHTML={{ __html: vizSvgHtml }} />
+                  <div className="w-full overflow-auto rounded-lg border border-line bg-paper-100 dark:bg-ink-800 p-4" dangerouslySetInnerHTML={{ __html: vizSvgHtml }} />
                   <div className="mt-4 flex items-center gap-3">
-                    <button onClick={handleSaveViz} className="btn-ghost-sm">💾 Save</button>
+                    <button onClick={handleSaveViz} className="btn-ghost-sm">📥 Download PNG</button>
                     <button onClick={handleShareViz} className="btn-ghost-sm">📤 Share</button>
                   </div>
                   <p className="mt-3 text-center text-xs text-muted-400">Powered by Nexigrate AI</p>
