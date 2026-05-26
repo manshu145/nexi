@@ -12,6 +12,7 @@ const envSchema = z.object({
   // AI — optional so server starts even without keys (returns 503 on AI endpoints)
   OPENAI_API_KEY: z.string().optional().default(''),
   GEMINI_API_KEY: z.string().optional().default(''),
+  GEMINI_PRO_API_KEY: z.string().optional().default(''),
   GROQ_API_KEY: z.string().optional().default(''),
   GOOGLE_TTS_API_KEY: z.string().optional().default(''),
   // Payments — optional

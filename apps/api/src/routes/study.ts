@@ -5,51 +5,35 @@ import type { Logger } from '../logger.js';
 import type { UserStore } from '../lib/userStore.js';
 import type { AIEngine } from '../lib/aiEngine.js';
 import type { ChapterStore } from '../lib/chapterStore.js';
-import { getSyllabus } from '../lib/syllabusStore.js';
+import { getSyllabus, getSyllabusWithFallback, type SyllabusFallbackDeps } from '../lib/syllabusStore.js';
 import { asISODateTime } from '@nexigrate/shared';
+import type { Firestore } from 'firebase-admin/firestore';
+import type { Env } from '../env.js';
 
 export interface StudyRoutesDeps {
   users: UserStore;
   aiEngine: AIEngine;
   chapters: ChapterStore;
   logger: Logger;
+  db: Firestore | null;
+  env: Env;
 }
 
 export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
   const app = new Hono();
 
-  // GET /v1/study/syllabus/:examSlug — full syllabus tree (hardcoded or AI-generated)
+  // GET /v1/study/syllabus/:examSlug — full syllabus tree (3-tier fallback)
   app.get('/syllabus/:examSlug', async (c) => {
     const principal = requireAuth(c);
     const examSlug = c.req.param('examSlug');
-    
-    // Try hardcoded first
-    let syllabus = getSyllabus(examSlug);
-    
-    if (!syllabus) {
-      // Generate via AI based on user's level
-      const user = await deps.users.get(principal.userId);
-      const level = user?.onboardingLevel ?? 'intermediate';
-      const { EXAM_BY_SLUG } = await import('@nexigrate/shared');
-      const examInfo = EXAM_BY_SLUG.get(examSlug as any);
-      const examName = examInfo?.name ?? examSlug.replace(/-/g, ' ').replace(/\b\w/g, (ch: string) => ch.toUpperCase());
-      
-      deps.logger.info('study.generating_syllabus', { examSlug, level, userId: principal.userId });
-      const generated = await deps.aiEngine.generateSyllabus(examSlug, examName, level);
-      syllabus = { exam: examSlug as any, examName: generated.examName, subjects: generated.subjects };
-      
-      // Cache in chapter store for future requests
-      await deps.chapters.saveChapter({
-        exam: examSlug as any,
-        subject: '_syllabus',
-        chapter: '_tree',
-        language: 'en',
-        content: JSON.stringify(syllabus),
-        generatedAt: asISODateTime(new Date().toISOString()),
-        generatedBy: 'gpt-4o',
-      });
-    }
-    
+
+    const { EXAM_BY_SLUG } = await import('@nexigrate/shared');
+    const examInfo = EXAM_BY_SLUG.get(examSlug as any);
+    const examName = examInfo?.name ?? examSlug.replace(/-/g, ' ').replace(/\b\w/g, (ch: string) => ch.toUpperCase());
+
+    const fallbackDeps: SyllabusFallbackDeps = { env: deps.env, db: deps.db, logger: deps.logger };
+    const syllabus = await getSyllabusWithFallback(examSlug, examName, fallbackDeps);
+
     return c.json({ syllabus });
   });
 

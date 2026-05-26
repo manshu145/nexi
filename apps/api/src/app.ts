@@ -71,7 +71,7 @@ export function buildApp(deps: AppDeps): Hono {
   v1.use('*', authMiddleware(firebaseAuth));
   v1.route('/users', makeUsersRoutes({ users, logger }));
   v1.route('/assessment', makeAssessmentRoutes({ users, aiEngine, logger }));
-  v1.route('/study', makeStudyRoutes({ users, aiEngine, chapters, logger }));
+  v1.route('/study', makeStudyRoutes({ users, aiEngine, chapters, logger, db: fs, env }));
   v1.route('/current-affairs', cronRoutes);
   v1.route('/chat', makeChatRoutes({ users, aiEngine, chat: chatStore, logger }));
   v1.route('/credits', makeCreditsRoutes({ users, logger }));

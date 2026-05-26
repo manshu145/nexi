@@ -25,6 +25,14 @@ export interface SyllabusTree {
   exam: ExamSlug;
   examName: string;
   subjects: SyllabusSubject[];
+  /** Official syllabus source URL */
+  sourceUrl: string;
+  /** ISO date when syllabus was last verified against official source */
+  lastVerified: string;
+  /** Warning shown when syllabus could not be verified from official sources */
+  warning?: string;
+  /** Body that conducts the exam (populated by AI fallback) */
+  conductedBy?: string;
 }
 
 export interface StudyProgress {
