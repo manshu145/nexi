@@ -25,6 +25,10 @@ export interface SyllabusTree {
   exam: ExamSlug;
   examName: string;
   subjects: SyllabusSubject[];
+  /** Official syllabus source URL */
+  sourceUrl: string;
+  /** ISO date when syllabus was last verified against official source */
+  lastVerified: string;
 }
 
 export interface StudyProgress {

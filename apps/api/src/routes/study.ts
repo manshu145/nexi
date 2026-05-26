@@ -36,7 +36,7 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
       
       deps.logger.info('study.generating_syllabus', { examSlug, level, userId: principal.userId });
       const generated = await deps.aiEngine.generateSyllabus(examSlug, examName, level);
-      syllabus = { exam: examSlug as any, examName: generated.examName, subjects: generated.subjects };
+      syllabus = { exam: examSlug as any, examName: generated.examName, subjects: generated.subjects, sourceUrl: '', lastVerified: new Date().toISOString().split('T')[0]! };
       
       // Cache in chapter store for future requests
       await deps.chapters.saveChapter({
