@@ -581,3 +581,271 @@ export function getSyllabus(examSlug: ExamSlug | string): SyllabusTree | null {
 export function getAllSyllabusExams(): string[] {
   return Array.from(SYLLABUS_MAP.keys());
 }
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 3-TIER SYLLABUS FALLBACK SYSTEM
+// Tier 1: Hardcoded (instant, official)
+// Tier 2: Gemini Pro + Google Search grounding (verified via web)
+// Tier 3: GPT-4o fallback (less reliable)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import type { Firestore } from 'firebase-admin/firestore';
+import OpenAI from 'openai';
+import type { Env } from '../env.js';
+import type { Logger } from '../logger.js';
+
+interface SyllabusCacheDoc {
+  syllabus: SyllabusTree;
+  createdAt: string;
+  ttlDays: number;
+  source: 'gemini_search' | 'gpt4o_fallback';
+}
+
+const SYLLABUS_JSON_FORMAT = `{
+  "examName": "string",
+  "conductedBy": "string",
+  "officialWebsite": "string",
+  "subjects": [
+    {
+      "name": "string",
+      "nameHi": "string (Hindi Devanagari)",
+      "slug": "string (kebab-case)",
+      "icon": "single emoji",
+      "chapters": [{ "name": "string", "nameHi": "string", "slug": "string", "order": number, "estimatedMinutes": number }]
+    }
+  ],
+  "sourceUrl": "string (official source URL)",
+  "lastVerified": "YYYY-MM-DD"
+}`;
+
+export interface SyllabusFallbackDeps {
+  env: Env;
+  db: Firestore | null;
+  logger: Logger;
+}
+
+/**
+ * 3-tier syllabus lookup with aggressive Firestore caching.
+ * Returns a SyllabusTree or null if completely unable to generate.
+ */
+export async function getSyllabusWithFallback(
+  examSlug: string,
+  examName: string,
+  deps: SyllabusFallbackDeps,
+): Promise<SyllabusTree> {
+  // ─── TIER 1: Hardcoded ───────────────────────────────────────────────
+  const hardcoded = getSyllabus(examSlug);
+  if (hardcoded) return hardcoded;
+
+  // ─── Check Firestore cache ────────────────────────────────────────────
+  if (deps.db) {
+    try {
+      const cached = await getFromCache(deps.db, examSlug);
+      if (cached) {
+        deps.logger.info('syllabus.cache_hit', { examSlug, source: cached.source });
+        return cached.syllabus;
+      }
+    } catch (err) {
+      deps.logger.warn('syllabus.cache_read_error', { examSlug, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  // ─── TIER 2: Gemini Pro + Google Search grounding ─────────────────────
+  const geminiKey = deps.env.GEMINI_PRO_API_KEY || deps.env.GEMINI_API_KEY;
+  if (geminiKey && geminiKey.length > 5) {
+    try {
+      deps.logger.info('syllabus.gemini_search_attempt', { examSlug, examName });
+      const result = await callGeminiWithSearch(geminiKey, examSlug, examName);
+      if (result && !('error' in result)) {
+        const tree = geminiResultToSyllabusTree(examSlug, result);
+        // Cache with 30-day TTL
+        if (deps.db) await saveToCache(deps.db, examSlug, tree, 'gemini_search', 30);
+        logAdminFallback(deps, examSlug, 'gemini_search', true);
+        return tree;
+      }
+      deps.logger.warn('syllabus.gemini_search_not_found', { examSlug });
+    } catch (err) {
+      deps.logger.error('syllabus.gemini_search_failed', { examSlug, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  // ─── TIER 3: GPT-4o fallback ──────────────────────────────────────────
+  if (deps.env.OPENAI_API_KEY && deps.env.OPENAI_API_KEY.length > 5) {
+    try {
+      deps.logger.info('syllabus.gpt4o_fallback_attempt', { examSlug, examName });
+      const result = await callGPT4oFallback(deps.env.OPENAI_API_KEY, examSlug, examName);
+      if (result) {
+        const tree = geminiResultToSyllabusTree(examSlug, result);
+        // Cache with 7-day TTL (less reliable)
+        if (deps.db) await saveToCache(deps.db, examSlug, tree, 'gpt4o_fallback', 7);
+        logAdminFallback(deps, examSlug, 'gpt4o_fallback', true);
+        return tree;
+      }
+    } catch (err) {
+      deps.logger.error('syllabus.gpt4o_fallback_failed', { examSlug, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  // ─── ERROR CASE: All tiers failed ─────────────────────────────────────
+  logAdminFallback(deps, examSlug, 'all_failed', false);
+  const minimal: SyllabusTree = {
+    exam: asExamSlug(examSlug),
+    examName,
+    sourceUrl: '',
+    lastVerified: new Date().toISOString().split('T')[0]!,
+    subjects: [{
+      slug: 'general',
+      name: 'General Studies',
+      nameHi: 'सामान्य अध्ययन',
+      icon: '📚',
+      chapters: [
+        { slug: 'introduction', name: 'Introduction', nameHi: 'परिचय', order: 1, estimatedMinutes: 30 },
+      ],
+    }],
+    warning: 'Syllabus could not be verified from official sources. Content may be incomplete.',
+  };
+  return minimal;
+}
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────
+
+interface GeminiSyllabusResult {
+  examName: string;
+  conductedBy?: string;
+  officialWebsite?: string;
+  subjects: {
+    name: string;
+    nameHi?: string;
+    slug: string;
+    icon?: string;
+    chapters: { name: string; nameHi?: string; slug: string; order: number; estimatedMinutes?: number }[];
+  }[];
+  sourceUrl?: string;
+  lastVerified?: string;
+}
+
+async function callGeminiWithSearch(
+  apiKey: string,
+  examSlug: string,
+  examName: string,
+): Promise<GeminiSyllabusResult | { error: string } | null> {
+  const prompt = `Find the official and complete syllabus for the "${examName}" exam in India.
+Search for the official exam conducting body's website.
+Return ONLY a structured JSON with this format:
+${SYLLABUS_JSON_FORMAT}
+If syllabus not found, return { "error": "not_found" }`;
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        tools: [{ googleSearch: {} }],
+        generationConfig: { temperature: 0.3, maxOutputTokens: 8000 },
+      }),
+    },
+  );
+
+  if (!res.ok) throw new Error(`Gemini Pro HTTP ${res.status}`);
+
+  const data = await res.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+  const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+  const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) return null;
+
+  return JSON.parse(jsonMatch[0]) as GeminiSyllabusResult | { error: string };
+}
+
+async function callGPT4oFallback(
+  apiKey: string,
+  examSlug: string,
+  examName: string,
+): Promise<GeminiSyllabusResult | null> {
+  const openai = new OpenAI({ apiKey });
+  const prompt = `You are an expert on Indian competitive exams.
+Provide the complete official syllabus for: ${examName}
+Base your answer strictly on the official exam notification.
+Return valid JSON in this exact format:
+${SYLLABUS_JSON_FORMAT}`;
+
+  const c = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    messages: [{ role: 'user', content: prompt }],
+    temperature: 0.3,
+    max_tokens: 6000,
+    response_format: { type: 'json_object' },
+  });
+
+  const content = c.choices[0]?.message?.content ?? '';
+  if (!content) return null;
+  const parsed = JSON.parse(content) as GeminiSyllabusResult;
+  if (!parsed.subjects?.length) return null;
+  return parsed;
+}
+
+function geminiResultToSyllabusTree(examSlug: string, result: GeminiSyllabusResult): SyllabusTree {
+  return {
+    exam: asExamSlug(examSlug),
+    examName: result.examName,
+    sourceUrl: result.sourceUrl ?? result.officialWebsite ?? '',
+    lastVerified: result.lastVerified ?? new Date().toISOString().split('T')[0]!,
+    conductedBy: result.conductedBy,
+    subjects: result.subjects.map((s) => ({
+      slug: s.slug,
+      name: s.name,
+      nameHi: s.nameHi ?? s.name,
+      icon: s.icon ?? '📖',
+      chapters: s.chapters.map((ch) => ({
+        slug: ch.slug,
+        name: ch.name,
+        nameHi: ch.nameHi ?? ch.name,
+        order: ch.order,
+        estimatedMinutes: ch.estimatedMinutes ?? 35,
+      })),
+    })),
+  };
+}
+
+async function getFromCache(db: Firestore, examSlug: string): Promise<SyllabusCacheDoc | null> {
+  const snap = await db.collection('syllabusCache').doc(examSlug).get();
+  if (!snap.exists) return null;
+  const doc = snap.data() as SyllabusCacheDoc;
+  // Check TTL
+  const createdMs = Date.parse(doc.createdAt);
+  const expiresMs = createdMs + doc.ttlDays * 24 * 60 * 60 * 1000;
+  if (Date.now() > expiresMs) return null; // expired
+  return doc;
+}
+
+async function saveToCache(
+  db: Firestore,
+  examSlug: string,
+  syllabus: SyllabusTree,
+  source: 'gemini_search' | 'gpt4o_fallback',
+  ttlDays: number,
+): Promise<void> {
+  const doc: SyllabusCacheDoc = {
+    syllabus,
+    createdAt: new Date().toISOString(),
+    ttlDays,
+    source,
+  };
+  await db.collection('syllabusCache').doc(examSlug).set(doc);
+}
+
+function logAdminFallback(deps: SyllabusFallbackDeps, examSlug: string, source: string, success: boolean): void {
+  deps.logger.info('syllabus.admin_log', { examSlug, source, success, timestamp: new Date().toISOString() });
+  // Also save to Firestore adminLogs if db available
+  if (deps.db) {
+    deps.db.collection('adminLogs').add({
+      type: 'syllabus_fallback',
+      examSlug,
+      source,
+      success,
+      timestamp: new Date().toISOString(),
+    }).catch(() => {}); // fire-and-forget
+  }
+}
