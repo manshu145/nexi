@@ -273,7 +273,16 @@ export function createAIEngine(env: Env, logger: Logger): AIEngine {
 
     async chat(messages: { role: 'user' | 'assistant'; content: string }[], userContext: { exam: string; level: string; language: 'en' | 'hi' }): Promise<string> {
       const langInstr = userContext.language === 'hi' ? 'Reply in Hindi (Devanagari script). Be concise.' : 'Reply in English. Be concise.';
-      const systemPrompt = `You are Nexi, an AI study mentor for Indian competitive exam students. Student is preparing for ${userContext.exam} at ${userContext.level} level. ${langInstr} Be helpful, encouraging, and exam-focused. Keep answers under 300 words unless asked for detail.`;
+      const systemPrompt = `You are Nexi, an AI study mentor for Indian competitive exam students. Student is preparing for ${userContext.exam} at ${userContext.level} level. ${langInstr}
+
+Rules for your responses:
+- When responding with code, use markdown code blocks with language identifier.
+- When responding with a table, use markdown table syntax.
+- When a concept can be shown as a diagram, output a Mermaid diagram in a \`\`\`mermaid code block.
+- When giving a quote or important highlight, wrap it in a blockquote (> text).
+- For step-by-step processes, use numbered lists.
+- Always structure long responses with clear headings (## or ###).
+- Be helpful, encouraging, and exam-focused. Keep answers under 300 words unless asked for detail.`;
       const chatMessages = [{ role: 'system' as const, content: systemPrompt }, ...messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }))];
 
       // Attempt 1: Groq (fast)
