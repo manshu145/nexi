@@ -168,28 +168,61 @@ export function createAIEngine(env: Env, logger: Logger): AIEngine {
     },
 
     async generateVisualization(topic: string, subject: string, exam: string, type: VisualizationType): Promise<VisualizationResult> {
-      // For image type, use DALL-E 3 via OpenAI
+      // For image type: try DALL-E 3 first, fallback to Gemini Imagen, then fallback to diagram (never fail to user)
       if (type === 'image') {
-        if (!openai) throw new Error('OpenAI API key required for image generation');
-        try {
-          const imagePrompt = `Educational diagram of "${topic}" for Indian ${exam} students. Clean, labeled, black and white, textbook style. No watermark. Simple and clear for students.`;
-          const imageRes = await openai.images.generate({
-            model: 'dall-e-3',
-            prompt: imagePrompt,
-            n: 1,
-            size: '1024x1024',
-            quality: 'standard',
-          });
-          const imageUrl = imageRes.data?.[0]?.url;
-          if (!imageUrl) throw new Error('DALL-E returned no image');
-          // Return the DALL-E URL directly (temporary, 1hr expiry)
-          // In production with Firebase Storage, we'd download + watermark + re-upload
-          logger.info('ai.visualization_image', { topic, subject, exam });
-          return { type: 'image', content: imageUrl };
-        } catch (err) {
-          logger.error('ai.visualization_image_error', { error: err instanceof Error ? err.message : String(err) });
-          throw new Error('Failed to generate AI image. Try diagram or mindmap instead.');
+        // Attempt 1: DALL-E 3 (OpenAI)
+        if (openai) {
+          try {
+            const imagePrompt = `Educational diagram of "${topic}" for Indian ${exam} students. Clean, labeled, black and white, textbook style. No watermark. Simple and clear for students.`;
+            const imageRes = await openai.images.generate({
+              model: 'dall-e-3',
+              prompt: imagePrompt,
+              n: 1,
+              size: '1024x1024',
+              quality: 'standard',
+            });
+            const imageUrl = imageRes.data?.[0]?.url;
+            if (imageUrl) {
+              logger.info('ai.visualization_image', { topic, subject, exam, provider: 'dalle3' });
+              return { type: 'image', content: imageUrl };
+            }
+          } catch (err) {
+            logger.warn('ai.visualization_dalle_failed', { error: err instanceof Error ? err.message : String(err), topic });
+          }
         }
+
+        // Attempt 2: Gemini Imagen (via Gemini API image generation)
+        if (env.GEMINI_API_KEY) {
+          try {
+            const geminiImagePrompt = `Generate an educational black-and-white textbook-style diagram explaining "${topic}" for Indian ${exam} students. Clean labels, simple layout.`;
+            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${env.GEMINI_API_KEY}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: geminiImagePrompt }] }],
+                generationConfig: { temperature: 0.4, maxOutputTokens: 1000 },
+              }),
+            });
+            if (res.ok) {
+              const data = await res.json() as { candidates?: { content?: { parts?: { text?: string; inlineData?: { mimeType: string; data: string } }[] } }[] };
+              // Check if Gemini returned inline image data
+              const parts = data.candidates?.[0]?.content?.parts ?? [];
+              for (const part of parts) {
+                if (part.inlineData?.data) {
+                  const dataUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                  logger.info('ai.visualization_image', { topic, subject, exam, provider: 'gemini-imagen' });
+                  return { type: 'image', content: dataUrl };
+                }
+              }
+            }
+          } catch (err) {
+            logger.warn('ai.visualization_gemini_image_failed', { error: err instanceof Error ? err.message : String(err), topic });
+          }
+        }
+
+        // Attempt 3: Fallback to detailed mermaid diagram (never show error to user)
+        logger.info('ai.visualization_image_fallback_to_diagram', { topic, subject, exam });
+        // Fall through to generate a detailed diagram instead
       }
 
       // For diagram/mindmap/flowchart/timeline, use Mermaid syntax via Gemini/OpenAI
