@@ -78,7 +78,7 @@ export default function AdminAnnouncementsPage() {
     <div>
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-serif text-2xl font-bold text-ink-900 dark:text-paper-50">Announcements</h1>
+          <h1 className="font-serif text-2xl font-bold text-ink-900">Announcements</h1>
           <p className="mt-1 text-sm text-muted-500">Send in-app banners and notifications to users</p>
         </div>
         <button onClick={() => setShowForm(!showForm)} className="btn-primary text-sm">
@@ -92,16 +92,16 @@ export default function AdminAnnouncementsPage() {
       {showForm && (
         <div className="paper-card mt-6 p-5 space-y-4">
           <div>
-            <label className="text-xs font-medium text-ink-700 dark:text-paper-300">Title</label>
+            <label className="text-xs font-medium text-ink-700">Title</label>
             <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} className="input mt-1" placeholder="Announcement title" />
           </div>
           <div>
-            <label className="text-xs font-medium text-ink-700 dark:text-paper-300">Body (Markdown supported)</label>
+            <label className="text-xs font-medium text-ink-700">Body (Markdown supported)</label>
             <textarea value={form.body} onChange={e => setForm(f => ({ ...f, body: e.target.value }))} className="input mt-1" rows={4} placeholder="Write your announcement..." />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-medium text-ink-700 dark:text-paper-300">Type</label>
+              <label className="text-xs font-medium text-ink-700">Type</label>
               <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value as any }))} className="input mt-1">
                 <option value="banner">In-App Banner</option>
                 <option value="modal">Modal Popup</option>
@@ -110,7 +110,7 @@ export default function AdminAnnouncementsPage() {
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium text-ink-700 dark:text-paper-300">Target</label>
+              <label className="text-xs font-medium text-ink-700">Target</label>
               <select value={form.targetAudience} onChange={e => setForm(f => ({ ...f, targetAudience: e.target.value }))} className="input mt-1">
                 <option value="all">All Users</option>
                 <option value="free">Free Plan Only</option>
@@ -146,7 +146,7 @@ export default function AdminAnnouncementsPage() {
             <div key={a.id} className="paper-card p-4">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="font-medium text-sm text-ink-900 dark:text-paper-50">{a.title}</p>
+                  <p className="font-medium text-sm text-ink-900">{a.title}</p>
                   <p className="mt-1 text-xs text-muted-500 line-clamp-2">{a.body}</p>
                   <div className="mt-2 flex items-center gap-2">
                     <span className="pill text-xs">{a.type}</span>

@@ -92,12 +92,12 @@ export function AILoader({ context = 'general', className = '' }: AILoaderProps)
 
   return (
     <div className={`flex flex-col items-center justify-center min-h-[120px] ${className}`}>
-      <p className={`text-base text-center text-muted-500 transition-opacity duration-300 ${phase === 'clearing' ? 'opacity-0' : 'opacity-100'}`}>
+      <p className={`text-base text-center text-slate-600 dark:text-slate-300 transition-opacity duration-300 ${phase === 'clearing' ? 'opacity-0' : 'opacity-100'}`}>
         {displayed}<span className="animate-pulse">|</span>
       </p>
       {/* Indeterminate progress bar */}
-      <div className="mt-4 w-48 h-1 rounded-full bg-paper-300 overflow-hidden">
-        <div className="h-full w-1/3 rounded-full bg-gold-500 animate-[slideBar_1.5s_ease-in-out_infinite]" />
+      <div className="mt-4 w-48 h-1 rounded-full bg-paper-200 overflow-hidden">
+        <div className="h-full w-1/3 rounded-full bg-amber-500 animate-[slideBar_1.5s_ease-in-out_infinite]" />
       </div>
       <style jsx>{`
         @keyframes slideBar {

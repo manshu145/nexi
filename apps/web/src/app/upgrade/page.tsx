@@ -167,21 +167,21 @@ export default function UpgradePage() {
       </header>
 
       <section className="mt-8 text-center">
-        <h1 className="font-serif text-2xl font-bold text-ink-900 dark:text-paper-50">Choose Your Plan</h1>
+        <h1 className="font-serif text-2xl font-bold text-ink-900">Choose Your Plan</h1>
         <p className="mt-2 text-sm text-muted-500">Unlock unlimited access to accelerate your preparation.</p>
       </section>
 
-      {success && <div className="mt-6 rounded-xl bg-gold-500/10 border border-gold-500/30 p-4 text-center text-sm font-medium text-gold-600 dark:text-gold-500">{success}</div>}
+      {success && <div className="mt-6 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 p-4 text-center text-sm font-medium text-emerald-700 dark:text-emerald-300">{success}</div>}
       {error && <div className="banner banner-error mt-6">{error}</div>}
 
       {/* Plan cards */}
       <div className="mt-8 grid gap-5 grid-cols-1 md:grid-cols-3">
         {/* FREE */}
-        <div className={`paper-card flex flex-col p-5 ${currentPlan === 'free' ? 'ring-2 ring-gold-500' : ''}`}>
-          {currentPlan === 'free' && <span className="absolute -top-2 left-3 rounded-full bg-gold-500 px-3 py-0.5 text-xs font-semibold text-paper-50">Current Plan</span>}
-          <h3 className="font-serif text-lg font-bold text-ink-900 dark:text-paper-50">Free</h3>
-          <p className="mt-2"><span className="font-serif text-3xl font-bold text-ink-900 dark:text-paper-50">₹0</span></p>
-          <ul className="mt-4 flex-1 space-y-2 text-sm text-muted-500">
+        <div className={`paper-card flex flex-col p-5 ${currentPlan === 'free' ? 'ring-2 ring-amber-500' : ''}`}>
+          {currentPlan === 'free' && <span className="absolute -top-2 left-3 rounded-full bg-amber-500 px-3 py-0.5 text-xs font-semibold text-ink-900">Current Plan</span>}
+          <h3 className="font-serif text-lg font-bold text-ink-900">Free</h3>
+          <p className="mt-2"><span className="font-serif text-3xl font-bold text-ink-900">₹0</span></p>
+          <ul className="mt-4 flex-1 space-y-2 text-sm text-muted-600 dark:text-muted-400">
             <li className="flex items-start gap-2"><span className="text-muted-400">•</span>10 Daily MCQs</li>
             <li className="flex items-start gap-2"><span className="text-muted-400">•</span>2 free chapters/day</li>
             <li className="flex items-start gap-2"><span className="text-muted-400">•</span>Credits deducted per feature</li>
@@ -193,19 +193,19 @@ export default function UpgradePage() {
         </div>
 
         {/* SCHOLAR — ACTIVE */}
-        <div className={`paper-card relative flex flex-col p-5 border-gold-500 shadow-[0_0_0_2px_rgba(184,134,47,0.3)] ${isCurrentScholar ? 'ring-2 ring-gold-500' : ''}`}>
-          <span className="absolute -top-2.5 right-3 rounded-full bg-gold-500 px-3 py-0.5 text-xs font-semibold text-paper-50">Recommended</span>
-          {isCurrentScholar && <span className="absolute -top-2.5 left-3 rounded-full bg-gold-600 px-3 py-0.5 text-xs font-semibold text-paper-50">Current Plan</span>}
-          <h3 className="font-serif text-lg font-bold text-ink-900 dark:text-paper-50">Scholar</h3>
+        <div className={`paper-card relative flex flex-col p-5 border-amber-500 shadow-[0_0_0_2px_rgba(245,158,11,0.3)] ${isCurrentScholar ? 'ring-2 ring-amber-500' : ''}`}>
+          <span className="absolute -top-2.5 right-3 rounded-full bg-amber-500 px-3 py-0.5 text-xs font-semibold text-ink-900">Recommended</span>
+          {isCurrentScholar && <span className="absolute -top-2.5 left-3 rounded-full bg-emerald-600 px-3 py-0.5 text-xs font-semibold text-paper-50">Current Plan</span>}
+          <h3 className="font-serif text-lg font-bold text-ink-900">Scholar</h3>
           <p className="mt-2">
-            <span className="font-serif text-3xl font-bold text-ink-900 dark:text-paper-50">₹{scholarPrice}</span>
+            <span className="font-serif text-3xl font-bold text-ink-900">₹{scholarPrice}</span>
             <span className="text-sm text-muted-500">/mo</span>
             {couponApplied?.valid && <span className="ml-2 text-sm line-through text-muted-400">₹99</span>}
           </p>
           <ul className="mt-4 flex-1 space-y-2">
             {SCHOLAR_FEATURES.map(f => (
-              <li key={f} className="flex items-start gap-2 text-sm text-ink-800 dark:text-paper-200">
-                <span className="text-gold-500 mt-0.5 flex-shrink-0">✓</span>{f}
+              <li key={f} className="flex items-start gap-2 text-sm text-ink-800">
+                <span className="text-amber-500 mt-0.5 flex-shrink-0">✓</span>{f}
               </li>
             ))}
           </ul>
@@ -230,10 +230,10 @@ export default function UpgradePage() {
                 </button>
               </div>
               {couponApplied?.valid && (
-                <p className="text-xs text-gold-500">✓ Code applied! ₹{couponApplied.discount / 100} off</p>
+                <p className="text-xs text-emerald-600 dark:text-emerald-400">✓ Code applied! ₹{couponApplied.discount / 100} off</p>
               )}
               {couponApplied && !couponApplied.valid && (
-                <p className="text-xs text-ember-500">✗ {couponApplied.error || 'Invalid code'}</p>
+                <p className="text-xs text-red-500">✗ {couponApplied.error || 'Invalid code'}</p>
               )}
             </div>
           )}
@@ -249,8 +249,8 @@ export default function UpgradePage() {
 
         {/* ASPIRANT — COMING SOON */}
         <div className="paper-card relative flex flex-col p-5 opacity-70">
-          <span className="absolute -top-2.5 right-3 rounded-full bg-muted-500 px-3 py-0.5 text-xs font-semibold text-paper-50">Coming Soon</span>
-          <h3 className="font-serif text-lg font-bold text-ink-900 dark:text-paper-50">Aspirant</h3>
+          <span className="absolute -top-2.5 right-3 rounded-full bg-slate-500 px-3 py-0.5 text-xs font-semibold text-paper-50">Coming Soon</span>
+          <h3 className="font-serif text-lg font-bold text-ink-900">Aspirant</h3>
           <p className="mt-2"><span className="font-serif text-3xl font-bold text-muted-400">₹299</span><span className="text-sm text-muted-400">/mo</span></p>
           <ul className="mt-4 flex-1 space-y-2">
             {ASPIRANT_FEATURES.map(f => (
@@ -259,7 +259,7 @@ export default function UpgradePage() {
               </li>
             ))}
           </ul>
-          <button disabled className="mt-5 w-full rounded-xl py-3 text-sm font-semibold bg-paper-200 text-muted-400 cursor-not-allowed">
+          <button disabled className="mt-5 w-full rounded-xl py-3 text-sm font-semibold bg-slate-200 text-muted-400 cursor-not-allowed">
             Coming Soon
           </button>
         </div>
@@ -267,9 +267,9 @@ export default function UpgradePage() {
 
       {/* Credits info */}
       <div className="mt-8 paper-card p-4 text-center">
-        <p className="text-sm text-muted-500">
-          Your current credits: <span className="font-bold text-ink-900 dark:text-paper-50">{credits}</span>
-          <span className="text-xs text-muted-400 ml-2">(preserved across plan changes)</span>
+        <p className="text-sm text-muted-600 dark:text-muted-400">
+          Your current credits: <span className="font-bold text-ink-900">{credits}</span>
+          <span className="text-xs text-muted-500 ml-2">(preserved across plan changes)</span>
         </p>
       </div>
 

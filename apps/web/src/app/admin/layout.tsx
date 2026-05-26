@@ -45,7 +45,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       <aside className={`admin-sidebar max-w-[80vw] ${sidebarOpen ? 'admin-sidebar-open' : ''}`}>
         <div className="flex items-center gap-2 px-4 py-4 border-b border-line">
           <span className="text-lg">⚙️</span>
-          <span className="font-serif font-semibold text-ink-900 dark:text-paper-50">Admin</span>
+          <span className="font-serif font-semibold text-ink-900">Admin</span>
         </div>
         <nav className="flex-1 px-3 py-3 space-y-1">
           {NAV_ITEMS.map((item) => (
@@ -73,7 +73,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       {/* Topbar */}
       <header className="admin-topbar lg:pl-4">
         <button className="lg:hidden btn-ghost-sm" onClick={() => setSidebarOpen(!sidebarOpen)}>☰ Menu</button>
-        <span className="text-sm font-medium text-ink-800 dark:text-paper-200">Nexigrate Admin</span>
+        <span className="text-sm font-medium text-ink-800">Nexigrate Admin</span>
         <span className="text-xs text-muted-500">{user.email}</span>
       </header>
 

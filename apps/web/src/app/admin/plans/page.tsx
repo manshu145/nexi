@@ -121,7 +121,7 @@ export default function AdminPlansPage() {
 
   return (
     <div>
-      <h1 className="font-serif text-2xl font-bold text-ink-900 dark:text-paper-50">Plans & Coupons</h1>
+      <h1 className="font-serif text-2xl font-bold text-ink-900">Plans & Coupons</h1>
       <p className="mt-1 text-sm text-muted-500">Manage subscription plans and discount codes</p>
 
       {error && <div className="banner banner-error mt-4">{error}</div>}
@@ -129,7 +129,7 @@ export default function AdminPlansPage() {
       {/* Plans Table */}
       <div className="paper-card mt-6 overflow-hidden">
         <div className="px-4 py-3 border-b border-line">
-          <h2 className="text-sm font-semibold text-ink-900 dark:text-paper-50">Plans</h2>
+          <h2 className="text-sm font-semibold text-ink-900">Plans</h2>
         </div>
         {fetching ? (
           <div className="p-4 space-y-3">
@@ -148,20 +148,20 @@ export default function AdminPlansPage() {
             <tbody className="divide-y divide-line">
               {plans.map(p => (
                 <tr key={p.id}>
-                  <td className="px-4 py-3 font-medium text-ink-900 dark:text-paper-50">{p.name}</td>
-                  <td className="px-4 py-3 text-muted-500">{p.price === 0 ? 'Free' : `₹${p.price}/mo`}</td>
+                  <td className="px-4 py-3 font-medium text-ink-900">{p.name}</td>
+                  <td className="px-4 py-3 text-muted-600 dark:text-muted-400">{p.price === 0 ? 'Free' : `₹${p.price}/mo`}</td>
                   <td className="px-4 py-3">
                     {p.isActive ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-gold-500/10 px-2 py-0.5 text-xs font-medium text-gold-600 dark:text-gold-500">
-                        <span className="h-1.5 w-1.5 rounded-full bg-gold-500" />Active
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 dark:bg-emerald-900/30 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />Active
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-paper-200 px-2 py-0.5 text-xs font-medium text-muted-500">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-muted-500">
                         Coming Soon
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-3 font-medium text-ink-900 dark:text-paper-50">{p.subscribers}</td>
+                  <td className="px-4 py-3 font-medium text-ink-900">{p.subscribers}</td>
                 </tr>
               ))}
             </tbody>
@@ -171,7 +171,7 @@ export default function AdminPlansPage() {
 
       {/* Coupons Section */}
       <div className="mt-8 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-ink-900 dark:text-paper-50">Coupons</h2>
+        <h2 className="text-sm font-semibold text-ink-900">Coupons</h2>
         <button onClick={() => setShowForm(!showForm)} className="btn-primary text-xs px-3 py-1.5">
           {showForm ? 'Cancel' : '+ Create Coupon'}
         </button>
@@ -182,26 +182,26 @@ export default function AdminPlansPage() {
         <div className="paper-card mt-4 p-5 space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-medium text-ink-700 dark:text-paper-300">Code</label>
+              <label className="text-xs font-medium text-ink-700">Code</label>
               <input value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value.toUpperCase() }))} className="input mt-1" placeholder="SAVE50" />
             </div>
             <div>
-              <label className="text-xs font-medium text-ink-700 dark:text-paper-300">Discount Type</label>
+              <label className="text-xs font-medium text-ink-700">Discount Type</label>
               <select value={form.discountType} onChange={e => setForm(f => ({ ...f, discountType: e.target.value as any }))} className="input mt-1">
                 <option value="percent">% Off</option>
                 <option value="flat">Flat ₹ Off</option>
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium text-ink-700 dark:text-paper-300">Discount Value</label>
+              <label className="text-xs font-medium text-ink-700">Discount Value</label>
               <input type="number" value={form.discountValue} onChange={e => setForm(f => ({ ...f, discountValue: e.target.value }))} className="input mt-1" placeholder={form.discountType === 'percent' ? '50' : '30'} />
             </div>
             <div>
-              <label className="text-xs font-medium text-ink-700 dark:text-paper-300">Max Uses (0 = unlimited)</label>
+              <label className="text-xs font-medium text-ink-700">Max Uses (0 = unlimited)</label>
               <input type="number" value={form.maxUses} onChange={e => setForm(f => ({ ...f, maxUses: e.target.value }))} className="input mt-1" placeholder="100" />
             </div>
             <div>
-              <label className="text-xs font-medium text-ink-700 dark:text-paper-300">Expiry Date (optional)</label>
+              <label className="text-xs font-medium text-ink-700">Expiry Date (optional)</label>
               <input type="date" value={form.expiresAt} onChange={e => setForm(f => ({ ...f, expiresAt: e.target.value }))} className="input mt-1" />
             </div>
           </div>
@@ -231,24 +231,24 @@ export default function AdminPlansPage() {
             <tbody className="divide-y divide-line">
               {coupons.map(c => (
                 <tr key={c.code}>
-                  <td className="px-4 py-3 font-mono font-medium text-ink-900 dark:text-paper-50">{c.code}</td>
-                  <td className="px-4 py-3 text-muted-500">
+                  <td className="px-4 py-3 font-mono font-medium text-ink-900">{c.code}</td>
+                  <td className="px-4 py-3 text-muted-600 dark:text-muted-400">
                     {c.discountType === 'percent' ? `${c.discountValue}%` : `₹${c.discountValue}`}
                   </td>
-                  <td className="px-4 py-3 text-muted-500">
+                  <td className="px-4 py-3 text-muted-600 dark:text-muted-400">
                     {c.usedCount}/{c.maxUses === 0 ? '∞' : c.maxUses}
                   </td>
                   <td className="px-4 py-3">
                     <button onClick={() => handleToggleCoupon(c.code, c.isActive)} className="text-xs">
                       {c.isActive ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-gold-500/10 px-2 py-0.5 font-medium text-gold-600 dark:text-gold-500">Active</span>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 dark:bg-emerald-900/30 px-2 py-0.5 font-medium text-emerald-700 dark:text-emerald-400">Active</span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-paper-200 px-2 py-0.5 font-medium text-muted-500">Inactive</span>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 font-medium text-muted-500">Inactive</span>
                       )}
                     </button>
                   </td>
                   <td className="px-4 py-3">
-                    <button onClick={() => handleDeleteCoupon(c.code)} className="text-xs text-ember-500 hover:text-ember-700">Delete</button>
+                    <button onClick={() => handleDeleteCoupon(c.code)} className="text-xs text-red-500 hover:text-red-700">Delete</button>
                   </td>
                 </tr>
               ))}

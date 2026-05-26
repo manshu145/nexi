@@ -408,7 +408,7 @@ export default function KindleReaderPage() {
   };
 
   if (loading || !user || pageLoading) return (
-    <div className="kindle-frame"><div className="flex-1 p-6 space-y-4 animate-pulse"><div className="h-6 w-3/4 rounded bg-paper-300" /><div className="h-4 w-full rounded bg-paper-300" /><div className="h-4 w-full rounded bg-paper-300" /><div className="h-4 w-5/6 rounded bg-paper-300" /><div className="h-4 w-full rounded bg-paper-300" /><div className="h-4 w-2/3 rounded bg-paper-300" /><div className="h-6 w-1/2 rounded bg-paper-300 mt-6" /><div className="h-4 w-full rounded bg-paper-300" /><div className="h-4 w-full rounded bg-paper-300" /></div></div>
+    <div className="kindle-frame"><div className="flex-1 p-6 space-y-4 animate-pulse"><div className="h-6 w-3/4 rounded bg-paper-200" /><div className="h-4 w-full rounded bg-paper-200" /><div className="h-4 w-full rounded bg-paper-200" /><div className="h-4 w-5/6 rounded bg-paper-200" /><div className="h-4 w-full rounded bg-paper-200" /><div className="h-4 w-2/3 rounded bg-paper-200" /><div className="h-6 w-1/2 rounded bg-paper-200 mt-6" /><div className="h-4 w-full rounded bg-paper-200" /><div className="h-4 w-full rounded bg-paper-200" /></div></div>
   );
 
   if (showPlanGate) return (
@@ -489,32 +489,32 @@ export default function KindleReaderPage() {
       {/* Visualization Modal — Tabbed */}
       {showViz && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/70 p-4 backdrop-blur-sm" onClick={() => setShowViz(false)}>
-          <div className="viz-modal max-w-2xl w-full max-h-[85vh] overflow-auto bg-paper-50 dark:bg-ink-900 rounded-xl shadow-2xl" onClick={e => e.stopPropagation()}>
-            <div className="sticky top-0 z-10 flex flex-col border-b border-line bg-paper-50 dark:bg-ink-900 rounded-t-xl">
+          <div className="viz-modal max-w-2xl w-full max-h-[85vh] overflow-auto bg-paper-50 rounded-xl shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="sticky top-0 z-10 flex flex-col border-b border-line bg-paper-50 rounded-t-xl">
               <div className="flex items-center justify-between px-5 py-3">
-                <h3 className="font-serif text-sm font-semibold text-ink-900 dark:text-paper-50">Chapter Visualization</h3>
-                <button onClick={() => setShowViz(false)} className="flex h-7 w-7 items-center justify-center rounded-full text-muted-500 hover:bg-paper-200 dark:hover:bg-ink-700 hover:text-ink-900 dark:hover:text-paper-50 transition-colors">✕</button>
+                <h3 className="font-serif text-sm font-semibold text-ink-900">Chapter Visualization</h3>
+                <button onClick={() => setShowViz(false)} className="flex h-7 w-7 items-center justify-center rounded-full text-muted-500 hover:bg-paper-200 hover:text-ink-900 transition-colors">✕</button>
               </div>
               {/* Tabs */}
               <div className="flex border-t border-line">
                 <button
                   onClick={() => loadVisualizationTab('diagram')}
-                  className={`flex-1 px-4 py-2.5 text-xs font-medium transition-colors ${vizTab === 'diagram' ? 'text-gold-600 dark:text-gold-500 border-b-2 border-gold-500' : 'text-muted-500 hover:text-ink-700 dark:hover:text-paper-200'}`}
+                  className={`flex-1 px-4 py-2.5 text-xs font-medium transition-colors ${vizTab === 'diagram' ? 'text-amber-600 dark:text-amber-400 border-b-2 border-amber-500' : 'text-muted-500 hover:text-ink-700'}`}
                 >📊 Diagram</button>
                 <button
                   onClick={() => loadVisualizationTab('mindmap')}
-                  className={`flex-1 px-4 py-2.5 text-xs font-medium transition-colors ${vizTab === 'mindmap' ? 'text-gold-600 dark:text-gold-500 border-b-2 border-gold-500' : 'text-muted-500 hover:text-ink-700 dark:hover:text-paper-200'}`}
+                  className={`flex-1 px-4 py-2.5 text-xs font-medium transition-colors ${vizTab === 'mindmap' ? 'text-amber-600 dark:text-amber-400 border-b-2 border-amber-500' : 'text-muted-500 hover:text-ink-700'}`}
                 >🧠 Mind Map</button>
                 <button
                   onClick={() => loadVisualizationTab('image')}
-                  className={`flex-1 px-4 py-2.5 text-xs font-medium transition-colors ${vizTab === 'image' ? 'text-gold-600 dark:text-gold-500 border-b-2 border-gold-500' : 'text-muted-500 hover:text-ink-700 dark:hover:text-paper-200'}`}
+                  className={`flex-1 px-4 py-2.5 text-xs font-medium transition-colors ${vizTab === 'image' ? 'text-amber-600 dark:text-amber-400 border-b-2 border-amber-500' : 'text-muted-500 hover:text-ink-700'}`}
                 >🎨 AI Image</button>
               </div>
             </div>
             <div className="p-5">
               {vizLoading ? (
                 <div className="flex flex-col items-center justify-center py-16">
-                  <div className="h-48 w-full rounded-lg bg-gradient-to-br from-gold-500/10 via-paper-100 to-paper-200 animate-pulse" />
+                  <div className="h-48 w-full rounded-lg bg-gradient-to-br from-amber-100 via-paper-100 to-amber-50 dark:from-amber-900/20 dark:via-ink-800 dark:to-amber-950/20 animate-pulse" />
                   <p className="mt-4 text-sm text-muted-500">{vizTab === 'image' ? '🎨 Generating AI image...' : '📊 Generating visualization...'}</p>
                 </div>
               ) : vizError ? (
@@ -524,7 +524,7 @@ export default function KindleReaderPage() {
                 </div>
               ) : vizImageUrl ? (
                 <div className="flex flex-col items-center">
-                  <div className="relative w-full overflow-hidden rounded-lg border border-line bg-paper-100 dark:bg-ink-800">
+                  <div className="relative w-full overflow-hidden rounded-lg border border-line bg-paper-100">
                     <img src={vizImageUrl} alt={`${chapterName} visualization`} className="w-full h-auto" />
                     <div className="absolute bottom-2 right-2 text-[10px] font-medium text-white/60 bg-black/30 px-2 py-0.5 rounded">nexigrate.com</div>
                   </div>
@@ -535,7 +535,7 @@ export default function KindleReaderPage() {
                 </div>
               ) : vizSvgHtml ? (
                 <div className="flex flex-col items-center">
-                  <div className="w-full overflow-auto rounded-lg border border-line bg-paper-100 dark:bg-ink-800 p-4" dangerouslySetInnerHTML={{ __html: vizSvgHtml }} />
+                  <div className="w-full overflow-auto rounded-lg border border-line bg-paper-100 p-4" dangerouslySetInnerHTML={{ __html: vizSvgHtml }} />
                   <div className="mt-4 flex items-center gap-3">
                     <button onClick={handleSaveViz} className="btn-ghost-sm">📥 Download PNG</button>
                     <button onClick={handleShareViz} className="btn-ghost-sm">📤 Share</button>

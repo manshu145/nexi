@@ -50,9 +50,9 @@ export default function CompletePage() {
         <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-paper-200 border border-gold-500">
           <svg className="h-8 w-8 text-gold-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
         </div>
-        <h1 className="font-serif mt-6 text-2xl font-semibold text-ink-900 dark:text-paper-50">{t('title')}</h1>
+        <h1 className="font-serif mt-6 text-2xl font-semibold text-ink-900">{t('title')}</h1>
         {result && (<>
-          <p className="mt-4 text-lg text-ink-800 dark:text-paper-200">{t('score', { score: result.score, total: result.total })}</p>
+          <p className="mt-4 text-lg text-ink-800">{t('score', { score: result.score, total: result.total })}</p>
           <p className="mt-2 text-xl font-bold text-ember-600">{t('level', { level: t(result.level) })}</p>
           <p className="mt-4 text-sm text-muted-500 leading-relaxed">{lang === 'hi' ? result.messageHi : result.message}</p>
         </>)}

@@ -39,9 +39,9 @@ const API = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com';
 
 
 const SEVERITY_COLORS: Record<string, string> = {
-  critical: 'bg-ember-500/10 text-ember-600 dark:text-ember-500',
-  warning: 'bg-gold-500/10 text-gold-600 dark:text-gold-500',
-  info: 'bg-paper-200 text-ink-700 dark:text-paper-300',
+  critical: 'bg-ember-100 text-ember-700 dark:bg-ember-900/30 dark:text-ember-400',
+  warning: 'bg-gold-100 text-gold-700 dark:bg-gold-900/30 dark:text-gold-400',
+  info: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
 };
 
 function SkeletonLogRow() {
@@ -149,7 +149,7 @@ export default function AdminLogsPage() {
 
   return (
     <div>
-      <h1 className="font-serif text-2xl font-bold text-ink-900 dark:text-paper-50">System Logs</h1>
+      <h1 className="font-serif text-2xl font-bold text-ink-900">System Logs</h1>
       <p className="mt-1 text-sm text-muted-500">Monitor errors, AI calls, and payments</p>
 
       {error && <div className="banner banner-error mt-4">{error}</div>}
@@ -186,7 +186,7 @@ export default function AdminLogsPage() {
                       <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${SEVERITY_COLORS[log.severity] ?? SEVERITY_COLORS.info}`}>
                         {log.severity}
                       </span>
-                      <span className="text-sm font-medium text-ink-900 dark:text-paper-50 truncate">{log.message}</span>
+                      <span className="text-sm font-medium text-ink-900 truncate">{log.message}</span>
                     </div>
                     <div className="mt-1 flex items-center gap-3 text-xs text-muted-500">
                       <span>Route: {log.route}</span>
@@ -201,7 +201,7 @@ export default function AdminLogsPage() {
                       </button>
                     )}
                     {expandedId === log.id && log.stack && (
-                      <pre className="mt-2 overflow-x-auto rounded bg-paper-200 p-3 text-xs text-muted-500 font-mono">
+                      <pre className="mt-2 overflow-x-auto rounded bg-paper-100 p-3 text-xs text-muted-600 dark:text-muted-400 font-mono">
                         {log.stack}
                       </pre>
                     )}
@@ -256,10 +256,10 @@ export default function AdminLogsPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="inline-flex items-center rounded-md bg-paper-200 text-ink-700 dark:text-paper-300 px-2 py-0.5 text-xs font-medium">
+                      <span className="inline-flex items-center rounded-md bg-paper-200 text-ink-700 px-2 py-0.5 text-xs font-medium">
                         {log.type}
                       </span>
-                      <span className="text-sm font-medium text-ink-900 dark:text-paper-50 truncate">{log.action}</span>
+                      <span className="text-sm font-medium text-ink-900 truncate">{log.action}</span>
                     </div>
                     {log.userId && (
                       <p className="mt-1 text-xs text-muted-500">User: {log.userId.slice(0, 12)}...</p>

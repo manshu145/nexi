@@ -93,7 +93,7 @@ export default function StudyPage() {
       </header>
 
       <section className="mt-6">
-        <h1 className="font-serif text-2xl font-bold text-ink-900 dark:text-paper-50">{syllabus.examName}</h1>
+        <h1 className="font-serif text-2xl font-bold text-ink-900">{syllabus.examName}</h1>
         <p className="mt-1 text-sm text-muted-500">
           {progress ? `${progress.overallPercent}% complete · ${progress.completedChapters.length} chapters done` : 'Start your preparation'}
         </p>
@@ -112,7 +112,7 @@ export default function StudyPage() {
           <span className="text-2xl">▶️</span>
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-ember-500">Continue where you left off</p>
-            <p className="mt-0.5 font-serif font-medium text-ink-900 dark:text-paper-50">{continueChapter.name}</p>
+            <p className="mt-0.5 font-serif font-medium text-ink-900">{continueChapter.name}</p>
           </div>
         </button>
       )}
@@ -133,7 +133,7 @@ export default function StudyPage() {
               >
                 <span className="text-xl">{subject.icon}</span>
                 <div className="flex-1">
-                <h3 className="font-serif font-semibold text-ink-900 dark:text-paper-50">{lang === 'hi' && subject.nameHi ? subject.nameHi : subject.name}</h3>
+                <h3 className="font-serif font-semibold text-ink-900">{lang === 'hi' && subject.nameHi ? subject.nameHi : subject.name}</h3>
                   <div className="mt-1 flex items-center gap-2">
                     <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-paper-300">
                       <div className="h-full rounded-full bg-gold-500 transition-all" style={{ width: `${subjectPct}%` }} />

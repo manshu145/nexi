@@ -121,7 +121,7 @@ export default function VerifyPhonePage() {
         <Logo className="text-2xl" />
         <div className="mt-6">
           <span className="text-4xl">📱</span>
-          <h1 className="font-serif mt-3 text-xl font-semibold text-ink-900 dark:text-paper-50">Verify Your Phone</h1>
+          <h1 className="font-serif mt-3 text-xl font-semibold text-ink-900">Verify Your Phone</h1>
           <p className="mt-2 text-sm text-muted-500">
             {step === 'phone'
               ? 'Enter your phone number to receive a verification code.'
@@ -132,7 +132,7 @@ export default function VerifyPhonePage() {
         {step === 'phone' ? (
           <form onSubmit={handleSendOtp} className="mt-6 space-y-4 text-left">
             <div>
-              <label htmlFor="phone" className="text-xs font-medium text-ink-700 dark:text-paper-200">Phone Number</label>
+              <label htmlFor="phone" className="text-xs font-medium text-ink-700">Phone Number</label>
               <input
                 id="phone"
                 type="tel"
@@ -140,7 +140,7 @@ export default function VerifyPhonePage() {
                 onChange={e => setPhone(e.target.value)}
                 placeholder="+91XXXXXXXXXX"
                 autoComplete="tel"
-                className="mt-1 w-full rounded-xl border border-paper-300 dark:border-ink-600 bg-paper-50 dark:bg-ink-800 px-4 py-3 text-sm text-ink-900 dark:text-paper-50 placeholder:text-muted-400 focus:outline-none focus:ring-2 focus:ring-ember-500"
+                className="mt-1 w-full rounded-xl border border-paper-300 bg-paper-50 px-4 py-3 text-sm text-ink-900 placeholder:text-muted-400 focus:outline-none focus:ring-2 focus:ring-ember-500"
               />
               <p className="mt-1 text-xs text-muted-400">Include country code (e.g. +91 for India)</p>
             </div>
@@ -151,7 +151,7 @@ export default function VerifyPhonePage() {
         ) : (
           <form onSubmit={handleVerifyOtp} className="mt-6 space-y-4 text-left">
             <div>
-              <label htmlFor="otp" className="text-xs font-medium text-ink-700 dark:text-paper-200">Verification Code</label>
+              <label htmlFor="otp" className="text-xs font-medium text-ink-700">Verification Code</label>
               <input
                 id="otp"
                 type="text"
@@ -161,7 +161,7 @@ export default function VerifyPhonePage() {
                 onChange={e => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
                 placeholder="Enter 6-digit OTP"
                 autoComplete="one-time-code"
-                className="mt-1 w-full rounded-xl border border-paper-300 dark:border-ink-600 bg-paper-50 dark:bg-ink-800 px-4 py-3 text-center text-lg font-mono tracking-widest text-ink-900 dark:text-paper-50 placeholder:text-muted-400 focus:outline-none focus:ring-2 focus:ring-ember-500"
+                className="mt-1 w-full rounded-xl border border-paper-300 bg-paper-50 px-4 py-3 text-center text-lg font-mono tracking-widest text-ink-900 placeholder:text-muted-400 focus:outline-none focus:ring-2 focus:ring-ember-500"
               />
             </div>
             <button type="submit" disabled={verifying} className="btn-primary w-full">

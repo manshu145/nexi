@@ -55,7 +55,7 @@ export default function AdminEmailPage() {
 
   return (
     <div>
-      <h1 className="font-serif text-2xl font-bold text-ink-900 dark:text-paper-50">Email</h1>
+      <h1 className="font-serif text-2xl font-bold text-ink-900">Email</h1>
       <p className="mt-1 text-sm text-muted-500">Send emails to users via Resend</p>
 
       {configured === false && (
@@ -72,15 +72,15 @@ export default function AdminEmailPage() {
 
       <div className="paper-card mt-6 p-5 space-y-4">
         <div>
-          <label className="text-xs font-medium text-ink-700 dark:text-paper-300">To (email or leave blank for all)</label>
+          <label className="text-xs font-medium text-ink-700">To (email or leave blank for all)</label>
           <input value={to} onChange={e => setTo(e.target.value)} className="input mt-1" placeholder="user@example.com (optional)" />
         </div>
         <div>
-          <label className="text-xs font-medium text-ink-700 dark:text-paper-300">Subject</label>
+          <label className="text-xs font-medium text-ink-700">Subject</label>
           <input value={subject} onChange={e => setSubject(e.target.value)} className="input mt-1" placeholder="Email subject" />
         </div>
         <div>
-          <label className="text-xs font-medium text-ink-700 dark:text-paper-300">Body (HTML)</label>
+          <label className="text-xs font-medium text-ink-700">Body (HTML)</label>
           <textarea value={body} onChange={e => setBody(e.target.value)} className="input mt-1" rows={6} placeholder="<h1>Hello!</h1><p>Your message here...</p>" />
         </div>
         <button onClick={handleSend} disabled={sending || !subject.trim() || !body.trim()} className="btn-primary w-full">

@@ -81,7 +81,7 @@ export default function AdminSupportPage() {
 
   return (
     <div>
-      <h1 className="font-serif text-2xl font-bold text-ink-900 dark:text-paper-50">Support Tickets</h1>
+      <h1 className="font-serif text-2xl font-bold text-ink-900">Support Tickets</h1>
       <p className="mt-1 text-sm text-muted-500">{openTickets.length} open · {closedTickets.length} resolved</p>
 
       {error && <div className="banner banner-error mt-4">{error}</div>}

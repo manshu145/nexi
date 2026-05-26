@@ -59,7 +59,7 @@ export default function AdminUsersPage() {
 
   return (
     <div>
-      <h1 className="font-serif text-2xl font-bold text-ink-900 dark:text-paper-50">Users</h1>
+      <h1 className="font-serif text-2xl font-bold text-ink-900">Users</h1>
       <p className="mt-1 text-sm text-muted-500">{total} total users</p>
 
       {fetching ? (
@@ -75,7 +75,7 @@ export default function AdminUsersPage() {
                 <div className="flex items-center gap-3 min-w-0">
                   <span className="text-lg">👤</span>
                   <div className="min-w-0">
-                    <p className="font-medium text-sm text-ink-900 dark:text-paper-50 truncate">{u.name || 'Unnamed'}</p>
+                    <p className="font-medium text-sm text-ink-900 truncate">{u.name || 'Unnamed'}</p>
                     <p className="text-xs text-muted-500 truncate">{u.email}</p>
                   </div>
                 </div>
@@ -86,10 +86,10 @@ export default function AdminUsersPage() {
               </button>
               {expandedId === u.id && (
                 <div className="mt-3 pt-3 border-t border-line grid grid-cols-2 gap-2 text-xs">
-                  <div><span className="text-muted-500">Exam:</span> <span className="text-ink-900 dark:text-paper-50">{u.targetExam ?? '—'}</span></div>
-                  <div><span className="text-muted-500">Credits:</span> <span className="text-ink-900 dark:text-paper-50">{u.credits}</span></div>
-                  <div><span className="text-muted-500">Role:</span> <span className="text-ink-900 dark:text-paper-50">{u.role}</span></div>
-                  <div><span className="text-muted-500">Joined:</span> <span className="text-ink-900 dark:text-paper-50">{new Date(u.createdAt).toLocaleDateString()}</span></div>
+                  <div><span className="text-muted-500">Exam:</span> <span className="text-ink-900">{u.targetExam ?? '—'}</span></div>
+                  <div><span className="text-muted-500">Credits:</span> <span className="text-ink-900">{u.credits}</span></div>
+                  <div><span className="text-muted-500">Role:</span> <span className="text-ink-900">{u.role}</span></div>
+                  <div><span className="text-muted-500">Joined:</span> <span className="text-ink-900">{new Date(u.createdAt).toLocaleDateString()}</span></div>
                 </div>
               )}
             </div>

@@ -51,12 +51,12 @@ export default function AdminWhatsAppPage() {
 
   return (
     <div>
-      <h1 className="font-serif text-2xl font-bold text-ink-900 dark:text-paper-50">WhatsApp</h1>
+      <h1 className="font-serif text-2xl font-bold text-ink-900">WhatsApp</h1>
       <p className="mt-1 text-sm text-muted-500">Send WhatsApp messages to users via Meta Business API</p>
 
       {configured === false && (
         <div className="paper-card mt-4 p-5 border-amber-500/50">
-          <p className="text-sm font-medium text-ink-900 dark:text-paper-50">⚠️ WhatsApp Not Configured</p>
+          <p className="text-sm font-medium text-ink-900">⚠️ WhatsApp Not Configured</p>
           <p className="mt-2 text-xs text-muted-500">To enable WhatsApp messaging, you need:</p>
           <ol className="mt-2 text-xs text-muted-500 list-decimal list-inside space-y-1">
             <li>Create a Meta Business account at business.facebook.com</li>
@@ -77,11 +77,11 @@ export default function AdminWhatsAppPage() {
 
       <div className="paper-card mt-6 p-5 space-y-4">
         <div>
-          <label className="text-xs font-medium text-ink-700 dark:text-paper-300">Phone Number (+91XXXXXXXXXX)</label>
+          <label className="text-xs font-medium text-ink-700">Phone Number (+91XXXXXXXXXX)</label>
           <input value={to} onChange={e => setTo(e.target.value)} className="input mt-1" placeholder="+919876543210" />
         </div>
         <div>
-          <label className="text-xs font-medium text-ink-700 dark:text-paper-300">Message</label>
+          <label className="text-xs font-medium text-ink-700">Message</label>
           <textarea value={message} onChange={e => setMessage(e.target.value)} className="input mt-1" rows={4} placeholder="Type your message..." maxLength={1000} />
           <p className="mt-1 text-xs text-muted-400">{message.length}/1000</p>
         </div>

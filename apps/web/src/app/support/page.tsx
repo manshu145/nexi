@@ -54,7 +54,7 @@ export default function SupportPage() {
       </header>
 
       <section className="mt-6">
-        <h1 className="font-serif text-2xl font-bold text-ink-900 dark:text-paper-50">Support</h1>
+        <h1 className="font-serif text-2xl font-bold text-ink-900">Support</h1>
         <p className="mt-1 text-sm text-muted-500">Chat with Nexi or contact admin for help.</p>
       </section>
 
