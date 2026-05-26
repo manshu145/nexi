@@ -1,15 +1,24 @@
 'use client';
-import { useEffect, useState, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useEffect, useState, useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import { useAuth } from '~/lib/auth-context';
 import { api, type ChatSessionSummary, type ChatMessage } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 import { AILoader } from '~/components/ui/AILoader';
 
-export default function ChatPage() {
+export default function ChatPageWrapper() {
+  return (
+    <Suspense fallback={<div className="flex min-h-dvh items-center justify-center"><AILoader context="chat" /></div>}>
+      <ChatPage />
+    </Suspense>
+  );
+}
+
+function ChatPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -18,6 +27,7 @@ export default function ChatPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [vizContent, setVizContent] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const topicHandled = useRef(false);
 
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
 
@@ -25,6 +35,35 @@ export default function ChatPage() {
     if (!user) return;
     api.getChatHistory().then(r => setSessions(r.sessions)).catch(() => {});
   }, [user]);
+
+  // Handle ?topic= parameter from Current Affairs "Ask Nexi" button
+  useEffect(() => {
+    if (!user || topicHandled.current || sending) return;
+    const topic = searchParams.get('topic');
+    if (!topic) return;
+    topicHandled.current = true;
+    // Build a contextual prompt that helps students understand exam relevance
+    const contextMessage = `I just read this Current Affairs news: "${topic}"\n\nPlease help me understand:\n1. What are the key facts and why is this important?\n2. Which competitive exams (UPSC, SSC, Banking etc.) could ask questions about this?\n3. What type of questions might come from this topic? Give 2-3 sample MCQs.\n4. Are there any related topics I should study alongside this?`;
+    // Auto-send this as first message
+    const sendContextMessage = async () => {
+      setSending(true);
+      const userMsg: ChatMessage = { role: 'user', content: contextMessage, timestamp: new Date().toISOString() };
+      setMessages([userMsg]);
+      try {
+        const res = await api.sendChat(contextMessage, undefined);
+        setActiveSessionId(res.sessionId);
+        const aiMsg: ChatMessage = { role: 'assistant', content: res.response, timestamp: new Date().toISOString() };
+        setMessages(prev => [...prev, aiMsg]);
+        setSessions(prev => [{ id: res.sessionId, title: res.title, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), messageCount: 2 }, ...prev]);
+      } catch (e) {
+        const errMsg: ChatMessage = { role: 'assistant', content: `Error: ${e instanceof Error ? e.message : 'Failed to send'}`, timestamp: new Date().toISOString() };
+        setMessages(prev => [...prev, errMsg]);
+      } finally { setSending(false); }
+    };
+    sendContextMessage();
+    // Clean URL without re-triggering navigation
+    window.history.replaceState({}, '', '/chat');
+  }, [user, searchParams, sending]);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
