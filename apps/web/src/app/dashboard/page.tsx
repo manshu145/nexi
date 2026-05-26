@@ -28,7 +28,7 @@ export default function DashboardPage() {
     })(); return () => { c = true; };
   }, [user, router]);
 
-  if (loading || !user || pageLoading) return (<main className="flex min-h-dvh items-center justify-center"><span className="spinner" /></main>);
+  if (loading || !user || pageLoading) return (<main className="mx-auto flex min-h-dvh max-w-lg flex-col px-5 pt-6 pb-28 animate-pulse"><div className="flex items-center justify-between"><div className="h-6 w-24 rounded bg-paper-200 dark:bg-ink-700" /><div className="flex gap-2"><div className="h-8 w-8 rounded bg-paper-200 dark:bg-ink-700" /><div className="h-8 w-8 rounded bg-paper-200 dark:bg-ink-700" /></div></div><div className="mt-6 space-y-2"><div className="h-4 w-32 rounded bg-paper-200 dark:bg-ink-700" /><div className="h-8 w-48 rounded bg-paper-200 dark:bg-ink-700" /></div><div className="mt-8 grid gap-3 sm:grid-cols-3">{[1,2,3,4,5,6].map(i => <div key={i} className="paper-card p-5 space-y-3"><div className="h-8 w-8 rounded bg-paper-200 dark:bg-ink-700" /><div className="h-4 w-20 rounded bg-paper-200 dark:bg-ink-700" /><div className="h-3 w-28 rounded bg-paper-200 dark:bg-ink-700" /></div>)}</div></main>);
 
   const examName = me?.targetExam ? EXAM_BY_SLUG.get(me.targetExam)?.name ?? '' : '';
   const h = (new Date().getUTCHours() + 5.5) % 24;
