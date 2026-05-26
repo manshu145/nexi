@@ -88,10 +88,13 @@ html.dark body {
   background-image: radial-gradient(circle at 1px 1px, rgba(237, 223, 191, 0.03) 1px, transparent 0);
 }
 
-/* Shorts page: always dark shell regardless of theme */
+/* Shorts page shell: theme-aware dark bg */
 .shorts-shell {
-  background: #0F0F0F !important;
+  background: var(--color-paper-200) !important;
   background-image: none !important;
+}
+html.dark .shorts-shell {
+  background: #0F0F0F !important;
 }
 
 /* Hide scrollbar for category pills */
