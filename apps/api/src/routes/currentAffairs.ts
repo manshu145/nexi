@@ -65,6 +65,21 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
 
       items = deduplicateItems(items);
 
+      // 4-hour refresh check: trigger background re-ingestion if stale
+      try {
+        const lastIngested = await deps.currentAffairs.getLastIngestedAt();
+        const fourHoursMs = 4 * 60 * 60 * 1000;
+        if (!lastIngested || (Date.now() - Date.parse(lastIngested)) > fourHoursMs) {
+          deps.logger.info('ca.stale_triggering_reingest', { lastIngested });
+          // Fire-and-forget background re-ingestion
+          import('../lib/rssIngestion.js').then(({ ingestCurrentAffairs }) => {
+            ingestCurrentAffairs(deps.currentAffairs, deps.env, deps.logger, deps.aiEngine)
+              .then(() => deps.currentAffairs.setLastIngestedAt(new Date().toISOString()))
+              .catch(err => deps.logger.error('ca.background_reingest_failed', { error: String(err) }));
+          }).catch(() => {});
+        }
+      } catch (e) { deps.logger.warn('ca.refresh_check_error', { error: String(e) }); }
+
       // For Hindi users, swap to pre-translated fields (translated at ingestion time)
       if (language === 'hi' && items.length > 0) {
         items = items.map((it: any) => ({

@@ -36,6 +36,10 @@ export interface CurrentAffairsStore {
   submitQuizResult(result: DailyQuizResult): Promise<{ rank: number }>;
   getLeaderboard(date: string): Promise<LeaderboardEntry[]>;
   getYesterdayWinner(): Promise<LeaderboardEntry | null>;
+  /** Get last ingestion timestamp (ISO string) */
+  getLastIngestedAt(): Promise<string | null>;
+  /** Set last ingestion timestamp */
+  setLastIngestedAt(timestamp: string): Promise<void>;
 }
 
 // ---------- in-memory implementation ----------------------------------------
@@ -89,6 +93,10 @@ export class InMemoryCurrentAffairsStore implements CurrentAffairsStore {
     const winner = sorted[0]!;
     return { userId: winner.userId, userName: winner.userId, score: winner.score, timeTaken: winner.timeTaken, date: yesterday };
   }
+
+  private lastIngestedAt: string | null = null;
+  async getLastIngestedAt() { return this.lastIngestedAt; }
+  async setLastIngestedAt(timestamp: string) { this.lastIngestedAt = timestamp; }
 }
 
 // ---------- firestore implementation ----------------------------------------
@@ -154,7 +162,24 @@ export class FirestoreCurrentAffairsStore implements CurrentAffairsStore {
         .orderBy('score', 'desc').limit(1).get();
       if (snap.empty) return null;
       const data = snap.docs[0]!.data() as DailyQuizResult;
-      return { userId: data.userId, userName: data.userId, score: data.score, timeTaken: data.timeTaken, date: yesterday };
+      // Look up user's display name
+      let userName = data.userId;
+      try {
+        const userSnap = await this.db.collection('users').doc(data.userId).get();
+        if (userSnap.exists) userName = userSnap.data()?.name || data.userId;
+      } catch { /* fallback to userId */ }
+      return { userId: data.userId, userName, score: data.score, timeTaken: data.timeTaken, date: yesterday };
     } catch { return null; }
+  }
+
+  async getLastIngestedAt(): Promise<string | null> {
+    try {
+      const snap = await this.db.collection('system').doc('ingestionStatus').get();
+      return snap.exists ? (snap.data()?.lastIngestedAt ?? null) : null;
+    } catch { return null; }
+  }
+
+  async setLastIngestedAt(timestamp: string): Promise<void> {
+    await this.db.collection('system').doc('ingestionStatus').set({ lastIngestedAt: timestamp }, { merge: true });
   }
 }

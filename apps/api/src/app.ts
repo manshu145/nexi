@@ -64,6 +64,7 @@ export function buildApp(deps: AppDeps): Hono {
     }
     const { ingestCurrentAffairs } = await import('./lib/rssIngestion.js');
     const result = await ingestCurrentAffairs(currentAffairs, env, logger, aiEngine);
+    await currentAffairs.setLastIngestedAt(new Date().toISOString());
     return c.json({ success: true, ...result });
   });
 
