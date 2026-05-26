@@ -91,11 +91,41 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
     return c.json({ mermaid });
   });
 
-  // POST /v1/study/visualize — selection-based visualization
+  // POST /v1/study/visualize — enhanced visualization (supports type: diagram/mindmap/flowchart/timeline/image + selection)
   app.post('/visualize', async (c) => {
     requireAuth(c);
-    const body = await c.req.json().catch(() => null) as { text?: string; subject?: string; language?: 'en' | 'hi' } | null;
-    if (!body?.text) throw new HTTPException(400, { message: 'text is required' });
+    const body = await c.req.json().catch(() => null) as {
+      text?: string; subject?: string; language?: 'en' | 'hi';
+      chapterSlug?: string; subjectSlug?: string; examSlug?: string;
+      type?: 'diagram' | 'mindmap' | 'flowchart' | 'timeline' | 'image';
+    } | null;
+
+    // If type is specified with chapter context, use generateVisualization
+    if (body?.type && body.chapterSlug && body.subjectSlug && body.examSlug) {
+      const topic = body.chapterSlug.replace(/-/g, ' ');
+      const result = await deps.aiEngine.generateVisualization(topic, body.subjectSlug, body.examSlug, body.type);
+
+      // Cache mermaid visualizations in Firestore
+      if (result.type === 'mermaid' && deps.db) {
+        const cacheKey = `${body.examSlug}_${body.subjectSlug}_${body.chapterSlug}_${body.type}`;
+        try {
+          await deps.db.collection('visualizationCache').doc(cacheKey).set({
+            ...result,
+            topic,
+            examSlug: body.examSlug,
+            subjectSlug: body.subjectSlug,
+            chapterSlug: body.chapterSlug,
+            vizType: body.type,
+            cachedAt: new Date().toISOString(),
+          }, { merge: true });
+        } catch { /* cache failure is non-critical */ }
+      }
+
+      return c.json({ visualization: result });
+    }
+
+    // Legacy: selection-based visualization (text required)
+    if (!body?.text) throw new HTTPException(400, { message: 'text or (chapterSlug + subjectSlug + examSlug + type) required' });
     const mermaid = await deps.aiEngine.generateSelectionDiagram(body.text, body.subject ?? 'general', body.language ?? 'en');
     return c.json({ mermaid });
   });
