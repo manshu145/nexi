@@ -154,7 +154,7 @@ export default function AdminAnnouncementsPage() {
                     <span className="text-xs text-muted-400">{new Date(a.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
                   </div>
                 </div>
-                <span className={`h-2 w-2 rounded-full ${a.isActive ? 'bg-emerald-500' : 'bg-muted-400'}`} />
+                <span className={`h-2 w-2 rounded-full ${a.isActive ? 'bg-gold-500' : 'bg-muted-400'}`} />
               </div>
             </div>
           ))}

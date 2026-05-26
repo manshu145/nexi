@@ -62,8 +62,8 @@ export default function AdminEmailPage() {
         <div className="banner banner-error mt-4">Email not configured. Set RESEND_API_KEY in environment variables.</div>
       )}
       {configured === true && (
-        <span className="inline-flex items-center gap-1.5 mt-3 rounded-full bg-emerald-100 dark:bg-emerald-900/30 px-3 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-400">
-          <span className="h-2 w-2 rounded-full bg-emerald-500" /> Resend Connected
+        <span className="inline-flex items-center gap-1.5 mt-3 rounded-full bg-gold-500/10 px-3 py-1 text-xs font-medium text-gold-600 dark:text-gold-500">
+          <span className="h-2 w-2 rounded-full bg-gold-500" /> Resend Connected
         </span>
       )}
 
