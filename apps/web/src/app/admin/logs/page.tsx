@@ -39,9 +39,9 @@ const API = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com';
 
 
 const SEVERITY_COLORS: Record<string, string> = {
-  critical: 'bg-ember-100 text-ember-700 dark:bg-ember-900/30 dark:text-ember-400',
-  warning: 'bg-gold-100 text-gold-700 dark:bg-gold-900/30 dark:text-gold-400',
-  info: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  critical: 'bg-ember-500/10 text-ember-600 dark:text-ember-500',
+  warning: 'bg-gold-500/10 text-gold-600 dark:text-gold-500',
+  info: 'bg-paper-200 text-ink-700 dark:text-paper-300',
 };
 
 function SkeletonLogRow() {
@@ -49,10 +49,10 @@ function SkeletonLogRow() {
     <div className="paper-card p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="space-y-2 flex-1">
-          <div className="h-4 w-48 rounded bg-paper-300 dark:bg-ink-700 animate-pulse" />
-          <div className="h-3 w-32 rounded bg-paper-300 dark:bg-ink-700 animate-pulse" />
+          <div className="h-4 w-48 rounded bg-paper-300 animate-pulse" />
+          <div className="h-3 w-32 rounded bg-paper-300 animate-pulse" />
         </div>
-        <div className="h-3 w-20 rounded bg-paper-300 dark:bg-ink-700 animate-pulse" />
+        <div className="h-3 w-20 rounded bg-paper-300 animate-pulse" />
       </div>
     </div>
   );
@@ -127,10 +127,10 @@ export default function AdminLogsPage() {
   if (loading || !user) {
     return (
       <div className="space-y-4">
-        <div className="h-7 w-32 rounded bg-paper-300 dark:bg-ink-700 animate-pulse" />
+        <div className="h-7 w-32 rounded bg-paper-300 animate-pulse" />
         <div className="flex gap-2">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-8 w-20 rounded-full bg-paper-300 dark:bg-ink-700 animate-pulse" />
+            <div key={i} className="h-8 w-20 rounded-full bg-paper-300 animate-pulse" />
           ))}
         </div>
         <div className="space-y-2">
@@ -201,7 +201,7 @@ export default function AdminLogsPage() {
                       </button>
                     )}
                     {expandedId === log.id && log.stack && (
-                      <pre className="mt-2 overflow-x-auto rounded bg-paper-100 dark:bg-ink-800 p-3 text-xs text-muted-600 dark:text-muted-400 font-mono">
+                      <pre className="mt-2 overflow-x-auto rounded bg-paper-200 p-3 text-xs text-muted-500 font-mono">
                         {log.stack}
                       </pre>
                     )}
@@ -256,7 +256,7 @@ export default function AdminLogsPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="inline-flex items-center rounded-md bg-paper-200 dark:bg-ink-700 text-ink-700 dark:text-paper-300 px-2 py-0.5 text-xs font-medium">
+                      <span className="inline-flex items-center rounded-md bg-paper-200 text-ink-700 dark:text-paper-300 px-2 py-0.5 text-xs font-medium">
                         {log.type}
                       </span>
                       <span className="text-sm font-medium text-ink-900 dark:text-paper-50 truncate">{log.action}</span>
