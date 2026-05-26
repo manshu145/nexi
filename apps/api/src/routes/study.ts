@@ -46,6 +46,20 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
     const { exam, subject, chapter } = c.req.param();
     const language = (c.req.query('lang') as 'en' | 'hi') || 'en';
 
+    // Credit deduction for free plan users
+    const user = await deps.users.get(principal.userId);
+    if (user) {
+      const { shouldDeductCredits } = await import('@nexigrate/shared');
+      if (shouldDeductCredits(user.plan, user.planExpiresAt)) {
+        // Free plan: deduct 5 credits per chapter open
+        if (user.credits < 5) {
+          throw new HTTPException(402, { message: 'insufficient_credits' });
+        }
+        await deps.users.update(principal.userId, { credits: user.credits - 5 } as any);
+        deps.logger.info('study.credits_deducted', { userId: principal.userId, amount: 5, newBalance: user.credits - 5 });
+      }
+    }
+
     // Check cache first
     let content = await deps.chapters.getChapter(exam, subject, chapter, language);
     if (!content) {
