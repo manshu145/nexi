@@ -185,5 +185,48 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
     return c.json({ success: true });
   });
 
+  // ━━━ EMAIL ━━━
+  // POST /v1/admin/email/send — send email to one user or bulk
+  app.post('/email/send', async (c) => {
+    const body = await c.req.json().catch(() => null) as { to?: string; emails?: string[]; subject?: string; body?: string } | null;
+    if (!body?.subject || !body?.body) throw new HTTPException(400, { message: 'subject and body required' });
+    const { createEmailService } = await import('../lib/emailService.js');
+    const emailService = createEmailService(deps.env, deps.logger);
+    if (body.to) {
+      const result = await emailService.sendEmail(body.to, body.subject, body.body);
+      return c.json(result);
+    }
+    if (body.emails?.length) {
+      const result = await emailService.sendBulkEmail(body.emails, body.subject, body.body);
+      return c.json(result);
+    }
+    throw new HTTPException(400, { message: 'to or emails[] required' });
+  });
+
+  // GET /v1/admin/email/status — check if email is configured
+  app.get('/email/status', (c) => {
+    const configured = !!(deps.env.RESEND_API_KEY && deps.env.RESEND_API_KEY.length > 5);
+    return c.json({ configured, provider: 'resend' });
+  });
+
+  // ━━━ WHATSAPP ━━━
+  // GET /v1/admin/whatsapp/status — check if WhatsApp is configured
+  app.get('/whatsapp/status', async (c) => {
+    const { createWhatsAppService } = await import('../lib/whatsappService.js');
+    const wa = createWhatsAppService(deps.env, deps.logger);
+    return c.json({ configured: wa.isConfigured(), provider: 'meta-cloud-api' });
+  });
+
+  // POST /v1/admin/whatsapp/send — send WhatsApp message
+  app.post('/whatsapp/send', async (c) => {
+    const body = await c.req.json().catch(() => null) as { to?: string; message?: string } | null;
+    if (!body?.to || !body?.message) throw new HTTPException(400, { message: 'to and message required' });
+    const { createWhatsAppService } = await import('../lib/whatsappService.js');
+    const wa = createWhatsAppService(deps.env, deps.logger);
+    if (!wa.isConfigured()) throw new HTTPException(503, { message: 'WhatsApp not configured. Set WHATSAPP_TOKEN and WHATSAPP_PHONE_NUMBER_ID.' });
+    const result = await wa.sendMessage(body.to, body.message);
+    return c.json(result);
+  });
+
   return app;
 }
