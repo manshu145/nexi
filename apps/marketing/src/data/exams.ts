@@ -18,25 +18,21 @@ export const EXAMS: readonly Exam[] = [
   { id: 'jee-advanced',    name: 'JEE Advanced',        category: 'engineering',    status: 'live' },
   { id: 'neet-ug',         name: 'NEET UG',             category: 'medical',        status: 'live' },
 
-  // — Phase 2 expansion —
-  { id: 'class-10-cbse',   name: 'Class 10 (CBSE)',     category: 'school',         status: 'soon' },
-  { id: 'class-9-cbse',    name: 'Class 9 (CBSE)',      category: 'school',         status: 'soon' },
-  { id: 'class-8-cbse',    name: 'Class 8 (CBSE)',      category: 'school',         status: 'soon' },
-
-  // — Phase 3 —
-  { id: 'ssc-cgl',         name: 'SSC CGL',             category: 'civil-services', status: 'soon' },
-  { id: 'ssc-chsl',        name: 'SSC CHSL',            category: 'civil-services', status: 'soon' },
-  { id: 'ibps-po',         name: 'IBPS PO / Clerk',     category: 'banking',        status: 'soon' },
-  { id: 'sbi-po',          name: 'SBI PO',              category: 'banking',        status: 'soon' },
-  { id: 'rrb-ntpc',        name: 'RRB NTPC',            category: 'civil-services', status: 'soon' },
-
-  // — Phase 4 —
-  { id: 'upsc-cse',        name: 'UPSC CSE',            category: 'civil-services', status: 'soon' },
-  { id: 'state-psc',       name: 'State PSCs',          category: 'state',          status: 'soon' },
-  { id: 'nda',             name: 'NDA',                 category: 'defence',        status: 'soon' },
-  { id: 'cds',             name: 'CDS',                 category: 'defence',        status: 'soon' },
-  { id: 'agniveer',        name: 'Agniveer',            category: 'defence',        status: 'soon' },
-  { id: 'capf',            name: 'CAPF',                category: 'defence',        status: 'soon' },
+  // — All exams live —
+  { id: 'class-10-cbse',   name: 'Class 10 (CBSE)',     category: 'school',         status: 'live' },
+  { id: 'class-9-cbse',    name: 'Class 9 (CBSE)',      category: 'school',         status: 'live' },
+  { id: 'class-8-cbse',    name: 'Class 8 (CBSE)',      category: 'school',         status: 'live' },
+  { id: 'ssc-cgl',         name: 'SSC CGL',             category: 'civil-services', status: 'live' },
+  { id: 'ssc-chsl',        name: 'SSC CHSL',            category: 'civil-services', status: 'live' },
+  { id: 'ibps-po',         name: 'IBPS PO / Clerk',     category: 'banking',        status: 'live' },
+  { id: 'sbi-po',          name: 'SBI PO',              category: 'banking',        status: 'live' },
+  { id: 'rrb-ntpc',        name: 'RRB NTPC',            category: 'civil-services', status: 'live' },
+  { id: 'upsc-cse',        name: 'UPSC CSE',            category: 'civil-services', status: 'live' },
+  { id: 'state-psc',       name: 'State PSCs',          category: 'state',          status: 'live' },
+  { id: 'nda',             name: 'NDA',                 category: 'defence',        status: 'live' },
+  { id: 'cds',             name: 'CDS',                 category: 'defence',        status: 'live' },
+  { id: 'agniveer',        name: 'Agniveer',            category: 'defence',        status: 'live' },
+  { id: 'capf',            name: 'CAPF',                category: 'defence',        status: 'live' },
 ] as const;
 
 export const LIVE_EXAMS = EXAMS.filter((e) => e.status === 'live');

@@ -11,15 +11,14 @@ import { LIVE_EXAMS, SOON_EXAMS } from '~/data/exams';
           Built for every serious Indian student.
         </h2>
         <p class="mt-4 text-lg leading-relaxed text-ink-800">
-          We launch with five exams done flawlessly, then expand. We refuse to
-          ship fifty exams half-built.
+          19 exams live. From Class 8 boards to UPSC Civil Services — all powered by the same AI verification pipeline.
         </p>
       </div>
     </div>
 
     <div class="mt-12">
       <h3 class="text-xs font-semibold uppercase tracking-[0.18em] text-ember-600">
-        Available at launch
+        All exams — Live now
       </h3>
       <div class="mt-4 flex flex-wrap gap-2.5">
         {LIVE_EXAMS.map((exam) => (
@@ -31,20 +30,21 @@ import { LIVE_EXAMS, SOON_EXAMS } from '~/data/exams';
       </div>
     </div>
 
-    <div class="mt-10">
-      <h3 class="text-xs font-semibold uppercase tracking-[0.18em] text-muted-500">
-        Coming next
-      </h3>
-      <div class="mt-4 flex flex-wrap gap-2.5">
-        {SOON_EXAMS.map((exam) => (
-          <span class="pill pill-soon">{exam.name}</span>
-        ))}
+    {SOON_EXAMS.length > 0 && (
+      <div class="mt-10">
+        <h3 class="text-xs font-semibold uppercase tracking-[0.18em] text-muted-500">
+          Coming next
+        </h3>
+        <div class="mt-4 flex flex-wrap gap-2.5">
+          {SOON_EXAMS.map((exam) => (
+            <span class="pill pill-soon">{exam.name}</span>
+          ))}
+        </div>
       </div>
-    </div>
+    )}
 
     <p class="mt-10 max-w-3xl text-sm text-muted-500">
-      Don't see your exam? Pick "Still deciding" on the waitlist form and we
-      will prioritise the exams our earliest students actually need.
+      Don't see your exam? Let us know at hello@nexigrate.com and we'll add it to the platform.
     </p>
   </div>
 </section>
