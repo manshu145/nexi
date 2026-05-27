@@ -139,6 +139,21 @@ export function buildApp(deps: AppDeps): Hono {
     return c.json({ ok: true });
   });
 
+  // GET /v1/branding — public branding settings (logo, favicon, tagline) — no auth required
+  v1.get('/branding', async (c) => {
+    try {
+      const settings = await adminStore.getSeoSettings();
+      return c.json({
+        logoUrl: settings?.logoUrl || '',
+        favicon: settings?.favicon || '',
+        tagline: settings?.tagline || 'Study Smarter, Score Higher',
+        taglineHi: settings?.taglineHi || 'स्मार्ट पढ़ो, ज़्यादा स्कोर करो',
+      });
+    } catch {
+      return c.json({ logoUrl: '', favicon: '', tagline: 'Study Smarter, Score Higher', taglineHi: '' });
+    }
+  });
+
   // GET /v1/announcements — active announcements for users (non-admin)
   v1.get('/announcements', async (c) => {
     try {

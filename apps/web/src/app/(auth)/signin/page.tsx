@@ -284,6 +284,28 @@ export default function SignInPage() {
 
         {error && <div className="banner banner-error mt-4">{error}</div>}
         {resetSent && <div className="banner mt-4 bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800 rounded-lg px-4 py-2 text-sm">Password reset email sent! Check your inbox.</div>}
+
+        {/* Referral Code Input */}
+        <div className="mt-5 border-t border-line pt-4">
+          <details className="text-left">
+            <summary className="text-xs text-muted-500 cursor-pointer hover:text-ink-700">Have a referral code?</summary>
+            <div className="mt-2 flex items-center gap-2">
+              <input
+                type="text"
+                placeholder="Enter code (e.g. ABCD1234)"
+                maxLength={8}
+                className="input flex-1 text-xs font-mono uppercase tracking-wider"
+                defaultValue={typeof window !== 'undefined' ? localStorage.getItem('pendingReferral') || '' : ''}
+                onChange={(e) => {
+                  const code = e.target.value.trim().toUpperCase();
+                  if (code) localStorage.setItem('pendingReferral', code);
+                  else localStorage.removeItem('pendingReferral');
+                }}
+              />
+              <span className="text-[10px] text-muted-400">+25 credits</span>
+            </div>
+          </details>
+        </div>
       </div>
     </main>
   );

@@ -48,7 +48,21 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!user) return; let c = false;
     (async () => {
-      try { const res = await api.me(); if (c) return; setMe(res.user); if (!res.user.targetExam) { router.replace('/onboarding/language'); return; } }
+      try {
+        const res = await api.me();
+        if (c) return;
+        setMe(res.user);
+        // Phone verification mandatory — redirect if not verified
+        if (!res.user.phone && !user.phoneNumber) {
+          // Grace period: allow skip once for 24hrs
+          const skipTs = localStorage.getItem('phoneVerifySkipUntil');
+          if (!skipTs || Date.now() > Number(skipTs)) {
+            router.replace('/verify-phone');
+            return;
+          }
+        }
+        if (!res.user.targetExam) { router.replace('/onboarding/language'); return; }
+      }
       catch (e) { if (c) return; setError(e instanceof Error ? e.message : 'Failed to load'); }
       finally { if (!c) setPageLoading(false); }
     })(); return () => { c = true; };

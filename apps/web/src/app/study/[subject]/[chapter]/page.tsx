@@ -504,11 +504,16 @@ export default function KindleReaderPage() {
         <div className="kindle-progress" style={{ width: `${progressPct}%` }} />
         <button onClick={goPrev} disabled={currentPage === 0 || isFlipping}>← Prev</button>
         <span className="kindle-page-indicator">{currentPage + 1} / {pages.length}</span>
-        {currentPage === pages.length - 1 ? (
-          <button onClick={() => router.push(`/study/${subject}/${chapter}/quiz`)} style={{ backgroundColor: 'var(--color-ember-500)', color: 'var(--color-paper-50)', borderColor: 'var(--color-ember-500)' }}>Take Quiz →</button>
-        ) : (
-          <button onClick={goNext} disabled={isFlipping}>Next →</button>
-        )}
+        <div className="flex items-center gap-2">
+          <button onClick={() => router.push(`/chat?topic=${encodeURIComponent(chapterName)}&context=${encodeURIComponent((pages[currentPage] ?? '').slice(0, 300))}`)} className="tts-btn" title="Ask Nexi AI about this">
+            🤖
+          </button>
+          {currentPage === pages.length - 1 ? (
+            <button onClick={() => router.push(`/study/${subject}/${chapter}/quiz`)} style={{ backgroundColor: 'var(--color-ember-500)', color: 'var(--color-paper-50)', borderColor: 'var(--color-ember-500)' }}>Take Quiz →</button>
+          ) : (
+            <button onClick={goNext} disabled={isFlipping}>Next →</button>
+          )}
+        </div>
       </div>
 
       {/* Visualization Modal — Tabbed */}

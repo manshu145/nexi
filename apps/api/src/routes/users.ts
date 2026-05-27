@@ -37,6 +37,37 @@ export function makeUsersRoutes(deps: UsersRoutesDeps): Hono {
     return c.json({ user });
   });
 
+  // DELETE /v1/users/me — permanently delete user account and all data
+  app.delete('/me', async (c) => {
+    const principal = requireAuth(c);
+    try {
+      // Delete user data from Firestore
+      if (deps.db) {
+        const batch = deps.db.batch();
+        // Delete user doc
+        batch.delete(deps.db.collection('users').doc(principal.userId));
+        // Delete study progress
+        const progressSnap = await deps.db.collection('studyProgress').where('userId', '==', principal.userId).get();
+        progressSnap.docs.forEach(doc => batch.delete(doc.ref));
+        // Delete chat sessions
+        const chatSnap = await deps.db.collection('chatSessions').where('userId', '==', principal.userId).get();
+        chatSnap.docs.forEach(doc => batch.delete(doc.ref));
+        // Delete referral records
+        const refSnap = await deps.db.collection('referrals').where('referrerId', '==', principal.userId).get();
+        refSnap.docs.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+      } else {
+        // In-memory: mark as deleted (no delete method available)
+        await deps.users.update(principal.userId, { name: '[deleted]', email: '', phone: null, credits: 0, plan: 'free' } as any);
+      }
+      deps.logger.info('users.account_deleted', { userId: principal.userId });
+      return c.json({ success: true, message: 'Account deleted successfully' });
+    } catch (err) {
+      deps.logger.error('users.delete_error', { userId: principal.userId, error: err instanceof Error ? err.message : String(err) });
+      throw new HTTPException(500, { message: 'Failed to delete account. Please contact support.' });
+    }
+  });
+
   app.post('/me/onboarding', async (c) => {
     const principal = requireAuth(c);
     const body = await c.req.json().catch(() => null);
