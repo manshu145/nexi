@@ -21,6 +21,7 @@ const envSchema = z.object({
   RAZORPAY_WEBHOOK_SECRET: z.string().optional().default(''),
   RESEND_API_KEY: z.string().optional().default(''),
   SUPER_ADMIN_EMAIL: z.string().default('manshu.ibc24@gmail.com'),
+  CRON_SECRET: z.string().optional().default('nexigrate-cron-2026'),
   CORS_ALLOWED_ORIGINS: z.string().default('http://localhost:3000,https://app.nexigrate.com,https://nexigrate.com').transform((s) => s.split(',')),
 });
 

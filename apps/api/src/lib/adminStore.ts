@@ -75,6 +75,14 @@ export interface AdminStore {
   getEmailTemplates(): Promise<EmailTemplate[]>;
   saveEmailTemplate(template: EmailTemplate): Promise<void>;
   deleteEmailTemplate(id: string): Promise<void>;
+  // Announcements
+  saveAnnouncement(announcement: Record<string, any>): Promise<void>;
+  getAnnouncements(): Promise<Record<string, any>[]>;
+  deleteAnnouncement(id: string): Promise<void>;
+  // Revenue
+  getRevenue(): Promise<{ payments: Record<string, any>[]; total: number }>;
+  // Support tickets
+  getSupportTickets(): Promise<Record<string, any>[]>;
 }
 
 export interface EmailTemplate {
@@ -91,6 +99,7 @@ export class InMemoryAdminStore implements AdminStore {
   private sessions = new Map<string, { startedAt: string; lastPing: string }>();
   private seoSettings: Record<string, any> = {};
   private emailTemplates: EmailTemplate[] = [];
+  private announcements: Record<string, any>[] = [];
 
   async getFullStats(): Promise<AdminStats> {
     return { totalUsers: 0, dau: 0, mau: 0, newUsersToday: 0, newUsersThisWeek: 0, revenueToday: 0, revenue7d: 0, revenue30d: 0, revenueTotal: 0, aiCallsToday: this.aiCallLogs.filter(l => l.timestamp.startsWith(new Date().toISOString().split('T')[0]!)).length, aiCallsThisWeek: this.aiCallLogs.length, aiCostToday: 0, activeSessions: this.sessions.size, apiHealth: { openai: 'unconfigured', groq: 'unconfigured', gemini: 'unconfigured', razorpay: 'unconfigured' } };
@@ -117,6 +126,11 @@ export class InMemoryAdminStore implements AdminStore {
   async getEmailTemplates() { return this.emailTemplates; }
   async saveEmailTemplate(t: EmailTemplate) { this.emailTemplates.push(t); }
   async deleteEmailTemplate(id: string) { this.emailTemplates = this.emailTemplates.filter(t => t.id !== id); }
+  async saveAnnouncement(announcement: Record<string, any>) { this.announcements.unshift(announcement); }
+  async getAnnouncements() { return this.announcements; }
+  async deleteAnnouncement(id: string) { this.announcements = this.announcements.filter(a => a.id !== id); }
+  async getRevenue() { return { payments: [], total: 0 }; }
+  async getSupportTickets() { return []; }
 }
 
 export class FirestoreAdminStore implements AdminStore {
@@ -343,5 +357,36 @@ export class FirestoreAdminStore implements AdminStore {
 
   async deleteEmailTemplate(id: string): Promise<void> {
     await this.db.collection('emailTemplates').doc(id).delete();
+  }
+
+  async saveAnnouncement(announcement: Record<string, any>): Promise<void> {
+    await this.db.collection('announcements').doc(announcement.id).set(announcement);
+  }
+
+  async getAnnouncements(): Promise<Record<string, any>[]> {
+    try {
+      const snap = await this.db.collection('announcements').orderBy('createdAt', 'desc').limit(50).get();
+      return snap.docs.map(d => d.data());
+    } catch { return []; }
+  }
+
+  async deleteAnnouncement(id: string): Promise<void> {
+    await this.db.collection('announcements').doc(id).delete();
+  }
+
+  async getRevenue(): Promise<{ payments: Record<string, any>[]; total: number }> {
+    try {
+      const snap = await this.db.collection('billingOrders').where('status', '==', 'completed').orderBy('completedAt', 'desc').limit(100).get();
+      const payments = snap.docs.map(d => d.data());
+      const total = payments.reduce((sum, p) => sum + ((p.amount || 0) / 100), 0);
+      return { payments, total };
+    } catch { return { payments: [], total: 0 }; }
+  }
+
+  async getSupportTickets(): Promise<Record<string, any>[]> {
+    try {
+      const snap = await this.db.collection('supportTickets').orderBy('createdAt', 'desc').limit(50).get();
+      return snap.docs.map(d => d.data());
+    } catch { return []; }
   }
 }

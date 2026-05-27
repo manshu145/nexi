@@ -2,6 +2,7 @@ import Groq from 'groq-sdk';
 import OpenAI from 'openai';
 import type { Env } from '../env.js';
 import type { Logger } from '../logger.js';
+import type { AdminStore } from './adminStore.js';
 
 export interface MCQOption { key: 'A' | 'B' | 'C' | 'D'; text: string; }
 export interface GeneratedMCQ { id: string; question: string; options: MCQOption[]; correctOption: 'A' | 'B' | 'C' | 'D'; explanation: string; difficulty: 'easy' | 'medium' | 'hard'; subject?: string; topic?: string; }
@@ -30,7 +31,30 @@ export interface AIEngine {
   chat(messages: { role: 'user' | 'assistant'; content: string }[], userContext: { exam: string; level: string; language: 'en' | 'hi' }): Promise<string>;
 }
 
-export function createAIEngine(env: Env, logger: Logger): AIEngine {
+/** Helper to log AI calls to adminStore for system logs visibility */
+function logAICallToStore(adminStore: AdminStore | null, model: string, tokens: number, cost: number, latencyMs: number, userId?: string) {
+  if (!adminStore) return;
+  adminStore.logAICall({ model, tokens, cost, latencyMs, userId, timestamp: new Date().toISOString() }).catch(() => {});
+}
+
+/** Estimate token count from text length */
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+/** Estimate cost based on model and tokens */
+function estimateCost(model: string, tokens: number): number {
+  const rates: Record<string, number> = {
+    'gpt-4o': 0.000005,
+    'dall-e-3': 0.04,
+    'llama-3.3-70b-versatile': 0.0000008,
+    'gemini-1.5-flash': 0.0000001,
+    'gemini-2.0-flash-exp': 0.0000002,
+  };
+  return (rates[model] ?? 0.000001) * tokens;
+}
+
+export function createAIEngine(env: Env, logger: Logger, adminStore?: AdminStore | null): AIEngine {
   // Log which AI providers are available at startup
   const hasGroq = !!(env.GROQ_API_KEY && env.GROQ_API_KEY.length > 5);
   const hasOpenai = !!(env.OPENAI_API_KEY && env.OPENAI_API_KEY.length > 5);
@@ -43,6 +67,7 @@ export function createAIEngine(env: Env, logger: Logger): AIEngine {
   });
   const groq = hasGroq ? new Groq({ apiKey: env.GROQ_API_KEY }) : null;
   const openai = hasOpenai ? new OpenAI({ apiKey: env.OPENAI_API_KEY }) : null;
+  const store = adminStore ?? null;
 
   return {
     async generateAssessmentQuestions(examSlug, language = 'en', count = 15) {
@@ -54,7 +79,7 @@ export function createAIEngine(env: Env, logger: Logger): AIEngine {
         try {
           const completion = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 4096, response_format: { type: 'json_object' } });
           const parsed = JSON.parse(completion.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
-          if (parsed.questions?.length) { logger.info('ai.questions_generated', { provider: 'groq', examSlug, language, count: parsed.questions.length }); return parsed.questions; }
+          if (parsed.questions?.length) { const tokens = estimateTokens(completion.choices[0]?.message?.content ?? ''); logAICallToStore(store, 'llama-3.3-70b-versatile', tokens, estimateCost('llama-3.3-70b-versatile', tokens), 0); logger.info('ai.questions_generated', { provider: 'groq', examSlug, language, count: parsed.questions.length }); return parsed.questions; }
           errors.push('Groq returned empty');
         } catch (err) { errors.push(`Groq: ${err instanceof Error ? err.message : String(err)}`); }
       } else { errors.push('Groq not configured'); }
@@ -100,9 +125,13 @@ export function createAIEngine(env: Env, logger: Logger): AIEngine {
     async generateChapterContent(chapter, subject, exam, language = 'en') {
       const langInstr = language === 'hi' ? 'Write the entire chapter in Hindi (Devanagari). Simple, student-friendly language.' : 'Write in clear, student-friendly English.';
       const prompt = `You are an expert Indian education content writer.\nYou are generating educational content for ${exam}.\nThis content must strictly follow the official ${exam} syllabus.\nOnly cover topics that are part of the official curriculum.\nGround all factual content in NCERT textbooks where applicable.\nDo not add topics outside the official syllabus.\n\nWrite a chapter on "${chapter}" (subject: ${subject}, exam: ${exam}).\n${langInstr}\n\nRequirements:\n- 800-1200 words, Markdown format\n- Sections: Introduction, Key Concepts (with examples), Important Points, Summary\n- Use ## headings\n- Include real-world Indian examples\n- Exam-focused: highlight frequently-asked areas\n- For science/math: include formulas in $...$\n- Reference NCERT concepts and terminology where applicable\n\nWrite ONLY the Markdown content.`;
+      const startTime = performance.now();
       try {
         if (!openai) throw new Error("OPENAI_API_KEY not configured"); const c = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: 3000 });
         const content = c.choices[0]?.message?.content ?? '';
+        const tokens = estimateTokens(content + prompt);
+        const latencyMs = Math.round(performance.now() - startTime);
+        logAICallToStore(store, 'gpt-4o', tokens, estimateCost('gpt-4o', tokens), latencyMs);
         logger.info('ai.chapter_generated', { chapter, subject, exam, language, words: content.split(/\s+/).length });
         return content;
       } catch (err) { logger.error('ai.chapter_error', { error: err instanceof Error ? err.message : String(err) }); throw new Error('Failed to generate chapter content'); }
@@ -173,6 +202,7 @@ export function createAIEngine(env: Env, logger: Logger): AIEngine {
         // Attempt 1: DALL-E 3 (OpenAI)
         if (openai) {
           try {
+            const startTime = performance.now();
             const imagePrompt = `Educational diagram of "${topic}" for Indian ${exam} students. Clean, labeled, black and white, textbook style. No watermark. Simple and clear for students.`;
             const imageRes = await openai.images.generate({
               model: 'dall-e-3',
@@ -183,7 +213,10 @@ export function createAIEngine(env: Env, logger: Logger): AIEngine {
             });
             const imageUrl = imageRes.data?.[0]?.url;
             if (imageUrl) {
+              const latencyMs = Math.round(performance.now() - startTime);
+              logAICallToStore(store, 'dall-e-3', 1, 0.04, latencyMs);
               logger.info('ai.visualization_image', { topic, subject, exam, provider: 'dalle3' });
+              // Note: DALL-E URLs expire in ~1hr. Frontend should cache/download.
               return { type: 'image', content: imageUrl };
             }
           } catch (err) {
@@ -420,17 +453,19 @@ Rules for your responses:
       // Attempt 1: Groq (fast)
       if (groq) {
         try {
+          const startTime = performance.now();
           const c = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: chatMessages, temperature: 0.7, max_tokens: 1500 });
           const reply = c.choices[0]?.message?.content ?? '';
-          if (reply) { logger.info('ai.chat', { provider: 'groq', length: reply.length }); return reply; }
+          if (reply) { const tokens = estimateTokens(reply); logAICallToStore(store, 'llama-3.3-70b-versatile', tokens, estimateCost('llama-3.3-70b-versatile', tokens), Math.round(performance.now() - startTime)); logger.info('ai.chat', { provider: 'groq', length: reply.length }); return reply; }
         } catch (err) { logger.warn('ai.chat_groq_failed', { error: err instanceof Error ? err.message : String(err) }); }
       }
       // Attempt 2: OpenAI
       if (openai) {
         try {
+          const startTime = performance.now();
           const c = await openai.chat.completions.create({ model: 'gpt-4o', messages: chatMessages, temperature: 0.7, max_tokens: 1500 });
           const reply = c.choices[0]?.message?.content ?? '';
-          if (reply) { logger.info('ai.chat', { provider: 'openai', length: reply.length }); return reply; }
+          if (reply) { const tokens = estimateTokens(reply); logAICallToStore(store, 'gpt-4o', tokens, estimateCost('gpt-4o', tokens), Math.round(performance.now() - startTime)); logger.info('ai.chat', { provider: 'openai', length: reply.length }); return reply; }
         } catch (err) { logger.warn('ai.chat_openai_failed', { error: err instanceof Error ? err.message : String(err) }); }
       }
       throw new Error('Chat AI unavailable. Please try again.');

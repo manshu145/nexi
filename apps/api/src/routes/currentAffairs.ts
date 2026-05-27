@@ -236,7 +236,7 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
   app.post('/ingest', async (c) => {
     // Allow either auth'd admin or cron secret header
     const cronSecret = c.req.header('x-cron-secret');
-    if (cronSecret !== 'nexigrate-cron-2026') {
+    if (cronSecret !== deps.env.CRON_SECRET) {
       const principal = requireAuth(c);
       // Check if admin
       const user = await deps.users.get(principal.userId);

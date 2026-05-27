@@ -34,6 +34,7 @@ export default function KindleReaderPage() {
   const [showPlanGate, setShowPlanGate] = useState(false);
   const [userCredits, setUserCredits] = useState(0);
   const [unlocking, setUnlocking] = useState(false);
+  const [showCreditConfirm, setShowCreditConfirm] = useState(false);
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
   const pageRef = useRef<HTMLDivElement>(null);
@@ -60,6 +61,13 @@ export default function KindleReaderPage() {
               const chapterIdx = subjectData.chapters.findIndex((ch: any) => ch.slug === chapter);
               if (chapterIdx >= 2 && credits < 5) {
                 setShowPlanGate(true);
+                setPageLoading(false);
+                return;
+              }
+              // Show confirmation before spending credits (Fix #20 from audit)
+              if (chapterIdx >= 2 && credits >= 5) {
+                setUserCredits(credits);
+                setShowCreditConfirm(true);
                 setPageLoading(false);
                 return;
               }
@@ -414,6 +422,23 @@ export default function KindleReaderPage() {
   if (showPlanGate) return (
     <div className="kindle-frame">
       <PlanGate credits={userCredits} onUseCredits={handleUseCredits} loading={unlocking} />
+    </div>
+  );
+
+  if (showCreditConfirm) return (
+    <div className="kindle-frame">
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-4 px-5 text-center">
+        <span className="text-5xl">💎</span>
+        <h2 className="font-serif text-xl font-bold text-ink-900">Spend 5 Credits?</h2>
+        <p className="text-sm text-muted-500 max-w-xs">This chapter will cost 5 credits to unlock. You currently have <span className="font-semibold text-ink-900">{userCredits} credits</span>.</p>
+        <div className="flex gap-3 mt-4">
+          <button onClick={() => { setShowCreditConfirm(false); handleUseCredits(); }} className="btn-primary" disabled={unlocking}>
+            {unlocking ? 'Unlocking...' : 'Yes, Unlock'}
+          </button>
+          <button onClick={() => router.back()} className="btn-ghost">Cancel</button>
+        </div>
+        <p className="text-xs text-muted-400 mt-2">Credits are refunded if content generation fails.</p>
+      </div>
     </div>
   );
 

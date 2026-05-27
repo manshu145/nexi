@@ -5,8 +5,9 @@ import { asExamSlug, isExamSlug } from '@nexigrate/shared';
 import { requireAuth } from '../auth.js';
 import type { Logger } from '../logger.js';
 import type { UserStore } from '../lib/userStore.js';
+import type { Firestore } from 'firebase-admin/firestore';
 
-export interface UsersRoutesDeps { users: UserStore; logger: Logger; }
+export interface UsersRoutesDeps { users: UserStore; logger: Logger; db?: Firestore | null; }
 
 const patchSchema = z.object({ name: z.string().min(1).optional(), phone: z.string().optional(), dob: z.string().optional(), classLevel: z.string().optional(), board: z.string().optional(), school: z.string().optional(), aim: z.string().optional() });
 const onboardingSchema = z.object({ language: z.enum(['en','hi']).optional(), targetExam: z.string().refine(isExamSlug, { message: 'unknown exam slug' }).optional(), name: z.string().min(1).optional(), phone: z.string().optional(), dob: z.string().optional(), classLevel: z.string().optional(), board: z.string().optional(), school: z.string().optional(), aim: z.string().optional() });
@@ -79,7 +80,21 @@ export function makeUsersRoutes(deps: UsersRoutesDeps): Hono {
   // GET /v1/users/announcements — public: active announcements for current user
   app.get('/announcements', async (c) => {
     requireAuth(c);
-    // Return active announcements (placeholder — will be populated from Firestore)
+    // Query active announcements from Firestore
+    if (deps.db) {
+      try {
+        const now = new Date().toISOString();
+        const snap = await deps.db.collection('announcements')
+          .where('isActive', '==', true)
+          .orderBy('createdAt', 'desc')
+          .limit(10)
+          .get();
+        const announcements = snap.docs
+          .map(d => d.data())
+          .filter(a => !a.expiresAt || a.expiresAt > now);
+        return c.json({ announcements });
+      } catch { /* fall through */ }
+    }
     return c.json({ announcements: [] });
   });
 

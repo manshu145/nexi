@@ -27,21 +27,29 @@ export default function AdminUsersPage() {
   const [error, setError] = useState<string | null>(null);
   const [fetching, setFetching] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [searchDebounce, setSearchDebounce] = useState('');
 
   useEffect(() => {
     if (!loading && !user) router.replace('/signin');
-    if (!loading && user && user.email !== 'manshu.ibc24@gmail.com') router.replace('/dashboard');
   }, [user, loading, router]);
 
+  // Debounce search
   useEffect(() => {
-    if (!user || user.email !== 'manshu.ibc24@gmail.com') return;
+    const timer = setTimeout(() => { setSearchDebounce(search); setPage(1); }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    if (!user) return;
     let cancelled = false;
     (async () => {
       setFetching(true);
       try {
         const auth = getFirebaseAuthClient();
         const token = await auth.currentUser?.getIdToken();
-        const res = await fetch(`${API}/v1/admin/users?page=${page}&limit=20`, { headers: { Authorization: `Bearer ${token}` } });
+        const searchParam = searchDebounce ? `&search=${encodeURIComponent(searchDebounce)}` : '';
+        const res = await fetch(`${API}/v1/admin/users?page=${page}&limit=20${searchParam}`, { headers: { Authorization: `Bearer ${token}` } });
         if (!res.ok) throw new Error(`Failed: ${res.status}`);
         const data = await res.json() as { users: AdminUser[]; total: number };
         if (!cancelled) { setUsers(data.users); setTotal(data.total); }
@@ -52,7 +60,7 @@ export default function AdminUsersPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, [user, page]);
+  }, [user, page, searchDebounce]);
 
   if (loading || !user) return <div className="flex items-center justify-center py-20"><AILoader context="general" /></div>;
   if (error) return <div className="banner banner-error">{error}</div>;
@@ -61,6 +69,17 @@ export default function AdminUsersPage() {
     <div>
       <h1 className="font-serif text-2xl font-bold text-ink-900">Users</h1>
       <p className="mt-1 text-sm text-muted-500">{total} total users</p>
+
+      {/* Search bar */}
+      <div className="mt-4">
+        <input
+          type="text"
+          placeholder="Search by name, email, phone, or exam..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="input w-full"
+        />
+      </div>
 
       {fetching ? (
         <div className="flex items-center justify-center py-12"><AILoader context="general" /></div>

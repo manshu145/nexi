@@ -79,6 +79,11 @@ export const api = {
   async createOrder(planId: string, period: 'monthly'|'yearly') { return (await authedFetch('/v1/billing/order', { method: 'POST', body: JSON.stringify({ planId, period }) })).json() as Promise<{orderId:string; amount:number; currency:string; key:string; keyId?:string}>; },
   async verifyPayment(data: {razorpay_order_id:string; razorpay_payment_id:string; razorpay_signature:string; planId?:string; period?:'monthly'|'yearly'}) { return (await authedFetch('/v1/billing/verify', { method: 'POST', body: JSON.stringify(data) })).json() as Promise<{success:boolean; plan:string; expiresAt:string}>; },
   async getSubscription() { return (await authedFetch('/v1/billing/subscription')).json() as Promise<{plan:string; planExpiresAt:string|null; isActive:boolean; daysRemaining:number; credits:number}>; },
+
+  // Session tracking
+  async startSession() { return (await authedFetch('/v1/users/me/session/start', { method: 'POST' })).json() as Promise<{sessionId:string; startedAt:string}>; },
+  async pingSession() { return (await authedFetch('/v1/users/me/session/ping', { method: 'POST' })).json() as Promise<{ok:boolean}>; },
+  async endSession() { return (await authedFetch('/v1/users/me/session/end', { method: 'POST' })).json() as Promise<{ok:boolean}>; },
 };
 
 export interface CurrentAffairsItem { id: string; headline: string; body: string; category: string; sources: string[]; summary: string; factChecked: boolean; date: string; publishedAt: string; }

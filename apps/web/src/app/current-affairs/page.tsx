@@ -103,8 +103,8 @@ export default function CurrentAffairsShortsPage() {
     }
   };
 
-  // Mouse wheel handler (desktop)
-  const handleWheel = useCallback((e: React.WheelEvent) => {
+  // Mouse wheel handler (desktop) - use { passive: false } via ref to avoid Chrome warning
+  const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
     if (wheelTimeout.current) return;
     if (Math.abs(e.deltaY) < 30) return;
@@ -112,6 +112,14 @@ export default function CurrentAffairsShortsPage() {
     else goPrev();
     wheelTimeout.current = setTimeout(() => { wheelTimeout.current = null; }, 400);
   }, [goNext, goPrev]);
+
+  // Attach wheel listener with { passive: false } to avoid Chrome warning (Fix #16)
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleWheel);
+  }, [handleWheel]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -215,7 +223,6 @@ export default function CurrentAffairsShortsPage() {
           className="flex-1 relative overflow-hidden"
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
-          onWheel={handleWheel}
         >
           {/* Desktop layout: centered card + sidebar */}
           <div className="absolute inset-0 flex items-stretch justify-center">
@@ -312,18 +319,25 @@ function ShortCard({ item, isActive, liked, bookmarked, likeCount, onLike, onBoo
   const emoji = CATEGORY_EMOJIS[item.category] ?? '📰';
   const keyPoints = extractKeyPoints(item.summary || item.body);
   const imageUrl = CATEGORY_IMAGES[item.category] ?? CATEGORY_IMAGES['national']!;
+  const [imgError, setImgError] = useState(false);
 
   return (
     <div className="h-full w-full flex items-center justify-center px-3 py-2 lg:px-0 lg:py-3">
       <div
-        className={`relative w-full h-full rounded-2xl lg:rounded-3xl overflow-hidden shadow-xl border border-line cursor-pointer bg-paper-50 transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+        className={`relative w-full h-full rounded-2xl lg:rounded-3xl overflow-hidden shadow-xl border border-line cursor-pointer bg-paper-50 dark:bg-paper-100 transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
           isActive ? 'scale-100 opacity-100' : 'scale-[0.96] opacity-30'
         }`}
         onClick={onTap}
       >
         {/* Image header */}
         <div className="relative h-[35%] min-h-[140px] max-h-[200px] overflow-hidden">
-          <img src={imageUrl} alt={item.category} className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
+          {!imgError ? (
+            <img src={imageUrl} alt={item.category} className="absolute inset-0 w-full h-full object-cover" loading="lazy" onError={() => setImgError(true)} />
+          ) : (
+            <div className="absolute inset-0 w-full h-full bg-gradient-to-br from-paper-200 to-paper-300 dark:from-ink-800 dark:to-ink-900 flex items-center justify-center">
+              <span className="text-4xl">{emoji}</span>
+            </div>
+          )}
           <div className="absolute inset-0" style={{ background: `linear-gradient(180deg, ${getCategoryOverlay(item.category)}80 0%, ${getCategoryOverlay(item.category)}40 50%, transparent 100%)` }} />
           <div className="absolute top-3 left-3 flex items-center gap-2">
             <span className="px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider bg-paper-50/90 text-ink-900 backdrop-blur-sm shadow-sm">

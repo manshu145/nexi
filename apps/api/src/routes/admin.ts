@@ -43,11 +43,28 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
     return c.json({ health, checkedAt: new Date().toISOString() });
   });
 
-  // GET /v1/admin/users — paginated
+  // GET /v1/admin/users — paginated with search
   app.get('/users', async (c) => {
     const page = parseInt(c.req.query('page') ?? '1');
     const limit = parseInt(c.req.query('limit') ?? '20');
-    const users = await deps.users.listAll?.() ?? [];
+    const search = c.req.query('search')?.toLowerCase().trim() ?? '';
+    let users = await deps.users.listAll?.() ?? [];
+    // Deduplicate by email (Fix #4)
+    const seen = new Map<string, typeof users[0]>();
+    for (const u of users) {
+      const key = u.email?.toLowerCase();
+      if (!key || !seen.has(key)) { seen.set(key || u.id, u); }
+    }
+    users = Array.from(seen.values());
+    // Search/filter
+    if (search) {
+      users = users.filter(u =>
+        u.name?.toLowerCase().includes(search) ||
+        u.email?.toLowerCase().includes(search) ||
+        u.phone?.toLowerCase().includes(search) ||
+        u.targetExam?.toLowerCase().includes(search)
+      );
+    }
     const paginated = users.slice((page - 1) * limit, page * limit);
     return c.json({ users: paginated, total: users.length, page, limit });
   });
@@ -133,12 +150,15 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
 
   // GET /v1/admin/revenue — payments
   app.get('/revenue', async (c) => {
-    // This should ideally come from a payments store — for now return from stats
-    return c.json({ payments: [], total: 0 });
+    const revenue = await deps.adminStore.getRevenue();
+    return c.json(revenue);
   });
 
   // GET /v1/admin/support — tickets
-  app.get('/support', (c) => { return c.json({ tickets: [] }); });
+  app.get('/support', async (c) => {
+    const tickets = await deps.adminStore.getSupportTickets();
+    return c.json({ tickets });
+  });
 
   // POST /v1/admin/support/:id/reply — reply to a ticket
   app.post('/support/:id/reply', async (c) => {
@@ -171,19 +191,22 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
       createdAt: new Date().toISOString(), expiresAt: body.expiresAt ?? null,
       isActive: true, sentViaEmail: false, sentCount: 0,
     };
-    // Save to adminStore or directly — for now use a simple approach
+    // Save to Firestore
+    await deps.adminStore.saveAnnouncement(announcement);
     deps.logger.info('admin.announcement_created', { id, title: body.title });
     return c.json({ announcement });
   });
 
   // GET /v1/admin/announcements — list all
   app.get('/announcements', async (c) => {
-    return c.json({ announcements: [] });
+    const announcements = await deps.adminStore.getAnnouncements();
+    return c.json({ announcements });
   });
 
   // DELETE /v1/admin/announcements/:id
   app.delete('/announcements/:id', async (c) => {
     const id = c.req.param('id');
+    await deps.adminStore.deleteAnnouncement(id);
     deps.logger.info('admin.announcement_deleted', { id });
     return c.json({ success: true });
   });
@@ -203,7 +226,13 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
       const result = await emailService.sendBulkEmail(body.emails, body.subject, body.body);
       return c.json(result);
     }
-    throw new HTTPException(400, { message: 'to or emails[] required' });
+    // If no 'to' and no 'emails[]', send to ALL users
+    const allUsers = await deps.users.listAll?.() ?? [];
+    const allEmails = allUsers.map(u => u.email).filter(e => e && e.includes('@'));
+    if (allEmails.length === 0) throw new HTTPException(400, { message: 'No user emails found' });
+    const result = await emailService.sendBulkEmail(allEmails, body.subject, body.body);
+    deps.logger.info('admin.email_sent_to_all', { count: allEmails.length });
+    return c.json(result);
   });
 
   // GET /v1/admin/email/status — check if email is configured
