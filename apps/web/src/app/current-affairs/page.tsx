@@ -185,9 +185,9 @@ export default function CurrentAffairsShortsPage() {
         </button>
         <div className="flex items-center gap-2">
           <span className="text-ink-900 text-sm font-semibold">Today&apos;s News</span>
-          {isFromYesterday && <span className="text-[10px] px-1.5 py-0.5 rounded bg-gold-500/20 text-gold-600">Yesterday</span>}
+          {isFromYesterday && <span className="text-[10px] px-1.5 py-0.5 rounded bg-ember-500/20 text-ember-600">Yesterday</span>}
         </div>
-        <button onClick={() => router.push('/current-affairs/quiz')} className="inline-flex items-center gap-1.5 rounded-full bg-gold-500 px-3.5 py-1.5 text-xs font-semibold text-paper-50 hover:bg-gold-600 transition-colors shadow-sm">
+        <button onClick={() => router.push('/current-affairs/quiz')} className="inline-flex items-center gap-1.5 rounded-full bg-ember-500 px-3.5 py-1.5 text-xs font-semibold text-paper-50 hover:bg-ember-600 transition-colors shadow-sm">
           📝 Take Quiz
         </button>
       </header>
@@ -293,7 +293,7 @@ export default function CurrentAffairsShortsPage() {
         <div className="fixed bottom-0 left-0 right-0 z-30 px-4 pb-4 pt-2 bg-gradient-to-t from-paper-50 via-paper-50/95 to-transparent lg:hidden">
           <button
             onClick={() => router.push('/current-affairs/quiz')}
-            className="w-full rounded-xl bg-gold-500 px-4 py-3 text-sm font-bold text-paper-50 shadow-lg hover:bg-gold-600 transition-colors"
+            className="w-full rounded-xl bg-ember-500 px-4 py-3 text-sm font-bold text-paper-50 shadow-lg hover:bg-ember-600 transition-colors"
           >
             📝 Take Today&apos;s Quiz
           </button>
