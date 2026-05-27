@@ -11,7 +11,7 @@ export const FAQ: readonly FaqItem[] = [
   },
   {
     q: 'Which exams are covered now?',
-    a: 'For the v0.1 launch we are focused on Class 11–12 CBSE, JEE Main, JEE Advanced, and NEET UG. Class 8–10 boards are next, followed by SSC and banking, then UPSC and State PSCs. We would rather do five exams flawlessly than fifty mediocrely.',
+    a: 'We cover 63+ exams including UPSC CSE, SSC CGL/CHSL, JEE Main & Advanced, NEET UG, Class 8-12 CBSE, IBPS PO/Clerk, SBI PO, RRB NTPC, NDA, CDS, Agniveer, CAPF, and State PSCs. All with AI-generated, NCERT-grounded content.',
   },
   {
     q: 'How do you make sure the content is correct?',
@@ -26,7 +26,7 @@ export const FAQ: readonly FaqItem[] = [
     a: 'Your data is stored in India (Mumbai region), encrypted in transit and at rest, and never sold. We are building to be DPDP Act 2023 compliant from day one, including verifiable parental consent for users under 18. Your verification documents are deleted from active storage 30 days after approval.',
   },
   {
-    q: 'Why do I need to verify I am a student?',
-    a: 'Two reasons. First, verified-only keeps the platform free of spam, scammers, and fake users. Second, it lets us tailor the syllabus tracking, current affairs, and mock tests to your actual exam and stage. Verification is a one-time upload of any school ID, admit card, or marksheet.',
+    q: 'Why do I need to verify my phone number?',
+    a: 'Phone verification prevents duplicate accounts and spam. It ensures every user is a real student so we can keep the platform free and distraction-free. We never share your phone number with anyone.',
   },
 ];

@@ -21,6 +21,7 @@ import { makeCreditsRoutes } from './routes/credits.js';
 import { makeBillingRoutes } from './routes/billing.js';
 import { makeAdminRoutes } from './routes/admin.js';
 import { makeSupportRoutes } from './routes/support.js';
+import { makeEssayRoutes } from './routes/essay.js';
 import { InMemoryCouponStore, FirestoreCouponStore, type CouponStore } from './lib/couponStore.js';
 
 export interface AppDeps { env: Env; logger: Logger; users?: UserStore; aiEngine?: AIEngine; chapters?: ChapterStore; currentAffairs?: CurrentAffairsStore; chatStore?: ChatStore; adminStore?: AdminStore; couponStore?: CouponStore; }
@@ -129,6 +130,7 @@ export function buildApp(deps: AppDeps): Hono {
   v1.route('/billing', makeBillingRoutes({ users, env, logger, db: fs, coupons: couponStore }));
   v1.route('/admin', makeAdminRoutes({ users, adminStore, env, logger, coupons: couponStore }));
   v1.route('/support', makeSupportRoutes({ users, db: fs, logger }));
+  v1.route('/essay', makeEssayRoutes({ users, aiEngine, logger, db: fs }));
 
   // POST /v1/logs/error — web app error reporting (no auth required for error boundary)
   v1.post('/logs/error', async (c) => {
