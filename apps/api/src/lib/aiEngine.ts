@@ -32,9 +32,25 @@ export interface AIEngine {
 }
 
 /** Helper to log AI calls to adminStore for system logs visibility */
-function logAICallToStore(adminStore: AdminStore | null, model: string, tokens: number, cost: number, latencyMs: number, userId?: string) {
+function logAICallToStore(
+  adminStore: AdminStore | null,
+  model: string,
+  tokens: number,
+  cost: number,
+  latencyMs: number,
+  userId?: string,
+  extra?: { status?: 'success' | 'error'; endpoint?: string; provider?: string; error?: string; requestPreview?: string; responsePreview?: string }
+) {
   if (!adminStore) return;
-  adminStore.logAICall({ model, tokens, cost, latencyMs, userId, timestamp: new Date().toISOString() }).catch(() => {});
+  adminStore.logAICall({
+    model, tokens, cost, latencyMs, userId, timestamp: new Date().toISOString(),
+    status: extra?.status ?? 'success',
+    endpoint: extra?.endpoint,
+    provider: extra?.provider,
+    error: extra?.error,
+    requestPreview: extra?.requestPreview?.slice(0, 300),
+    responsePreview: extra?.responsePreview?.slice(0, 500),
+  }).catch(() => {});
 }
 
 /** Estimate token count from text length */
@@ -79,7 +95,7 @@ export function createAIEngine(env: Env, logger: Logger, adminStore?: AdminStore
         try {
           const completion = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 4096, response_format: { type: 'json_object' } });
           const parsed = JSON.parse(completion.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
-          if (parsed.questions?.length) { const tokens = estimateTokens(completion.choices[0]?.message?.content ?? ''); logAICallToStore(store, 'llama-3.3-70b-versatile', tokens, estimateCost('llama-3.3-70b-versatile', tokens), 0); logger.info('ai.questions_generated', { provider: 'groq', examSlug, language, count: parsed.questions.length }); return parsed.questions; }
+          if (parsed.questions?.length) { const tokens = estimateTokens(completion.choices[0]?.message?.content ?? ''); logAICallToStore(store, 'llama-3.3-70b-versatile', tokens, estimateCost('llama-3.3-70b-versatile', tokens), 0, undefined, { status: 'success', endpoint: 'generateAssessmentQuestions', provider: 'groq', requestPreview: prompt.slice(0, 200), responsePreview: completion.choices[0]?.message?.content?.slice(0, 300) }); logger.info('ai.questions_generated', { provider: 'groq', examSlug, language, count: parsed.questions.length }); return parsed.questions; }
           errors.push('Groq returned empty');
         } catch (err) { errors.push(`Groq: ${err instanceof Error ? err.message : String(err)}`); }
       } else { errors.push('Groq not configured'); }
@@ -101,6 +117,7 @@ export function createAIEngine(env: Env, logger: Logger, adminStore?: AdminStore
         } catch (err) { errors.push(`Gemini: ${err instanceof Error ? err.message : String(err)}`); }
       } else { errors.push('Gemini not configured'); }
       logger.error('ai.questions_all_failed', { errors, examSlug, language });
+      logAICallToStore(store, 'all-providers', 0, 0, 0, undefined, { status: 'error', endpoint: 'generateAssessmentQuestions', error: errors.join('; '), requestPreview: prompt.slice(0, 200) });
       throw new Error(`Failed to generate assessment questions: ${errors.join('; ')}`);
     },
 
@@ -131,7 +148,7 @@ export function createAIEngine(env: Env, logger: Logger, adminStore?: AdminStore
         const content = c.choices[0]?.message?.content ?? '';
         const tokens = estimateTokens(content + prompt);
         const latencyMs = Math.round(performance.now() - startTime);
-        logAICallToStore(store, 'gpt-4o', tokens, estimateCost('gpt-4o', tokens), latencyMs);
+        logAICallToStore(store, 'gpt-4o', tokens, estimateCost('gpt-4o', tokens), latencyMs, undefined, { status: 'success', endpoint: 'generateChapterContent', provider: 'openai', requestPreview: prompt.slice(0, 200), responsePreview: content.slice(0, 300) });
         logger.info('ai.chapter_generated', { chapter, subject, exam, language, words: content.split(/\s+/).length });
         return content;
       } catch (err) { logger.error('ai.chapter_error', { error: err instanceof Error ? err.message : String(err) }); throw new Error('Failed to generate chapter content'); }
@@ -166,6 +183,7 @@ export function createAIEngine(env: Env, logger: Logger, adminStore?: AdminStore
         } catch (err) { errors.push(`Gemini: ${err instanceof Error ? err.message : String(err)}`); }
       } else { errors.push('Gemini not configured'); }
       logger.error('ai.chapter_mcqs_all_failed', { errors, chapter, subject, exam });
+      logAICallToStore(store, 'all-providers', 0, 0, 0, undefined, { status: 'error', endpoint: 'generateChapterMCQs', error: errors.join('; '), requestPreview: `Chapter: ${chapter}, Subject: ${subject}` });
       throw new Error(`Failed to generate chapter MCQs: ${errors.join('; ')}`);
     },
 
@@ -214,7 +232,7 @@ export function createAIEngine(env: Env, logger: Logger, adminStore?: AdminStore
             const imageUrl = imageRes.data?.[0]?.url;
             if (imageUrl) {
               const latencyMs = Math.round(performance.now() - startTime);
-              logAICallToStore(store, 'dall-e-3', 1, 0.04, latencyMs);
+              logAICallToStore(store, 'dall-e-3', 1, 0.04, latencyMs, undefined, { status: 'success', endpoint: 'generateVisualization', provider: 'openai', requestPreview: imagePrompt.slice(0, 200), responsePreview: `Image URL generated: ${imageUrl.slice(0, 80)}...` });
               logger.info('ai.visualization_image', { topic, subject, exam, provider: 'dalle3' });
               // Note: DALL-E URLs expire in ~1hr. Frontend should cache/download.
               return { type: 'image', content: imageUrl };
@@ -456,7 +474,7 @@ Rules for your responses:
           const startTime = performance.now();
           const c = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: chatMessages, temperature: 0.7, max_tokens: 1500 });
           const reply = c.choices[0]?.message?.content ?? '';
-          if (reply) { const tokens = estimateTokens(reply); logAICallToStore(store, 'llama-3.3-70b-versatile', tokens, estimateCost('llama-3.3-70b-versatile', tokens), Math.round(performance.now() - startTime)); logger.info('ai.chat', { provider: 'groq', length: reply.length }); return reply; }
+          if (reply) { const tokens = estimateTokens(reply); logAICallToStore(store, 'llama-3.3-70b-versatile', tokens, estimateCost('llama-3.3-70b-versatile', tokens), Math.round(performance.now() - startTime), undefined, { status: 'success', endpoint: 'chat', provider: 'groq', requestPreview: messages[messages.length - 1]?.content?.slice(0, 200), responsePreview: reply.slice(0, 300) }); logger.info('ai.chat', { provider: 'groq', length: reply.length }); return reply; }
         } catch (err) { logger.warn('ai.chat_groq_failed', { error: err instanceof Error ? err.message : String(err) }); }
       }
       // Attempt 2: OpenAI
@@ -465,7 +483,7 @@ Rules for your responses:
           const startTime = performance.now();
           const c = await openai.chat.completions.create({ model: 'gpt-4o', messages: chatMessages, temperature: 0.7, max_tokens: 1500 });
           const reply = c.choices[0]?.message?.content ?? '';
-          if (reply) { const tokens = estimateTokens(reply); logAICallToStore(store, 'gpt-4o', tokens, estimateCost('gpt-4o', tokens), Math.round(performance.now() - startTime)); logger.info('ai.chat', { provider: 'openai', length: reply.length }); return reply; }
+          if (reply) { const tokens = estimateTokens(reply); logAICallToStore(store, 'gpt-4o', tokens, estimateCost('gpt-4o', tokens), Math.round(performance.now() - startTime), undefined, { status: 'success', endpoint: 'chat', provider: 'openai', requestPreview: messages[messages.length - 1]?.content?.slice(0, 200), responsePreview: reply.slice(0, 300) }); logger.info('ai.chat', { provider: 'openai', length: reply.length }); return reply; }
         } catch (err) { logger.warn('ai.chat_openai_failed', { error: err instanceof Error ? err.message : String(err) }); }
       }
       // Attempt 3: Gemini Flash (fallback)
