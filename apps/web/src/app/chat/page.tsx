@@ -115,6 +115,8 @@ function ChatPage() {
     setMessages([]);
     setInput('');
     setAttachments([]);
+    setVizContent(null);
+    setGeneratedImage(null);
     setSidebarOpen(false);
   };
 
@@ -196,8 +198,8 @@ function ChatPage() {
         return [{ id: res.sessionId, title: res.title, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), messageCount: 2 }, ...prev];
       });
     } catch (e) {
-      const errMsg: ChatMessage = { role: 'assistant', content: `Error: ${e instanceof Error ? e.message : 'Failed to send'}`, timestamp: new Date().toISOString() };
-      setMessages(prev => [...prev, errMsg]);
+      const errText = e instanceof Error ? e.message : 'Failed to send. Please try again.';
+      setMessages(prev => [...prev, { role: 'assistant', content: `⚠️ ${errText}`, timestamp: new Date().toISOString() }]);
     } finally { setSending(false); }
   };
 
@@ -226,7 +228,20 @@ function ChatPage() {
   };
 
   const [generatingImage, setGeneratingImage] = useState(false);
-  const [generatedImage, setGeneratedImage] = useState<{ type: string; content: string } | null>(null);
+  const [generatedImage, setGeneratedImage] = useState<{ type: string; content: string; fallback?: boolean } | null>(null);
+
+  // Escape key closes modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (vizContent) setVizContent(null);
+        if (generatedImage) setGeneratedImage(null);
+        if (modelDropdownOpen) setModelDropdownOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [vizContent, generatedImage, modelDropdownOpen]);
 
   const handleGenerateImage = async () => {
     const topic = input.trim();
@@ -234,9 +249,14 @@ function ChatPage() {
     setGeneratingImage(true);
     try {
       const res = await api.generateImage(topic);
-      setGeneratedImage(res);
+      if (res.fallback) {
+        // API returned a mermaid fallback — show with a message
+        setGeneratedImage({ type: 'mermaid', content: res.content });
+      } else {
+        setGeneratedImage(res);
+      }
     } catch {
-      // Fallback to diagram if image gen fails
+      // Total failure — fall back to diagram
       handleVisualize(topic);
     } finally { setGeneratingImage(false); }
   };
@@ -326,8 +346,8 @@ function ChatPage() {
               </button>
               {modelDropdownOpen && (
                 <>
-                  <div className="fixed inset-0 z-40" onClick={() => setModelDropdownOpen(false)} />
-                  <div className="absolute top-full left-0 mt-1 z-50 w-52 rounded-xl border border-line bg-paper-50 shadow-lg py-1">
+                  <div className="fixed inset-0 z-[60]" onClick={() => setModelDropdownOpen(false)} />
+                  <div className="absolute top-full left-0 mt-1 z-[70] w-52 rounded-xl border border-line bg-paper-50 shadow-lg py-1">
                     <button onClick={() => handleModelChange('gpt4o')} className={`w-full px-3 py-2 text-left text-sm hover:bg-paper-200 transition-colors ${selectedModel === 'gpt4o' ? 'bg-paper-200 font-medium' : ''}`}>
                       <div className="font-medium text-ink-900">GPT-4o</div>
                       <div className="text-xs text-muted-400">Deep, detailed responses</div>
@@ -509,14 +529,6 @@ function ChatPage() {
               <span>&#x1F3A8;</span>
               <span>Generate Diagram</span>
             </button>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-line bg-paper-100 text-xs font-medium text-ink-700 hover:bg-paper-200 hover:text-ink-900 transition-colors"
-              title="Attach a file or image"
-            >
-              <span>&#x1F4CE;</span>
-              <span>Attach</span>
-            </button>
           </div>
 
           {/* Input row */}
@@ -546,8 +558,7 @@ function ChatPage() {
                 placeholder="Type your message..."
                 rows={1}
                 className="input w-full resize-none pr-12 min-h-[44px] max-h-[120px]"
-                style={{ height: 'auto', overflow: 'hidden' }}
-                onInput={(e) => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 120) + 'px'; }}
+                onInput={(e) => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 120) + 'px'; t.style.overflowY = t.scrollHeight > 120 ? 'auto' : 'hidden'; }}
               />
               <button
                 onClick={sendMessage}
