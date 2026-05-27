@@ -68,12 +68,29 @@ export interface AdminStore {
   startSession(uid: string): Promise<string>;
   endSession(uid: string, sessionId: string): Promise<void>;
   getAPIHealth(env: Env): Promise<AdminStats['apiHealth']>;
+  // SEO
+  getSeoSettings(): Promise<Record<string, any>>;
+  saveSeoSettings(settings: Record<string, any>): Promise<void>;
+  // Email templates
+  getEmailTemplates(): Promise<EmailTemplate[]>;
+  saveEmailTemplate(template: EmailTemplate): Promise<void>;
+  deleteEmailTemplate(id: string): Promise<void>;
+}
+
+export interface EmailTemplate {
+  id: string;
+  name: string;
+  subject: string;
+  body: string;
+  createdAt: string;
 }
 
 export class InMemoryAdminStore implements AdminStore {
   private errorLogs: ErrorLog[] = [];
   private aiCallLogs: AICallLog[] = [];
   private sessions = new Map<string, { startedAt: string; lastPing: string }>();
+  private seoSettings: Record<string, any> = {};
+  private emailTemplates: EmailTemplate[] = [];
 
   async getFullStats(): Promise<AdminStats> {
     return { totalUsers: 0, dau: 0, mau: 0, newUsersToday: 0, newUsersThisWeek: 0, revenueToday: 0, revenue7d: 0, revenue30d: 0, revenueTotal: 0, aiCallsToday: this.aiCallLogs.filter(l => l.timestamp.startsWith(new Date().toISOString().split('T')[0]!)).length, aiCallsThisWeek: this.aiCallLogs.length, aiCostToday: 0, activeSessions: this.sessions.size, apiHealth: { openai: 'unconfigured', groq: 'unconfigured', gemini: 'unconfigured', razorpay: 'unconfigured' } };
@@ -95,6 +112,11 @@ export class InMemoryAdminStore implements AdminStore {
       razorpay: env.RAZORPAY_KEY_ID && env.RAZORPAY_KEY_ID.length > 5 ? 'ok' : 'unconfigured',
     };
   }
+  async getSeoSettings() { return this.seoSettings; }
+  async saveSeoSettings(settings: Record<string, any>) { this.seoSettings = { ...this.seoSettings, ...settings }; }
+  async getEmailTemplates() { return this.emailTemplates; }
+  async saveEmailTemplate(t: EmailTemplate) { this.emailTemplates.push(t); }
+  async deleteEmailTemplate(id: string) { this.emailTemplates = this.emailTemplates.filter(t => t.id !== id); }
 }
 
 export class FirestoreAdminStore implements AdminStore {
@@ -295,5 +317,31 @@ export class FirestoreAdminStore implements AdminStore {
     }
 
     return health;
+  }
+
+  async getSeoSettings(): Promise<Record<string, any>> {
+    try {
+      const snap = await this.db.collection('system').doc('seoSettings').get();
+      return snap.exists ? (snap.data() ?? {}) : {};
+    } catch { return {}; }
+  }
+
+  async saveSeoSettings(settings: Record<string, any>): Promise<void> {
+    await this.db.collection('system').doc('seoSettings').set(settings, { merge: true });
+  }
+
+  async getEmailTemplates(): Promise<EmailTemplate[]> {
+    try {
+      const snap = await this.db.collection('emailTemplates').orderBy('createdAt', 'desc').limit(50).get();
+      return snap.docs.map(d => d.data() as EmailTemplate);
+    } catch { return []; }
+  }
+
+  async saveEmailTemplate(t: EmailTemplate): Promise<void> {
+    await this.db.collection('emailTemplates').doc(t.id).set(t);
+  }
+
+  async deleteEmailTemplate(id: string): Promise<void> {
+    await this.db.collection('emailTemplates').doc(id).delete();
   }
 }

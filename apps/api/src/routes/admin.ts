@@ -290,5 +290,45 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
     return c.json({ success: true });
   });
 
+  // ━━━ SEO SETTINGS ━━━
+  // GET /v1/admin/seo — get current SEO settings
+  app.get('/seo', async (c) => {
+    const settings = await deps.adminStore.getSeoSettings();
+    return c.json({ settings });
+  });
+
+  // PUT /v1/admin/seo — update SEO settings
+  app.put('/seo', async (c) => {
+    const body = await c.req.json().catch(() => null) as Record<string, any> | null;
+    if (!body) throw new HTTPException(400, { message: 'body required' });
+    await deps.adminStore.saveSeoSettings(body);
+    deps.logger.info('admin.seo_updated', { keys: Object.keys(body) });
+    return c.json({ success: true });
+  });
+
+  // ━━━ EMAIL TEMPLATES ━━━
+  // GET /v1/admin/email/templates — list saved templates
+  app.get('/email/templates', async (c) => {
+    const templates = await deps.adminStore.getEmailTemplates();
+    return c.json({ templates });
+  });
+
+  // POST /v1/admin/email/templates — save a template
+  app.post('/email/templates', async (c) => {
+    const body = await c.req.json().catch(() => null) as { name?: string; subject?: string; body?: string } | null;
+    if (!body?.name || !body?.subject || !body?.body) throw new HTTPException(400, { message: 'name, subject and body required' });
+    const id = crypto.randomUUID();
+    await deps.adminStore.saveEmailTemplate({ id, name: body.name, subject: body.subject, body: body.body, createdAt: new Date().toISOString() });
+    deps.logger.info('admin.email_template_saved', { id, name: body.name });
+    return c.json({ success: true, id });
+  });
+
+  // DELETE /v1/admin/email/templates/:id — delete a template
+  app.delete('/email/templates/:id', async (c) => {
+    const id = c.req.param('id');
+    await deps.adminStore.deleteEmailTemplate(id);
+    return c.json({ success: true });
+  });
+
   return app;
 }
