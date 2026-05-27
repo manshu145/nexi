@@ -74,6 +74,9 @@ export const api = {
   // Credits
   async getCreditsBalance() { return (await authedFetch('/v1/credits/balance')).json() as Promise<{credits:number; plan:string}>; },
   async earnCredits(type: string) { return (await authedFetch('/v1/credits/earn', { method: 'POST', body: JSON.stringify({ type }) })).json() as Promise<{credited:number; balance:number; message?:string}>; },
+  async getReferralStats() { return (await authedFetch('/v1/credits/referral')).json() as Promise<ReferralStats>; },
+  async applyReferral(referralCode: string) { return (await authedFetch('/v1/credits/referral/apply', { method: 'POST', body: JSON.stringify({ referralCode }) })).json() as Promise<{success:boolean; bonusCredits?:number; message?:string}>; },
+  async completeReferral() { return (await authedFetch('/v1/credits/referral/complete', { method: 'POST' })).json() as Promise<{completed:boolean}>; },
 
   // Billing
   async getPlans() { return (await authedFetch('/v1/billing/plans')).json() as Promise<{plans:Plan[]}>; },
@@ -97,5 +100,6 @@ export interface ChatMessage { role: 'user' | 'assistant'; content: string; time
 export interface ChatSession { id: string; userId: string; title: string; messages: ChatMessage[]; createdAt: string; updatedAt: string; }
 export interface ChatSessionSummary { id: string; title: string; createdAt: string; updatedAt: string; messageCount: number; }
 export interface Plan { id: string; name: string; nameHi: string; price: number; yearlyPrice: number; dailyMcq: number; mockTests: number; aiTutor: boolean; currentAffairs: boolean; essayGrading: boolean; }
+export interface ReferralStats { code: string; referralUrl: string; totalReferrals: number; pendingReferrals: number; completedReferrals: number; totalEarned: number; }
 
 export { ApiError };
