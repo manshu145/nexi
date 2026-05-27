@@ -228,7 +228,7 @@ export function createAIEngine(env: Env, logger: Logger, adminStore?: AdminStore
         if (env.GEMINI_API_KEY) {
           try {
             const geminiImagePrompt = `Generate an educational black-and-white textbook-style diagram explaining "${topic}" for Indian ${exam} students. Clean labels, simple layout, no text watermarks.`;
-            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${env.GEMINI_API_KEY}`, {
+            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -467,6 +467,22 @@ Rules for your responses:
           const reply = c.choices[0]?.message?.content ?? '';
           if (reply) { const tokens = estimateTokens(reply); logAICallToStore(store, 'gpt-4o', tokens, estimateCost('gpt-4o', tokens), Math.round(performance.now() - startTime)); logger.info('ai.chat', { provider: 'openai', length: reply.length }); return reply; }
         } catch (err) { logger.warn('ai.chat_openai_failed', { error: err instanceof Error ? err.message : String(err) }); }
+      }
+      // Attempt 3: Gemini Flash (fallback)
+      if (env.GEMINI_API_KEY && env.GEMINI_API_KEY.length > 5) {
+        try {
+          const geminiMessages = chatMessages.map(m => m.content).join('\n\n');
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: [{ text: geminiMessages }] }], generationConfig: { temperature: 0.7, maxOutputTokens: 1500 } }),
+          });
+          if (res.ok) {
+            const data = await res.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+            const reply = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+            if (reply) { logger.info('ai.chat', { provider: 'gemini', length: reply.length }); return reply; }
+          }
+        } catch (err) { logger.warn('ai.chat_gemini_failed', { error: err instanceof Error ? err.message : String(err) }); }
       }
       throw new Error('Chat AI unavailable. Please try again.');
     },
