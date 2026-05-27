@@ -44,9 +44,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     <div className="admin-layout">
       {/* Sidebar */}
       <aside className={`admin-sidebar max-w-[80vw] ${sidebarOpen ? 'admin-sidebar-open' : ''}`}>
-        <div className="flex items-center gap-2 px-4 py-4 border-b border-slate-800">
+        <div className="flex items-center gap-2 px-4 py-4 border-b border-line">
           <span className="text-lg">⚙️</span>
-          <span className="font-serif font-bold text-amber-400">Admin</span>
+          <span className="font-serif font-semibold text-ink-900">Admin</span>
         </div>
         <nav className="flex-1 px-3 py-3 space-y-1">
           {NAV_ITEMS.map((item) => (
@@ -59,7 +59,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             </button>
           ))}
         </nav>
-        <div className="px-3 py-3 border-t border-slate-800">
+        <div className="px-3 py-3 border-t border-line">
           <button onClick={() => router.push('/dashboard')} className="admin-nav-link w-full text-left flex items-center gap-2">
             <span>←</span> Back to App
           </button>
@@ -73,9 +73,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
       {/* Topbar */}
       <header className="admin-topbar lg:pl-4">
-        <button className="lg:hidden text-slate-400 hover:text-white text-sm font-medium" onClick={() => setSidebarOpen(!sidebarOpen)}>☰ Menu</button>
-        <span className="text-sm font-medium text-slate-300">Nexigrate Admin</span>
-        <span className="text-xs text-slate-500">{user.email}</span>
+        <button className="lg:hidden text-muted-500 hover:text-ink-900 text-sm font-medium" onClick={() => setSidebarOpen(!sidebarOpen)}>☰ Menu</button>
+        <span className="text-sm font-medium text-ink-800">Nexigrate Admin</span>
+        <span className="text-xs text-muted-400">{user.email}</span>
       </header>
 
       {/* Main */}
