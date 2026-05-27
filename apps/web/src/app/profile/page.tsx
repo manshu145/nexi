@@ -205,10 +205,46 @@ export default function ProfilePage() {
       </section>
 
       {/* Sign Out */}
-      <section className="mt-6 mb-8">
+      <section className="mt-6">
         <button onClick={() => signOut()} className="btn-ghost w-full text-sm text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/20">
           Sign Out
         </button>
+      </section>
+
+      {/* Delete Account */}
+      <section className="mt-4 mb-8">
+        <details className="paper-card p-4">
+          <summary className="text-sm font-medium text-red-500 cursor-pointer">Delete Account</summary>
+          <div className="mt-3 space-y-3">
+            <p className="text-xs text-muted-500">This will permanently delete your account, all study progress, credits, and data. This action cannot be undone.</p>
+            <button
+              onClick={async () => {
+                const confirmed = window.confirm('Are you sure you want to delete your account? This cannot be undone. All your data, credits, and progress will be permanently lost.');
+                if (!confirmed) return;
+                const doubleConfirm = window.confirm('Final confirmation: Type OK in your mind. Your account and all associated data will be deleted forever.');
+                if (!doubleConfirm) return;
+                try {
+                  const { getFirebaseAuthClient } = await import('~/lib/firebase');
+                  const auth = getFirebaseAuthClient();
+                  const token = await auth.currentUser?.getIdToken();
+                  const res = await fetch(`${process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com'}/v1/users/me`, {
+                    method: 'DELETE',
+                    headers: { Authorization: `Bearer ${token}` },
+                  });
+                  if (!res.ok) { const err = await res.json().catch(() => ({})) as {error?:string}; throw new Error(err.error || 'Failed to delete'); }
+                  // Delete Firebase auth account
+                  await auth.currentUser?.delete();
+                  window.location.href = '/';
+                } catch (e) {
+                  toast.error(e instanceof Error ? e.message : 'Failed to delete account. Please contact support.');
+                }
+              }}
+              className="w-full rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/20 py-2.5 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-950/40 transition-colors"
+            >
+              Permanently Delete My Account
+            </button>
+          </div>
+        </details>
       </section>
     </main>
   );
