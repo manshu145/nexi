@@ -178,7 +178,14 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
     // Award credits: +5 for any attempt, +5 bonus for passing (>=80%)
     let creditsAwarded = 5;
     if (score >= 80) creditsAwarded = 10;
-    await deps.users.update(principal.userId, {} as any); // touch updatedAt
+    
+    // Actually add credits to user's balance
+    const currentUser = await deps.users.get(principal.userId);
+    if (currentUser) {
+      const newBalance = (currentUser.credits ?? 0) + creditsAwarded;
+      await deps.users.update(principal.userId, { credits: newBalance } as any);
+      deps.logger.info('study.credits_awarded', { userId: principal.userId, amount: creditsAwarded, newBalance });
+    }
 
     // Determine next chapter
     const syllabus = getSyllabus(exam);
