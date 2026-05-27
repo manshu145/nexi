@@ -51,7 +51,13 @@ export default function ProfilePage() {
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-lg flex-col px-5 pt-6 pb-16">
-      <header className="flex items-center justify-between"><button type="button" onClick={() => router.back()} className="btn-ghost-sm">← {tc('back')}</button><Logo /></header>
+      <header className="flex items-center justify-between">
+        <button type="button" onClick={() => router.back()} className="btn-ghost-sm">← {tc('back')}</button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => signOut()} className="btn-ghost-sm text-xs text-red-500">Sign Out</button>
+          <Logo />
+        </div>
+      </header>
       <section className="mt-6 text-center">
         <div className="mx-auto h-16 w-16 overflow-hidden rounded-full bg-paper-200 border border-line">{me?.photoURL ? <img src={me.photoURL} alt="" className="h-full w-full object-cover" /> : <span className="flex h-full w-full items-center justify-center text-xl font-bold text-ink-800">{me?.name?.[0]?.toUpperCase()}</span>}</div>
         <h1 className="font-serif mt-3 text-xl font-semibold text-ink-900">{me?.name}</h1>
@@ -127,7 +133,7 @@ export default function ProfilePage() {
           </div>
           <div className="flex gap-2 pt-1">
             <button onClick={() => router.push('/upgrade')} className="btn-primary flex-1 text-sm">Upgrade Plan</button>
-            <a href="mailto:support@nexigrate.com" className="btn-ghost flex-1 text-sm text-center">Manage Subscription</a>
+            <button onClick={() => router.push('/upgrade')} className="btn-ghost flex-1 text-sm">Manage Subscription</button>
           </div>
         </div>
       </section>
@@ -204,45 +210,48 @@ export default function ProfilePage() {
         </div>
       </section>
 
-      {/* Sign Out */}
-      <section className="mt-6">
-        <button onClick={() => signOut()} className="btn-ghost w-full text-sm text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/20">
-          Sign Out
-        </button>
-      </section>
-
-      {/* Delete Account */}
-      <section className="mt-4 mb-8">
-        <details className="paper-card p-4">
-          <summary className="text-sm font-medium text-red-500 cursor-pointer">Delete Account</summary>
-          <div className="mt-3 space-y-3">
-            <p className="text-xs text-muted-500">This will permanently delete your account, all study progress, credits, and data. This action cannot be undone.</p>
-            <button
-              onClick={async () => {
-                const confirmed = window.confirm('Are you sure you want to delete your account? This cannot be undone. All your data, credits, and progress will be permanently lost.');
-                if (!confirmed) return;
-                const doubleConfirm = window.confirm('Final confirmation: Type OK in your mind. Your account and all associated data will be deleted forever.');
-                if (!doubleConfirm) return;
-                try {
-                  const { getFirebaseAuthClient } = await import('~/lib/firebase');
-                  const auth = getFirebaseAuthClient();
-                  const token = await auth.currentUser?.getIdToken();
-                  const res = await fetch(`${process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com'}/v1/users/me`, {
-                    method: 'DELETE',
-                    headers: { Authorization: `Bearer ${token}` },
-                  });
-                  if (!res.ok) { const err = await res.json().catch(() => ({})) as {error?:string}; throw new Error(err.error || 'Failed to delete'); }
-                  // Delete Firebase auth account
-                  await auth.currentUser?.delete();
-                  window.location.href = '/';
-                } catch (e) {
-                  toast.error(e instanceof Error ? e.message : 'Failed to delete account. Please contact support.');
-                }
-              }}
-              className="w-full rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/20 py-2.5 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-950/40 transition-colors"
-            >
-              Permanently Delete My Account
+      {/* Settings & Danger Zone — deeply hidden */}
+      <section className="mt-8 mb-8">
+        <details className="group">
+          <summary className="text-xs font-medium text-muted-400 cursor-pointer hover:text-muted-600 text-center">Settings & Account</summary>
+          <div className="mt-4 space-y-4">
+            {/* Sign Out */}
+            <button onClick={() => signOut()} className="btn-ghost w-full text-sm text-muted-500 hover:text-ink-900">
+              Sign Out
             </button>
+
+            {/* Danger Zone — hidden deeper */}
+            <details className="mt-4">
+              <summary className="text-[11px] text-muted-400 cursor-pointer hover:text-red-500 text-center">Danger Zone</summary>
+              <div className="mt-3 paper-card p-4 border-red-200 dark:border-red-900/30">
+                <p className="text-xs text-muted-500 mb-3">Permanently delete your account, all study progress, credits, and data. This cannot be undone.</p>
+                <button
+                  onClick={async () => {
+                    const confirmed = window.confirm('Are you sure you want to delete your account? This cannot be undone. All your data, credits, and progress will be permanently lost.');
+                    if (!confirmed) return;
+                    const typed = window.prompt('Type DELETE to confirm account deletion:');
+                    if (typed !== 'DELETE') { toast.error('Deletion cancelled — you typed the wrong word.'); return; }
+                    try {
+                      const { getFirebaseAuthClient } = await import('~/lib/firebase');
+                      const auth = getFirebaseAuthClient();
+                      const token = await auth.currentUser?.getIdToken();
+                      const res = await fetch(`${process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com'}/v1/users/me`, {
+                        method: 'DELETE',
+                        headers: { Authorization: `Bearer ${token}` },
+                      });
+                      if (!res.ok) { const err = await res.json().catch(() => ({})) as {error?:string}; throw new Error(err.error || 'Failed to delete'); }
+                      await auth.currentUser?.delete();
+                      window.location.href = '/';
+                    } catch (e) {
+                      toast.error(e instanceof Error ? e.message : 'Failed to delete account. Please contact support.');
+                    }
+                  }}
+                  className="w-full rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/20 py-2.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-950/40 transition-colors"
+                >
+                  Permanently Delete My Account
+                </button>
+              </div>
+            </details>
           </div>
         </details>
       </section>

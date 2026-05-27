@@ -34,6 +34,7 @@ export interface MCQPoolStore {
     count: number,
     aiEngine: AIEngine,
     logger: Logger,
+    chapterContent?: string,
   ): Promise<GeneratedMCQ[]>;
 }
 
@@ -60,6 +61,7 @@ export class InMemoryMCQPoolStore implements MCQPoolStore {
     count: number,
     aiEngine: AIEngine,
     logger: Logger,
+    chapterContent?: string,
   ): Promise<GeneratedMCQ[]> {
     const pKey = this.poolKey(examSlug, subjectSlug, chapterSlug);
     const uKey = this.usedKey(uid, examSlug, subjectSlug, chapterSlug);
@@ -68,7 +70,7 @@ export class InMemoryMCQPoolStore implements MCQPoolStore {
     let pool = this.pools.get(pKey);
     if (!pool) {
       const seed = crypto.randomUUID().slice(0, 8);
-      const questions = await aiEngine.generateChapterMCQs(chapterSlug, subjectSlug, examSlug, language, 10, seed);
+      const questions = await aiEngine.generateChapterMCQs(chapterSlug, subjectSlug, examSlug, language, 10, seed, chapterContent);
       pool = { questions, poolSize: questions.length, generatedAt: new Date().toISOString() };
       this.pools.set(pKey, pool);
       logger.info('mcqpool.created', { examSlug, subjectSlug, chapterSlug, poolSize: pool.poolSize });
@@ -83,7 +85,7 @@ export class InMemoryMCQPoolStore implements MCQPoolStore {
     // If not enough unused questions, generate more
     if (available.length < count) {
       const seed = crypto.randomUUID().slice(0, 8);
-      const newQuestions = await aiEngine.generateChapterMCQs(chapterSlug, subjectSlug, examSlug, language, 10, seed);
+      const newQuestions = await aiEngine.generateChapterMCQs(chapterSlug, subjectSlug, examSlug, language, 10, seed, chapterContent);
       // Deduplicate by ID
       const existingIds = new Set(pool.questions.map(q => q.id));
       const uniqueNew = newQuestions.filter(q => !existingIds.has(q.id));
@@ -123,6 +125,7 @@ export class FirestoreMCQPoolStore implements MCQPoolStore {
     count: number,
     aiEngine: AIEngine,
     logger: Logger,
+    chapterContent?: string,
   ): Promise<GeneratedMCQ[]> {
     const poolDocId = this.poolDocId(examSlug, subjectSlug, chapterSlug);
     const poolRef = this.db.collection('chapterMCQPool').doc(poolDocId);
@@ -134,7 +137,7 @@ export class FirestoreMCQPoolStore implements MCQPoolStore {
 
     if (!poolSnap.exists) {
       const seed = crypto.randomUUID().slice(0, 8);
-      const questions = await aiEngine.generateChapterMCQs(chapterSlug, subjectSlug, examSlug, language, 10, seed);
+      const questions = await aiEngine.generateChapterMCQs(chapterSlug, subjectSlug, examSlug, language, 10, seed, chapterContent);
       pool = { questions, poolSize: questions.length, generatedAt: new Date().toISOString() };
       await poolRef.set(pool);
       logger.info('mcqpool.created', { examSlug, subjectSlug, chapterSlug, poolSize: pool.poolSize });
@@ -152,7 +155,7 @@ export class FirestoreMCQPoolStore implements MCQPoolStore {
     // If not enough, generate more and expand pool
     if (available.length < count) {
       const seed = crypto.randomUUID().slice(0, 8);
-      const newQuestions = await aiEngine.generateChapterMCQs(chapterSlug, subjectSlug, examSlug, language, 10, seed);
+      const newQuestions = await aiEngine.generateChapterMCQs(chapterSlug, subjectSlug, examSlug, language, 10, seed, chapterContent);
       const existingIds = new Set(pool.questions.map(q => q.id));
       const uniqueNew = newQuestions.filter(q => !existingIds.has(q.id));
       pool.questions.push(...uniqueNew);

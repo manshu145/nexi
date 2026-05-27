@@ -36,6 +36,9 @@ export default function KindleReaderPage() {
   const [userCredits, setUserCredits] = useState(0);
   const [unlocking, setUnlocking] = useState(false);
   const [showCreditConfirm, setShowCreditConfirm] = useState(false);
+  const [simplifiedPages, setSimplifiedPages] = useState<Record<number, string>>({});
+  const [simplifying, setSimplifying] = useState(false);
+  const [showSimplified, setShowSimplified] = useState(false);
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
   const pageRef = useRef<HTMLDivElement>(null);
@@ -453,6 +456,30 @@ export default function KindleReaderPage() {
   const chapterName = chapter.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
   const progressPct = pages.length > 0 ? Math.round(((currentPage + 1) / pages.length) * 100) : 0;
 
+  const handleSimplify = async () => {
+    if (simplifiedPages[currentPage]) {
+      setShowSimplified(!showSimplified);
+      return;
+    }
+    setSimplifying(true);
+    try {
+      const lang = getLanguage();
+      const langInstr = lang === 'hi' ? 'Hindi (Devanagari) mein bahut aasan bhasha mein likho.' : 'Write in very simple English, as if explaining to a 10-year-old.';
+      const res = await api.sendChat(
+        `Simplify this study content in very easy language. Keep all facts but make it much simpler to understand. ${langInstr}\n\nContent:\n${pages[currentPage]?.slice(0, 2000)}`,
+        undefined
+      );
+      setSimplifiedPages(prev => ({ ...prev, [currentPage]: res.response }));
+      setShowSimplified(true);
+    } catch { /* silent */ }
+    finally { setSimplifying(false); }
+  };
+
+  // Current page content (original or simplified)
+  const currentPageContent = showSimplified && simplifiedPages[currentPage]
+    ? simplifiedPages[currentPage]!
+    : pages[currentPage] ?? '';
+
   return (
     <div className="kindle-frame" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
       {/* Header */}
@@ -461,6 +488,9 @@ export default function KindleReaderPage() {
         <span className="text-xs font-medium text-muted-500 truncate max-w-[35%] sm:max-w-[40%] hidden sm:inline">{chapterName}</span>
         <span className="text-xs font-medium text-muted-500 sm:hidden">{currentPage + 1}/{pages.length}</span>
         <div className="flex items-center gap-1.5 sm:gap-2">
+          <button onClick={handleSimplify} disabled={simplifying} className={`tts-btn ${showSimplified ? 'playing' : ''}`} title={showSimplified ? 'Show original' : 'Simplify this page'}>
+            {simplifying ? '⏳' : showSimplified ? '📝' : '💡'}<span className="hidden sm:inline"> {simplifying ? '...' : showSimplified ? 'Original' : 'Simplify'}</span>
+          </button>
           <button onClick={handleTTS} className={`tts-btn ${speaking ? 'playing' : ''}`}>
             {speaking ? '⏸' : '🔊'}<span className="hidden sm:inline"> {speaking ? 'Pause' : 'Listen'}</span>
           </button>
@@ -478,7 +508,12 @@ export default function KindleReaderPage() {
             onMouseUp={handleTextSelection}
           >
             <div className="reader">
-              <div className="reader-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(pages[currentPage] ?? '') }} />
+              <div className="reader-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(currentPageContent) }} />
+              {showSimplified && simplifiedPages[currentPage] && (
+                <div className="mt-3 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30">
+                  <p className="text-[10px] text-amber-700 dark:text-amber-400 font-medium">💡 Simplified version — tap &quot;Original&quot; to go back</p>
+                </div>
+              )}
             </div>
           </div>
         </div>

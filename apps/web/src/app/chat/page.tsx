@@ -79,7 +79,10 @@ function ChatPage() {
     const topic = searchParams.get('topic');
     if (!topic) return;
     topicHandled.current = true;
-    const contextMessage = `I just read this Current Affairs news: "${topic}"\n\nPlease help me understand:\n1. What are the key facts and why is this important?\n2. Which competitive exams (UPSC, SSC, Banking etc.) could ask questions about this?\n3. What type of questions might come from this topic? Give 2-3 sample MCQs.\n4. Are there any related topics I should study alongside this?`;
+    const chapterContext = searchParams.get('context');
+    const contextMessage = chapterContext
+      ? `I'm studying "${topic}" and I need help understanding this section:\n\n"${chapterContext}"\n\nPlease explain this in simple terms. If there's anything confusing, break it down step by step. Give me exam-relevant tips for this topic.`
+      : `I just read this Current Affairs news: "${topic}"\n\nPlease help me understand:\n1. What are the key facts and why is this important?\n2. Which competitive exams (UPSC, SSC, Banking etc.) could ask questions about this?\n3. What type of questions might come from this topic? Give 2-3 sample MCQs.\n4. Are there any related topics I should study alongside this?`;
     const sendContextMessage = async () => {
       setSending(true);
       const userMsg: ChatMessage = { role: 'user', content: contextMessage, timestamp: new Date().toISOString() };

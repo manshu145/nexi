@@ -168,21 +168,26 @@ export default function DashboardPage() {
       </section>
 
       {/* Secondary Row */}
-      <section className="mt-4 grid grid-cols-3 gap-3">
+      <section className="mt-4 grid grid-cols-4 gap-3">
+        <button type="button" onClick={() => router.push('/essay')} className="paper-card card-selectable p-4 text-left animate-fadeIn-delay-1">
+          <span className="text-lg">✍️</span>
+          <h3 className="mt-1 text-sm font-semibold text-ink-900">Essay</h3>
+          <p className="mt-0.5 text-[10px] text-muted-500">Practice</p>
+        </button>
         <button type="button" onClick={() => router.push('/upgrade')} className="paper-card card-selectable p-4 text-left animate-fadeIn-delay-1">
           <span className="text-lg">⭐</span>
           <h3 className="mt-1 text-sm font-semibold text-ink-900">Upgrade</h3>
-          <p className="mt-0.5 text-[10px] text-muted-500">Premium features</p>
+          <p className="mt-0.5 text-[10px] text-muted-500">Pro</p>
         </button>
         <button type="button" onClick={() => router.push('/profile#referral')} className="paper-card card-selectable p-4 text-left animate-fadeIn-delay-1">
           <span className="text-lg">🎁</span>
-          <h3 className="mt-1 text-sm font-semibold text-ink-900">Refer & Earn</h3>
-          <p className="mt-0.5 text-[10px] text-muted-500">Earn 50 credits</p>
+          <h3 className="mt-1 text-sm font-semibold text-ink-900">Refer</h3>
+          <p className="mt-0.5 text-[10px] text-muted-500">Earn 50</p>
         </button>
         <button type="button" onClick={() => router.push('/support')} className="paper-card card-selectable p-4 text-left animate-fadeIn-delay-2">
           <span className="text-lg">🛟</span>
           <h3 className="mt-1 text-sm font-semibold text-ink-900">Support</h3>
-          <p className="mt-0.5 text-[10px] text-muted-500">Get help</p>
+          <p className="mt-0.5 text-[10px] text-muted-500">Help</p>
         </button>
       </section>
 
@@ -200,8 +205,8 @@ export default function DashboardPage() {
         </div>
         <div className="paper-card p-4 cursor-pointer hover:bg-paper-200 transition-colors" onClick={() => router.push('/profile/level')}>
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">{t('statsLevel')}</p>
-          <p className="font-serif mt-2 text-2xl font-bold capitalize text-ink-900">{me?.onboardingLevel ?? '—'}</p>
-          <p className="mt-1 text-xs text-ember-500 font-medium">View details →</p>
+          <p className="font-serif mt-2 text-lg font-bold capitalize text-ink-900 truncate">{me?.onboardingLevel ?? '—'}</p>
+          <p className="mt-1 text-[10px] text-ember-500 font-medium">Details →</p>
         </div>
       </section>
 
