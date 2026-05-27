@@ -4,6 +4,7 @@ import { type ReactNode } from 'react';
 import { AuthProvider } from '~/lib/auth-context';
 import { ToastProvider } from './Toast';
 import { SessionPing } from './SessionPing';
+import { AnnouncementBanner } from './AnnouncementBanner';
 
 export function Providers({ children }: { children: ReactNode }) {
   return (
@@ -11,6 +12,7 @@ export function Providers({ children }: { children: ReactNode }) {
       <AuthProvider>
         <ToastProvider>
           <SessionPing />
+          <AnnouncementBanner />
           {children}
         </ToastProvider>
       </AuthProvider>
