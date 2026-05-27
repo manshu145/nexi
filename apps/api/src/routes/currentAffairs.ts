@@ -146,7 +146,7 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
   app.post('/quiz/submit', async (c) => {
     const principal = requireAuth(c);
     const body = await c.req.json().catch(() => null) as { answers: number[]; timeTaken: number } | null;
-    if (!body?.answers || !body.timeTaken) throw new HTTPException(400, { message: 'answers and timeTaken required' });
+    if (!body?.answers || body.timeTaken == null) throw new HTTPException(400, { message: 'answers and timeTaken required' });
 
     const today = new Date().toISOString().split('T')[0]!;
     const questions = await deps.currentAffairs.getDailyQuiz(today);
