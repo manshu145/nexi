@@ -89,9 +89,13 @@ html.dark body {
 }
 
 /* Shorts page: always dark shell regardless of theme */
+/* Shorts page shell: theme-aware background */
 .shorts-shell {
-  background: #0F0F0F !important;
+  background-color: var(--color-paper-200) !important;
   background-image: none !important;
+}
+html.dark .shorts-shell {
+  background-color: var(--color-paper-100) !important;
 }
 
 /* Hide scrollbar for category pills */

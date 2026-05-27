@@ -191,16 +191,16 @@ export function createAIEngine(env: Env, logger: Logger): AIEngine {
           }
         }
 
-        // Attempt 2: Gemini Imagen (via Gemini API image generation)
+        // Attempt 2: Gemini Imagen (gemini-2.0-flash-exp with image response modality)
         if (env.GEMINI_API_KEY) {
           try {
-            const geminiImagePrompt = `Generate an educational black-and-white textbook-style diagram explaining "${topic}" for Indian ${exam} students. Clean labels, simple layout.`;
+            const geminiImagePrompt = `Generate an educational black-and-white textbook-style diagram explaining "${topic}" for Indian ${exam} students. Clean labels, simple layout, no text watermarks.`;
             const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${env.GEMINI_API_KEY}`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 contents: [{ parts: [{ text: geminiImagePrompt }] }],
-                generationConfig: { temperature: 0.4, maxOutputTokens: 1000 },
+                generationConfig: { temperature: 0.4, maxOutputTokens: 4096, responseModalities: ['IMAGE', 'TEXT'] },
               }),
             });
             if (res.ok) {
@@ -214,6 +214,10 @@ export function createAIEngine(env: Env, logger: Logger): AIEngine {
                   return { type: 'image', content: dataUrl };
                 }
               }
+              logger.warn('ai.visualization_gemini_no_image_data', { topic, partsCount: parts.length });
+            } else {
+              const errText = await res.text().catch(() => '');
+              logger.warn('ai.visualization_gemini_http_error', { status: res.status, body: errText.slice(0, 200) });
             }
           } catch (err) {
             logger.warn('ai.visualization_gemini_image_failed', { error: err instanceof Error ? err.message : String(err), topic });
