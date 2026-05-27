@@ -1079,8 +1079,6 @@ button.paper-card:hover {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-  background-color: #020617; /* slate-950 */
-  color: #e2e8f0; /* slate-200 */
 }
 @media (min-width: 1024px) {
   .admin-layout {
@@ -1095,8 +1093,8 @@ button.paper-card:hover {
   align-items: center;
   justify-content: space-between;
   padding: 0.6rem 1rem;
-  background-color: #0f172a; /* slate-900 */
-  border-bottom: 1px solid #1e293b; /* slate-800 */
+  background-color: var(--color-paper-50);
+  border-bottom: 1px solid var(--color-line);
 }
 @media (min-width: 1024px) {
   .admin-topbar {
@@ -1104,7 +1102,7 @@ button.paper-card:hover {
     top: 0;
     left: 15rem;
     right: 0;
-    border-bottom: 1px solid #1e293b;
+    border-bottom: 1px solid var(--color-line);
   }
 }
 .admin-sidebar {
@@ -1116,8 +1114,8 @@ button.paper-card:hover {
   z-index: 50;
   display: flex;
   flex-direction: column;
-  background-color: #0f172a; /* slate-900 */
-  border-right: 1px solid #1e293b; /* slate-800 */
+  background-color: var(--color-paper-50);
+  border-right: 1px solid var(--color-line);
   transform: translateX(-100%);
   transition: transform 200ms ease;
 }
@@ -1136,21 +1134,20 @@ button.paper-card:hover {
   border-radius: 0.4rem;
   font-size: 0.85rem;
   font-weight: 500;
-  color: #94a3b8; /* slate-400 */
+  color: var(--color-ink-800);
   transition: background-color 100ms ease, color 100ms ease;
 }
 .admin-nav-link:hover {
-  background-color: #1e293b; /* slate-800 */
-  color: #f1f5f9; /* slate-100 */
+  background-color: var(--color-paper-200);
+  color: var(--color-ink-900);
 }
 .admin-nav-active {
-  background-color: rgba(245, 158, 11, 0.1); /* amber-500/10 */
-  color: #f59e0b; /* amber-400 */
-  border-right: 2px solid #f59e0b;
+  background-color: var(--color-ink-900);
+  color: var(--color-paper-100);
 }
 .admin-nav-active:hover {
-  background-color: rgba(245, 158, 11, 0.15);
-  color: #f59e0b;
+  background-color: var(--color-ink-900);
+  color: var(--color-paper-100);
 }
 .admin-main {
   flex: 1;
@@ -1168,81 +1165,6 @@ button.paper-card:hover {
   .admin-main {
     padding: 2rem 3.5rem 3rem;
   }
-}
-
-/* Admin dark theme overrides for common components */
-.admin-layout .paper-card {
-  background-color: #1e293b; /* slate-800 */
-  border: 1px solid #334155; /* slate-700 */
-  color: #e2e8f0;
-}
-.admin-layout .paper-card:hover {
-  background-color: #1e293b;
-}
-.admin-layout h1, .admin-layout h2, .admin-layout h3 {
-  color: #f1f5f9; /* slate-100 */
-}
-.admin-layout .text-ink-900 { color: #f1f5f9 !important; }
-.admin-layout .text-ink-800 { color: #e2e8f0 !important; }
-.admin-layout .text-ink-700 { color: #cbd5e1 !important; }
-.admin-layout .text-muted-500 { color: #94a3b8 !important; }
-.admin-layout .text-muted-400 { color: #64748b !important; }
-.admin-layout .bg-paper-100 { background-color: #0f172a !important; }
-.admin-layout .bg-paper-200 { background-color: #1e293b !important; }
-.admin-layout .bg-paper-300 { background-color: #334155 !important; }
-.admin-layout .border-line { border-color: #1e293b !important; }
-.admin-layout .pill {
-  background-color: #334155;
-  border-color: #475569;
-  color: #e2e8f0;
-}
-.admin-layout .btn-primary {
-  background-color: #f59e0b;
-  color: #000;
-}
-.admin-layout .btn-primary:hover {
-  background-color: #fbbf24;
-}
-.admin-layout .btn-ghost {
-  color: #e2e8f0;
-}
-.admin-layout .btn-ghost:hover {
-  background-color: #1e293b;
-}
-.admin-layout .btn-ghost-sm {
-  color: #e2e8f0;
-}
-.admin-layout .btn-ghost-sm:hover {
-  background-color: #1e293b;
-}
-.admin-layout .input {
-  background-color: #0f172a;
-  border-color: #334155;
-  color: #e2e8f0;
-}
-.admin-layout .input:focus {
-  border-color: #f59e0b;
-}
-.admin-layout .banner-error {
-  background-color: rgba(239, 68, 68, 0.1);
-  border-color: rgba(239, 68, 68, 0.3);
-  color: #fca5a5;
-}
-.admin-layout table thead {
-  background-color: #0f172a;
-}
-.admin-layout table thead th {
-  color: #94a3b8;
-  font-size: 0.75rem;
-}
-.admin-layout table tbody tr {
-  border-bottom: 1px solid #1e293b;
-}
-.admin-layout table tbody tr:hover {
-  background-color: rgba(30, 41, 59, 0.5);
-}
-.admin-layout table td {
-  color: #cbd5e1;
 }
 
 
