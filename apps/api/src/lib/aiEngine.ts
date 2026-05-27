@@ -28,7 +28,7 @@ export interface AIEngine {
   generateSelectionDiagram(selectedText: string, subject: string, language: 'en' | 'hi'): Promise<string>;
   generateCurrentAffairsQuiz(headlines: string, count?: number, language?: 'en' | 'hi'): Promise<GeneratedMCQ[]>;
   translateToHindi(items: { headline: string; summary: string }[]): Promise<{ headline: string; summary: string }[]>;
-  chat(messages: { role: 'user' | 'assistant'; content: string }[], userContext: { exam: string; level: string; language: 'en' | 'hi' }): Promise<string>;
+  chat(messages: { role: 'user' | 'assistant'; content: string }[], userContext: { exam: string; level: string; language: 'en' | 'hi' }, preferredModel?: 'gpt4o' | 'groq' | 'gemini'): Promise<string>;
 }
 
 /** Helper to log AI calls to adminStore for system logs visibility */
@@ -454,7 +454,7 @@ Generate ONLY the Mermaid code, nothing else.`;
       throw new Error(`All AI providers failed for quiz generation: ${errors.join('; ')}`);
     },
 
-    async chat(messages: { role: 'user' | 'assistant'; content: string }[], userContext: { exam: string; level: string; language: 'en' | 'hi' }): Promise<string> {
+    async chat(messages: { role: 'user' | 'assistant'; content: string }[], userContext: { exam: string; level: string; language: 'en' | 'hi' }, preferredModel?: 'gpt4o' | 'groq' | 'gemini'): Promise<string> {
       const langInstr = userContext.language === 'hi' ? 'Reply in Hindi (Devanagari script). Be concise.' : 'Reply in English. Be concise.';
       const systemPrompt = `You are Nexi, an AI study mentor for Indian competitive exam students. Student is preparing for ${userContext.exam} at ${userContext.level} level. ${langInstr}
 
@@ -468,39 +468,48 @@ Rules for your responses:
 - Be helpful, encouraging, and exam-focused. Keep answers under 300 words unless asked for detail.`;
       const chatMessages = [{ role: 'system' as const, content: systemPrompt }, ...messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }))];
 
-      // Attempt 1: Groq (fast)
-      if (groq) {
-        try {
-          const startTime = performance.now();
-          const c = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: chatMessages, temperature: 0.7, max_tokens: 1500 });
-          const reply = c.choices[0]?.message?.content ?? '';
-          if (reply) { const tokens = estimateTokens(reply); logAICallToStore(store, 'llama-3.3-70b-versatile', tokens, estimateCost('llama-3.3-70b-versatile', tokens), Math.round(performance.now() - startTime), undefined, { status: 'success', endpoint: 'chat', provider: 'groq', requestPreview: messages[messages.length - 1]?.content?.slice(0, 200), responsePreview: reply.slice(0, 300) }); logger.info('ai.chat', { provider: 'groq', length: reply.length }); return reply; }
-        } catch (err) { logger.warn('ai.chat_groq_failed', { error: err instanceof Error ? err.message : String(err) }); }
+      // Determine provider order based on preferredModel
+      type Provider = 'groq' | 'openai' | 'gemini';
+      let providerOrder: Provider[];
+      switch (preferredModel) {
+        case 'gpt4o': providerOrder = ['openai', 'groq', 'gemini']; break;
+        case 'gemini': providerOrder = ['gemini', 'groq', 'openai']; break;
+        case 'groq': providerOrder = ['groq', 'openai', 'gemini']; break;
+        default: providerOrder = ['groq', 'openai', 'gemini']; break;
       }
-      // Attempt 2: OpenAI
-      if (openai) {
-        try {
-          const startTime = performance.now();
-          const c = await openai.chat.completions.create({ model: 'gpt-4o', messages: chatMessages, temperature: 0.7, max_tokens: 1500 });
-          const reply = c.choices[0]?.message?.content ?? '';
-          if (reply) { const tokens = estimateTokens(reply); logAICallToStore(store, 'gpt-4o', tokens, estimateCost('gpt-4o', tokens), Math.round(performance.now() - startTime), undefined, { status: 'success', endpoint: 'chat', provider: 'openai', requestPreview: messages[messages.length - 1]?.content?.slice(0, 200), responsePreview: reply.slice(0, 300) }); logger.info('ai.chat', { provider: 'openai', length: reply.length }); return reply; }
-        } catch (err) { logger.warn('ai.chat_openai_failed', { error: err instanceof Error ? err.message : String(err) }); }
-      }
-      // Attempt 3: Gemini Flash (fallback)
-      if (env.GEMINI_API_KEY && env.GEMINI_API_KEY.length > 5) {
-        try {
-          const geminiMessages = chatMessages.map(m => m.content).join('\n\n');
-          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contents: [{ parts: [{ text: geminiMessages }] }], generationConfig: { temperature: 0.7, maxOutputTokens: 1500 } }),
-          });
-          if (res.ok) {
-            const data = await res.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
-            const reply = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-            if (reply) { logger.info('ai.chat', { provider: 'gemini', length: reply.length }); return reply; }
-          }
-        } catch (err) { logger.warn('ai.chat_gemini_failed', { error: err instanceof Error ? err.message : String(err) }); }
+
+      for (const provider of providerOrder) {
+        if (provider === 'groq' && groq) {
+          try {
+            const startTime = performance.now();
+            const c = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: chatMessages, temperature: 0.7, max_tokens: 1500 });
+            const reply = c.choices[0]?.message?.content ?? '';
+            if (reply) { const tokens = estimateTokens(reply); logAICallToStore(store, 'llama-3.3-70b-versatile', tokens, estimateCost('llama-3.3-70b-versatile', tokens), Math.round(performance.now() - startTime), undefined, { status: 'success', endpoint: 'chat', provider: 'groq', requestPreview: messages[messages.length - 1]?.content?.slice(0, 200), responsePreview: reply.slice(0, 300) }); logger.info('ai.chat', { provider: 'groq', length: reply.length, preferredModel }); return reply; }
+          } catch (err) { logger.warn('ai.chat_groq_failed', { error: err instanceof Error ? err.message : String(err) }); }
+        }
+        if (provider === 'openai' && openai) {
+          try {
+            const startTime = performance.now();
+            const c = await openai.chat.completions.create({ model: 'gpt-4o', messages: chatMessages, temperature: 0.7, max_tokens: 1500 });
+            const reply = c.choices[0]?.message?.content ?? '';
+            if (reply) { const tokens = estimateTokens(reply); logAICallToStore(store, 'gpt-4o', tokens, estimateCost('gpt-4o', tokens), Math.round(performance.now() - startTime), undefined, { status: 'success', endpoint: 'chat', provider: 'openai', requestPreview: messages[messages.length - 1]?.content?.slice(0, 200), responsePreview: reply.slice(0, 300) }); logger.info('ai.chat', { provider: 'openai', length: reply.length, preferredModel }); return reply; }
+          } catch (err) { logger.warn('ai.chat_openai_failed', { error: err instanceof Error ? err.message : String(err) }); }
+        }
+        if (provider === 'gemini' && env.GEMINI_API_KEY && env.GEMINI_API_KEY.length > 5) {
+          try {
+            const geminiMessages = chatMessages.map(m => m.content).join('\n\n');
+            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ contents: [{ parts: [{ text: geminiMessages }] }], generationConfig: { temperature: 0.7, maxOutputTokens: 1500 } }),
+            });
+            if (res.ok) {
+              const data = await res.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+              const reply = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+              if (reply) { logger.info('ai.chat', { provider: 'gemini', length: reply.length, preferredModel }); return reply; }
+            }
+          } catch (err) { logger.warn('ai.chat_gemini_failed', { error: err instanceof Error ? err.message : String(err) }); }
+        }
       }
       throw new Error('Chat AI unavailable. Please try again.');
     },

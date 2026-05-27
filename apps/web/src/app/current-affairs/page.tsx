@@ -187,8 +187,8 @@ export default function CurrentAffairsShortsPage() {
           <span className="text-ink-900 text-sm font-semibold">Today&apos;s News</span>
           {isFromYesterday && <span className="text-[10px] px-1.5 py-0.5 rounded bg-gold-500/20 text-gold-600">Yesterday</span>}
         </div>
-        <button onClick={() => router.push('/current-affairs/quiz')} className="text-ink-700 text-sm font-medium hover:text-ink-900 transition-colors">
-          Quiz
+        <button onClick={() => router.push('/current-affairs/quiz')} className="inline-flex items-center gap-1.5 rounded-full bg-gold-500 px-3.5 py-1.5 text-xs font-semibold text-paper-50 hover:bg-gold-600 transition-colors shadow-sm">
+          📝 Take Quiz
         </button>
       </header>
 
@@ -285,6 +285,18 @@ export default function CurrentAffairsShortsPage() {
               <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="text-ink-700"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Sticky mobile bottom quiz bar */}
+      {filtered.length > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 z-30 px-4 pb-4 pt-2 bg-gradient-to-t from-paper-50 via-paper-50/95 to-transparent lg:hidden">
+          <button
+            onClick={() => router.push('/current-affairs/quiz')}
+            className="w-full rounded-xl bg-gold-500 px-4 py-3 text-sm font-bold text-paper-50 shadow-lg hover:bg-gold-600 transition-colors"
+          >
+            📝 Take Today&apos;s Quiz
+          </button>
         </div>
       )}
     </main>

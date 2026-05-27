@@ -222,11 +222,11 @@ export default function AdminUsersPage() {
                 {/* Quick Stats */}
                 <div className="grid grid-cols-3 gap-3">
                   <div className="bg-paper-200 rounded-lg p-3 text-center">
-                    <p className="text-lg font-bold text-paper-50">{selectedUser.credits}</p>
+                    <p className="text-lg font-bold text-ink-900">{selectedUser.credits}</p>
                     <p className="text-[10px] text-muted-500 uppercase tracking-wider">Credits</p>
                   </div>
                   <div className="bg-paper-200 rounded-lg p-3 text-center">
-                    <p className="text-lg font-bold text-paper-50">{selectedUser.currentStreak ?? 0}</p>
+                    <p className="text-lg font-bold text-ink-900">{selectedUser.currentStreak ?? 0}</p>
                     <p className="text-[10px] text-muted-500 uppercase tracking-wider">Streak</p>
                   </div>
                   <div className="bg-paper-200 rounded-lg p-3 text-center">

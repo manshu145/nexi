@@ -41,12 +41,12 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   if (loading || !user) return <main className="flex min-h-dvh items-center justify-center"><AILoader context="general" /></main>;
 
   return (
-    <div className="admin-layout">
+    <div className="admin-layout dark" data-theme="dark">
       {/* Sidebar */}
       <aside className={`admin-sidebar max-w-[80vw] ${sidebarOpen ? 'admin-sidebar-open' : ''}`}>
         <div className="flex items-center gap-2 px-4 py-4 border-b border-line">
           <span className="text-lg">⚙️</span>
-          <span className="font-serif font-semibold text-ink-900">Admin</span>
+          <span className="font-serif font-semibold text-gold-500">Admin</span>
         </div>
         <nav className="flex-1 px-3 py-3 space-y-1">
           {NAV_ITEMS.map((item) => (

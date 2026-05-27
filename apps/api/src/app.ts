@@ -139,6 +139,21 @@ export function buildApp(deps: AppDeps): Hono {
     return c.json({ ok: true });
   });
 
+  // GET /v1/announcements — active announcements for users (non-admin)
+  v1.get('/announcements', async (c) => {
+    try {
+      const all = await adminStore.getAnnouncements();
+      const now = new Date().toISOString();
+      const active = all.filter(a =>
+        a.isActive &&
+        (!a.expiresAt || a.expiresAt > now)
+      );
+      return c.json({ announcements: active });
+    } catch {
+      return c.json({ announcements: [] });
+    }
+  });
+
   app.route('/v1', v1);
 
   app.onError((err, c) => {

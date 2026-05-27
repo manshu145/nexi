@@ -240,6 +240,17 @@ export default function CurrentAffairsDetailPage() {
         </section>
       )}
 
+      {/* Why This Matters */}
+      <section className="mt-6">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-muted-500 mb-3">Why This Matters</h2>
+        <div className="rounded-2xl bg-gold-500/5 border border-gold-500/20 p-5">
+          <p className="text-sm leading-relaxed text-ink-800">
+            This topic is relevant for competitive exams ({item.category === 'national' ? 'GS Paper I, II' : item.category === 'economy' ? 'Economics, GS Paper III' : item.category === 'international' ? 'International Relations, GS Paper II' : 'General Studies'}). 
+            Understanding current developments in <span className="font-semibold">{item.category}</span> helps in essay writing, mains answers, and interview preparation.
+          </p>
+        </div>
+      </section>
+
       {/* Ask Nexi CTA */}
       <button
         onClick={handleAskNexi}

@@ -38,7 +38,10 @@ export default function ProfilePage() {
   // Fetch referral stats
   useEffect(() => {
     if (!user) return;
-    api.getReferralStats().then(setReferralStats).catch(() => {});
+    api.getReferralStats().then(setReferralStats).catch(() => {
+      // Set empty stats so UI doesn't show "Loading..." forever
+      setReferralStats({ code: '', referralUrl: '', totalReferrals: 0, pendingReferrals: 0, completedReferrals: 0, totalEarned: 0 });
+    });
   }, [user]);
 
   const handleSave = async () => { setSaving(true); try { const r = await api.updateProfile({ name: name.trim(), phone: phone.trim()||undefined, dob: dob||undefined, school: school.trim()||undefined, aim: aim.trim()||undefined }); setMe(r.user); setEditing(false); toast.success(t('saved')); } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed'); } finally { setSaving(false); } };
@@ -162,6 +165,10 @@ export default function ProfilePage() {
                 </div>
               </div>
             </>
+          ) : referralStats !== null ? (
+            <div className="text-center py-3">
+              <p className="text-sm text-muted-400">Referral code not yet generated. Complete your profile to get one!</p>
+            </div>
           ) : (
             <div className="text-center py-3">
               <p className="text-sm text-muted-400">Loading referral code...</p>

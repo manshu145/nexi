@@ -61,7 +61,7 @@ export function makeChatRoutes(deps: ChatRoutesDeps): Hono {
         }
 
         // Call AI (text-only)
-        response = await deps.aiEngine.chat(messages, userContext);
+        response = await deps.aiEngine.chat(messages, userContext, body.model);
       }
 
       // Save AI response
@@ -121,8 +121,10 @@ export function makeChatRoutes(deps: ChatRoutesDeps): Hono {
       deps.logger.info('chat.generate_image', { userId: principal.userId, topic: body.topic, type: result.type });
       return c.json({ type: result.type, content: result.content });
     } catch (err) {
-      deps.logger.error('chat.generate_image_error', { error: err instanceof Error ? err.message : String(err) });
-      throw new HTTPException(503, { message: 'Image generation failed. Try again.' });
+      const errMsg = err instanceof Error ? err.message : String(err);
+      deps.logger.error('chat.generate_image_error', { error: errMsg, topic: body.topic, userId: principal.userId });
+      // Return a mermaid fallback instead of failing — never show error to student
+      return c.json({ type: 'mermaid', content: `graph TD\n  A["${body.topic}"] --> B[Image generation unavailable]\n  B --> C[Try again later]`, fallback: true, message: 'Image generation is temporarily unavailable. Showing a diagram instead.' });
     }
   });
 
