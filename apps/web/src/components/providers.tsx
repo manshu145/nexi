@@ -5,6 +5,7 @@ import { AuthProvider } from '~/lib/auth-context';
 import { ToastProvider } from './Toast';
 import { SessionPing } from './SessionPing';
 import { AnnouncementBanner } from './AnnouncementBanner';
+import { DynamicFavicon } from './DynamicFavicon';
 
 export function Providers({ children }: { children: ReactNode }) {
   return (
@@ -13,6 +14,7 @@ export function Providers({ children }: { children: ReactNode }) {
         <ToastProvider>
           <SessionPing />
           <AnnouncementBanner />
+          <DynamicFavicon />
           {children}
         </ToastProvider>
       </AuthProvider>
