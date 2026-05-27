@@ -15,7 +15,7 @@ export function makeChatRoutes(deps: ChatRoutesDeps): Hono {
   // POST /v1/chat — send message, get AI response (supports text + attachments)
   app.post('/', async (c) => {
     const principal = requireAuth(c);
-    const body = await c.req.json().catch(() => null) as { message?: string; sessionId?: string; model?: 'gpt4o' | 'groq' | 'gemini'; attachments?: { type: 'image' | 'file'; name: string; data: string; mimeType?: string }[] } | null;
+    const body = await c.req.json().catch(() => null) as { message?: string; sessionId?: string; attachments?: { type: 'image' | 'file'; name: string; data: string; mimeType?: string }[] } | null;
     if (!body?.message) throw new HTTPException(400, { message: 'message is required' });
 
     try {
@@ -90,14 +90,6 @@ export function makeChatRoutes(deps: ChatRoutesDeps): Hono {
     const session = await deps.chat.getSession(principal.userId, sessionId);
     if (!session) throw new HTTPException(404, { message: 'Session not found' });
     return c.json({ session });
-  });
-
-  // DELETE /v1/chat/history/all — delete all sessions
-  app.delete('/history/all', async (c) => {
-    const principal = requireAuth(c);
-    await deps.chat.deleteAllSessions(principal.userId);
-    deps.logger.info('chat.delete_all', { userId: principal.userId });
-    return c.json({ success: true });
   });
 
   // DELETE /v1/chat/history/:sessionId — delete session

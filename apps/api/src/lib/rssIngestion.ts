@@ -121,19 +121,13 @@ async function summarizeItems(items: RawNewsItem[], env: Env, logger: Logger): P
 
   for (const batch of batches.slice(0, 5)) { // Max 5 batches = 50 items
     try {
-      const prompt = `You are a current affairs summarizer for Indian competitive exam students (UPSC, SSC, Banking, NEET, JEE).
+      const prompt = `You are a current affairs summarizer for Indian competitive exam students (UPSC, SSC, Banking).
 
 Given these news headlines, create a JSON array of summarized items. For each item:
 - Assign a category from: national, international, economy, science-tech, environment, sports, awards, agreements, reports, other
-- Write a comprehensive summary of MINIMUM 400 words covering:
-  1. What happened (2-3 paragraphs with full context)
-  2. Background & context (1-2 paragraphs explaining the history/context)
-  3. Key facts and figures mentioned in the article
-  4. Why it matters for India / exam relevance (which exams might ask about this)
-  5. Related topics a student should study alongside this
+- Write a 2-3 line factual summary suitable for exam preparation
 - Keep the headline concise (max 80 chars)
 - Deduplicate: if multiple items cover the same story, merge into one
-- Write in simple, clear language suitable for students
 
 News items:
 ${batch.map((item, i) => `${i + 1}. [${item.source}] ${item.title} — ${item.description.slice(0, 150)}`).join('\n')}
@@ -146,7 +140,7 @@ Respond ONLY with valid JSON:
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: 8000 },
+          generationConfig: { temperature: 0.3, maxOutputTokens: 2000 },
         }),
       });
 
