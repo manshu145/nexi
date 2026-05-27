@@ -175,10 +175,9 @@ export default function UpgradePage() {
       {error && <div className="banner banner-error mt-6">{error}</div>}
 
       {/* Plan cards */}
-      <div className="mt-8 grid gap-5 grid-cols-1 md:grid-cols-3">
+      <div className="mt-8 grid gap-5 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
         {/* FREE */}
-        <div className={`paper-card flex flex-col p-5 ${currentPlan === 'free' ? 'ring-2 ring-amber-500' : ''}`}>
-          {currentPlan === 'free' && <span className="absolute -top-2 left-3 rounded-full bg-amber-500 px-3 py-0.5 text-xs font-semibold text-ink-900">Current Plan</span>}
+        <div className={`paper-card relative flex flex-col p-5 ${currentPlan === 'free' ? 'border-2 border-amber-400 dark:border-amber-600' : ''}`}>
           <h3 className="font-serif text-lg font-bold text-ink-900">Free</h3>
           <p className="mt-2"><span className="font-serif text-3xl font-bold text-ink-900">₹0</span></p>
           <ul className="mt-4 flex-1 space-y-2 text-sm text-muted-600 dark:text-muted-400">
@@ -188,14 +187,13 @@ export default function UpgradePage() {
             <li className="flex items-start gap-2"><span className="text-muted-400">•</span>Basic access</li>
           </ul>
           <button disabled className="mt-5 w-full rounded-xl py-3 text-sm font-semibold bg-paper-200 text-muted-500 cursor-not-allowed">
-            {currentPlan === 'free' ? 'Current Plan' : 'Free'}
+            {currentPlan === 'free' ? '✓ Your Current Plan' : 'Free Plan'}
           </button>
         </div>
 
         {/* SCHOLAR — ACTIVE */}
-        <div className={`paper-card relative flex flex-col p-5 border-amber-500 shadow-[0_0_0_2px_rgba(245,158,11,0.3)] ${isCurrentScholar ? 'ring-2 ring-amber-500' : ''}`}>
+        <div className={`paper-card relative flex flex-col p-5 border-amber-500 shadow-[0_0_0_2px_rgba(245,158,11,0.3)] ${isCurrentScholar ? 'border-2 border-amber-400' : ''}`}>
           <span className="absolute -top-2.5 right-3 rounded-full bg-amber-500 px-3 py-0.5 text-xs font-semibold text-ink-900">Recommended</span>
-          {isCurrentScholar && <span className="absolute -top-2.5 left-3 rounded-full bg-emerald-600 px-3 py-0.5 text-xs font-semibold text-paper-50">Current Plan</span>}
           <h3 className="font-serif text-lg font-bold text-ink-900">Scholar</h3>
           <p className="mt-2">
             <span className="font-serif text-3xl font-bold text-ink-900">₹{scholarPrice}</span>
@@ -243,7 +241,7 @@ export default function UpgradePage() {
             disabled={isCurrentScholar || processing}
             className={`mt-4 w-full rounded-xl py-3 text-sm font-semibold transition-colors ${isCurrentScholar ? 'bg-paper-200 text-muted-500 cursor-not-allowed' : 'btn-primary'}`}
           >
-            {processing ? 'Processing...' : isCurrentScholar ? 'Current Plan' : `Buy Now — ₹${scholarPrice}/mo`}
+            {processing ? 'Processing...' : isCurrentScholar ? '✓ Your Current Plan' : `Buy Now — ₹${scholarPrice}/mo`}
           </button>
         </div>
 
@@ -259,7 +257,24 @@ export default function UpgradePage() {
               </li>
             ))}
           </ul>
-          <button disabled className="mt-5 w-full rounded-xl py-3 text-sm font-semibold bg-slate-200 text-muted-400 cursor-not-allowed">
+          <button disabled className="mt-5 w-full rounded-xl py-3 text-sm font-semibold bg-slate-200 dark:bg-slate-700 text-muted-400 cursor-not-allowed">
+            Coming Soon
+          </button>
+        </div>
+
+        {/* ACHIEVER — COMING SOON */}
+        <div className="paper-card relative flex flex-col p-5 opacity-70">
+          <span className="absolute -top-2.5 right-3 rounded-full bg-slate-500 px-3 py-0.5 text-xs font-semibold text-paper-50">Coming Soon</span>
+          <h3 className="font-serif text-lg font-bold text-ink-900">Achiever</h3>
+          <p className="mt-2"><span className="font-serif text-3xl font-bold text-muted-400">₹599</span><span className="text-sm text-muted-400">/mo</span></p>
+          <ul className="mt-4 flex-1 space-y-2">
+            {ACHIEVER_FEATURES.map(f => (
+              <li key={f} className="flex items-start gap-2 text-sm text-muted-400">
+                <span className="text-muted-300 mt-0.5 flex-shrink-0">✓</span>{f}
+              </li>
+            ))}
+          </ul>
+          <button disabled className="mt-5 w-full rounded-xl py-3 text-sm font-semibold bg-slate-200 dark:bg-slate-700 text-muted-400 cursor-not-allowed">
             Coming Soon
           </button>
         </div>
