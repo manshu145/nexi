@@ -166,8 +166,8 @@ export default function StudyPage() {
                     // Unlock logic: first 2 chapters always unlocked, rest need previous completed
                     const prevKey = idx > 0 ? `${subject.slug}/${subject.chapters[idx - 1]!.slug}` : null;
                     const isUnlocked = idx < 2 || completedSet.has(prevKey!);
-                    // Free plan: chapters beyond index 1 are locked (need credits/upgrade)
-                    const isPlanLocked = currentPlan === 'free' && idx >= 2 && !isCompleted;
+                    // Free plan: only lock if chapter not yet unlocked by progress (don't block earned progress)
+                    const isPlanLocked = false;
 
                     return (
                       <button
