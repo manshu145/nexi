@@ -1,80 +1,80 @@
 ---
 /**
- * Features section — updated to reflect what's actually built and working.
- * Features marked "Coming Soon" are planned but not yet live.
+ * Features section — proper mapping of all platform capabilities.
+ * Links to the actual app routes where available.
  */
 const features = [
   {
-    title: 'AI Study Plans',
-    description: 'Personalized study plan based on your level assessment. Official syllabus for 6+ major exams.',
-    icon: '📋',
-    status: 'live',
+    title: 'AI-Powered MCQs',
+    description: 'Daily personalized questions generated and 3x verified by AI. Pass to earn credits.',
+    icon: '📝',
+    link: 'https://app.nexigrate.com/mcq',
   },
   {
-    title: 'Kindle-Style Reader',
-    description: 'Page-by-page reading with page flip, drop caps, serif typography, and saved position.',
+    title: 'Kindle-Style Chapters',
+    description: 'Page-by-page reading with drop caps, serif typography, and saved reading position.',
     icon: '📖',
-    status: 'live',
+    link: 'https://app.nexigrate.com/chapters',
   },
   {
-    title: 'Text-to-Speech',
-    description: 'Listen to chapters in Hindi & English. Natural voices with playback controls.',
-    icon: '🔊',
-    status: 'live',
+    title: 'Mock Tests',
+    description: 'Full-length timed mock tests with sectional analysis and per-question review.',
+    icon: '⏱️',
+    link: 'https://app.nexigrate.com/mock-tests',
+  },
+  {
+    title: 'AI Grading',
+    description: 'Write long-form answers. AI grades on 5 rubric axes with detailed feedback.',
+    icon: '✍️',
+    link: 'https://app.nexigrate.com/long-answers',
   },
   {
     title: 'Current Affairs',
-    description: 'Daily digest from 19+ official sources, updated every 4 hours. AI fact-checked summaries.',
+    description: 'Daily digest from PIB, RBI, and 30+ sources. AI fact-checked. Quiz with leaderboard.',
     icon: '📰',
-    status: 'live',
+    link: 'https://app.nexigrate.com/today',
   },
   {
-    title: 'Daily Quiz & Leaderboard',
-    description: '20 MCQs from today\'s news. Compete with other students. Win daily streaks.',
-    icon: '🏆',
-    status: 'live',
+    title: 'Nexipedia',
+    description: 'Wikipedia for Indian students. 3x AI-verified encyclopedia articles.',
+    icon: '🔍',
+    link: 'https://app.nexigrate.com/nexipedia',
   },
   {
-    title: 'Nexi AI Chatbot',
-    description: 'Ask doubts, get explanations, generate diagrams. Powered by GPT-4o, Groq & Gemini.',
-    icon: '🤖',
-    status: 'live',
+    title: 'Exam Guides',
+    description: 'How-to-crack articles with year-cited NTA/CBSE/UPSC preparation strategies.',
+    icon: '🎯',
+    link: 'https://app.nexigrate.com/guides',
+  },
+  {
+    title: 'Learning Tips',
+    description: 'Evidence-backed study techniques: spaced repetition, active recall, more.',
+    icon: '🧠',
+    link: 'https://app.nexigrate.com/learn',
+  },
+  {
+    title: 'AI Visualization',
+    description: 'Generate mind maps and diagrams from any chapter section. Nexigrate watermarked.',
+    icon: '🗺️',
+    link: '#',
+  },
+  {
+    title: 'Text-to-Speech',
+    description: 'Listen to chapters in 10 Indian languages. Google Cloud TTS or browser fallback.',
+    icon: '🔊',
+    link: '#',
   },
   {
     title: 'Progress Tracking',
-    description: 'Chapter unlock system, completion tracking, per-subject mastery with scores.',
+    description: '30-day accuracy trends, per-subject mastery, weak topic identification.',
     icon: '📊',
-    status: 'live',
+    link: 'https://app.nexigrate.com/progress',
   },
   {
-    title: 'Credits System',
-    description: 'Earn credits for daily login, quiz completion, and referrals. Spend on premium content.',
-    icon: '💎',
-    status: 'live',
-  },
-  {
-    title: 'Refer & Earn',
-    description: 'Invite friends and earn ₹50 credits per referral. Share your unique code.',
+    title: 'Referral Rewards',
+    description: 'Earn 100 credits per friend who signs up. Stable referral codes.',
     icon: '🤝',
-    status: 'live',
-  },
-  {
-    title: 'Dark Mode',
-    description: 'Full dark mode support across the entire app. Easy on the eyes for late-night study.',
-    icon: '🌙',
-    status: 'live',
-  },
-  {
-    title: 'Essay & Answer Grading',
-    description: 'Write answers, get AI grading on 5 rubric axes with detailed feedback.',
-    icon: '✍️',
-    status: 'coming-soon',
-  },
-  {
-    title: 'Mentor Support',
-    description: 'Connect with experienced mentors for personalized guidance and doubt clearing.',
-    icon: '👨‍🏫',
-    status: 'coming-soon',
+    link: 'https://app.nexigrate.com/refer',
   },
 ];
 ---
@@ -88,19 +88,15 @@ const features = [
       One platform. Every exam.
     </h2>
     <p class="mt-4 mx-auto max-w-xl text-center text-base text-muted-500">
-      From UPSC to JEE — AI-powered, personalized content for Indian competitive exam students.
+      From Class 5 to UPSC — AI-generated, 3x verified, NCERT-grounded content delivered fresh daily.
     </p>
 
     <div class="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
       {features.map((f) => (
-        <div
-          class={`group paper-card p-6 relative ${f.status === 'coming-soon' ? 'opacity-60' : 'transition-transform hover:-translate-y-1'}`}
+        <a
+          href={f.link}
+          class="group paper-card p-6 transition-transform hover:-translate-y-1"
         >
-          {f.status === 'coming-soon' && (
-            <span class="absolute top-3 right-3 px-2 py-0.5 rounded-full bg-paper-300 text-[10px] font-semibold text-muted-500 uppercase tracking-wider">
-              Coming Soon
-            </span>
-          )}
           <span class="text-2xl">{f.icon}</span>
           <h3 class="mt-3 font-serif text-lg font-semibold text-ink-900 group-hover:text-ember-600 transition-colors">
             {f.title}
@@ -108,7 +104,7 @@ const features = [
           <p class="mt-2 text-sm text-muted-500 leading-relaxed">
             {f.description}
           </p>
-        </div>
+        </a>
       ))}
     </div>
   </div>

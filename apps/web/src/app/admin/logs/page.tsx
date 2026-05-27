@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '~/lib/auth-context';
 import { getFirebaseAuthClient } from '~/lib/firebase';
@@ -24,20 +24,6 @@ interface AiLog {
   timestamp: string;
 }
 
-interface AIDebugLog {
-  id: string;
-  model: string;
-  tokens: number;
-  cost: number;
-  latencyMs: number;
-  userId?: string;
-  timestamp: string;
-  status?: 'success' | 'error';
-  endpoint?: string;
-  provider?: string;
-  error?: string;
-}
-
 interface CombinedLog {
   id: string;
   type: string;
@@ -47,7 +33,7 @@ interface CombinedLog {
   timestamp: string;
 }
 
-type TabKey = 'all' | 'errors' | 'ai' | 'ai-debug' | 'payments';
+type TabKey = 'all' | 'errors' | 'ai' | 'payments';
 
 const API = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com';
 
@@ -83,9 +69,7 @@ export default function AdminLogsPage() {
   const [fetching, setFetching] = useState(true);
   const [page, setPage] = useState(1);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [debugLogs, setDebugLogs] = useState<AIDebugLog[]>([]);
-  const [autoRefresh, setAutoRefresh] = useState(true);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
 
   useEffect(() => {
     if (!loading && !user) router.replace('/admin/login');
@@ -129,13 +113,6 @@ export default function AdminLogsPage() {
           if (!res.ok) throw new Error(`Failed: ${res.status}`);
           const data = (await res.json()) as { logs: CombinedLog[] };
           if (!cancelled) setCombinedLogs(data.logs);
-        } else if (tab === 'ai-debug') {
-          const res = await fetch(`${API}/v1/admin/ai-debug-logs?page=${page}&limit=30`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (!res.ok) throw new Error(`Failed: ${res.status}`);
-          const data = (await res.json()) as { logs: AIDebugLog[] };
-          if (!cancelled) setDebugLogs(data.logs);
         }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load logs');
@@ -145,25 +122,6 @@ export default function AdminLogsPage() {
     })();
     return () => { cancelled = true; };
   }, [user, tab, page]);
-
-  // Auto-refresh for AI Debug tab
-  useEffect(() => {
-    if (tab !== 'ai-debug' || !autoRefresh || !user) return;
-    intervalRef.current = setInterval(async () => {
-      try {
-        const auth = getFirebaseAuthClient();
-        const token = await auth.currentUser?.getIdToken();
-        const res = await fetch(`${API}/v1/admin/ai-debug-logs?page=${page}&limit=30`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) {
-          const data = (await res.json()) as { logs: AIDebugLog[] };
-          setDebugLogs(data.logs);
-        }
-      } catch { /* silent */ }
-    }, 10000);
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [tab, autoRefresh, user, page]);
 
 
   if (loading || !user) {
@@ -183,10 +141,9 @@ export default function AdminLogsPage() {
   }
 
   const tabs: { key: TabKey; label: string }[] = [
-    { key: 'all', label: 'All Logs' },
+    { key: 'all', label: 'All' },
     { key: 'errors', label: 'Errors' },
     { key: 'ai', label: 'AI Calls' },
-    { key: 'ai-debug', label: 'AI Debug' },
     { key: 'payments', label: 'Payments' },
   ];
 
@@ -288,65 +245,6 @@ export default function AdminLogsPage() {
             ))}
           </div>
         )
-      ) : tab === 'ai-debug' ? (
-        /* AI Debug Tab */
-        <div className="mt-4">
-          {/* Live toggle + stats */}
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1.5">
-                <span className={`inline-block h-2 w-2 rounded-full ${autoRefresh ? 'bg-emerald-500 animate-pulse' : 'bg-muted-400'}`} />
-                <span className="text-xs text-muted-500">{autoRefresh ? 'Live (10s)' : 'Paused'}</span>
-              </div>
-              <button onClick={() => setAutoRefresh(!autoRefresh)} className={`pill text-xs ${autoRefresh ? 'bg-emerald-600 text-white border-emerald-600' : ''}`}>
-                {autoRefresh ? '⏸ Pause' : '▶ Live'}
-              </button>
-            </div>
-            <div className="flex gap-2 text-xs">
-              <span className="px-2 py-1 rounded bg-paper-200 text-ink-700">Total: {debugLogs.length}</span>
-              <span className="px-2 py-1 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">✓ {debugLogs.filter(l => l.status !== 'error').length}</span>
-              <span className="px-2 py-1 rounded bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">✗ {debugLogs.filter(l => l.status === 'error').length}</span>
-            </div>
-          </div>
-          {debugLogs.length === 0 ? (
-            <EmptyState message="No AI debug logs found" />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-line text-left">
-                    <th className="px-3 py-2 text-xs font-medium text-muted-500">Time</th>
-                    <th className="px-3 py-2 text-xs font-medium text-muted-500">Model</th>
-                    <th className="px-3 py-2 text-xs font-medium text-muted-500">Endpoint</th>
-                    <th className="px-3 py-2 text-xs font-medium text-muted-500">Tokens</th>
-                    <th className="px-3 py-2 text-xs font-medium text-muted-500">Cost</th>
-                    <th className="px-3 py-2 text-xs font-medium text-muted-500">Latency</th>
-                    <th className="px-3 py-2 text-xs font-medium text-muted-500">Status</th>
-                    <th className="px-3 py-2 text-xs font-medium text-muted-500">User</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {debugLogs.map(log => (
-                    <tr key={log.id} className="border-b border-line/50 hover:bg-paper-100 dark:hover:bg-paper-200/50">
-                      <td className="px-3 py-2 text-xs text-muted-500 whitespace-nowrap">{new Date(log.timestamp).toLocaleTimeString('en-IN')}</td>
-                      <td className="px-3 py-2"><span className="pill text-xs bg-gold-500/10 text-gold-600">{log.model}</span></td>
-                      <td className="px-3 py-2 text-xs font-mono text-muted-600">{log.endpoint || '—'}</td>
-                      <td className="px-3 py-2 text-xs text-ink-800">{log.tokens}</td>
-                      <td className="px-3 py-2 text-xs text-ink-800">${log.cost.toFixed(5)}</td>
-                      <td className="px-3 py-2 text-xs text-ink-800">{log.latencyMs}ms</td>
-                      <td className="px-3 py-2">
-                        <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium ${log.status === 'error' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'}`}>
-                          {log.status === 'error' ? '✗' : '✓'}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 text-xs text-muted-500">{log.userId?.slice(0, 8) || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
       ) : (
         /* All or Payments tab */
         combinedLogs.length === 0 ? (

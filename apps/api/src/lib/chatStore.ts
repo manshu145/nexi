@@ -29,7 +29,6 @@ export interface ChatStore {
   getSession(userId: string, sessionId: string): Promise<ChatSession | null>;
   getSessions(userId: string): Promise<ChatSessionSummary[]>;
   deleteSession(userId: string, sessionId: string): Promise<void>;
-  deleteAllSessions(userId: string): Promise<void>;
 }
 
 // ---------- in-memory implementation ----------------------------------------
@@ -83,14 +82,6 @@ export class InMemoryChatStore implements ChatStore {
 
   async deleteSession(userId: string, sessionId: string): Promise<void> {
     this.sessions.delete(`${userId}:${sessionId}`);
-  }
-
-  async deleteAllSessions(userId: string): Promise<void> {
-    for (const key of this.sessions.keys()) {
-      if (key.startsWith(`${userId}:`)) {
-        this.sessions.delete(key);
-      }
-    }
   }
 }
 
@@ -154,12 +145,5 @@ export class FirestoreChatStore implements ChatStore {
 
   async deleteSession(userId: string, sessionId: string): Promise<void> {
     await this.sessionRef(userId, sessionId).delete();
-  }
-
-  async deleteAllSessions(userId: string): Promise<void> {
-    const snap = await this.sessionsCol(userId).get();
-    const batch = this.db.batch();
-    snap.docs.forEach(doc => batch.delete(doc.ref));
-    await batch.commit();
   }
 }

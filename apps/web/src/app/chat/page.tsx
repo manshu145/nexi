@@ -53,15 +53,6 @@ function ChatPage() {
   const [vizContent, setVizContent] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [copyToast, setCopyToast] = useState(false);
-  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
-  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<'gpt4o' | 'groq' | 'gemini'>(() => {
-    if (typeof window !== 'undefined') {
-      return (localStorage.getItem('preferredChatModel') as 'gpt4o' | 'groq' | 'gemini') || 'gpt4o';
-    }
-    return 'gpt4o';
-  });
-  const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const topicHandled = useRef(false);
@@ -118,34 +109,6 @@ function ChatPage() {
     setSidebarOpen(false);
   };
 
-  const deleteSession = async (sessionId: string) => {
-    try {
-      await api.deleteChatSession(sessionId);
-      setSessions(prev => prev.filter(s => s.id !== sessionId));
-      if (activeSessionId === sessionId) {
-        setActiveSessionId(null);
-        setMessages([]);
-      }
-    } catch { /* ignore */ }
-    setDeletingSessionId(null);
-  };
-
-  const deleteAllChats = async () => {
-    try {
-      await api.deleteAllChatSessions();
-      setSessions([]);
-      setActiveSessionId(null);
-      setMessages([]);
-    } catch { /* ignore */ }
-    setConfirmDeleteAll(false);
-  };
-
-  const handleModelChange = (model: 'gpt4o' | 'groq' | 'gemini') => {
-    setSelectedModel(model);
-    localStorage.setItem('preferredChatModel', model);
-    setModelDropdownOpen(false);
-  };
-
   // File attachment handling
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -186,7 +149,7 @@ function ChatPage() {
     setMessages(prev => [...prev, userMsg]);
     try {
       const apiAttachments = currentAttachments.length > 0 ? currentAttachments.map(a => ({ type: a.type, name: a.name, data: a.data, mimeType: a.mimeType })) : undefined;
-      const res = await api.sendChat(msgText, activeSessionId ?? undefined, apiAttachments, selectedModel);
+      const res = await api.sendChat(msgText, activeSessionId ?? undefined, apiAttachments);
       setActiveSessionId(res.sessionId);
       const aiMsg: ChatMessage = { role: 'assistant', content: res.response, timestamp: new Date().toISOString() };
       setMessages(prev => [...prev, aiMsg]);
@@ -264,46 +227,12 @@ function ChatPage() {
             </div>
           )}
           {sessions.map(s => (
-            <div key={s.id} className="group/session relative">
-              {deletingSessionId === s.id ? (
-                <div className="flex items-center gap-1 rounded-lg px-3 py-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800">
-                  <span className="text-xs text-red-700 dark:text-red-400 flex-1">Delete this chat?</span>
-                  <button onClick={() => deleteSession(s.id)} className="text-xs font-medium text-red-600 hover:text-red-800 px-1">Yes</button>
-                  <button onClick={() => setDeletingSessionId(null)} className="text-xs font-medium text-muted-500 hover:text-ink-900 px-1">No</button>
-                </div>
-              ) : (
-                <button onClick={() => loadSession(s.id)} className={`w-full truncate rounded-lg px-3 py-2 text-left text-sm transition-colors pr-8 ${s.id === activeSessionId ? 'bg-paper-300 font-medium text-ink-900' : 'text-ink-700 hover:bg-paper-200'}`}>
-                  {s.title}
-                </button>
-              )}
-              {deletingSessionId !== s.id && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); setDeletingSessionId(s.id); }}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 hidden group-hover/session:flex h-6 w-6 items-center justify-center rounded text-muted-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
-                  aria-label="Delete chat"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                </button>
-              )}
-            </div>
+            <button key={s.id} onClick={() => loadSession(s.id)} className={`w-full truncate rounded-lg px-3 py-2 text-left text-sm transition-colors ${s.id === activeSessionId ? 'bg-paper-300 font-medium text-ink-900' : 'text-ink-700 hover:bg-paper-200'}`}>
+              {s.title}
+            </button>
           ))}
         </nav>
-        <div className="border-t border-line p-3 space-y-2">
-          {sessions.length > 0 && (
-            <div>
-              {confirmDeleteAll ? (
-                <div className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800">
-                  <span className="text-xs text-red-700 dark:text-red-400">Delete all {sessions.length} chats?</span>
-                  <div className="flex gap-1">
-                    <button onClick={deleteAllChats} className="text-xs font-medium text-red-600 hover:text-red-800 px-1">Confirm</button>
-                    <button onClick={() => setConfirmDeleteAll(false)} className="text-xs font-medium text-muted-500 hover:text-ink-900 px-1">Cancel</button>
-                  </div>
-                </div>
-              ) : (
-                <button onClick={() => setConfirmDeleteAll(true)} className="btn-ghost w-full text-sm text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30">Clear all chats</button>
-              )}
-            </div>
-          )}
+        <div className="border-t border-line p-3">
           <button onClick={() => router.push('/dashboard')} className="btn-ghost w-full text-sm">&larr; Dashboard</button>
         </div>
       </aside>
@@ -313,42 +242,12 @@ function ChatPage() {
         {/* Header with model indicator */}
         <header className="flex items-center gap-3 border-b border-line px-4 py-3 bg-paper-50">
           <button onClick={() => setSidebarOpen(true)} className="btn-ghost-sm md:hidden" aria-label="Open sidebar">&#x2630;</button>
-          <div className="flex items-center gap-2 min-w-0 flex-1">
+          <div className="flex items-center gap-2 min-w-0">
             <h1 className="font-serif text-lg font-semibold text-ink-900 truncate">Nexi AI</h1>
-            {/* Model selector dropdown */}
-            <div className="relative">
-              <button
-                onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-paper-200 border border-line text-[10px] font-medium text-muted-500 hover:bg-paper-300 transition-colors whitespace-nowrap"
-              >
-                {selectedModel === 'gpt4o' ? 'GPT-4o' : selectedModel === 'groq' ? 'Groq Llama' : 'Gemini Flash'}
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
-              </button>
-              {modelDropdownOpen && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setModelDropdownOpen(false)} />
-                  <div className="absolute top-full left-0 mt-1 z-50 w-52 rounded-xl border border-line bg-paper-50 shadow-lg py-1">
-                    <button onClick={() => handleModelChange('gpt4o')} className={`w-full px-3 py-2 text-left text-sm hover:bg-paper-200 transition-colors ${selectedModel === 'gpt4o' ? 'bg-paper-200 font-medium' : ''}`}>
-                      <div className="font-medium text-ink-900">GPT-4o</div>
-                      <div className="text-xs text-muted-400">Deep, detailed responses</div>
-                    </button>
-                    <button onClick={() => handleModelChange('groq')} className={`w-full px-3 py-2 text-left text-sm hover:bg-paper-200 transition-colors ${selectedModel === 'groq' ? 'bg-paper-200 font-medium' : ''}`}>
-                      <div className="font-medium text-ink-900">Groq Llama</div>
-                      <div className="text-xs text-muted-400">Fast responses</div>
-                    </button>
-                    <button onClick={() => handleModelChange('gemini')} className={`w-full px-3 py-2 text-left text-sm hover:bg-paper-200 transition-colors ${selectedModel === 'gemini' ? 'bg-paper-200 font-medium' : ''}`}>
-                      <div className="font-medium text-ink-900">Gemini Flash</div>
-                      <div className="text-xs text-muted-400">Visual &amp; diagram focus</div>
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
+            <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full bg-paper-200 border border-line text-[10px] font-medium text-muted-500 whitespace-nowrap">
+              GPT-4o
+            </span>
           </div>
-          {/* Close button — navigates to dashboard */}
-          <button onClick={() => router.push('/dashboard')} className="btn-ghost-sm flex-shrink-0" aria-label="Close chat">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
         </header>
 
         {/* Messages */}

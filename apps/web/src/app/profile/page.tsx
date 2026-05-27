@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { EXAM_BY_SLUG } from '@nexigrate/shared';
 import { Logo } from '~/components/Logo';
 import { useAuth } from '~/lib/auth-context';
-import { api, type StoredUser, type ReferralStats } from '~/lib/api';
+import { api, type StoredUser } from '~/lib/api';
 import { AILoader } from '~/components/ui/AILoader';
 
 function Row({ label, value }: { label: string; value?: string | null }) {
@@ -19,7 +19,7 @@ function Row({ label, value }: { label: string; value?: string | null }) {
 export default function ProfilePage() {
   const t = useTranslations('profile');
   const tc = useTranslations('common');
-  const { user, loading, signOut } = useAuth();
+  const { user, loading } = useAuth();
   const router = useRouter();
   const [me, setMe] = useState<StoredUser | null>(null);
   const [editing, setEditing] = useState(false);
@@ -30,16 +30,10 @@ export default function ProfilePage() {
   const [dob, setDob] = useState('');
   const [school, setSchool] = useState('');
   const [aim, setAim] = useState('');
-  const [referralStats, setReferralStats] = useState<ReferralStats | null>(null);
+
 
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
   useEffect(() => { if (!user) return; (async () => { try { const r = await api.me(); setMe(r.user); setName(r.user.name); setPhone(r.user.phone ?? ''); setDob(r.user.dob ?? ''); setSchool(r.user.school ?? ''); setAim(r.user.aim ?? ''); } catch { toast.error('Failed to load'); } finally { setPageLoading(false); } })(); }, [user]);
-
-  // Fetch referral stats
-  useEffect(() => {
-    if (!user) return;
-    api.getReferralStats().then(setReferralStats).catch(() => {});
-  }, [user]);
 
   const handleSave = async () => { setSaving(true); try { const r = await api.updateProfile({ name: name.trim(), phone: phone.trim()||undefined, dob: dob||undefined, school: school.trim()||undefined, aim: aim.trim()||undefined }); setMe(r.user); setEditing(false); toast.success(t('saved')); } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed'); } finally { setSaving(false); } };
 
@@ -105,76 +99,14 @@ export default function ProfilePage() {
       {/* Refer & Earn */}
       <section className="mt-6" id="referral">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">Refer & Earn</h2>
-        <div className="mt-3 paper-card p-4 space-y-4">
-          <p className="text-sm text-muted-500">Invite friends and earn <span className="font-bold text-ink-900">50 credits</span> for each referral who completes onboarding!</p>
-          
-          {/* Referral Code */}
-          {referralStats?.code ? (
-            <>
-              <div>
-                <p className="text-xs font-medium text-muted-500 mb-1">Your referral code</p>
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 rounded-lg bg-paper-200 px-4 py-2.5 text-center font-mono text-lg font-bold tracking-widest text-ink-900">
-                    {referralStats.code}
-                  </div>
-                  <button onClick={() => { navigator.clipboard.writeText(referralStats.code); toast.success('Code copied!'); }} className="btn-ghost-sm text-xs">Copy</button>
-                </div>
-              </div>
-              
-              {/* Referral URL */}
-              <div>
-                <p className="text-xs font-medium text-muted-500 mb-1">Share this link</p>
-                <div className="flex items-center gap-2">
-                  <input type="text" readOnly value={referralStats.referralUrl} className="input flex-1 text-xs" />
-                  <button onClick={() => { navigator.clipboard.writeText(referralStats.referralUrl); toast.success('Link copied!'); }} className="btn-ghost-sm text-xs">Copy</button>
-                </div>
-              </div>
-
-              {/* Share button */}
-              <button
-                onClick={() => {
-                  const text = `Join me on Nexigrate! Use my code ${referralStats.code} to get 25 bonus credits. ${referralStats.referralUrl}`;
-                  if (navigator.share) {
-                    navigator.share({ title: 'Join Nexigrate', text, url: referralStats.referralUrl }).catch(() => {});
-                  } else {
-                    navigator.clipboard.writeText(text);
-                    toast.success('Share text copied!');
-                  }
-                }}
-                className="btn-primary w-full text-sm"
-              >
-                📤 Share with Friends
-              </button>
-
-              {/* Stats */}
-              <div className="grid grid-cols-3 gap-3 pt-2 border-t border-line">
-                <div className="text-center">
-                  <p className="text-lg font-bold text-ink-900">{referralStats.totalReferrals}</p>
-                  <p className="text-[10px] text-muted-500">Total Referrals</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-lg font-bold text-ink-900">{referralStats.completedReferrals}</p>
-                  <p className="text-[10px] text-muted-500">Completed</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-lg font-bold text-gold-600">{referralStats.totalEarned}</p>
-                  <p className="text-[10px] text-muted-500">Credits Earned</p>
-                </div>
-              </div>
-            </>
-          ) : (
-            <div className="text-center py-3">
-              <p className="text-sm text-muted-400">Loading referral code...</p>
-            </div>
-          )}
+        <div className="mt-3 paper-card p-4 space-y-3">
+          <p className="text-sm text-muted-500">Invite friends and earn <span className="font-bold text-ink-900">50 credits</span> for each referral!</p>
+          <div className="flex items-center gap-2">
+            <input type="text" readOnly value={`https://app.nexigrate.com/signin?ref=YOUR_CODE`} className="input flex-1 text-xs" />
+            <button onClick={() => { navigator.clipboard.writeText(`https://app.nexigrate.com/signin?ref=YOUR_CODE`); toast.success('Copied!'); }} className="btn-ghost-sm text-xs">Copy</button>
+          </div>
+          <p className="text-xs text-muted-400">Your referral code will appear after you verify your account.</p>
         </div>
-      </section>
-
-      {/* Sign Out */}
-      <section className="mt-6 mb-8">
-        <button onClick={() => signOut()} className="btn-ghost w-full text-sm text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/20">
-          Sign Out
-        </button>
       </section>
     </main>
   );
