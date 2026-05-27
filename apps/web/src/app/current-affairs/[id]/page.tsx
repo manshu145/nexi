@@ -5,6 +5,7 @@ import { useAuth } from '~/lib/auth-context';
 import { api, type CurrentAffairsItem } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 import { Skeleton } from '~/components/Skeleton';
+import { AILoader } from '~/components/ui/AILoader';
 
 export default function CurrentAffairsDetailPage() {
   const { user, loading } = useAuth();
@@ -108,13 +109,8 @@ export default function CurrentAffairsDetailPage() {
   };
 
   if (loading || !user || pageLoading) return (
-    <main className="mx-auto flex min-h-dvh max-w-2xl flex-col px-5 pt-6 pb-28">
-      <div className="space-y-4 mt-8">
-        <Skeleton className="h-6 w-24" />
-        <Skeleton className="h-8 w-full" />
-        <Skeleton className="h-4 w-40" />
-        <Skeleton className="h-48 w-full rounded-xl" />
-      </div>
+    <main className="mx-auto flex min-h-dvh max-w-2xl flex-col items-center justify-center px-5">
+      <AILoader context="currentAffairs" />
     </main>
   );
 

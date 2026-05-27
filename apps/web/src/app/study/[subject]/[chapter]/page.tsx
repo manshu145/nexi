@@ -5,6 +5,7 @@ import { useAuth } from '~/lib/auth-context';
 import { api, type ChapterContent } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 import { PlanGate } from '~/components/PlanGate';
+import { AILoader } from '~/components/ui/AILoader';
 
 export default function KindleReaderPage() {
   const { user, loading } = useAuth();
@@ -416,7 +417,7 @@ export default function KindleReaderPage() {
   };
 
   if (loading || !user || pageLoading) return (
-    <div className="kindle-frame"><div className="flex-1 p-6 space-y-4 animate-pulse"><div className="h-6 w-3/4 rounded bg-paper-200" /><div className="h-4 w-full rounded bg-paper-200" /><div className="h-4 w-full rounded bg-paper-200" /><div className="h-4 w-5/6 rounded bg-paper-200" /><div className="h-4 w-full rounded bg-paper-200" /><div className="h-4 w-2/3 rounded bg-paper-200" /><div className="h-6 w-1/2 rounded bg-paper-200 mt-6" /><div className="h-4 w-full rounded bg-paper-200" /><div className="h-4 w-full rounded bg-paper-200" /></div></div>
+    <div className="kindle-frame"><div className="flex-1 flex items-center justify-center"><AILoader context="chapter" /></div></div>
   );
 
   if (showPlanGate) return (
