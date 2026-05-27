@@ -50,12 +50,8 @@ export default function StudyPage() {
   }, [user, router]);
 
   if (loading || !user || pageLoading) return (
-    <main className="mx-auto flex min-h-dvh max-w-2xl flex-col px-5 pt-6 pb-28">
-      <div className="space-y-4 mt-8">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-4 w-32" />
-        <ListSkeleton count={4} />
-      </div>
+    <main className="mx-auto flex min-h-dvh max-w-2xl flex-col items-center justify-center px-5">
+      <AILoader context="chapter" />
     </main>
   );
 

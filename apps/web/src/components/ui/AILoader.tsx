@@ -92,11 +92,15 @@ export function AILoader({ context = 'general', className = '' }: AILoaderProps)
 
   return (
     <div className={`flex flex-col items-center justify-center min-h-[120px] ${className}`}>
-      <p className={`text-base text-center text-ink-800 dark:text-slate-300 transition-opacity duration-300 ${phase === 'clearing' ? 'opacity-0' : 'opacity-100'}`}>
-        {displayed}<span className="animate-pulse">|</span>
+      {/* Animated emoji */}
+      <div className="text-3xl animate-bounce mb-3">
+        {context === 'chapter' ? '📖' : context === 'quiz' ? '🎯' : context === 'assessment' ? '🎓' : context === 'chat' ? '🤖' : context === 'currentAffairs' ? '📰' : context === 'dashboard' ? '📈' : '✨'}
+      </div>
+      <p className={`text-sm font-medium text-center text-ink-800 dark:text-ink-200 transition-opacity duration-300 ${phase === 'clearing' ? 'opacity-0' : 'opacity-100'}`}>
+        {displayed}<span className="animate-pulse text-amber-500">|</span>
       </p>
       {/* Indeterminate progress bar */}
-      <div className="mt-4 w-48 h-1 rounded-full bg-paper-200 overflow-hidden">
+      <div className="mt-4 w-48 h-1.5 rounded-full bg-paper-300 dark:bg-paper-200 overflow-hidden">
         <div className="h-full w-1/3 rounded-full bg-amber-500 animate-[slideBar_1.5s_ease-in-out_infinite]" />
       </div>
       <style jsx>{`

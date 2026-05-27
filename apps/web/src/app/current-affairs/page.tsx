@@ -5,6 +5,7 @@ import { useAuth } from '~/lib/auth-context';
 import { api, type CurrentAffairsItem } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 import { Skeleton } from '~/components/Skeleton';
+import { AILoader } from '~/components/ui/AILoader';
 
 const CATEGORY_EMOJIS: Record<string, string> = {
   national: '\u{1F1EE}\u{1F1F3}', international: '\u{1F30D}', economy: '\u{1F4B0}', 'science-tech': '\u{1F52C}',
@@ -159,10 +160,7 @@ export default function CurrentAffairsShortsPage() {
 
   if (loading || !user || pageLoading) return (
     <main className="shorts-shell flex min-h-dvh items-center justify-center">
-      <div className="space-y-4 w-64">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-64 w-full rounded-2xl" />
-      </div>
+      <AILoader context="currentAffairs" />
     </main>
   );
 
