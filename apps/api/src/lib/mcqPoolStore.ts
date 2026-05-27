@@ -44,8 +44,8 @@ export class InMemoryMCQPoolStore implements MCQPoolStore {
   private pools = new Map<string, MCQPool>();
   private usedMCQs = new Map<string, string[]>();
 
-  private poolKey(exam: string, subject: string, chapter: string) {
-    return `${exam}_${subject}_${chapter}`;
+  private poolKey(exam: string, subject: string, chapter: string, language: 'en' | 'hi' = 'en') {
+    return `${exam}_${subject}_${chapter}_${language}`;
   }
 
   private usedKey(uid: string, exam: string, subject: string, chapter: string) {
@@ -63,7 +63,7 @@ export class InMemoryMCQPoolStore implements MCQPoolStore {
     logger: Logger,
     chapterContent?: string,
   ): Promise<GeneratedMCQ[]> {
-    const pKey = this.poolKey(examSlug, subjectSlug, chapterSlug);
+    const pKey = this.poolKey(examSlug, subjectSlug, chapterSlug, language);
     const uKey = this.usedKey(uid, examSlug, subjectSlug, chapterSlug);
 
     // Get or create pool
@@ -112,8 +112,8 @@ export class InMemoryMCQPoolStore implements MCQPoolStore {
 export class FirestoreMCQPoolStore implements MCQPoolStore {
   constructor(private readonly db: Firestore) {}
 
-  private poolDocId(exam: string, subject: string, chapter: string) {
-    return `${exam}_${subject}_${chapter}`;
+  private poolDocId(exam: string, subject: string, chapter: string, language: 'en' | 'hi' = 'en') {
+    return `${exam}_${subject}_${chapter}_${language}`;
   }
 
   async getChapterQuiz(
@@ -127,7 +127,7 @@ export class FirestoreMCQPoolStore implements MCQPoolStore {
     logger: Logger,
     chapterContent?: string,
   ): Promise<GeneratedMCQ[]> {
-    const poolDocId = this.poolDocId(examSlug, subjectSlug, chapterSlug);
+    const poolDocId = this.poolDocId(examSlug, subjectSlug, chapterSlug, language);
     const poolRef = this.db.collection('chapterMCQPool').doc(poolDocId);
     const usedRef = this.db.collection('users').doc(uid).collection('usedMCQs').doc(poolDocId);
 

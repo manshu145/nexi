@@ -264,7 +264,73 @@ function ChatPage() {
     } finally { setGeneratingImage(false); }
   };
 
-  const prompts = ['Explain Article 370 in simple terms', 'What is the current fiscal deficit?', 'Compare parliamentary vs presidential systems'];
+  // Personalized greeting & prompts based on user profile
+  const [userName, setUserName] = useState<string>('');
+  const [userExam, setUserExam] = useState<string>('');
+  const [userLang, setUserLang] = useState<'en' | 'hi'>('en');
+  const [recentChapter, setRecentChapter] = useState<string>('');
+
+  useEffect(() => {
+    if (!user) return;
+    const lang = (localStorage.getItem('nexigrate-language') as 'en' | 'hi') || 'en';
+    setUserLang(lang);
+    (async () => {
+      try {
+        const res = await api.me();
+        setUserName(res.user.name?.split(' ')[0] || '');
+        setUserExam(res.user.targetExam || '');
+        // Get recent progress to suggest relevant topics
+        if (res.user.targetExam) {
+          try {
+            const prog = await api.getStudyProgress(res.user.targetExam);
+            const chapters = prog.progress?.completedChapters ?? [];
+            if (chapters.length > 0) {
+              const last = chapters[chapters.length - 1]!;
+              setRecentChapter(last.split('/').pop()?.replace(/-/g, ' ') ?? '');
+            }
+          } catch { /* ignore */ }
+        }
+      } catch { /* ignore */ }
+    })();
+  }, [user]);
+
+  const prompts = (() => {
+    const examLabel = userExam?.replace(/-/g, ' ').toUpperCase() || 'exam';
+    const isHindi = userLang === 'hi';
+
+    // Dynamic prompts based on exam + recent chapter
+    if (recentChapter) {
+      return isHindi
+        ? [`"${recentChapter}" को आसान भाषा में समझाओ`, `${examLabel} के लिए ${recentChapter} से MCQ बनाओ`, `${recentChapter} के important points क्या हैं?`]
+        : [`Explain "${recentChapter}" in simple terms`, `Make MCQs from ${recentChapter} for ${examLabel}`, `What are key points of ${recentChapter}?`];
+    }
+
+    // Fallback personalized by exam
+    if (userExam?.includes('upsc')) {
+      return isHindi
+        ? ['Article 370 को आसान शब्दों में समझाओ', 'वर्तमान राजकोषीय घाटा क्या है?', 'संसदीय vs राष्ट्रपति प्रणाली की तुलना करो']
+        : ['Explain Article 370 in simple terms', 'What is the current fiscal deficit?', 'Compare parliamentary vs presidential systems'];
+    }
+    if (userExam?.includes('jee')) {
+      return isHindi
+        ? ['Newton के नियम आसान भाषा में समझाओ', 'Organic Chemistry के basic reactions', 'Integration के shortcuts बताओ']
+        : ['Explain Newton\'s laws simply', 'Basic organic chemistry reactions', 'Integration shortcuts & tricks'];
+    }
+    if (userExam?.includes('neet')) {
+      return isHindi
+        ? ['Cell division को diagram से समझाओ', 'Human heart का blood flow', 'Genetics के important topics']
+        : ['Explain cell division with diagram', 'Blood flow in human heart', 'Important genetics topics for NEET'];
+    }
+    if (userExam?.includes('ssc') || userExam?.includes('bank')) {
+      return isHindi
+        ? ['Percentage के short tricks बताओ', 'भारत के प्रमुख बांध और नदियाँ', 'English Grammar tips for SSC']
+        : ['Percentage short tricks', 'Major dams & rivers of India', 'English grammar tips for SSC'];
+    }
+    // Generic fallback
+    return isHindi
+      ? ['आज का current affairs बताओ', 'मेरी exam preparation कैसी चल रही है?', 'कोई important topic समझाओ']
+      : ['Tell me today\'s current affairs', 'How is my exam preparation going?', 'Explain an important topic'];
+  })();
 
   if (loading || !user) return <main className="flex min-h-dvh items-center justify-center"><AILoader context="chat" /></main>;
 
@@ -381,8 +447,16 @@ function ChatPage() {
               <div className="w-12 h-12 rounded-2xl bg-gold-500/10 flex items-center justify-center">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 2L13.5 8.5L20 10L13.5 11.5L12 18L10.5 11.5L4 10L10.5 8.5L12 2Z" fill="currentColor" className="text-gold-500"/></svg>
               </div>
-              <h2 className="font-serif mt-4 text-xl font-bold text-ink-900">Hi, I&apos;m Nexi</h2>
-              <p className="mt-2 text-sm text-muted-500 max-w-sm">Ask me anything about your exam. You can also attach images or generate diagrams!</p>
+              <h2 className="font-serif mt-4 text-xl font-bold text-ink-900">
+                {userLang === 'hi'
+                  ? `नमस्ते${userName ? ` ${userName}` : ''}, मैं Nexi हूँ`
+                  : `Hi${userName ? ` ${userName}` : ''}, I'm Nexi`}
+              </h2>
+              <p className="mt-2 text-sm text-muted-500 max-w-sm">
+                {userLang === 'hi'
+                  ? `${userExam ? `${userExam.replace(/-/g, ' ').toUpperCase()} से related` : 'अपनी exam से related'} कुछ भी पूछो। Images attach कर सकते हो या diagrams generate कर सकते हो!`
+                  : `Ask me anything about ${userExam ? userExam.replace(/-/g, ' ').toUpperCase() : 'your exam'}. You can also attach images or generate diagrams!`}
+              </p>
               <div className="mt-6 flex flex-wrap justify-center gap-2">
                 {prompts.map(p => (<button key={p} onClick={() => { setInput(p); }} className="pill text-xs">{p}</button>))}
               </div>

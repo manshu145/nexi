@@ -171,8 +171,8 @@ export default function DashboardPage() {
       <section className="mt-4 grid grid-cols-4 gap-3">
         <button type="button" onClick={() => router.push('/essay')} className="paper-card card-selectable p-4 text-left animate-fadeIn-delay-1">
           <span className="text-lg">✍️</span>
-          <h3 className="mt-1 text-sm font-semibold text-ink-900">Practice</h3>
-          <p className="mt-0.5 text-[10px] text-muted-500">Practice</p>
+          <h3 className="mt-1 text-sm font-semibold text-ink-900">Practice Set</h3>
+          <p className="mt-0.5 text-[10px] text-muted-500">Write & get graded</p>
         </button>
         <button type="button" onClick={() => router.push('/upgrade')} className="paper-card card-selectable p-4 text-left animate-fadeIn-delay-1">
           <span className="text-lg">⭐</span>
