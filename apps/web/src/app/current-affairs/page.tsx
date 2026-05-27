@@ -273,12 +273,7 @@ export default function CurrentAffairsShortsPage() {
             })}
           </div>
 
-          {/* Counter */}
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10">
-            <span className="px-3 py-1.5 rounded-full bg-paper-50/80 backdrop-blur-sm text-ink-800 text-xs font-medium border border-line">
-              {currentIdx + 1} / {filtered.length}
-            </span>
-          </div>
+
 
           {currentIdx === 0 && (
             <div className="absolute bottom-14 left-1/2 -translate-x-1/2 z-10 animate-bounce opacity-40">

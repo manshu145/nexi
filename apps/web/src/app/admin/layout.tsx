@@ -30,37 +30,40 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const isLoginPage = pathname === '/admin/login';
 
   useEffect(() => {
-    if (isLoginPage) return; // Don't redirect on login page
+    if (isLoginPage) return;
     if (!loading && !user) router.replace('/admin/login');
     if (!loading && user && !ADMIN_EMAILS.includes(user.email ?? '')) router.replace('/dashboard');
   }, [user, loading, router, isLoginPage]);
 
-  // Login page renders independently — no auth/layout wrapper needed
   if (isLoginPage) return <>{children}</>;
 
-  if (loading || !user) return <main className="flex min-h-dvh items-center justify-center"><AILoader context="general" /></main>;
+  if (loading || !user) return <main className="flex min-h-dvh items-center justify-center bg-slate-950"><AILoader context="general" /></main>;
 
   return (
-    <div className="admin-layout">
+    <div className="min-h-dvh bg-slate-950 text-slate-100">
       {/* Sidebar */}
-      <aside className={`admin-sidebar max-w-[80vw] ${sidebarOpen ? 'admin-sidebar-open' : ''}`}>
-        <div className="flex items-center gap-2 px-4 py-4 border-b border-line">
+      <aside className={`fixed inset-y-0 left-0 z-50 flex w-56 flex-col bg-slate-900 border-r border-slate-800 transition-transform lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="flex items-center gap-2 px-4 py-4 border-b border-slate-800">
           <span className="text-lg">⚙️</span>
-          <span className="font-serif font-semibold text-gold-500">Admin</span>
+          <span className="font-serif font-semibold text-amber-400">Admin</span>
         </div>
-        <nav className="flex-1 px-3 py-3 space-y-1">
+        <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-1">
           {NAV_ITEMS.map((item) => (
             <button
               key={item.href}
               onClick={() => { router.push(item.href); setSidebarOpen(false); }}
-              className={`admin-nav-link w-full text-left flex items-center gap-2 ${pathname === item.href ? 'admin-nav-active' : ''}`}
+              className={`w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
+                pathname === item.href
+                  ? 'text-amber-400 bg-amber-500/10 border-r-2 border-amber-500 font-medium'
+                  : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800'
+              }`}
             >
               <span>{item.icon}</span> {item.label}
             </button>
           ))}
         </nav>
-        <div className="px-3 py-3 border-t border-line">
-          <button onClick={() => router.push('/dashboard')} className="admin-nav-link w-full text-left flex items-center gap-2">
+        <div className="px-3 py-3 border-t border-slate-800">
+          <button onClick={() => router.push('/dashboard')} className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors">
             <span>←</span> Back to App
           </button>
         </div>
@@ -72,14 +75,14 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       )}
 
       {/* Topbar */}
-      <header className="admin-topbar lg:pl-4">
-        <button className="lg:hidden text-muted-500 hover:text-ink-900 text-sm font-medium" onClick={() => setSidebarOpen(!sidebarOpen)}>☰ Menu</button>
-        <span className="text-sm font-medium text-ink-800">Nexigrate Admin</span>
-        <span className="text-xs text-muted-400">{user.email}</span>
+      <header className="fixed top-0 right-0 left-0 lg:left-56 z-30 flex items-center justify-between px-4 py-3 bg-slate-900 border-b border-slate-800">
+        <button className="lg:hidden text-slate-400 hover:text-slate-100 text-sm font-medium" onClick={() => setSidebarOpen(!sidebarOpen)}>☰ Menu</button>
+        <span className="text-sm font-medium text-slate-300">Nexigrate Admin</span>
+        <span className="text-xs text-slate-500">{user.email}</span>
       </header>
 
       {/* Main */}
-      <main className="admin-main mt-12">
+      <main className="lg:ml-56 pt-14 p-4 lg:p-6 min-h-dvh">
         {children}
       </main>
     </div>
