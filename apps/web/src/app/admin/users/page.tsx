@@ -158,7 +158,7 @@ export default function AdminUsersPage() {
               onClick={() => openUserDrawer(u)}
             >
               <div className="flex items-center gap-3 min-w-0">
-                <div className="h-9 w-9 rounded-full bg-slate-700 flex items-center justify-center text-sm font-bold text-amber-400 flex-shrink-0">
+                <div className="h-9 w-9 rounded-full bg-paper-300 flex items-center justify-center text-sm font-bold text-gold-500 flex-shrink-0">
                   {u.name?.[0]?.toUpperCase() || '?'}
                 </div>
                 <div className="min-w-0">
@@ -167,11 +167,11 @@ export default function AdminUsersPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
-                <span className={`inline-flex items-center rounded px-2 py-0.5 text-[10px] font-medium ${u.plan === 'scholar' ? 'bg-amber-500/20 text-amber-400' : u.plan === 'free' ? 'bg-slate-600 text-slate-300' : 'bg-blue-500/20 text-blue-400'}`}>
+                <span className={`inline-flex items-center rounded px-2 py-0.5 text-[10px] font-medium ${u.plan === 'scholar' ? 'bg-gold-500/10 text-gold-500' : u.plan === 'free' ? 'bg-paper-400 text-ink-700' : 'bg-paper-200 text-ink-800'}`}>
                   {u.plan}
                 </span>
                 <span className="text-xs text-muted-500">{u.credits} cr</span>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-slate-500"><polyline points="9 18 15 12 9 6"/></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-muted-400"><polyline points="9 18 15 12 9 6"/></svg>
               </div>
             </button>
           ))}
@@ -191,75 +191,75 @@ export default function AdminUsersPage() {
       {/* User Detail Drawer */}
       {drawerOpen && (
         <div className="fixed inset-0 z-50 flex justify-end" onClick={closeDrawer}>
-          <div className="absolute inset-0 bg-black/50" />
+          <div className="absolute inset-0 bg-black/40" />
           <div
-            className="relative w-full max-w-md bg-slate-900 border-l border-slate-800 h-full overflow-y-auto shadow-2xl animate-slideInRight"
+            className="relative w-full max-w-md bg-paper-50 border-l border-line h-full overflow-y-auto shadow-2xl animate-slideInRight"
             onClick={e => e.stopPropagation()}
           >
             {selectedUser && (
               <div className="p-6 space-y-6">
                 {/* Header with close */}
                 <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-bold text-slate-100">User Detail</h2>
-                  <button onClick={closeDrawer} className="h-8 w-8 rounded-lg bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700 transition-colors">
+                  <h2 className="text-lg font-bold text-ink-900">User Detail</h2>
+                  <button onClick={closeDrawer} className="h-8 w-8 rounded-lg bg-paper-200 flex items-center justify-center text-muted-500 hover:text-ink-900 hover:bg-paper-300 transition-colors">
                     ✕
                   </button>
                 </div>
 
                 {/* Profile Header */}
                 <div className="flex items-center gap-4">
-                  <div className="h-14 w-14 rounded-full bg-slate-700 flex items-center justify-center text-xl font-bold text-amber-400">
+                  <div className="h-14 w-14 rounded-full bg-paper-300 flex items-center justify-center text-xl font-bold text-gold-500">
                     {selectedUser.name?.[0]?.toUpperCase() || '?'}
                   </div>
                   <div>
-                    <h3 className="font-bold text-slate-100">{selectedUser.name || 'Unnamed'}</h3>
-                    <p className="text-sm text-slate-400">{selectedUser.email}</p>
-                    {selectedUser.phone && <p className="text-xs text-slate-500">{selectedUser.phone}</p>}
-                    <p className="text-xs text-slate-500 mt-1">Joined {new Date(selectedUser.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                    <h3 className="font-bold text-ink-900">{selectedUser.name || 'Unnamed'}</h3>
+                    <p className="text-sm text-muted-500">{selectedUser.email}</p>
+                    {selectedUser.phone && <p className="text-xs text-muted-400">{selectedUser.phone}</p>}
+                    <p className="text-xs text-muted-400 mt-1">Joined {new Date(selectedUser.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
                   </div>
                 </div>
 
                 {/* Quick Stats */}
                 <div className="grid grid-cols-3 gap-3">
-                  <div className="bg-slate-800 rounded-lg p-3 text-center">
-                    <p className="text-lg font-bold text-white">{selectedUser.credits}</p>
-                    <p className="text-[10px] text-slate-400 uppercase tracking-wider">Credits</p>
+                  <div className="bg-paper-200 rounded-lg p-3 text-center">
+                    <p className="text-lg font-bold text-paper-50">{selectedUser.credits}</p>
+                    <p className="text-[10px] text-muted-500 uppercase tracking-wider">Credits</p>
                   </div>
-                  <div className="bg-slate-800 rounded-lg p-3 text-center">
-                    <p className="text-lg font-bold text-white">{selectedUser.currentStreak ?? 0}</p>
-                    <p className="text-[10px] text-slate-400 uppercase tracking-wider">Streak</p>
+                  <div className="bg-paper-200 rounded-lg p-3 text-center">
+                    <p className="text-lg font-bold text-paper-50">{selectedUser.currentStreak ?? 0}</p>
+                    <p className="text-[10px] text-muted-500 uppercase tracking-wider">Streak</p>
                   </div>
-                  <div className="bg-slate-800 rounded-lg p-3 text-center">
-                    <p className={`text-sm font-bold capitalize ${selectedUser.plan === 'scholar' ? 'text-amber-400' : 'text-slate-300'}`}>{selectedUser.plan}</p>
-                    <p className="text-[10px] text-slate-400 uppercase tracking-wider">Plan</p>
+                  <div className="bg-paper-200 rounded-lg p-3 text-center">
+                    <p className={`text-sm font-bold capitalize ${selectedUser.plan === 'scholar' ? 'text-gold-500' : 'text-ink-700'}`}>{selectedUser.plan}</p>
+                    <p className="text-[10px] text-muted-500 uppercase tracking-wider">Plan</p>
                   </div>
                 </div>
 
                 {/* Info Grid */}
-                <div className="bg-slate-800 rounded-lg p-4 space-y-2 text-sm">
-                  <div className="flex justify-between"><span className="text-slate-400">Exam</span><span className="text-slate-200">{selectedUser.targetExam ?? '—'}</span></div>
-                  <div className="flex justify-between"><span className="text-slate-400">Level</span><span className="text-slate-200 capitalize">{selectedUser.onboardingLevel ?? '—'}</span></div>
-                  <div className="flex justify-between"><span className="text-slate-400">Role</span><span className="text-slate-200">{selectedUser.role}</span></div>
-                  <div className="flex justify-between"><span className="text-slate-400">Best Streak</span><span className="text-slate-200">{selectedUser.bestStreak ?? 0} days</span></div>
+                <div className="bg-paper-200 rounded-lg p-4 space-y-2 text-sm">
+                  <div className="flex justify-between"><span className="text-muted-500">Exam</span><span className="text-ink-800">{selectedUser.targetExam ?? '—'}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-500">Level</span><span className="text-ink-800 capitalize">{selectedUser.onboardingLevel ?? '—'}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-500">Role</span><span className="text-ink-800">{selectedUser.role}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-500">Best Streak</span><span className="text-ink-800">{selectedUser.bestStreak ?? 0} days</span></div>
                 </div>
 
                 {/* Activity Timeline */}
                 <div>
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Activity Timeline</h4>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-muted-500 mb-3">Activity Timeline</h4>
                   {loadingActivity ? (
                     <div className="space-y-2">
-                      {[1,2,3].map(i => <div key={i} className="h-10 bg-slate-800 rounded animate-pulse" />)}
+                      {[1,2,3].map(i => <div key={i} className="h-10 bg-paper-200 rounded animate-pulse" />)}
                     </div>
                   ) : activity.length === 0 ? (
-                    <p className="text-sm text-slate-500 text-center py-4">No activity data available</p>
+                    <p className="text-sm text-muted-400 text-center py-4">No activity data available</p>
                   ) : (
                     <div className="space-y-2 max-h-60 overflow-y-auto">
                       {activity.slice(0, 20).map((item, i) => (
-                        <div key={i} className="flex items-start gap-3 bg-slate-800/50 rounded-lg p-3">
+                        <div key={i} className="flex items-start gap-3 bg-paper-200/50 rounded-lg p-3">
                           <span className="text-sm mt-0.5">{getActivityEmoji(item.type)}</span>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm text-slate-200 truncate">{item.description}</p>
-                            <p className="text-[10px] text-slate-500">{formatTimeAgo(item.timestamp)}</p>
+                            <p className="text-sm text-ink-800 truncate">{item.description}</p>
+                            <p className="text-[10px] text-muted-400">{formatTimeAgo(item.timestamp)}</p>
                           </div>
                         </div>
                       ))}
@@ -269,16 +269,16 @@ export default function AdminUsersPage() {
 
                 {/* Admin Actions */}
                 <div>
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Admin Actions</h4>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-muted-500 mb-3">Admin Actions</h4>
                   <div className="space-y-2">
                     {/* Change Plan */}
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-slate-400 w-20">Plan:</span>
+                      <span className="text-xs text-muted-500 w-20">Plan:</span>
                       <select
                         value={selectedUser.plan}
                         onChange={e => handleChangePlan(selectedUser.id, e.target.value)}
                         disabled={changingPlan}
-                        className="flex-1 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-sm px-3 py-1.5"
+                        className="flex-1 rounded-lg bg-paper-200 border border-line text-ink-800 text-sm px-3 py-1.5"
                       >
                         <option value="free">Free</option>
                         <option value="scholar">Scholar</option>
@@ -289,13 +289,13 @@ export default function AdminUsersPage() {
                     {/* Action buttons */}
                     <button
                       onClick={() => handleResetPassword(selectedUser.email)}
-                      className="w-full rounded-lg bg-slate-800 border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:bg-slate-700 transition-colors text-left"
+                      className="w-full rounded-lg bg-paper-200 border border-line px-4 py-2 text-sm text-ink-800 hover:bg-paper-300 transition-colors text-left"
                     >
                       🔑 Send Password Reset Email
                     </button>
                     <button
                       onClick={() => { if (confirm(`Ban user ${selectedUser.name}?`)) { /* TODO: implement ban */ } }}
-                      className="w-full rounded-lg bg-red-950/50 border border-red-900/50 px-4 py-2 text-sm text-red-400 hover:bg-red-950 transition-colors text-left"
+                      className="w-full rounded-lg bg-paper-200 border border-ember-500 px-4 py-2 text-sm text-ember-500 hover:bg-paper-200 transition-colors text-left"
                     >
                       🚫 Ban User
                     </button>

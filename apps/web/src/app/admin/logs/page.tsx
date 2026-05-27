@@ -298,7 +298,7 @@ export default function AdminLogsPage() {
                 <span className={`inline-block h-2 w-2 rounded-full ${autoRefresh ? 'bg-emerald-500 animate-pulse' : 'bg-muted-400'}`} />
                 <span className="text-xs text-muted-500">{autoRefresh ? 'Live (10s)' : 'Paused'}</span>
               </div>
-              <button onClick={() => setAutoRefresh(!autoRefresh)} className={`pill text-xs ${autoRefresh ? 'bg-emerald-600 text-white border-emerald-600' : ''}`}>
+              <button onClick={() => setAutoRefresh(!autoRefresh)} className={`pill text-xs ${autoRefresh ? 'bg-emerald-600 text-paper-50 border-emerald-600' : ''}`}>
                 {autoRefresh ? '⏸ Pause' : '▶ Live'}
               </button>
             </div>

@@ -187,7 +187,7 @@ export default function StudyPage() {
                       >
                         {/* Status icon */}
                         <span className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-                          isCompleted ? 'bg-amber-500 text-white' : (isUnlocked && !isPlanLocked) ? 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
+                          isCompleted ? 'bg-gold-500 text-paper-50' : (isUnlocked && !isPlanLocked) ? 'bg-paper-300 text-ink-800' : 'bg-paper-200 text-muted-400'
                         }`}>
                           {isCompleted ? '✓' : (isPlanLocked || !isUnlocked) ? '🔒' : ch.order}
                         </span>
