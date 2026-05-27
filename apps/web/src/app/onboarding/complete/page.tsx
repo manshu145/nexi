@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import type { AssessmentResult } from '~/lib/api';
+import { api } from '~/lib/api';
 import { AILoader } from '~/components/ui/AILoader';
 
 export default function CompletePage() {
@@ -11,6 +12,7 @@ export default function CompletePage() {
   const router = useRouter();
   const [result, setResult] = useState<AssessmentResult | null>(null);
   const [pageLoading, setPageLoading] = useState(true);
+  const [referralBonus, setReferralBonus] = useState<number | null>(null);
 
   useEffect(() => {
     try {
@@ -24,6 +26,19 @@ export default function CompletePage() {
       console.error('Failed to parse assessment result:', e);
     } finally {
       setPageLoading(false);
+    }
+
+    // Apply pending referral code if exists
+    const pendingRef = localStorage.getItem('pendingReferral');
+    if (pendingRef) {
+      localStorage.removeItem('pendingReferral');
+      api.applyReferral(pendingRef).then(res => {
+        if (res.success && res.bonusCredits) {
+          setReferralBonus(res.bonusCredits);
+        }
+      }).catch(() => {});
+      // Also complete the referral to award the referrer
+      api.completeReferral().catch(() => {});
     }
   }, []);
 
@@ -58,6 +73,11 @@ export default function CompletePage() {
         </>)}
       </div>
       <button type="button" onClick={() => router.replace('/dashboard')} className="btn-primary mt-10 w-full">{t('startLearning')}</button>
+      {referralBonus && (
+        <div className="mt-4 rounded-xl bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 p-4 text-center">
+          <p className="text-sm font-medium text-green-700 dark:text-green-400">🎉 Referral applied! You got {referralBonus} bonus credits</p>
+        </div>
+      )}
     </div>
   );
 }

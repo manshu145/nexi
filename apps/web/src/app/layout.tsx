@@ -16,6 +16,13 @@ export const metadata: Metadata = {
   description: 'AI-powered exam preparation platform for Indian students.',
   manifest: '/manifest.json',
   appleWebApp: { capable: true, statusBarStyle: 'default', title: 'Nexigrate' },
+  icons: {
+    icon: '/icon.svg',
+    apple: '/icon.svg',
+  },
+  other: {
+    'apple-mobile-web-app-capable': 'yes',
+  },
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {

@@ -7,6 +7,7 @@ import {
   GoogleAuthProvider,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  signInWithCredential,
   PhoneAuthProvider,
   linkWithCredential,
   RecaptchaVerifier,
@@ -22,6 +23,7 @@ interface AuthCtx {
   signUpWithEmail: (email: string, password: string) => Promise<User>;
   signInWithEmail: (email: string, password: string) => Promise<User>;
   sendPhoneOtp: (phoneNumber: string, recaptchaContainerId: string) => Promise<ConfirmationResult>;
+  signInWithPhone: (phoneNumber: string, recaptchaContainerId: string) => Promise<ConfirmationResult>;
   verifyPhoneOtp: (confirmationResult: ConfirmationResult, code: string) => Promise<void>;
   linkPhoneToAccount: (verificationId: string, code: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -34,6 +36,7 @@ const AuthContext = createContext<AuthCtx>({
   signUpWithEmail: async () => { throw new Error('Not initialized'); },
   signInWithEmail: async () => { throw new Error('Not initialized'); },
   sendPhoneOtp: async () => { throw new Error('Not initialized'); },
+  signInWithPhone: async () => { throw new Error('Not initialized'); },
   verifyPhoneOtp: async () => {},
   linkPhoneToAccount: async () => {},
   signOut: async () => {},
@@ -86,6 +89,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } as unknown as ConfirmationResult;
   };
 
+  const signInWithPhone = async (phoneNumber: string, recaptchaContainerId: string): Promise<ConfirmationResult> => {
+    const auth = getFirebaseAuthClient();
+    const recaptchaVerifier = new RecaptchaVerifier(auth, recaptchaContainerId, {
+      size: 'invisible',
+    });
+    const provider = new PhoneAuthProvider(auth);
+    const verificationId = await provider.verifyPhoneNumber(phoneNumber, recaptchaVerifier);
+    return {
+      verificationId,
+      confirm: async (code: string) => {
+        const credential = PhoneAuthProvider.credential(verificationId, code);
+        const result = await signInWithCredential(auth, credential);
+        return result;
+      },
+    } as unknown as ConfirmationResult;
+  };
+
   const verifyPhoneOtp = async (confirmationResult: ConfirmationResult, code: string): Promise<void> => {
     await confirmationResult.confirm(code);
   };
@@ -102,10 +122,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     await fbSignOut(getFirebaseAuthClient());
+    // Redirect to home page (which will redirect to marketing site if logged out)
+    if (typeof window !== 'undefined') {
+      window.location.href = '/';
+    }
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, signInWithGoogle, signUpWithEmail, signInWithEmail, sendPhoneOtp, verifyPhoneOtp, linkPhoneToAccount, signOut }}>
+    <AuthContext.Provider value={{ user, loading, signInWithGoogle, signUpWithEmail, signInWithEmail, sendPhoneOtp, signInWithPhone, verifyPhoneOtp, linkPhoneToAccount, signOut }}>
       {children}
     </AuthContext.Provider>
   );

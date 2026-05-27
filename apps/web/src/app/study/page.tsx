@@ -167,9 +167,9 @@ export default function StudyPage() {
                     const chKey = `${subject.slug}/${ch.slug}`;
                     const isCompleted = completedSet.has(chKey);
                     const score = scores[chKey];
-                    // Unlock logic: first chapter always unlocked, rest need previous completed
+                    // Unlock logic: first 2 chapters always unlocked, rest need previous completed
                     const prevKey = idx > 0 ? `${subject.slug}/${subject.chapters[idx - 1]!.slug}` : null;
-                    const isUnlocked = idx === 0 || completedSet.has(prevKey!);
+                    const isUnlocked = idx < 2 || completedSet.has(prevKey!);
                     // Free plan: chapters beyond index 1 are locked (need credits/upgrade)
                     const isPlanLocked = currentPlan === 'free' && idx >= 2 && !isCompleted;
 
@@ -186,9 +186,10 @@ export default function StudyPage() {
                         }`}
                       >
                         {/* Status icon */}
-                        <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold"
-                          style={{ backgroundColor: isCompleted ? 'var(--color-gold-500)' : isUnlocked && !isPlanLocked ? 'var(--color-paper-300)' : 'var(--color-paper-200)', color: isCompleted ? 'var(--color-paper-50)' : 'var(--color-ink-800)' }}>
-                          {isCompleted ? '✓' : isPlanLocked ? '🔒' : !isUnlocked ? '🔒' : ch.order}
+                        <span className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                          isCompleted ? 'bg-amber-500 text-white' : (isUnlocked && !isPlanLocked) ? 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
+                        }`}>
+                          {isCompleted ? '✓' : (isPlanLocked || !isUnlocked) ? '🔒' : ch.order}
                         </span>
                         <div className="flex-1 min-w-0">
                           <p className={`text-sm font-medium truncate ${isCompleted ? 'text-ink-900' : isUnlocked && !isPlanLocked ? 'text-ink-800' : 'text-muted-500'}`}>{lang === 'hi' && ch.nameHi ? ch.nameHi : ch.name}</p>
@@ -198,7 +199,7 @@ export default function StudyPage() {
                           <span className={`pill text-xs ${score >= 80 ? 'pill-success' : 'pill-warn'}`}>{score}%</span>
                         )}
                         {isPlanLocked && !isCompleted && (
-                          <span className="text-xs font-medium text-ember-500">Upgrade →</span>
+                          <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">🔒 Upgrade →</span>
                         )}
                       </button>
                     );
@@ -227,7 +228,7 @@ export default function StudyPage() {
                           onClick={() => router.push('/upgrade')}
                           className="mt-3 w-full rounded-lg border border-gold-500/50 bg-gold-500/5 py-3 text-center text-sm font-medium text-gold-600 dark:text-gold-500 transition-colors hover:bg-gold-500/10"
                         >
-                          ⭐ Generate More Chapters — Scholar plan required
+                          ⭐ Upgrade to generate advanced chapters
                         </button>
                       );
                     }

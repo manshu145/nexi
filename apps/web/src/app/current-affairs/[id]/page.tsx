@@ -3,7 +3,6 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '~/lib/auth-context';
 import { api, type CurrentAffairsItem } from '~/lib/api';
-import { Logo } from '~/components/Logo';
 import { Skeleton } from '~/components/Skeleton';
 
 export default function CurrentAffairsDetailPage() {
@@ -19,7 +18,7 @@ export default function CurrentAffairsDetailPage() {
   const [bookmarked, setBookmarked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
   const [speaking, setSpeaking] = useState(false);
-  const [showShareToast, setShowShareToast] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
@@ -36,10 +35,14 @@ export default function CurrentAffairsDetailPage() {
     })();
   }, [user, id]);
 
-  // Cleanup TTS on unmount
   useEffect(() => {
     return () => { window.speechSynthesis?.cancel(); };
   }, []);
+
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2500);
+  };
 
   const handleTTS = useCallback(() => {
     if (!item) return;
@@ -54,7 +57,6 @@ export default function CurrentAffairsDetailPage() {
     utterance.lang = lang === 'hi' ? 'hi-IN' : 'en-IN';
     utterance.rate = 0.9;
     utterance.pitch = 1.0;
-    // Select best voice
     const voices = window.speechSynthesis.getVoices();
     const targetLang = lang === 'hi' ? 'hi' : 'en-IN';
     const langVoices = voices.filter(v => v.lang.startsWith(targetLang));
@@ -75,6 +77,7 @@ export default function CurrentAffairsDetailPage() {
       const res = await api.toggleNewsLike(item.id);
       setLiked(res.liked);
       setLikeCount(res.count);
+      showToast(res.liked ? '❤️ Added to favorites' : 'Removed from favorites');
     } catch { /* silent */ }
   };
 
@@ -83,6 +86,7 @@ export default function CurrentAffairsDetailPage() {
     try {
       const res = await api.toggleNewsBookmark(item.id);
       setBookmarked(res.bookmarked);
+      showToast(res.bookmarked ? '🔖 Saved for later' : 'Removed from saved');
     } catch { /* silent */ }
   };
 
@@ -97,8 +101,7 @@ export default function CurrentAffairsDetailPage() {
       try { await navigator.share(shareData); } catch { /* cancelled */ }
     } else {
       await navigator.clipboard.writeText(`${item.headline}\n${window.location.href}`);
-      setShowShareToast(true);
-      setTimeout(() => setShowShareToast(false), 2000);
+      showToast('📋 Link copied to clipboard');
     }
   };
 
@@ -108,172 +111,181 @@ export default function CurrentAffairsDetailPage() {
   };
 
   if (loading || !user || pageLoading) return (
-    <main className="mx-auto flex min-h-dvh max-w-2xl flex-col px-5 pt-6 pb-28">
-      <div className="space-y-4 mt-8">
+    <main className="min-h-dvh bg-amber-50/30 dark:bg-slate-950">
+      <div className="mx-auto max-w-[680px] px-5 pt-6 pb-28 space-y-4">
         <Skeleton className="h-6 w-24" />
         <Skeleton className="h-8 w-full" />
         <Skeleton className="h-4 w-40" />
         <Skeleton className="h-48 w-full rounded-xl" />
+        <Skeleton className="h-32 w-full rounded-xl" />
       </div>
     </main>
   );
 
   if (error || !item) return (
-    <main className="mx-auto flex min-h-dvh max-w-lg flex-col items-center justify-center px-5">
-      <span className="text-4xl">😕</span>
-      <p className="mt-3 font-serif text-lg font-semibold text-ink-900">{error || 'Article not found'}</p>
-      <button onClick={() => router.push('/current-affairs')} className="btn-ghost mt-4">← Back to News</button>
+    <main className="min-h-dvh bg-amber-50/30 dark:bg-slate-950 flex items-center justify-center px-5">
+      <div className="text-center">
+        <span className="text-4xl">😕</span>
+        <p className="mt-3 text-lg font-bold text-slate-900 dark:text-slate-100">{error || 'Article not found'}</p>
+        <button onClick={() => router.push('/current-affairs')} className="mt-4 px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-sm font-medium text-slate-700 dark:text-slate-300">← Back to News</button>
+      </div>
     </main>
   );
 
   const keyPoints = extractKeyPoints(item.summary || item.body);
   const fullBody = item.body || item.summary || '';
+  const sections = splitIntoSections(fullBody);
   const publishedTime = new Date(item.publishedAt).toLocaleString('en-IN', { 
     day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' 
   });
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-2xl flex-col px-5 pt-6 pb-32">
+    <main className="min-h-dvh bg-amber-50/30 dark:bg-slate-950 pb-24">
       {/* Header */}
-      <header className="flex items-center justify-between">
-        <button onClick={() => router.push('/current-affairs')} className="flex items-center gap-1 text-sm text-muted-500 hover:text-ink-900 transition-colors">
-          <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
-          Back
-        </button>
-        <Logo />
+      <header className="sticky top-0 z-30 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-amber-100 dark:border-slate-800">
+        <div className="mx-auto max-w-[680px] flex items-center justify-between px-4 py-3">
+          <button onClick={() => router.push('/current-affairs')} className="flex items-center gap-1 text-slate-700 dark:text-slate-300 text-sm font-medium hover:text-slate-900 dark:hover:text-white transition-colors">
+            <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+            Back
+          </button>
+          <button
+            onClick={handleTTS}
+            className={`px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${
+              speaking
+                ? 'bg-amber-500 text-white'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+            }`}
+          >
+            {speaking ? '⏸️ Stop' : '🎧 Listen'}
+          </button>
+        </div>
       </header>
 
-      {/* Category + time */}
-      <div className="mt-6 flex items-center gap-3">
-        <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider"
-          style={{ background: getCategoryColor(item.category), color: 'white' }}>
-          {item.category}
-        </span>
-        {item.factChecked && (
-          <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-gold-500/10 text-gold-700 border border-gold-500/20">
-            ✓ Verified
+      <article className="mx-auto max-w-[680px] px-5 pt-6">
+        {/* Category + Meta */}
+        <div className="flex items-center gap-3 mb-4">
+          <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider text-white"
+            style={{ background: getCategoryColor(item.category) }}>
+            {item.category}
           </span>
-        )}
-      </div>
-
-      {/* Category image */}
-      <div className="mt-4 relative h-40 sm:h-52 rounded-2xl overflow-hidden">
-        <img src={getCategoryImage(item.category)} alt={item.category} className="absolute inset-0 w-full h-full object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
-      </div>
-
-      {/* Headline */}
-      <h1 className="mt-4 font-serif text-2xl font-bold leading-tight text-ink-900">
-        {item.headline}
-      </h1>
-
-      {/* Meta info */}
-      <div className="mt-3 flex items-center gap-3 text-xs text-muted-500">
-        <span>{publishedTime}</span>
-        <span>·</span>
-        <span>{item.sources.length} source{item.sources.length !== 1 ? 's' : ''}</span>
-      </div>
-
-      {/* Listen button */}
-      <button
-        onClick={handleTTS}
-        className={`mt-5 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
-          speaking
-            ? 'bg-ember-500 text-paper-50 shadow-lg shadow-ember-500/20'
-            : 'bg-paper-200 text-ink-800 hover:bg-paper-300'
-        }`}
-      >
-        {speaking ? (
-          <>
-            <span className="flex gap-0.5">
-              <span className="w-0.5 h-3 bg-paper-50 rounded-full animate-pulse" />
-              <span className="w-0.5 h-4 bg-paper-50 rounded-full animate-pulse" style={{ animationDelay: '0.1s' }} />
-              <span className="w-0.5 h-2 bg-paper-50 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }} />
-              <span className="w-0.5 h-3.5 bg-paper-50 rounded-full animate-pulse" style={{ animationDelay: '0.3s' }} />
+          {item.factChecked && (
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800">
+              ✓ Verified
             </span>
-            Stop Listening
-          </>
-        ) : (
-          <>🎧 Listen to this article</>
-        )}
-      </button>
-
-      {/* AI Summary - Key Points */}
-      <section className="mt-6">
-        <div className="flex items-center gap-2 mb-3">
-          <span className="text-sm">🤖</span>
-          <h2 className="text-xs font-bold uppercase tracking-wider text-muted-500">AI Summary — Key Points</h2>
+          )}
+          <span className="text-xs text-slate-500 dark:text-slate-400">{publishedTime}</span>
         </div>
-        <div className="rounded-2xl bg-paper-100 border border-paper-200 p-5 space-y-3">
-          {keyPoints.map((point, i) => (
-            <div key={i} className="flex items-start gap-3">
-              <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-ember-500/10 text-ember-600 text-[10px] font-bold">
-                {i + 1}
-              </span>
-              <p className="text-sm leading-relaxed text-ink-800">{point}</p>
+
+        {/* Headline */}
+        <h1 className="text-2xl sm:text-3xl font-bold leading-tight text-slate-900 dark:text-slate-100" style={{ lineHeight: '1.3' }}>
+          {item.headline}
+        </h1>
+
+        {/* Source info */}
+        <div className="mt-3 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+          <span>{item.sources.length} source{item.sources.length !== 1 ? 's' : ''}</span>
+        </div>
+
+        {/* AI Summary - Key Points */}
+        {keyPoints.length > 0 && (
+          <section className="mt-6">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-sm">🤖</span>
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">AI Summary — Key Points</h2>
             </div>
-          ))}
-        </div>
-      </section>
+            <div className="rounded-2xl bg-white dark:bg-slate-900 border border-amber-100 dark:border-slate-800 p-5 space-y-3">
+              {keyPoints.map((point, i) => (
+                <div key={i} className="flex items-start gap-3">
+                  <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 text-[10px] font-bold">
+                    {i + 1}
+                  </span>
+                  <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">{point}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
-      {/* Full Article */}
-      <section className="mt-6">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-muted-500 mb-3">Full Details</h2>
-        <div className="prose prose-sm max-w-none text-ink-800 leading-relaxed">
-          {fullBody.split('\n').filter(p => p.trim()).map((para, i) => (
-            <p key={i} className="mb-3 text-sm leading-relaxed">{para}</p>
-          ))}
-        </div>
-      </section>
+        {/* Divider */}
+        <hr className="my-6 border-slate-200 dark:border-slate-800" />
 
-      {/* Sources */}
-      {item.sources.length > 0 && (
-        <section className="mt-6">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-muted-500 mb-2">Sources</h2>
-          <div className="flex flex-wrap gap-2">
-            {item.sources.map((src, i) => (
-              <span key={i} className="px-3 py-1.5 rounded-lg bg-paper-200 text-xs text-ink-700 font-medium">
-                📎 {src}
-              </span>
+        {/* Full Details */}
+        <section>
+          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-4">Full Details</h2>
+          <div className="space-y-4" style={{ lineHeight: '1.8' }}>
+            {sections.main.map((para, i) => (
+              <p key={i} className="text-[15px] text-slate-800 dark:text-slate-200 leading-relaxed">{para}</p>
             ))}
           </div>
         </section>
-      )}
 
-      {/* Ask Nexi CTA */}
-      <button
-        onClick={handleAskNexi}
-        className="mt-8 w-full flex items-center justify-center gap-2 px-5 py-3.5 rounded-2xl bg-ink-900 text-paper-50 font-medium text-sm hover:bg-ink-800 transition-colors"
-      >
-        🤖 Ask Nexi to explain this topic
-      </button>
+        {/* Why This Matters */}
+        {sections.relevance.length > 0 && (
+          <>
+            <hr className="my-6 border-slate-200 dark:border-slate-800" />
+            <section>
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-4">📚 Why This Matters for Exams</h2>
+              <div className="rounded-2xl bg-amber-50 dark:bg-amber-500/5 border border-amber-100 dark:border-amber-900/30 p-5 space-y-3">
+                {sections.relevance.map((point, i) => (
+                  <p key={i} className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">{point}</p>
+                ))}
+              </div>
+            </section>
+          </>
+        )}
+
+        {/* Sources */}
+        {item.sources.length > 0 && (
+          <>
+            <hr className="my-6 border-slate-200 dark:border-slate-800" />
+            <section>
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3">Sources</h2>
+              <div className="flex flex-wrap gap-2">
+                {item.sources.map((src, i) => (
+                  <span key={i} className="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-700 dark:text-slate-300 font-medium">
+                    📎 {src}
+                  </span>
+                ))}
+              </div>
+            </section>
+          </>
+        )}
+
+        {/* Ask Nexi CTA */}
+        <button
+          onClick={handleAskNexi}
+          className="mt-8 w-full flex items-center justify-center gap-2 px-5 py-3.5 rounded-2xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 font-medium text-sm hover:opacity-90 transition-opacity"
+        >
+          🤖 Ask Nexi to explain this topic
+        </button>
+      </article>
 
       {/* Fixed bottom action bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-paper-200 bg-paper-50/95 backdrop-blur-md safe-bottom">
-        <div className="mx-auto max-w-2xl flex items-center justify-around py-3 px-4">
+      <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md">
+        <div className="mx-auto max-w-[680px] flex items-center justify-around py-3 px-4">
           <button onClick={handleLike} className="flex flex-col items-center gap-0.5 transition-transform active:scale-90">
-            <span className={`text-2xl transition-all ${liked ? 'scale-110' : ''}`}>{liked ? '❤️' : '🤍'}</span>
-            <span className="text-[10px] text-muted-500 font-medium">{likeCount || 'Like'}</span>
+            <span className={`text-xl transition-all ${liked ? 'scale-110' : ''}`}>{liked ? '❤️' : '🤍'}</span>
+            <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">{likeCount || 'Like'}</span>
           </button>
           <button onClick={handleBookmark} className="flex flex-col items-center gap-0.5 transition-transform active:scale-90">
-            <span className={`text-2xl transition-all ${bookmarked ? 'scale-110' : ''}`}>{bookmarked ? '🔖' : '📑'}</span>
-            <span className="text-[10px] text-muted-500 font-medium">{bookmarked ? 'Saved' : 'Save'}</span>
+            <span className={`text-xl transition-all ${bookmarked ? 'scale-110' : ''}`}>{bookmarked ? '🔖' : '📑'}</span>
+            <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">{bookmarked ? 'Saved' : 'Save'}</span>
           </button>
           <button onClick={handleShare} className="flex flex-col items-center gap-0.5 transition-transform active:scale-90">
-            <span className="text-2xl">↗️</span>
-            <span className="text-[10px] text-muted-500 font-medium">Share</span>
+            <span className="text-xl">📤</span>
+            <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Share</span>
           </button>
           <button onClick={handleTTS} className="flex flex-col items-center gap-0.5 transition-transform active:scale-90">
-            <span className={`text-2xl ${speaking ? 'animate-pulse' : ''}`}>{speaking ? '⏸️' : '🎧'}</span>
-            <span className="text-[10px] text-muted-500 font-medium">{speaking ? 'Stop' : 'Listen'}</span>
+            <span className={`text-xl ${speaking ? 'animate-pulse' : ''}`}>{speaking ? '⏸️' : '🎧'}</span>
+            <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">{speaking ? 'Stop' : 'Listen'}</span>
           </button>
         </div>
       </div>
 
-      {/* Share toast */}
-      {showShareToast && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg bg-ink-900 text-paper-50 text-sm shadow-xl animate-fadeIn">
-          ✓ Link copied!
+      {/* Toast */}
+      {toast && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-sm shadow-xl animate-fadeIn">
+          {toast}
         </div>
       )}
     </main>
@@ -289,6 +301,34 @@ function extractKeyPoints(text: string): string[] {
   return sentences.slice(0, 6);
 }
 
+function splitIntoSections(text: string): { main: string[]; relevance: string[] } {
+  if (!text) return { main: [], relevance: [] };
+  const paragraphs = text.split(/\n+/).filter(p => p.trim().length > 0);
+  
+  // Look for relevance markers
+  const relevanceMarkers = ['why it matters', 'exam relevance', 'important for', 'related topics', 'why this is important'];
+  const relevanceIdx = paragraphs.findIndex(p => 
+    relevanceMarkers.some(marker => p.toLowerCase().includes(marker))
+  );
+
+  if (relevanceIdx > 0) {
+    return {
+      main: paragraphs.slice(0, relevanceIdx),
+      relevance: paragraphs.slice(relevanceIdx),
+    };
+  }
+
+  // If no explicit markers, use the last paragraph(s) as relevance if long enough
+  if (paragraphs.length > 3) {
+    return {
+      main: paragraphs.slice(0, -1),
+      relevance: paragraphs.slice(-1),
+    };
+  }
+
+  return { main: paragraphs, relevance: [] };
+}
+
 function getCategoryColor(category: string): string {
   const colors: Record<string, string> = {
     national: '#FF9933', international: '#4A90D9', economy: '#2ECC71',
@@ -296,18 +336,4 @@ function getCategoryColor(category: string): string {
     politics: '#8E44AD', defence: '#2C3E50',
   };
   return colors[category] ?? '#34495E';
-}
-
-function getCategoryImage(category: string): string {
-  const images: Record<string, string> = {
-    national: 'https://images.unsplash.com/photo-1532375810709-75b1da00537c?w=800&h=400&fit=crop&q=80',
-    international: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=800&h=400&fit=crop&q=80',
-    economy: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=800&h=400&fit=crop&q=80',
-    'science-tech': 'https://images.unsplash.com/photo-1507413245164-6160d8298b31?w=800&h=400&fit=crop&q=80',
-    sports: 'https://images.unsplash.com/photo-1461896836934-bd45ea8f5a65?w=800&h=400&fit=crop&q=80',
-    environment: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800&h=400&fit=crop&q=80',
-    politics: 'https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?w=800&h=400&fit=crop&q=80',
-    defence: 'https://images.unsplash.com/photo-1579912437766-7896df6d3cd3?w=800&h=400&fit=crop&q=80',
-  };
-  return images[category] ?? images['national']!;
 }
