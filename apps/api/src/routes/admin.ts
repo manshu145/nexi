@@ -120,6 +120,19 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
     return c.json(result);
   });
 
+  // GET /v1/admin/ai-debug-logs — detailed AI call logs with status/error/request/response for debug panel
+  app.get('/ai-debug-logs', async (c) => {
+    const page = parseInt(c.req.query('page') ?? '1');
+    const limit = parseInt(c.req.query('limit') ?? '30');
+    const status = c.req.query('status') as 'success' | 'error' | undefined;
+    const result = await deps.adminStore.getAICallLogs(page, limit);
+    let logs = result.logs;
+    if (status) {
+      logs = logs.filter(l => (l.status ?? 'success') === status);
+    }
+    return c.json({ logs, total: result.total, page, limit });
+  });
+
   // GET /v1/admin/logs — combined logs (backward compatible)
   app.get('/logs', async (c) => {
     const page = parseInt(c.req.query('page') ?? '1');

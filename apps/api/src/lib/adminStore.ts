@@ -46,6 +46,12 @@ export interface AICallLog {
   latencyMs: number;
   userId?: string;
   timestamp: string;
+  status?: 'success' | 'error';
+  endpoint?: string;
+  provider?: string;
+  error?: string;
+  requestPreview?: string;
+  responsePreview?: string;
 }
 
 export interface ActiveSession {

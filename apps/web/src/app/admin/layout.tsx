@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { label: 'Plans', href: '/admin/plans', icon: '💳' },
   { label: 'Revenue', href: '/admin/revenue', icon: '💰' },
   { label: 'AI & Logs', href: '/admin/logs', icon: '🤖' },
+  { label: 'AI Debug', href: '/admin/ai-debug', icon: '🐛' },
   { label: 'SEO & Branding', href: '/admin/seo', icon: '🔍' },
   { label: 'Announcements', href: '/admin/announcements', icon: '📢' },
   { label: 'Email', href: '/admin/email', icon: '📧' },
