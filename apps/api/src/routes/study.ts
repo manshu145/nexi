@@ -46,8 +46,15 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
     const { exam, subject, chapter } = c.req.param();
     const language = (c.req.query('lang') as 'en' | 'hi') || 'en';
 
-    // Credit deduction for free plan users
+    // Check cache first (before deducting credits)
+    let content = await deps.chapters.getChapter(exam, subject, chapter, language);
+    if (content) {
+      return c.json({ chapter: content });
+    }
+
+    // Credit deduction for free plan users (only for non-cached content)
     const user = await deps.users.get(principal.userId);
+    let creditsDeducted = false;
     if (user) {
       const { shouldDeductCredits } = await import('@nexigrate/shared');
       if (shouldDeductCredits(user.plan, user.planExpiresAt)) {
@@ -56,14 +63,13 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
           throw new HTTPException(402, { message: 'insufficient_credits' });
         }
         await deps.users.update(principal.userId, { credits: user.credits - 5 } as any);
+        creditsDeducted = true;
         deps.logger.info('study.credits_deducted', { userId: principal.userId, amount: 5, newBalance: user.credits - 5 });
       }
     }
 
-    // Check cache first
-    let content = await deps.chapters.getChapter(exam, subject, chapter, language);
-    if (!content) {
-      // Generate with AI and cache
+    // Generate with AI and cache
+    try {
       const markdown = await deps.aiEngine.generateChapterContent(chapter, subject, exam, language);
       content = {
         exam: exam as any,
@@ -76,6 +82,13 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
       };
       await deps.chapters.saveChapter(content);
       deps.logger.info('study.chapter_generated', { exam, subject, chapter, language, userId: principal.userId });
+    } catch (err) {
+      // Refund credits on AI failure
+      if (creditsDeducted && user) {
+        await deps.users.update(principal.userId, { credits: user.credits } as any);
+        deps.logger.info('study.credits_refunded', { userId: principal.userId, amount: 5, reason: 'ai_failure' });
+      }
+      throw err;
     }
 
     return c.json({ chapter: content });

@@ -392,7 +392,11 @@ function ChatPage() {
               className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-line bg-paper-100 text-xs font-medium text-ink-700 hover:bg-paper-200 hover:text-ink-900 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               title="Generate an AI image from your input text"
             >
-              <span>&#x1F5BC;</span>
+              {generatingImage ? (
+                <span className="w-3.5 h-3.5 border-2 border-ink-400 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <span>&#x1F5BC;</span>
+              )}
               <span>{generatingImage ? 'Generating...' : 'Generate Image'}</span>
             </button>
             <button
@@ -462,7 +466,7 @@ function ChatPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setVizContent(null)}>
           <div className="paper-card max-w-lg w-full max-h-[80vh] overflow-auto p-6" onClick={e => e.stopPropagation()}>
             <h3 className="font-serif text-lg font-bold text-ink-900">Visualization</h3>
-            <pre className="mt-4 text-xs bg-paper-200 p-4 rounded-lg overflow-auto whitespace-pre-wrap">{vizContent}</pre>
+            <MermaidRenderer code={vizContent} />
             <button onClick={() => setVizContent(null)} className="btn-ghost mt-4 w-full">Close</button>
           </div>
         </div>
@@ -476,7 +480,7 @@ function ChatPage() {
             {generatedImage.type === 'image' ? (
               <img src={generatedImage.content} alt="AI Generated" className="mt-4 w-full rounded-xl border border-line" />
             ) : (
-              <pre className="mt-4 text-xs bg-paper-200 p-4 rounded-lg overflow-auto whitespace-pre-wrap">{generatedImage.content}</pre>
+              <MermaidRenderer code={generatedImage.content} />
             )}
             <button onClick={() => setGeneratedImage(null)} className="btn-ghost mt-4 w-full">Close</button>
           </div>
@@ -503,4 +507,39 @@ function extractCodeText(children: React.ReactNode): string {
     if (props?.children) return extractCodeText(props.children);
   }
   return '';
+}
+
+/** Mermaid diagram renderer component */
+function MermaidRenderer({ code }: { code: string }) {
+  const [svgHtml, setSvgHtml] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const mermaidLib = await import('mermaid');
+        mermaidLib.default.initialize({
+          startOnLoad: false,
+          theme: 'neutral',
+          fontFamily: 'Inter, system-ui, sans-serif',
+          flowchart: { curve: 'basis', padding: 16 },
+          securityLevel: 'loose',
+        });
+        const { svg } = await mermaidLib.default.render('mermaid-chat-' + Date.now(), code);
+        if (!cancelled) setSvgHtml(svg);
+      } catch {
+        if (!cancelled) setError(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [code]);
+
+  if (error) {
+    return <pre className="mt-4 text-xs bg-paper-200 p-4 rounded-lg overflow-auto whitespace-pre-wrap">{code}</pre>;
+  }
+  if (!svgHtml) {
+    return <div className="mt-4 h-32 bg-paper-200 rounded-lg animate-pulse flex items-center justify-center text-sm text-muted-500">Rendering diagram...</div>;
+  }
+  return <div className="mt-4 overflow-auto rounded-lg border border-line bg-paper-100 p-4" dangerouslySetInnerHTML={{ __html: svgHtml }} />;
 }

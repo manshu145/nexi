@@ -30,11 +30,11 @@ export function buildApp(deps: AppDeps): Hono {
   const useFirestore = env.PERSISTENCE === 'firestore';
   const fs = useFirestore ? getFirebaseFirestore(env) : null;
   const users = deps.users ?? (fs ? new FirestoreUserStore(fs) : new InMemoryUserStore());
-  const aiEngine = deps.aiEngine ?? createAIEngine(env, logger);
+  const adminStore = deps.adminStore ?? (fs ? new FirestoreAdminStore(fs) : new InMemoryAdminStore());
+  const aiEngine = deps.aiEngine ?? createAIEngine(env, logger, adminStore);
   const chapters = deps.chapters ?? (fs ? new FirestoreChapterStore(fs) : new InMemoryChapterStore());
   const currentAffairs = deps.currentAffairs ?? (fs ? new FirestoreCurrentAffairsStore(fs) : new InMemoryCurrentAffairsStore());
   const chatStore = deps.chatStore ?? (fs ? new FirestoreChatStore(fs) : new InMemoryChatStore());
-  const adminStore = deps.adminStore ?? (fs ? new FirestoreAdminStore(fs) : new InMemoryAdminStore());
   const couponStore = deps.couponStore ?? (fs ? new FirestoreCouponStore(fs) : new InMemoryCouponStore());
   const firebaseAuth = getFirebaseAuth(env);
 
@@ -55,6 +55,52 @@ export function buildApp(deps: AppDeps): Hono {
     logger.info('request', { method: c.req.method, path: c.req.path, status: c.res.status, ms: Math.round(performance.now()-start), rid });
   });
 
+  // Rate limiting for AI endpoints (Fix #29)
+  const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+  app.use('/v1/chat/*', async (c, next) => {
+    const userId = c.req.header('authorization')?.slice(0, 40) ?? c.req.header('x-forwarded-for') ?? 'anon';
+    const now = Date.now();
+    const entry = rateLimitMap.get(userId);
+    if (entry && entry.resetAt > now) {
+      if (entry.count >= 30) { // 30 requests per minute for AI endpoints
+        return c.json({ error: 'Rate limit exceeded. Please wait a moment.' }, 429);
+      }
+      entry.count++;
+    } else {
+      rateLimitMap.set(userId, { count: 1, resetAt: now + 60000 });
+    }
+    // Cleanup old entries periodically
+    if (rateLimitMap.size > 10000) {
+      for (const [key, val] of rateLimitMap) { if (val.resetAt < now) rateLimitMap.delete(key); }
+    }
+    await next();
+  });
+
+  app.use('/v1/study/*', async (c, next) => {
+    const userId = c.req.header('authorization')?.slice(0, 40) ?? c.req.header('x-forwarded-for') ?? 'anon';
+    const now = Date.now();
+    const key = `study_${userId}`;
+    const entry = rateLimitMap.get(key);
+    if (entry && entry.resetAt > now) {
+      if (entry.count >= 20) { // 20 requests per minute for study
+        return c.json({ error: 'Rate limit exceeded. Please wait a moment.' }, 429);
+      }
+      entry.count++;
+    } else {
+      rateLimitMap.set(key, { count: 1, resetAt: now + 60000 });
+    }
+    await next();
+  });
+
+  // Payload size validation (Fix #30) - reject bodies > 10MB
+  app.use('*', async (c, next) => {
+    const contentLength = c.req.header('content-length');
+    if (contentLength && parseInt(contentLength) > 10 * 1024 * 1024) {
+      return c.json({ error: 'Request body too large. Maximum 10MB allowed.' }, 413);
+    }
+    await next();
+  });
+
   app.route('/', makeHealthRoutes());
   app.route('/', makeDiagRoutes(env));
   app.get('/', (c) => c.json({ service: 'nexigrate-api', version: '1.0.0' }));
@@ -63,7 +109,7 @@ export function buildApp(deps: AppDeps): Hono {
   const cronRoutes = makeCurrentAffairsRoutes({ users, aiEngine, currentAffairs, env, logger });
   app.post('/v1/current-affairs/ingest', async (c) => {
     const cronSecret = c.req.header('x-cron-secret');
-    if (cronSecret !== 'nexigrate-cron-2026') {
+    if (cronSecret !== env.CRON_SECRET) {
       return c.json({ error: 'unauthorized' }, 401);
     }
     const { ingestCurrentAffairs } = await import('./lib/rssIngestion.js');
@@ -74,7 +120,7 @@ export function buildApp(deps: AppDeps): Hono {
 
   const v1 = new Hono();
   v1.use('*', authMiddleware(firebaseAuth));
-  v1.route('/users', makeUsersRoutes({ users, logger }));
+  v1.route('/users', makeUsersRoutes({ users, logger, db: fs }));
   v1.route('/assessment', makeAssessmentRoutes({ users, aiEngine, logger }));
   v1.route('/study', makeStudyRoutes({ users, aiEngine, chapters, logger, db: fs, env }));
   v1.route('/current-affairs', cronRoutes);
