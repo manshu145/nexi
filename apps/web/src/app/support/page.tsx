@@ -11,7 +11,7 @@ export default function SupportPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: 'assistant', content: "Hi! I'm Nexi. What issue can I help you with today?", timestamp: new Date().toISOString() },
+    { role: 'assistant', content: "Hi! I'm Nexi Support. I can help you with:\n\n- **Account & billing** issues\n- **Credits & chapter unlock** problems\n- **Plan upgrades** & payment queries\n- **Technical bugs** on the platform\n\nHow can I help you today?", timestamp: new Date().toISOString() },
   ]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [input, setInput] = useState('');
@@ -30,7 +30,30 @@ export default function SupportPage() {
     const userMsg: ChatMessage = { role: 'user', content: text, timestamp: new Date().toISOString() };
     setMessages(prev => [...prev, userMsg]);
     try {
-      const res = await api.sendChat(`support: ${text}`, sessionId ?? undefined);
+      // Build support context so AI knows it's a support agent
+      const supportPrefix = sessionId ? '' : `[SYSTEM CONTEXT: You are the official support assistant for Nexigrate (nexigrate.com), an AI-powered study platform for Indian competitive exams (UPSC, JEE, NEET, SSC, Banking). 
+
+Your role: Help users with platform-related issues ONLY.
+
+Platform info you MUST know:
+- Nexigrate provides: AI-generated chapters, chapter quizzes, current affairs, AI chat (Nexi), practice sets (essay writing), streak rewards, credit system
+- Plans: Free (limited chapters, 2 essays/week), Scholar (₹99/mo), Aspirant (₹199/mo), Achiever (₹499/mo)
+- Credits: Earned by completing chapters (5-10 per chapter), daily streak bonus, referrals (50 credits each)
+- Chapters unlock by passing the previous chapter quiz with 80%+ score
+- Contact email: help@nexigrate.com
+- Founder: Manshu
+- No phone support available currently
+
+Rules:
+- ONLY answer questions about Nexigrate platform, billing, account, features, and technical issues
+- If user asks study/exam questions, politely redirect them to the main "Nexi AI Chat" feature on dashboard
+- If you don't know something specific, say "I'll connect you with our team at help@nexigrate.com"
+- Never make up features or policies that don't exist
+- Be friendly, concise, and helpful
+- Reply in the user's language (Hindi/English based on their message)]\n\n`;
+
+      const messageToSend = supportPrefix + text;
+      const res = await api.sendChat(messageToSend, sessionId ?? undefined);
       setSessionId(res.sessionId);
       const aiMsg: ChatMessage = { role: 'assistant', content: res.response, timestamp: new Date().toISOString() };
       setMessages(prev => [...prev, aiMsg]);
@@ -84,6 +107,15 @@ export default function SupportPage() {
         )}
         <div ref={bottomRef} />
       </div>
+
+      {/* Quick help buttons */}
+      {messages.length <= 1 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {['Credits not updating', 'Next chapter locked', 'Payment failed', 'How to upgrade plan?', 'Account delete'].map(q => (
+            <button key={q} onClick={() => setInput(q)} className="pill text-xs hover:bg-paper-300 transition-colors">{q}</button>
+          ))}
+        </div>
+      )}
 
       {/* Input */}
       <div className="mt-3 relative">
