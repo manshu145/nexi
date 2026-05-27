@@ -94,8 +94,8 @@ export default function StudyPage() {
           {progress ? `${progress.overallPercent}% complete · ${progress.completedChapters.length} chapters done` : 'Start your preparation'}
         </p>
         {/* Overall progress bar */}
-        <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-paper-300">
-          <div className="h-full rounded-full bg-ember-500 transition-all" style={{ width: `${progress?.overallPercent ?? 0}%` }} />
+        <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-paper-300">
+          <div className="h-full rounded-full bg-ember-500 transition-all duration-500 ease-out" style={{ width: `${progress?.overallPercent ?? 0}%` }} />
         </div>
       </section>
 
@@ -119,13 +119,14 @@ export default function StudyPage() {
       {continueChapter && (
         <button
           onClick={() => router.push(`/study/${continueChapter!.subject}/${continueChapter!.chapter}`)}
-          className="paper-card card-selectable mt-6 flex items-center gap-3 p-4 text-left"
+          className="paper-card card-selectable mt-6 flex items-center gap-4 p-4 text-left group"
         >
-          <span className="text-2xl">▶️</span>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-ember-500">Continue where you left off</p>
-            <p className="mt-0.5 font-serif font-medium text-ink-900">{continueChapter.name}</p>
+          <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-ember-500/10 text-xl flex-shrink-0">▶️</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-ember-500">Continue reading</p>
+            <p className="mt-0.5 font-serif font-medium text-ink-900 truncate">{continueChapter.name}</p>
           </div>
+          <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="text-muted-400 group-hover:text-ember-500 group-hover:translate-x-0.5 transition-all flex-shrink-0"><path d="M9 18l6-6-6-6"/></svg>
         </button>
       )}
 
@@ -141,24 +142,24 @@ export default function StudyPage() {
               {/* Subject header */}
               <button
                 onClick={() => setExpanded(isExpanded ? null : subject.slug)}
-                className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-paper-200"
+                className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-paper-200 active:bg-paper-300"
               >
-                <span className="text-xl">{subject.icon}</span>
-                <div className="flex-1">
-                <h3 className="font-serif font-semibold text-ink-900">{lang === 'hi' && subject.nameHi ? subject.nameHi : subject.name}</h3>
-                  <div className="mt-1 flex items-center gap-2">
+                <span className="text-xl flex-shrink-0">{subject.icon}</span>
+                <div className="flex-1 min-w-0">
+                <h3 className="font-serif font-semibold text-ink-900 truncate">{lang === 'hi' && subject.nameHi ? subject.nameHi : subject.name}</h3>
+                  <div className="mt-1.5 flex items-center gap-2">
                     <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-paper-300">
-                      <div className="h-full rounded-full bg-gold-500 transition-all" style={{ width: `${subjectPct}%` }} />
+                      <div className="h-full rounded-full bg-gold-500 transition-all duration-500 ease-out" style={{ width: `${subjectPct}%` }} />
                     </div>
-                    <span className="text-xs text-muted-500">{subjectCompleted}/{subject.chapters.length}</span>
+                    <span className="text-xs text-muted-500 font-medium flex-shrink-0">{subjectCompleted}/{subject.chapters.length}</span>
                   </div>
                 </div>
-                <svg className={`h-4 w-4 text-muted-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                <svg className={`h-5 w-5 text-muted-400 transition-transform duration-200 flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
               </button>
 
               {/* Chapters list */}
               {isExpanded && (
-                <div className="border-t border-line px-4 pb-3 pt-2">
+                <div className="border-t border-line px-3 pb-3 pt-2 space-y-1 animate-expandIn">
                   {subject.chapters.map((ch, idx) => {
                     const chKey = `${subject.slug}/${ch.slug}`;
                     const isCompleted = completedSet.has(chKey);
@@ -177,25 +178,29 @@ export default function StudyPage() {
                           if (isUnlocked) router.push(`/study/${subject.slug}/${ch.slug}`);
                         }}
                         disabled={!isUnlocked && !isPlanLocked}
-                        className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors ${
-                          isPlanLocked ? 'hover:bg-paper-200 cursor-pointer' : isUnlocked ? 'hover:bg-paper-200 cursor-pointer' : 'opacity-50 cursor-not-allowed'
+                        className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-all duration-150 ${
+                          isPlanLocked ? 'hover:bg-paper-200 cursor-pointer' : isUnlocked ? 'hover:bg-paper-200 cursor-pointer active:scale-[0.98]' : 'opacity-40 cursor-not-allowed'
                         }`}
                       >
                         {/* Status icon */}
-                        <span className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-                          isCompleted ? 'bg-gold-500 text-paper-50' : (isUnlocked && !isPlanLocked) ? 'bg-paper-300 text-ink-800' : 'bg-paper-200 text-muted-400'
+                        <span className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold transition-colors ${
+                          isCompleted ? 'bg-gold-500 text-paper-50' : (isUnlocked && !isPlanLocked) ? 'bg-paper-300 text-ink-800 border border-line' : 'bg-paper-200 text-muted-400'
                         }`}>
-                          {isCompleted ? '✓' : (isPlanLocked || !isUnlocked) ? '🔒' : ch.order}
+                          {isCompleted ? (
+                            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                          ) : (isPlanLocked || !isUnlocked) ? (
+                            <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                          ) : ch.order}
                         </span>
                         <div className="flex-1 min-w-0">
                           <p className={`text-sm font-medium truncate ${isCompleted ? 'text-ink-900' : isUnlocked && !isPlanLocked ? 'text-ink-800' : 'text-muted-500'}`}>{lang === 'hi' && ch.nameHi ? ch.nameHi : ch.name}</p>
-                          <p className="text-xs text-muted-400">{ch.estimatedMinutes} min</p>
+                          <p className="text-[11px] text-muted-400 mt-0.5">{ch.estimatedMinutes} min</p>
                         </div>
                         {score !== undefined && (
                           <span className={`pill text-xs ${score >= 80 ? 'pill-success' : 'pill-warn'}`}>{score}%</span>
                         )}
-                        {isPlanLocked && !isCompleted && (
-                          <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">🔒 Upgrade →</span>
+                        {isUnlocked && !isCompleted && !isPlanLocked && (
+                          <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="text-muted-400 flex-shrink-0"><path d="M9 18l6-6-6-6"/></svg>
                         )}
                       </button>
                     );

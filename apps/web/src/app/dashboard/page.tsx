@@ -113,28 +113,35 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      {/* 3 Primary Action Cards */}
-      <section className="mt-8 grid gap-4 sm:grid-cols-3">
-        {/* Study */}
+      {/* Primary Study CTA - Full width hero card */}
+      <section className="mt-8 animate-fadeIn">
         <button
           type="button"
           onClick={() => router.push('/study')}
-          className="paper-card card-selectable p-6 text-left animate-fadeIn hover:shadow-md transition-all group"
+          className="paper-card card-selectable w-full p-5 text-left hover:shadow-md transition-all group"
         >
-          <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ember-500/10 text-xl">📖</span>
-          <h3 className="mt-3 font-serif text-lg font-bold text-ink-900">{t('study')}</h3>
-          <p className="mt-1 text-xs text-muted-500">{t('studyDesc')}</p>
-          <div className="mt-3 flex items-center gap-1 text-xs font-medium text-ember-500">
-            Continue →
-            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="group-hover:translate-x-0.5 transition-transform"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-ember-500/10 text-2xl">📖</span>
+              <div>
+                <h3 className="font-serif text-lg font-bold text-ink-900">{t('study')}</h3>
+                <p className="mt-0.5 text-sm text-muted-500">{t('studyDesc')}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1 text-sm font-semibold text-ember-500">
+              <span className="hidden sm:inline">Continue</span>
+              <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="group-hover:translate-x-1 transition-transform"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </div>
           </div>
         </button>
+      </section>
 
-        {/* Current Affairs */}
+      {/* Two Action Cards - Current Affairs + Nexi AI */}
+      <section className="mt-3 grid grid-cols-2 gap-3">
         <button
           type="button"
           onClick={() => router.push('/current-affairs')}
-          className="paper-card card-selectable p-6 text-left animate-fadeIn-delay-1 hover:shadow-md transition-all group"
+          className="paper-card card-selectable p-5 text-left animate-fadeIn-delay-1 hover:shadow-md transition-all group"
         >
           <div className="flex items-center gap-2">
             <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ember-500/10 text-xl">📰</span>
@@ -143,70 +150,83 @@ export default function DashboardPage() {
               LIVE
             </span>
           </div>
-          <h3 className="mt-3 font-serif text-lg font-bold text-ink-900">{t('currentAffairs')}</h3>
-          <p className="mt-1 text-xs text-muted-500">{t('currentAffairsDesc')}</p>
-          <div className="mt-3 flex items-center gap-1 text-xs font-medium text-ember-500">
-            Read now →
-            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="group-hover:translate-x-0.5 transition-transform"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          <h3 className="mt-3 font-serif text-base font-bold text-ink-900">{t('currentAffairs')}</h3>
+          <p className="mt-1 text-xs text-muted-500 line-clamp-1">{t('currentAffairsDesc')}</p>
+          <div className="mt-2 flex items-center gap-1 text-xs font-medium text-ember-500">
+            Read →
+            <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="group-hover:translate-x-0.5 transition-transform"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
           </div>
         </button>
 
-        {/* Nexi AI */}
         <button
           type="button"
           onClick={() => router.push('/chat')}
-          className="paper-card card-selectable p-6 text-left animate-fadeIn-delay-2 hover:shadow-md transition-all group"
+          className="paper-card card-selectable p-5 text-left animate-fadeIn-delay-2 hover:shadow-md transition-all group"
         >
           <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ember-500/10 text-xl">🤖</span>
-          <h3 className="mt-3 font-serif text-lg font-bold text-ink-900">{t('nexiAI')}</h3>
-          <p className="mt-1 text-xs text-muted-500">Ask doubts, get explanations</p>
-          <div className="mt-3 flex items-center gap-1 text-xs font-medium text-ember-500">
-            Chat now →
-            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="group-hover:translate-x-0.5 transition-transform"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          <h3 className="mt-3 font-serif text-base font-bold text-ink-900">{t('nexiAI')}</h3>
+          <p className="mt-1 text-xs text-muted-500 line-clamp-1">Ask doubts, get answers</p>
+          <div className="mt-2 flex items-center gap-1 text-xs font-medium text-ember-500">
+            Chat →
+            <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="group-hover:translate-x-0.5 transition-transform"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
           </div>
         </button>
       </section>
 
-      {/* Secondary Row */}
-      <section className="mt-4 grid grid-cols-4 gap-3">
-        <button type="button" onClick={() => router.push('/essay')} className="paper-card card-selectable p-4 text-left animate-fadeIn-delay-1">
-          <span className="text-lg">✍️</span>
-          <h3 className="mt-1 text-sm font-semibold text-ink-900">Practice Set</h3>
-          <p className="mt-0.5 text-[10px] text-muted-500">Write & get graded</p>
+      {/* Quick Actions - Horizontal scroll on mobile */}
+      <section className="mt-4 flex gap-2.5 overflow-x-auto scrollbar-hide pb-1 animate-fadeIn-delay-2">
+        <button type="button" onClick={() => router.push('/essay')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3 flex-shrink-0">
+          <span className="text-base">✍️</span>
+          <div className="text-left">
+            <p className="text-sm font-semibold text-ink-900 whitespace-nowrap">Practice Set</p>
+            <p className="text-[10px] text-muted-500">Write & grade</p>
+          </div>
         </button>
-        <button type="button" onClick={() => router.push('/upgrade')} className="paper-card card-selectable p-4 text-left animate-fadeIn-delay-1">
-          <span className="text-lg">⭐</span>
-          <h3 className="mt-1 text-sm font-semibold text-ink-900">Upgrade</h3>
-          <p className="mt-0.5 text-[10px] text-muted-500">Pro</p>
+        <button type="button" onClick={() => router.push('/upgrade')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3 flex-shrink-0">
+          <span className="text-base">⭐</span>
+          <div className="text-left">
+            <p className="text-sm font-semibold text-ink-900 whitespace-nowrap">Upgrade</p>
+            <p className="text-[10px] text-muted-500">Go Pro</p>
+          </div>
         </button>
-        <button type="button" onClick={() => router.push('/profile#referral')} className="paper-card card-selectable p-4 text-left animate-fadeIn-delay-1">
-          <span className="text-lg">🎁</span>
-          <h3 className="mt-1 text-sm font-semibold text-ink-900">Refer</h3>
-          <p className="mt-0.5 text-[10px] text-muted-500">Earn 50</p>
+        <button type="button" onClick={() => router.push('/profile#referral')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3 flex-shrink-0">
+          <span className="text-base">🎁</span>
+          <div className="text-left">
+            <p className="text-sm font-semibold text-ink-900 whitespace-nowrap">Refer Friends</p>
+            <p className="text-[10px] text-muted-500">Earn 50 cr</p>
+          </div>
         </button>
-        <button type="button" onClick={() => router.push('/support')} className="paper-card card-selectable p-4 text-left animate-fadeIn-delay-2">
-          <span className="text-lg">🛟</span>
-          <h3 className="mt-1 text-sm font-semibold text-ink-900">Support</h3>
-          <p className="mt-0.5 text-[10px] text-muted-500">Help</p>
+        <button type="button" onClick={() => router.push('/support')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3 flex-shrink-0">
+          <span className="text-base">🛟</span>
+          <div className="text-left">
+            <p className="text-sm font-semibold text-ink-900 whitespace-nowrap">Support</p>
+            <p className="text-[10px] text-muted-500">Get help</p>
+          </div>
         </button>
       </section>
 
-      {/* Stats Row */}
-      <section className="mt-6 grid grid-cols-3 gap-3">
-        <div className="paper-card p-4">
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">{t('statsCredits')}</p>
-          <p className="font-serif mt-2 text-2xl font-bold text-ink-900">{me?.credits ?? 0}</p>
-          <p className="mt-1 text-xs text-muted-500">{t('earnMore')}</p>
-        </div>
-        <div className="paper-card p-4">
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">{t('statsStreak')}</p>
-          <p className="font-serif mt-2 text-2xl font-bold text-ink-900">{(me?.currentStreak ?? 0) > 0 ? `${me?.currentStreak} ${tc('days')}` : '—'}</p>
-          <p className="mt-1 text-xs text-muted-500">{(me?.bestStreak ?? 0) > 0 ? t('best', { days: String(me?.bestStreak ?? 0) }) : t('startStreak')}</p>
-        </div>
-        <div className="paper-card p-4 cursor-pointer hover:bg-paper-200 transition-colors" onClick={() => router.push('/profile/level')}>
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">{t('statsLevel')}</p>
-          <p className="font-serif mt-2 text-lg font-bold capitalize text-ink-900 truncate">{me?.onboardingLevel ?? '—'}</p>
-          <p className="mt-1 text-[10px] text-ember-500 font-medium">Details →</p>
+      {/* Stats Row - Compact and visual */}
+      <section className="mt-5 paper-card p-4 animate-fadeIn-delay-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="text-center">
+              <p className="font-serif text-xl font-bold text-ink-900">{me?.credits ?? 0}</p>
+              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-500">{t('statsCredits')}</p>
+            </div>
+            <div className="h-8 w-px bg-line" />
+            <div className="text-center">
+              <p className="font-serif text-xl font-bold text-ink-900">{(me?.currentStreak ?? 0) > 0 ? me?.currentStreak : '—'}</p>
+              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-500">{t('statsStreak')}</p>
+            </div>
+            <div className="h-8 w-px bg-line" />
+            <div className="text-center">
+              <p className="font-serif text-lg font-bold capitalize text-ink-900">{me?.onboardingLevel ?? '—'}</p>
+              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-500">{t('statsLevel')}</p>
+            </div>
+          </div>
+          <button onClick={() => router.push('/profile/level')} className="btn-ghost-sm text-[11px]">
+            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+          </button>
         </div>
       </section>
 
