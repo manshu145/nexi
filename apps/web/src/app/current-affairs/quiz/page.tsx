@@ -40,19 +40,23 @@ export default function CurrentAffairsQuizPage() {
     }
   };
 
+  // Use ref to always have latest answers (avoids stale closure bug)
+  const answersRef = useRef<number[]>([]);
+  answersRef.current = answers;
+
   const submitQuiz = useCallback(async () => {
     if (timerRef.current) clearInterval(timerRef.current);
     setPhase('submitting');
-    const timeTaken = Math.round((Date.now() - startTimeRef.current) / 1000);
+    const timeTaken = Math.max(1, Math.round((Date.now() - startTimeRef.current) / 1000));
     try {
-      const res = await api.submitCurrentAffairsQuiz(answers, timeTaken);
+      const res = await api.submitCurrentAffairsQuiz(answersRef.current, timeTaken);
       setResult(res);
       setPhase('result');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Submit failed');
       setPhase('quiz');
     }
-  }, [answers]);
+  }, []);
 
   // Global timer
   useEffect(() => {
