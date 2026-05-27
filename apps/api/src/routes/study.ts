@@ -100,8 +100,12 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
     const { exam, subject, chapter } = c.req.param();
     const language = (c.req.query('lang') as 'en' | 'hi') || 'en';
     try {
+      // Fetch cached chapter content to ensure quiz is based on what student read
+      const cachedContent = await deps.chapters.getChapter(exam, subject, chapter, language);
+      const chapterText = cachedContent?.content ?? undefined;
+
       const questions = await mcqPool.getChapterQuiz(
-        exam, subject, chapter, principal.userId, language, 10, deps.aiEngine, deps.logger,
+        exam, subject, chapter, principal.userId, language, 10, deps.aiEngine, deps.logger, chapterText,
       );
       return c.json({ questions });
     } catch (err) {

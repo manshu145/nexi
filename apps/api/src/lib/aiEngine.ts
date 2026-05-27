@@ -21,7 +21,7 @@ export interface AIEngine {
   generateAssessmentQuestions(examSlug: string, language: 'en' | 'hi', count?: number): Promise<GeneratedMCQ[]>;
   scoreAssessment(questions: GeneratedMCQ[], answers: { questionId: string; chosen: string | null }[]): Promise<AssessmentResult>;
   generateChapterContent(chapter: string, subject: string, exam: string, language: 'en' | 'hi'): Promise<string>;
-  generateChapterMCQs(chapter: string, subject: string, exam: string, language: 'en' | 'hi', count?: number, seed?: string): Promise<GeneratedMCQ[]>;
+  generateChapterMCQs(chapter: string, subject: string, exam: string, language: 'en' | 'hi', count?: number, seed?: string, chapterContent?: string): Promise<GeneratedMCQ[]>;
   generateMermaidDiagram(chapter: string, subject: string, exam: string): Promise<string>;
   generateVisualization(topic: string, subject: string, exam: string, type: VisualizationType): Promise<VisualizationResult>;
   generateSyllabus(examSlug: string, examName: string, level: string): Promise<GeneratedSyllabus>;
@@ -154,10 +154,11 @@ export function createAIEngine(env: Env, logger: Logger, adminStore?: AdminStore
       } catch (err) { logger.error('ai.chapter_error', { error: err instanceof Error ? err.message : String(err) }); throw new Error('Failed to generate chapter content'); }
     },
 
-    async generateChapterMCQs(chapter, subject, exam, language = 'en', count = 10, seed?: string) {
+    async generateChapterMCQs(chapter, subject, exam, language = 'en', count = 10, seed?: string, chapterContent?: string) {
       const langInstr = language === 'hi' ? 'Generate in Hindi (Devanagari).' : 'Generate in English.';
-      const seedInstr = seed ? `\nVariation seed: ${seed}. Make these different from standard questions. Use creative angles and less common facts.` : '';
-      const prompt = `Generate exactly ${count} UNIQUE multiple choice questions for chapter "${chapter}" (${subject}, ${exam}).\n${langInstr}${seedInstr}\nEach question must have exactly 4 options (A/B/C/D), one correct answer, and a brief explanation.\nMix: 3 easy, 4 medium, 3 hard. 4 options each. Include explanation.\n\nJSON only:\n{"questions":[{"id":"q1","question":"...","options":[{"key":"A","text":"..."},{"key":"B","text":"..."},{"key":"C","text":"..."},{"key":"D","text":"..."}],"correctOption":"A","explanation":"...","difficulty":"easy","subject":"${subject}","topic":"${chapter}"}]}`;
+      const seedInstr = seed ? `\nVariation seed: ${seed}. Make these questions DIFFERENT from previous attempts. Use creative angles, tricky options, and less common facts from the content.` : '';
+      const contentContext = chapterContent ? `\n\nIMPORTANT: Generate questions ONLY from this specific chapter content. Do NOT ask about topics not covered here:\n---\n${chapterContent.slice(0, 3000)}\n---` : '';
+      const prompt = `Generate exactly ${count} UNIQUE multiple choice questions for chapter "${chapter}" (${subject}, ${exam}).\n${langInstr}${seedInstr}${contentContext}\n\nRules:\n- Questions MUST be based on the chapter content provided above\n- Do NOT ask about topics not covered in the chapter\n- Each question must have exactly 4 options (A/B/C/D), one correct answer, and a brief explanation\n- Mix: 3 easy, 4 medium, 3 hard\n- Include explanation referencing the chapter content\n\nJSON only:\n{"questions":[{"id":"q1","question":"...","options":[{"key":"A","text":"..."},{"key":"B","text":"..."},{"key":"C","text":"..."},{"key":"D","text":"..."}],"correctOption":"A","explanation":"...","difficulty":"easy","subject":"${subject}","topic":"${chapter}"}]}`;
       const errors: string[] = [];
       if (groq) {
         try {
