@@ -93,10 +93,11 @@ export default function EssayPage() {
     setGenerating(true);
     try {
       const token = await user!.getIdToken();
+      const lang = localStorage.getItem('nexigrate-language') || 'en';
       const res = await fetch(`${API}/v1/essay/question`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ language: lang }),
       });
       if (!res.ok) {
         // Fallback: generate locally if endpoint doesn't exist
@@ -212,7 +213,7 @@ Respond ONLY with valid JSON:
       </header>
 
       <section className="mt-6">
-        <h1 className="font-serif text-xl font-bold text-ink-900">✍️ Essay & Answer Practice</h1>
+        <h1 className="font-serif text-xl font-bold text-ink-900">✍️ Practice Set</h1>
         <p className="mt-1 text-sm text-muted-500">Write answers, get AI-graded feedback with detailed analysis</p>
         {usageInfo && (
           <p className="mt-2 text-xs text-muted-400">

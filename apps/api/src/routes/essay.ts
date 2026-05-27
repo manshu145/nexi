@@ -50,10 +50,14 @@ export function makeEssayRoutes(deps: EssayRoutesDeps): Hono {
     const user = await deps.users.get(principal.userId);
     if (!user) throw new HTTPException(404, { message: 'User not found' });
 
+    const body = await c.req.json().catch(() => null) as { language?: string } | null;
     const exam = user.targetExam ?? 'upsc-cse';
     const level = user.onboardingLevel ?? 'beginner';
+    const language = (body?.language as 'en' | 'hi') || user.language || 'en';
+    const langInstr = language === 'hi' ? 'Generate the question, hints, and all text in Hindi (Devanagari script).' : 'Generate in English.';
 
     const prompt = `Generate ONE essay/answer-writing question for ${exam} exam (student level: ${level}).
+${langInstr}
 The question should be:
 - Relevant to current affairs or the official syllabus
 - Appropriate word limit (150-300 words depending on difficulty)
@@ -65,7 +69,7 @@ Respond ONLY with valid JSON:
     try {
       const response = await deps.aiEngine.chat(
         [{ role: 'user', content: prompt }],
-        { exam, level, language: 'en' },
+        { exam, level, language },
         'groq'
       );
       const jsonMatch = response.match(/\{[\s\S]*\}/);
