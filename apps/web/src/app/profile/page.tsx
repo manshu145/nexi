@@ -84,7 +84,7 @@ export default function ProfilePage() {
               <p className="text-sm font-medium text-ink-900 capitalize">{me?.plan ?? 'free'} Plan</p>
               <p className="text-xs text-muted-500">{me?.planExpiresAt ? `Renews on ${new Date(me.planExpiresAt).toLocaleDateString('en-IN')}` : 'Free forever'}</p>
             </div>
-            <span className={`pill text-xs ${me?.plan === 'free' ? '' : 'bg-gold-500/20 text-gold-700'}`}>
+            <span className={`pill text-xs ${me?.plan === 'free' ? '' : 'bg-ember-500/20 text-ember-700'}`}>
               {me?.plan === 'free' ? 'Free' : 'Active'}
             </span>
           </div>
@@ -95,7 +95,7 @@ export default function ProfilePage() {
               <span className="font-medium text-ink-900">{me?.credits ?? 0}</span>
             </div>
             <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-paper-300">
-              <div className="h-full rounded-full bg-gold-500 transition-all" style={{ width: `${Math.min(100, ((me?.credits ?? 0) / 200) * 100)}%` }} />
+              <div className="h-full rounded-full bg-ember-500 transition-all" style={{ width: `${Math.min(100, ((me?.credits ?? 0) / 200) * 100)}%` }} />
             </div>
           </div>
           <div className="flex gap-2 pt-1">
@@ -160,7 +160,7 @@ export default function ProfilePage() {
                   <p className="text-[10px] text-muted-500">Completed</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-lg font-bold text-gold-600">{referralStats.totalEarned}</p>
+                  <p className="text-lg font-bold text-ember-500">{referralStats.totalEarned}</p>
                   <p className="text-[10px] text-muted-500">Credits Earned</p>
                 </div>
               </div>

@@ -18,7 +18,6 @@ export function AnnouncementBanner() {
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    // Load dismissed IDs from localStorage
     try {
       const stored = localStorage.getItem('dismissedAnnouncements');
       if (stored) setDismissed(new Set(JSON.parse(stored)));
@@ -58,15 +57,26 @@ export function AnnouncementBanner() {
   return (
     <div className="fixed top-0 left-0 right-0 z-[9999]">
       {visible.slice(0, 1).map(a => (
-        <div key={a.id} className="w-full bg-gold-500 text-paper-50 py-2.5 px-4 flex items-center justify-center gap-3 text-sm">
-          <span className="font-semibold">{a.title}</span>
-          <span className="hidden sm:inline">— {a.body}</span>
-          <button
-            onClick={() => handleDismiss(a.id)}
-            className="ml-3 h-5 w-5 rounded-full bg-paper-50/20 hover:bg-paper-50/30 flex items-center justify-center text-paper-50 text-xs transition-colors flex-shrink-0"
-          >
-            ✕
-          </button>
+        <div key={a.id} className="w-full bg-ember-500 text-paper-50">
+          <div className="mx-auto max-w-5xl px-3 py-2 sm:px-4 sm:py-2.5 flex items-center justify-between gap-2">
+            {/* Content: title always visible, body on sm+ */}
+            <div className="flex-1 min-w-0">
+              <p className="text-xs sm:text-sm font-medium truncate sm:whitespace-normal">
+                <span className="font-bold">{a.title}</span>
+                <span className="hidden sm:inline"> — {a.body}</span>
+              </p>
+              {/* On mobile: show body below title */}
+              <p className="text-[11px] text-paper-50/80 truncate sm:hidden mt-0.5">{a.body}</p>
+            </div>
+            {/* Dismiss button */}
+            <button
+              onClick={() => handleDismiss(a.id)}
+              className="h-6 w-6 rounded-full bg-paper-50/20 hover:bg-paper-50/40 flex items-center justify-center text-paper-50 text-xs transition-colors flex-shrink-0"
+              aria-label="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
         </div>
       ))}
     </div>

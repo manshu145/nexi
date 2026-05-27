@@ -55,7 +55,7 @@ export default function DashboardPage() {
         <h1 className="font-serif text-2xl font-bold text-ink-900">{greeting}, {firstName}! 👋</h1>
         {examName && (
           <div className="mt-3">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-gold-500 px-3.5 py-1.5 text-xs font-semibold text-paper-50">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-ember-500 px-3.5 py-1.5 text-xs font-semibold text-paper-50">
               Preparing for: {examName}
             </span>
           </div>
@@ -76,7 +76,7 @@ export default function DashboardPage() {
           onClick={() => router.push('/study')}
           className="paper-card card-selectable p-6 text-left animate-fadeIn hover:shadow-md transition-all group"
         >
-          <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gold-500/10 text-xl">📖</span>
+          <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ember-500/10 text-xl">📖</span>
           <h3 className="mt-3 font-serif text-lg font-bold text-ink-900">{t('study')}</h3>
           <p className="mt-1 text-xs text-muted-500">{t('studyDesc')}</p>
           <div className="mt-3 flex items-center gap-1 text-xs font-medium text-ember-500">
@@ -112,7 +112,7 @@ export default function DashboardPage() {
           onClick={() => router.push('/chat')}
           className="paper-card card-selectable p-6 text-left animate-fadeIn-delay-2 hover:shadow-md transition-all group"
         >
-          <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gold-500/10 text-xl">🤖</span>
+          <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ember-500/10 text-xl">🤖</span>
           <h3 className="mt-3 font-serif text-lg font-bold text-ink-900">{t('nexiAI')}</h3>
           <p className="mt-1 text-xs text-muted-500">Ask doubts, get explanations</p>
           <div className="mt-3 flex items-center gap-1 text-xs font-medium text-ember-500">

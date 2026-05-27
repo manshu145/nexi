@@ -158,7 +158,7 @@ export default function AdminUsersPage() {
               onClick={() => openUserDrawer(u)}
             >
               <div className="flex items-center gap-3 min-w-0">
-                <div className="h-9 w-9 rounded-full bg-paper-300 flex items-center justify-center text-sm font-bold text-gold-500 flex-shrink-0">
+                <div className="h-9 w-9 rounded-full bg-paper-300 flex items-center justify-center text-sm font-bold text-ink-800 flex-shrink-0">
                   {u.name?.[0]?.toUpperCase() || '?'}
                 </div>
                 <div className="min-w-0">
@@ -167,7 +167,7 @@ export default function AdminUsersPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
-                <span className={`inline-flex items-center rounded px-2 py-0.5 text-[10px] font-medium ${u.plan === 'scholar' ? 'bg-gold-500/10 text-gold-500' : u.plan === 'free' ? 'bg-paper-400 text-ink-700' : 'bg-paper-200 text-ink-800'}`}>
+                <span className={`inline-flex items-center rounded px-2 py-0.5 text-[10px] font-medium ${u.plan === 'scholar' ? 'bg-ember-500/10 text-ember-600' : u.plan === 'free' ? 'bg-paper-400 text-ink-700' : 'bg-paper-200 text-ink-800'}`}>
                   {u.plan}
                 </span>
                 <span className="text-xs text-muted-500">{u.credits} cr</span>
@@ -208,7 +208,7 @@ export default function AdminUsersPage() {
 
                 {/* Profile Header */}
                 <div className="flex items-center gap-4">
-                  <div className="h-14 w-14 rounded-full bg-paper-300 flex items-center justify-center text-xl font-bold text-gold-500">
+                  <div className="h-14 w-14 rounded-full bg-paper-300 flex items-center justify-center text-xl font-bold text-ink-800">
                     {selectedUser.name?.[0]?.toUpperCase() || '?'}
                   </div>
                   <div>
@@ -230,7 +230,7 @@ export default function AdminUsersPage() {
                     <p className="text-[10px] text-muted-500 uppercase tracking-wider">Streak</p>
                   </div>
                   <div className="bg-paper-200 rounded-lg p-3 text-center">
-                    <p className={`text-sm font-bold capitalize ${selectedUser.plan === 'scholar' ? 'text-gold-500' : 'text-ink-700'}`}>{selectedUser.plan}</p>
+                    <p className={`text-sm font-bold capitalize ${selectedUser.plan === 'scholar' ? 'text-ember-600' : 'text-ink-700'}`}>{selectedUser.plan}</p>
                     <p className="text-[10px] text-muted-500 uppercase tracking-wider">Plan</p>
                   </div>
                 </div>
