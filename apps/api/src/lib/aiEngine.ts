@@ -242,40 +242,76 @@ export function createAIEngine(env: Env, logger: Logger, adminStore?: AdminStore
           }
         }
 
-        // Attempt 2: Gemini Imagen (gemini-2.0-flash-exp with image response modality)
+        // Attempt 2: Gemini Imagen (gemini-2.0-flash-exp with image generation)
         if (env.GEMINI_API_KEY) {
           try {
-            const geminiImagePrompt = `Generate an educational black-and-white textbook-style diagram explaining "${topic}" for Indian ${exam} students. Clean labels, simple layout, no text watermarks.`;
-            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${env.GEMINI_API_KEY}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                contents: [{ parts: [{ text: geminiImagePrompt }] }],
-                generationConfig: { temperature: 0.4, maxOutputTokens: 4096, responseModalities: ['TEXT', 'IMAGE'] },
-              }),
-            });
-            if (res.ok) {
-              const data = await res.json() as { candidates?: { content?: { parts?: { text?: string; inlineData?: { mimeType: string; data: string } }[] } }[] };
-              // Check if Gemini returned inline image data
-              const parts = data.candidates?.[0]?.content?.parts ?? [];
-              for (const part of parts) {
-                if (part.inlineData?.data) {
-                  const dataUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-                  logger.info('ai.visualization_image', { topic, subject, exam, provider: 'gemini-imagen' });
-                  return { type: 'image', content: dataUrl };
+            const geminiImagePrompt = `Generate a colorful, detailed educational diagram explaining "${topic}" for Indian ${exam} students. Clean labels, clear layout, visually appealing for studying. Include arrows, boxes, and clear hierarchy.`;
+            // Try multiple Gemini image models
+            const geminiImageModels = [
+              'gemini-2.0-flash-preview-image-generation',
+              'imagen-3.0-generate-002',
+            ];
+            for (const model of geminiImageModels) {
+              try {
+                const isImagen = model.startsWith('imagen');
+                const endpoint = isImagen
+                  ? `https://generativelanguage.googleapis.com/v1beta/models/${model}:predict?key=${env.GEMINI_API_KEY}`
+                  : `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`;
+                const body = isImagen
+                  ? JSON.stringify({ instances: [{ prompt: geminiImagePrompt }], parameters: { sampleCount: 1 } })
+                  : JSON.stringify({
+                      contents: [{ parts: [{ text: geminiImagePrompt }] }],
+                      generationConfig: { temperature: 0.4, maxOutputTokens: 4096, responseModalities: ['TEXT', 'IMAGE'] },
+                    });
+                const res = await fetch(endpoint, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body,
+                });
+                if (res.ok) {
+                  const data = await res.json() as any;
+                  // Check gemini-2.0-flash response format
+                  const parts = data.candidates?.[0]?.content?.parts ?? [];
+                  for (const part of parts) {
+                    if (part.inlineData?.data) {
+                      const dataUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                      logger.info('ai.visualization_image', { topic, subject, exam, provider: 'gemini-imagen', model });
+                      return { type: 'image', content: dataUrl };
+                    }
+                  }
+                  // Check Imagen response format
+                  const predictions = data.predictions ?? [];
+                  for (const pred of predictions) {
+                    if (pred.bytesBase64Encoded) {
+                      const dataUrl = `data:image/png;base64,${pred.bytesBase64Encoded}`;
+                      logger.info('ai.visualization_image', { topic, subject, exam, provider: 'gemini-imagen', model });
+                      return { type: 'image', content: dataUrl };
+                    }
+                  }
+                  logger.warn('ai.visualization_gemini_no_image_data', { topic, model, partsCount: parts.length, predictionsCount: predictions.length });
+                } else {
+                  const errText = await res.text().catch(() => '');
+                  logger.warn('ai.visualization_gemini_http_error', { status: res.status, model, body: errText.slice(0, 300) });
                 }
+              } catch (modelErr) {
+                logger.warn('ai.visualization_gemini_model_failed', { model, error: modelErr instanceof Error ? modelErr.message : String(modelErr) });
               }
-              logger.warn('ai.visualization_gemini_no_image_data', { topic, partsCount: parts.length });
-            } else {
-              const errText = await res.text().catch(() => '');
-              logger.warn('ai.visualization_gemini_http_error', { status: res.status, body: errText.slice(0, 200) });
             }
           } catch (err) {
             logger.warn('ai.visualization_gemini_image_failed', { error: err instanceof Error ? err.message : String(err), topic });
           }
         }
 
-        // Attempt 3: Fallback to detailed mermaid diagram (never show error to user)
+        // Log failure for admin debug visibility
+        logAICallToStore(store, 'image-generation', 0, 0, 0, undefined, {
+          status: 'error',
+          endpoint: 'generateVisualization(image)',
+          error: `Image generation failed for all providers. DALL-E: ${openai ? 'attempted' : 'not configured'}, Gemini: ${env.GEMINI_API_KEY ? 'attempted' : 'not configured'}`,
+          requestPreview: `Topic: ${topic}, Exam: ${exam}`,
+        });
+        logger.error('ai.visualization_image_all_failed', { topic, subject, exam, hasOpenai: !!openai, hasGemini: !!env.GEMINI_API_KEY });
+
+        // Fallback to detailed mermaid diagram (so user still sees something useful)
         logger.info('ai.visualization_image_fallback_to_diagram', { topic, subject, exam });
         // Fall through to generate a detailed diagram instead
       }
