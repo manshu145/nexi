@@ -81,7 +81,7 @@ export default function AdminSessionsPage() {
           {count} online
         </span>
       </div>
-      <p className="mt-1 text-sm text-muted-500">Who&apos;s online right now</p>
+      <p className="mt-1 text-sm text-muted-500">Users active in the last 10 minutes</p>
 
       {error && <div className="banner banner-error mt-4">{error}</div>}
 

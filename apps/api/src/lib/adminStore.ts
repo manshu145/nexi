@@ -152,7 +152,7 @@ export class FirestoreAdminStore implements AdminStore {
     const usersSnap = await this.db.collection('users').get();
     const totalUsers = usersSnap.size;
     let dau = 0, newUsersToday = 0, newUsersThisWeek = 0;
-    const fifteenMinAgo = new Date(now.getTime() - 15 * 60000).toISOString();
+    const tenMinAgo = new Date(now.getTime() - 10 * 60000).toISOString();
     let activeSessions = 0;
 
     usersSnap.forEach(doc => {
@@ -160,7 +160,7 @@ export class FirestoreAdminStore implements AdminStore {
       if (data.lastDailyAt?.startsWith(todayStr)) dau++;
       if (data.createdAt?.startsWith(todayStr)) newUsersToday++;
       if (data.createdAt > weekAgo) newUsersThisWeek++;
-      if (data.lastActiveAt && data.lastActiveAt > fifteenMinAgo) activeSessions++;
+      if (data.lastActiveAt && data.lastActiveAt > tenMinAgo) activeSessions++;
     });
 
     // Get revenue
@@ -267,10 +267,10 @@ export class FirestoreAdminStore implements AdminStore {
   }
 
   async getActiveSessions(): Promise<ActiveSession[]> {
-    const fifteenMinAgo = new Date(Date.now() - 15 * 60000).toISOString();
+    const tenMinAgo = new Date(Date.now() - 10 * 60000).toISOString();
     const sessions: ActiveSession[] = [];
     try {
-      const snap = await this.db.collection('users').where('lastActiveAt', '>=', fifteenMinAgo).limit(50).get();
+      const snap = await this.db.collection('users').where('lastActiveAt', '>=', tenMinAgo).limit(50).get();
       snap.forEach(doc => {
         const d = doc.data();
         sessions.push({ userId: doc.id, userName: d.name || d.email || 'Unknown', exam: d.targetExam || '—', lastActiveAt: d.lastActiveAt, plan: d.plan || 'free' });

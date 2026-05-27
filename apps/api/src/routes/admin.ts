@@ -49,13 +49,19 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
     const limit = parseInt(c.req.query('limit') ?? '20');
     const search = c.req.query('search')?.toLowerCase().trim() ?? '';
     let users = await deps.users.listAll?.() ?? [];
-    // Deduplicate by email (Fix #4)
-    const seen = new Map<string, typeof users[0]>();
+    // Deduplicate by id first (primary key), then by email if present
+    const seenIds = new Set<string>();
+    const seenEmails = new Set<string>();
+    const deduped: typeof users = [];
     for (const u of users) {
-      const key = u.email?.toLowerCase();
-      if (!key || !seen.has(key)) { seen.set(key || u.id, u); }
+      if (seenIds.has(u.id)) continue;
+      const emailKey = u.email?.toLowerCase().trim();
+      if (emailKey && seenEmails.has(emailKey)) continue;
+      seenIds.add(u.id);
+      if (emailKey) seenEmails.add(emailKey);
+      deduped.push(u);
     }
-    users = Array.from(seen.values());
+    users = deduped;
     // Search/filter
     if (search) {
       users = users.filter(u =>
@@ -78,10 +84,31 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
   });
 
   // GET /v1/admin/users/:uid/activity — full activity log for one user
+  // Transform UserActivity object into flat ActivityItem[] for the frontend
   app.get('/users/:uid/activity', async (c) => {
     const uid = c.req.param('uid');
-    const activity = await deps.adminStore.getUserActivity(uid);
-    return c.json({ activity });
+    const raw = await deps.adminStore.getUserActivity(uid);
+
+    // Flatten into ActivityItem[] with type, description, timestamp
+    const items: { type: string; description: string; timestamp: string }[] = [];
+
+    for (const ch of raw.chapterOpens) {
+      items.push({ type: 'chapter_open', description: `Opened "${ch.chapter}" (${ch.subject})`, timestamp: ch.timestamp });
+    }
+    for (const mt of raw.mockTests) {
+      items.push({ type: 'quiz_complete', description: `Quiz: ${mt.chapter} — Score: ${mt.score}%`, timestamp: mt.timestamp });
+    }
+    for (const cs of raw.chatSessions) {
+      items.push({ type: 'chat_message', description: cs.firstMessage || `Chat (${cs.messageCount} messages)`, timestamp: cs.timestamp });
+    }
+    for (const cr of raw.creditHistory) {
+      items.push({ type: 'credits_earned', description: `${cr.amount > 0 ? '+' : ''}${cr.amount} credits — ${cr.reason}`, timestamp: cr.timestamp });
+    }
+
+    // Sort by timestamp descending (newest first)
+    items.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+
+    return c.json({ activity: items });
   });
 
   // PATCH /v1/admin/users/:uid — update user (role, plan, credits)
