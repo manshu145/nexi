@@ -92,7 +92,7 @@ export function AILoader({ context = 'general', className = '' }: AILoaderProps)
 
   return (
     <div className={`flex flex-col items-center justify-center min-h-[120px] ${className}`}>
-      <p className={`text-base text-center text-slate-600 dark:text-slate-300 transition-opacity duration-300 ${phase === 'clearing' ? 'opacity-0' : 'opacity-100'}`}>
+      <p className={`text-base text-center text-ink-800 dark:text-slate-300 transition-opacity duration-300 ${phase === 'clearing' ? 'opacity-0' : 'opacity-100'}`}>
         {displayed}<span className="animate-pulse">|</span>
       </p>
       {/* Indeterminate progress bar */}

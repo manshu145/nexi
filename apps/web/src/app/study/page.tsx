@@ -213,62 +213,65 @@ export default function StudyPage() {
                       return s !== undefined && s >= 80;
                     });
 
-                    if (!allCompleted) {
-                      // Show a subtle hint about generating more chapters
-                      return (
-                        <p className="mt-3 text-center text-xs text-muted-400">
-                          Complete all chapters to unlock more content ✨
-                        </p>
-                      );
-                    }
+                    // Always show "Load More Chapters" for pro users or locked for free
+                    if (subject.chapters.length > 0) {
+                      if (currentPlan === 'free') {
+                        return (
+                          <button
+                            onClick={() => router.push('/upgrade')}
+                            className="mt-3 w-full rounded-lg border border-gold-500/50 bg-gold-500/5 py-3 text-center text-sm font-medium text-gold-600 dark:text-gold-500 transition-colors hover:bg-gold-500/10"
+                          >
+                            🔒 Load More Chapters — Upgrade to Pro
+                          </button>
+                        );
+                      }
 
-                    if (currentPlan === 'free') {
+                      if (!allCompleted) {
+                        return (
+                          <p className="mt-3 text-center text-xs text-muted-400">
+                            Complete all chapters to generate advanced content ✨
+                          </p>
+                        );
+                      }
+
+                      if (!allPassed) {
+                        return (
+                          <button disabled className="mt-3 w-full rounded-lg bg-paper-200 py-3 text-center text-sm font-medium text-muted-500 cursor-not-allowed">
+                            🔒 Generate More Chapters — Pass all chapters first (80%+)
+                          </button>
+                        );
+                      }
+
                       return (
                         <button
-                          onClick={() => router.push('/upgrade')}
-                          className="mt-3 w-full rounded-lg border border-gold-500/50 bg-gold-500/5 py-3 text-center text-sm font-medium text-gold-600 dark:text-gold-500 transition-colors hover:bg-gold-500/10"
+                          onClick={async () => {
+                            setGenerating(subject.slug);
+                            setGenSuccess(null);
+                            try {
+                              const res = await fetch(`${process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com'}/v1/study/generate-chapters`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await (await import('~/lib/firebase')).getFirebaseAuthClient().currentUser?.getIdToken()}` },
+                                body: JSON.stringify({ examSlug: syllabus!.exam, subjectSlug: subject.slug }),
+                              });
+                              if (!res.ok) throw new Error('Failed');
+                              const data = await res.json() as { newChapters: any[]; message: string };
+                              setGenSuccess(data.message);
+                              // Refresh syllabus
+                              const meRes = await api.me();
+                              const exam = meRes.user.targetExam!;
+                              const syllRes = await api.getSyllabus(exam);
+                              setSyllabus(syllRes.syllabus);
+                            } catch { setGenSuccess('Failed to generate. Try again.'); }
+                            finally { setGenerating(null); }
+                          }}
+                          disabled={generating === subject.slug}
+                          className="mt-3 w-full rounded-lg bg-gold-500 py-3 text-center text-sm font-semibold text-paper-50 transition-colors hover:bg-gold-600 disabled:opacity-60"
                         >
-                          ⭐ Upgrade to generate advanced chapters
+                          {generating === subject.slug ? '✨ Generating...' : '✨ Generate More Chapters'}
                         </button>
                       );
                     }
-
-                    if (!allPassed) {
-                      return (
-                        <button disabled className="mt-3 w-full rounded-lg bg-paper-200 py-3 text-center text-sm font-medium text-muted-500 cursor-not-allowed">
-                          🔒 Generate More Chapters — Pass all chapters first (80%+)
-                        </button>
-                      );
-                    }
-
-                    return (
-                      <button
-                        onClick={async () => {
-                          setGenerating(subject.slug);
-                          setGenSuccess(null);
-                          try {
-                            const res = await fetch(`${process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com'}/v1/study/generate-chapters`, {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await (await import('~/lib/firebase')).getFirebaseAuthClient().currentUser?.getIdToken()}` },
-                              body: JSON.stringify({ examSlug: syllabus!.exam, subjectSlug: subject.slug }),
-                            });
-                            if (!res.ok) throw new Error('Failed');
-                            const data = await res.json() as { newChapters: any[]; message: string };
-                            setGenSuccess(data.message);
-                            // Refresh syllabus
-                            const meRes = await api.me();
-                            const exam = meRes.user.targetExam!;
-                            const syllRes = await api.getSyllabus(exam);
-                            setSyllabus(syllRes.syllabus);
-                          } catch { setGenSuccess('Failed to generate. Try again.'); }
-                          finally { setGenerating(null); }
-                        }}
-                        disabled={generating === subject.slug}
-                        className="mt-3 w-full rounded-lg bg-gold-500 py-3 text-center text-sm font-semibold text-paper-50 transition-colors hover:bg-gold-600 disabled:opacity-60"
-                      >
-                        {generating === subject.slug ? '✨ Generating...' : '✨ Generate More Chapters'}
-                      </button>
-                    );
+                    return null;
                   })()}
                   {genSuccess && generating === null && (
                     <p className="mt-2 text-center text-xs text-gold-500">{genSuccess}</p>

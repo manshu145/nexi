@@ -73,6 +73,33 @@ export default function ProfilePage() {
         )}
       </section>
       <section className="mt-6"><h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">{t('academicInfo')}</h2><div className="mt-3"><Row label={t('targetExam')} value={examName} /><Row label={t('level')} value={me?.onboardingLevel} /></div></section>
+
+      {/* Language Preference */}
+      <section className="mt-6">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">Language / भाषा</h2>
+        <div className="mt-3 paper-card p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-ink-900">Content Language</p>
+              <p className="text-xs text-muted-500">Chapters, quizzes & AI responses</p>
+            </div>
+            <div className="flex rounded-lg bg-paper-200 p-1">
+              <button
+                onClick={() => { localStorage.setItem('nexigrate-language', 'en'); document.cookie = 'nexigrate-language=en;path=/;max-age=31536000'; toast.success('Language set to English'); window.location.reload(); }}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${(localStorage.getItem('nexigrate-language') || 'en') === 'en' ? 'bg-paper-50 text-ink-900 shadow-sm' : 'text-muted-500'}`}
+              >
+                English
+              </button>
+              <button
+                onClick={() => { localStorage.setItem('nexigrate-language', 'hi'); document.cookie = 'nexigrate-language=hi;path=/;max-age=31536000'; toast.success('भाषा हिंदी में बदली गई'); window.location.reload(); }}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${localStorage.getItem('nexigrate-language') === 'hi' ? 'bg-paper-50 text-ink-900 shadow-sm' : 'text-muted-500'}`}
+              >
+                हिंदी
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
       <section className="mt-6"><h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">{t('accountInfo')}</h2><div className="mt-3"><Row label={t('plan')} value={me?.plan} /><Row label={t('credits')} value={String(me?.credits ?? 0)} /><Row label={t('memberSince')} value={me?.createdAt ? new Date(me.createdAt).toLocaleDateString() : '—'} /></div></section>
 
       {/* Plan & Billing */}
