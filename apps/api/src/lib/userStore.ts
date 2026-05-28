@@ -89,6 +89,26 @@ export class FirestoreUserStore implements UserStore {
       }
       return user;
     }
+
+    // Before creating: check for duplicate by email (merge if found)
+    if (init.email) {
+      try {
+        const dupeSnap = await this.db.collection(COL).where('email', '==', init.email).limit(1).get();
+        if (!dupeSnap.empty) {
+          const dupeDoc = dupeSnap.docs[0]!;
+          const dupeData = dupeDoc.data() as StoredUser;
+          // Merge: copy existing user data to new UID doc, delete old
+          const merged: StoredUser = { ...dupeData, id: uid, firebaseUid: uid, updatedAt: asISODateTime(new Date().toISOString()) };
+          await ref.set(merged);
+          // Delete the old duplicate document
+          if (dupeDoc.id !== uid) {
+            await this.db.collection(COL).doc(dupeDoc.id).delete().catch(() => {});
+          }
+          return merged;
+        }
+      } catch { /* dedup check failed — continue with creation */ }
+    }
+
     const u = newUser(uid, init, new Date().toISOString());
     await ref.set(u);
     return u;

@@ -14,6 +14,14 @@ interface EmailTemplate {
   createdAt: string;
 }
 
+interface EmailLog {
+  id: string;
+  to?: string;
+  subject?: string;
+  status?: string;
+  sentAt?: string;
+}
+
 export default function AdminEmailPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -27,7 +35,8 @@ export default function AdminEmailPage() {
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
   const [templateName, setTemplateName] = useState('');
   const [showSaveTemplate, setShowSaveTemplate] = useState(false);
-  const [activeTab, setActiveTab] = useState<'compose' | 'templates'>('compose');
+  const [activeTab, setActiveTab] = useState<'compose' | 'templates' | 'logs'>('compose');
+  const [emailLogs, setEmailLogs] = useState<EmailLog[]>([]);
 
   useEffect(() => { if (!loading && !user) router.replace('/admin/login'); }, [user, loading, router]);
 
@@ -41,12 +50,14 @@ export default function AdminEmailPage() {
     (async () => {
       try {
         const token = await getToken();
-        const [statusRes, templatesRes] = await Promise.all([
+        const [statusRes, templatesRes, logsRes] = await Promise.all([
           fetch(`${API}/v1/admin/email/status`, { headers: { Authorization: `Bearer ${token}` } }),
           fetch(`${API}/v1/admin/email/templates`, { headers: { Authorization: `Bearer ${token}` } }),
+          fetch(`${API}/v1/admin/email/logs`, { headers: { Authorization: `Bearer ${token}` } }),
         ]);
         if (statusRes.ok) { const data = (await statusRes.json()) as { configured: boolean }; setConfigured(data.configured); }
         if (templatesRes.ok) { const data = (await templatesRes.json()) as { templates: EmailTemplate[] }; setTemplates(data.templates); }
+        if (logsRes.ok) { const data = (await logsRes.json()) as { logs: EmailLog[] }; setEmailLogs(data.logs); }
       } catch { setConfigured(false); }
     })();
   }, [user]);
@@ -127,6 +138,9 @@ export default function AdminEmailPage() {
         <button onClick={() => setActiveTab('templates')} className={`pill ${activeTab === 'templates' ? 'bg-ink-900 text-paper-50 border-ink-900' : ''}`}>
           Templates ({templates.length})
         </button>
+        <button onClick={() => setActiveTab('logs')} className={`pill ${activeTab === 'logs' ? 'bg-ink-900 text-paper-50 border-ink-900' : ''}`}>
+          Logs ({emailLogs.length})
+        </button>
       </div>
 
       {activeTab === 'compose' && (
@@ -185,6 +199,46 @@ export default function AdminEmailPage() {
                 </div>
               </div>
             ))
+          )}
+        </div>
+      )}
+
+      {activeTab === 'logs' && (
+        <div className="mt-4">
+          {emailLogs.length === 0 ? (
+            <div className="paper-card p-8 text-center">
+              <span className="text-3xl">📬</span>
+              <p className="mt-2 text-sm text-muted-500">No email logs yet.</p>
+            </div>
+          ) : (
+            <div className="paper-card overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-paper-300">
+                    <th className="p-3 text-left text-xs font-medium text-muted-500">To</th>
+                    <th className="p-3 text-left text-xs font-medium text-muted-500">Subject</th>
+                    <th className="p-3 text-left text-xs font-medium text-muted-500">Status</th>
+                    <th className="p-3 text-left text-xs font-medium text-muted-500">Sent At</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {emailLogs.map(log => (
+                    <tr key={log.id} className="border-b border-paper-200">
+                      <td className="p-3 text-xs text-ink-700 truncate max-w-[150px]">{log.to ?? '—'}</td>
+                      <td className="p-3 text-xs text-ink-700 truncate max-w-[200px]">{log.subject ?? '—'}</td>
+                      <td className="p-3">
+                        <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                          log.status === 'sent' ? 'bg-gold-500/10 text-gold-600' : 'bg-ember-500/10 text-ember-600'
+                        }`}>
+                          {log.status ?? 'unknown'}
+                        </span>
+                      </td>
+                      <td className="p-3 text-[10px] text-muted-400">{log.sentAt ? new Date(log.sentAt).toLocaleString() : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       )}

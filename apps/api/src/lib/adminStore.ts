@@ -148,9 +148,10 @@ export class FirestoreAdminStore implements AdminStore {
     const weekAgo = new Date(now.getTime() - 7 * 86400000).toISOString();
     const monthAgo = new Date(now.getTime() - 30 * 86400000).toISOString();
 
-    // Get user counts
+    // Get user counts — deduplicate by unique doc ID
     const usersSnap = await this.db.collection('users').get();
-    const totalUsers = usersSnap.size;
+    const uniqueUids = new Set(usersSnap.docs.map(d => d.id));
+    const totalUsers = uniqueUids.size;
     let dau = 0, newUsersToday = 0, newUsersThisWeek = 0;
     const tenMinAgo = new Date(now.getTime() - 10 * 60000).toISOString();
     let activeSessions = 0;
