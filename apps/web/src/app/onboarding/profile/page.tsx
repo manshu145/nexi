@@ -1,9 +1,10 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { api } from '~/lib/api';
+import { useAuth } from '~/lib/auth-context';
 
 type Gender = 'male' | 'female' | 'prefer-not-to-say';
 
@@ -12,25 +13,44 @@ export default function ProfilePage() {
   const ts = useTranslations('onboarding');
   const tc = useTranslations('common');
   const router = useRouter();
+  const { user } = useAuth();
   const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
   const [dob, setDob] = useState('');
   const [gender, setGender] = useState<Gender | ''>('');
   const [school, setSchool] = useState('');
   const [aim, setAim] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // Determine if user signed up via phone (no email from Firebase)
+  const isPhoneUser = user?.providerData?.[0]?.providerId === 'phone';
+  const hasEmail = !!user?.email;
+
+  // Pre-fill email if user already has one from Google signup
+  useEffect(() => {
+    if (user?.email) setEmail(user.email);
+    if (user?.displayName && !name) setName(user.displayName);
+  }, [user]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !dob) { toast.error('Please fill required fields'); return; }
+    if (isPhoneUser && !hasEmail && !email.trim()) { toast.error('Email is required'); return; }
+    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { toast.error('Please enter a valid email'); return; }
     setSaving(true);
     try {
-      await api.saveOnboarding({
+      const data: Record<string, unknown> = {
         name: name.trim(),
         dob,
         school: school.trim() || undefined,
         aim: aim.trim() || undefined,
         gender: gender || undefined,
-      });
+      };
+      // Include email for phone users who don't have one
+      if (isPhoneUser && !hasEmail && email.trim()) {
+        data.email = email.trim();
+      }
+      await api.saveOnboarding(data);
       router.push('/onboarding/exam');
     }
     catch (err) { toast.error(err instanceof Error ? err.message : 'Failed to save'); setSaving(false); }
@@ -50,6 +70,14 @@ export default function ProfilePage() {
       <p className="mt-2 text-center text-sm text-muted-500">{t('subtitle')}</p>
       <form onSubmit={handleSubmit} className="mt-8 w-full space-y-4">
         <div><label className="mb-1 block text-sm font-medium text-ink-800">{t('name')} *</label><input type="text" value={name} onChange={(e) => setName(e.target.value)} className="input" required /></div>
+        {/* Email field — required for phone signup users */}
+        {isPhoneUser && !hasEmail && (
+          <div>
+            <label className="mb-1 block text-sm font-medium text-ink-800">Email *</label>
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="input" required placeholder="your@email.com" />
+            <p className="mt-1 text-xs text-muted-500">Required for account recovery & notifications</p>
+          </div>
+        )}
         <div><label className="mb-1 block text-sm font-medium text-ink-800">{t('dob')} *</label><input type="date" value={dob} onChange={(e) => setDob(e.target.value)} className="input" required /></div>
         <div>
           <label className="mb-2 block text-sm font-medium text-ink-800">Gender</label>

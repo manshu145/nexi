@@ -44,6 +44,10 @@ export default function AdminUsersPage() {
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [loadingActivity, setLoadingActivity] = useState(false);
   const [changingPlan, setChangingPlan] = useState(false);
+  const [chatSessions, setChatSessions] = useState<{id:string;title:string;createdAt:string;updatedAt:string;messageCount:number}[]>([]);
+  const [loadingChats, setLoadingChats] = useState(false);
+  const [expandedChat, setExpandedChat] = useState<string | null>(null);
+  const [chatMessages, setChatMessages] = useState<{role:string;content:string;timestamp?:string}[]>([]);
 
   useEffect(() => {
     if (!loading && !user) router.replace('/signin');
@@ -80,6 +84,10 @@ export default function AdminUsersPage() {
     setSelectedUser(u);
     setDrawerOpen(true);
     setLoadingActivity(true);
+    setLoadingChats(true);
+    setChatSessions([]);
+    setExpandedChat(null);
+    setChatMessages([]);
     try {
       const auth = getFirebaseAuthClient();
       const token = await auth.currentUser?.getIdToken();
@@ -92,11 +100,37 @@ export default function AdminUsersPage() {
       }
     } catch { setActivity([]); }
     finally { setLoadingActivity(false); }
+    // Fetch chat sessions
+    try {
+      const auth = getFirebaseAuthClient();
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch(`${API}/v1/admin/users/${u.id}/chat`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) {
+        const data = await res.json() as { sessions: {id:string;title:string;createdAt:string;updatedAt:string;messageCount:number}[] };
+        setChatSessions(data.sessions);
+      }
+    } catch { /* ignore */ }
+    finally { setLoadingChats(false); }
   };
 
   const closeDrawer = () => {
     setDrawerOpen(false);
-    setTimeout(() => { setSelectedUser(null); setActivity([]); }, 200);
+    setTimeout(() => { setSelectedUser(null); setActivity([]); setChatSessions([]); setExpandedChat(null); setChatMessages([]); }, 200);
+  };
+
+  const loadChatMessages = async (uid: string, sessionId: string) => {
+    if (expandedChat === sessionId) { setExpandedChat(null); setChatMessages([]); return; }
+    setExpandedChat(sessionId);
+    setChatMessages([]);
+    try {
+      const auth = getFirebaseAuthClient();
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch(`${API}/v1/admin/users/${uid}/chat/${sessionId}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) {
+        const data = await res.json() as { messages: {role:string;content:string;timestamp?:string}[] };
+        setChatMessages(data.messages);
+      }
+    } catch { /* ignore */ }
   };
 
   const handleChangePlan = async (uid: string, newPlan: string) => {
@@ -267,6 +301,49 @@ export default function AdminUsersPage() {
                             <p className="text-sm text-ink-800 truncate">{item.description}</p>
                             <p className="text-[10px] text-muted-400">{formatTimeAgo(item.timestamp)}</p>
                           </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Admin Actions */}
+                <div>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-muted-500 mb-3">Chat History</h4>
+                  {loadingChats ? (
+                    <div className="space-y-2">
+                      {[1,2,3].map(i => <div key={i} className="h-10 bg-paper-200 rounded animate-pulse" />)}
+                    </div>
+                  ) : chatSessions.length === 0 ? (
+                    <p className="text-sm text-muted-400 text-center py-4">No chat sessions found</p>
+                  ) : (
+                    <div className="space-y-2 max-h-80 overflow-y-auto">
+                      {chatSessions.map((session) => (
+                        <div key={session.id} className="bg-paper-200/50 rounded-lg overflow-hidden">
+                          <button
+                            onClick={() => selectedUser && loadChatMessages(selectedUser.id, session.id)}
+                            className="w-full text-left px-3 py-2.5 flex items-center justify-between hover:bg-paper-200 transition-colors"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm text-ink-800 truncate">{session.title || 'Untitled'}</p>
+                              <p className="text-[10px] text-muted-400">{session.messageCount} messages &middot; {formatTimeAgo(session.updatedAt)}</p>
+                            </div>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`text-muted-400 transition-transform ${expandedChat === session.id ? 'rotate-90' : ''}`}><polyline points="9 18 15 12 9 6"/></svg>
+                          </button>
+                          {expandedChat === session.id && (
+                            <div className="px-3 pb-3 space-y-2 border-t border-line/50 pt-2 max-h-60 overflow-y-auto">
+                              {chatMessages.length === 0 ? (
+                                <p className="text-xs text-muted-400 text-center py-2">Loading...</p>
+                              ) : (
+                                chatMessages.map((msg, i) => (
+                                  <div key={i} className={`rounded-lg px-3 py-2 text-xs ${msg.role === 'user' ? 'bg-amber-500/10 text-ink-800 ml-4' : 'bg-paper-300 text-ink-700 mr-4'}`}>
+                                    <span className="font-bold text-[10px] uppercase tracking-wider text-muted-500 block mb-0.5">{msg.role}</span>
+                                    <p className="whitespace-pre-wrap break-words">{msg.content.slice(0, 500)}{msg.content.length > 500 ? '...' : ''}</p>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
