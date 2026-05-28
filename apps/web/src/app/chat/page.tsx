@@ -341,7 +341,7 @@ function ChatPage() {
       {/* Sidebar */}
       <aside className={`fixed inset-y-0 left-0 z-40 flex w-72 max-w-[80vw] flex-col border-r border-line bg-paper-50 transition-transform duration-200 ease-out md:static md:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex items-center justify-between p-4 border-b border-line">
-          <Logo />
+          <Logo height={28} />
           <button onClick={() => setSidebarOpen(false)} className="btn-ghost-sm md:hidden" aria-label="Close sidebar">
             <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>

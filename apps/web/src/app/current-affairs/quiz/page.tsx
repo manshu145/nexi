@@ -162,7 +162,7 @@ export default function CurrentAffairsQuizPage() {
   return (
     <main className="mx-auto flex min-h-dvh max-w-lg flex-col px-5 pt-6 pb-16">
       <header className="flex items-center justify-between">
-        <Logo />
+        <Logo height={28} />
         <span className={`pill font-mono ${timeLeft <= 60 ? 'pill-warn' : ''}`}>
           {mins}:{String(secs).padStart(2, '0')}
         </span>

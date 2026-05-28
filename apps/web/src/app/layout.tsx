@@ -19,7 +19,12 @@ export const metadata: Metadata = {
   manifest: '/manifest.json',
   appleWebApp: { capable: true, statusBarStyle: 'default', title: 'Nexigrate' },
   icons: {
+    icon: [
+      { url: '/brand/nexigrate-favicon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.svg', sizes: '32x32' },
+    ],
     apple: '/icon-192.png',
+    shortcut: '/brand/nexigrate-favicon.svg',
   },
 };
 

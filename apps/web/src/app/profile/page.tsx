@@ -55,7 +55,7 @@ export default function ProfilePage() {
         <button type="button" onClick={() => router.back()} className="btn-ghost-sm">← {tc('back')}</button>
         <div className="flex items-center gap-2">
           <button onClick={() => signOut()} className="btn-ghost-sm text-xs text-red-500">Sign Out</button>
-          <Logo />
+          <Logo height={28} />
         </div>
       </header>
       <section className="mt-6 text-center">

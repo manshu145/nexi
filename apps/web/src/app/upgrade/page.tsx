@@ -162,7 +162,7 @@ export default function UpgradePage() {
       <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="lazyOnload" />
 
       <header className="flex items-center justify-between">
-        <Logo />
+        <Logo height={28} />
         <button onClick={() => router.push('/dashboard')} className="btn-ghost-sm">← Back</button>
       </header>
 

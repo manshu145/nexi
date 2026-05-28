@@ -136,7 +136,7 @@ export default function CurrentAffairsDetailPage() {
           <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
           Back
         </button>
-        <Logo />
+        <Logo height={28} />
       </header>
 
       {/* Category + time */}

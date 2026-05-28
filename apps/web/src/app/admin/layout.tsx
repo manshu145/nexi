@@ -54,7 +54,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       {/* Sidebar */}
       <aside className={`fixed inset-y-0 left-0 z-50 flex w-56 flex-col transition-transform lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`} style={{ background: '#292524', borderRight: '1px solid #44403C' }}>
         <div className="flex items-center gap-2 px-4 py-4" style={{ borderBottom: '1px solid #44403C' }}>
-          <span className="text-lg">⚙️</span>
+          <img src="/brand/nexigrate-favicon.svg" alt="Nexigrate" width={28} height={28} />
           <span className="font-serif font-semibold" style={{ color: '#F59E0B' }}>Admin</span>
         </div>
         <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-1">

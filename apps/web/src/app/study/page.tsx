@@ -84,7 +84,7 @@ export default function StudyPage() {
   return (
     <main className="mx-auto flex min-h-dvh max-w-2xl flex-col px-5 pt-6 pb-28">
       <header className="flex items-center justify-between">
-        <Logo />
+        <Logo height={28} />
         <button onClick={() => router.push('/dashboard')} className="btn-ghost-sm">← Dashboard</button>
       </header>
 

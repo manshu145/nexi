@@ -96,7 +96,7 @@ export default function DashboardPage() {
     <main className="mx-auto flex min-h-dvh max-w-4xl flex-col px-5 pt-6 pb-8 overflow-x-hidden">
       {/* Header */}
       <header className="flex items-center justify-between">
-        <Logo />
+        <Logo height={28} />
         <div className="flex items-center gap-2">
           {installPrompt && !appInstalled && (
             <button onClick={handleInstallApp} className="btn-ghost-sm text-xs flex items-center gap-1">📱 Install</button>

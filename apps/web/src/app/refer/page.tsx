@@ -85,7 +85,7 @@ export default function ReferPage() {
       {/* Header */}
       <header className="flex items-center justify-between">
         <button onClick={() => router.push('/dashboard')} className="btn-ghost-sm">← Back</button>
-        <Logo />
+        <Logo height={28} />
       </header>
 
       {/* Title */}
