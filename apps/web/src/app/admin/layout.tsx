@@ -10,6 +10,8 @@ const NAV_ITEMS = [
   { label: 'Live Sessions', href: '/admin/sessions', icon: '🟢' },
   { label: 'Plans', href: '/admin/plans', icon: '💳' },
   { label: 'Revenue', href: '/admin/revenue', icon: '💰' },
+  { label: 'API Config', href: '/admin/api-config', icon: '🔑' },
+  { label: 'News Feeds', href: '/admin/feeds', icon: '📡' },
   { label: 'AI & Logs', href: '/admin/logs', icon: '🤖' },
   { label: 'SEO & Branding', href: '/admin/seo', icon: '🔍' },
   { label: 'Announcements', href: '/admin/announcements', icon: '📢' },
@@ -26,7 +28,6 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Allow /admin/login to render without auth
   const isLoginPage = pathname === '/admin/login';
 
   useEffect(() => {
@@ -37,33 +38,44 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
   if (isLoginPage) return <>{children}</>;
 
-  if (loading || !user) return <main className="flex min-h-dvh items-center justify-center bg-stone-950"><AILoader context="general" /></main>;
+  if (loading || !user) return (
+    <main className="flex min-h-dvh items-center justify-center" style={{ background: '#1C1917' }}>
+      <AILoader context="general" />
+    </main>
+  );
+
+  const isActive = (href: string) => {
+    if (href === '/admin') return pathname === '/admin';
+    return pathname.startsWith(href);
+  };
 
   return (
-    <div className="min-h-dvh bg-stone-950 text-stone-100">
+    <div className="min-h-dvh" style={{ background: '#1C1917', color: '#F5F5F4' }}>
       {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-50 flex w-56 flex-col bg-stone-900 border-r border-stone-800 transition-transform lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="flex items-center gap-2 px-4 py-4 border-b border-stone-800">
+      <aside className={`fixed inset-y-0 left-0 z-50 flex w-56 flex-col transition-transform lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`} style={{ background: '#292524', borderRight: '1px solid #44403C' }}>
+        <div className="flex items-center gap-2 px-4 py-4" style={{ borderBottom: '1px solid #44403C' }}>
           <span className="text-lg">⚙️</span>
-          <span className="font-serif font-semibold text-amber-400">Admin</span>
+          <span className="font-serif font-semibold" style={{ color: '#F59E0B' }}>Admin</span>
         </div>
         <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-1">
           {NAV_ITEMS.map((item) => (
             <button
               key={item.href}
               onClick={() => { router.push(item.href); setSidebarOpen(false); }}
-              className={`w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
-                pathname === item.href
-                  ? 'text-amber-400 bg-amber-500/10 border-r-2 border-amber-500 font-medium'
-                  : 'text-stone-400 hover:text-stone-100 hover:bg-stone-800'
-              }`}
+              className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors"
+              style={{
+                color: isActive(item.href) ? '#F59E0B' : '#A8A29E',
+                background: isActive(item.href) ? 'rgba(245,158,11,0.1)' : 'transparent',
+                borderRight: isActive(item.href) ? '2px solid #F59E0B' : 'none',
+                fontWeight: isActive(item.href) ? 500 : 400,
+              }}
             >
               <span>{item.icon}</span> {item.label}
             </button>
           ))}
         </nav>
-        <div className="px-3 py-3 border-t border-stone-800">
-          <button onClick={() => router.push('/dashboard')} className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-stone-400 hover:text-stone-100 hover:bg-stone-800 transition-colors">
+        <div className="px-3 py-3" style={{ borderTop: '1px solid #44403C' }}>
+          <button onClick={() => router.push('/dashboard')} className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors" style={{ color: '#A8A29E' }}>
             <span>←</span> Back to App
           </button>
         </div>
@@ -75,10 +87,10 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       )}
 
       {/* Topbar */}
-      <header className="fixed top-0 right-0 left-0 lg:left-56 z-30 flex items-center justify-between px-4 py-3 bg-stone-900 border-b border-stone-800">
-        <button className="lg:hidden text-stone-400 hover:text-stone-100 text-sm font-medium" onClick={() => setSidebarOpen(!sidebarOpen)}>☰ Menu</button>
-        <span className="text-sm font-medium text-stone-300">Nexigrate Admin</span>
-        <span className="text-xs text-stone-500">{user.email}</span>
+      <header className="fixed top-0 right-0 left-0 lg:left-56 z-30 flex items-center justify-between px-4 py-3" style={{ background: '#292524', borderBottom: '1px solid #44403C' }}>
+        <button className="lg:hidden text-sm font-medium" style={{ color: '#A8A29E' }} onClick={() => setSidebarOpen(!sidebarOpen)}>☰ Menu</button>
+        <span className="text-sm font-medium" style={{ color: '#D6D3D1' }}>Nexigrate Admin</span>
+        <span className="text-xs" style={{ color: '#78716C' }}>{user.email}</span>
       </header>
 
       {/* Main */}
