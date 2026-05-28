@@ -28,7 +28,7 @@ function newUser(uid: UserId, init: UserStoreInit, now: string): StoredUser {
     photoURL: init.photoURL, primaryProvider: init.primaryProvider, role: 'student',
     language: 'en', targetExam: null, classLevel: null, board: null, school: null,
     dob: null, aim: null, onboardingScore: null, onboardingLevel: null,
-    credits: 100, plan: 'free', planExpiresAt: null,
+    credits: 200, plan: 'free', planExpiresAt: null,
     currentStreak: 0, bestStreak: 0, lastDailyAt: null, isVerified: false,
     createdAt: asISODateTime(now), updatedAt: asISODateTime(now),
   };

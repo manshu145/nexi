@@ -175,9 +175,9 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
 
     const progress = await deps.chapters.saveProgress(principal.userId, exam, subject, chapter, score);
 
-    // Award credits: +5 for any attempt, +5 bonus for passing (>=80%)
+    // Award credits: +5 for any attempt, +45 bonus for passing (>=80%) = 50 total
     let creditsAwarded = 5;
-    if (score >= 80) creditsAwarded = 10;
+    if (score >= 80) creditsAwarded = 50;
     
     // Actually add credits to user's balance
     const currentUser = await deps.users.get(principal.userId);
