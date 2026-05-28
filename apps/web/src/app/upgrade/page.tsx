@@ -1,33 +1,14 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Script from 'next/script';
 import { useAuth } from '~/lib/auth-context';
-import { api } from '~/lib/api';
+import { api, newIdempotencyKey } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 
 declare global { interface Window { Razorpay: new (options: Record<string, unknown>) => { open(): void }; } }
 
-interface PlanFeatures {
-  dailyMCQ: number;
-  mockTests: number;
-  aiTutor: boolean;
-  currentAffairs: boolean;
-  essayGrading: boolean;
-  chaptersPerDay: number;
-  creditDeduction: boolean;
-}
-
-interface PlanInfo {
-  id: string;
-  name: string;
-  nameHi: string;
-  price: number;
-  yearlyPrice: number;
-  isActive: boolean;
-  comingSoon: boolean;
-  features: PlanFeatures;
-}
+type BillingPeriod = 'monthly' | 'yearly';
 
 const SCHOLAR_FEATURES = [
   'Unlimited Daily MCQs',
@@ -57,11 +38,24 @@ const ACHIEVER_FEATURES = [
   'Dedicated study coach',
 ];
 
+// Locked at 30% off monthly × 12 — keep in sync with packages/shared/constants/subscriptions.ts
+const PRICING = {
+  scholar:  { monthly: 99,  yearly: 830  },
+  aspirant: { monthly: 299, yearly: 2510 },
+  achiever: { monthly: 599, yearly: 5030 },
+} as const;
+
+function yearlyEquivMonthly(p: BillingPeriod, planKey: keyof typeof PRICING): number {
+  if (p === 'yearly') return Math.round(PRICING[planKey].yearly / 12);
+  return PRICING[planKey].monthly;
+}
+
 export default function UpgradePage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const [currentPlan, setCurrentPlan] = useState<string>('free');
   const [credits, setCredits] = useState(0);
+  const [period, setPeriod] = useState<BillingPeriod>('monthly');
   const [processing, setProcessing] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +73,15 @@ export default function UpgradePage() {
     }).catch(() => {});
   }, [user]);
 
+  // Reset coupon state whenever period changes — coupon discounts apply to the
+  // base price for that period, so we re-validate on switch.
+  useEffect(() => {
+    setCouponApplied(null);
+  }, [period]);
+
+  const scholarBasePaise = PRICING.scholar[period] * 100;
+  const scholarFinalPaise = couponApplied?.valid ? couponApplied.finalAmount : scholarBasePaise;
+
   const handleApplyCoupon = async () => {
     if (!couponCode.trim()) return;
     setValidatingCoupon(true);
@@ -87,11 +90,11 @@ export default function UpgradePage() {
       const res = await fetch(`${process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com'}/v1/billing/validate-coupon`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
-        body: JSON.stringify({ couponCode: couponCode.trim(), planId: 'scholar' }),
+        body: JSON.stringify({ couponCode: couponCode.trim(), planId: 'scholar', period }),
       });
       const data = await res.json() as { valid: boolean; discount: number; finalAmount: number; error?: string };
       setCouponApplied(data);
-    } catch { setCouponApplied({ valid: false, discount: 0, finalAmount: 9900, error: 'Failed to validate coupon' }); }
+    } catch { setCouponApplied({ valid: false, discount: 0, finalAmount: scholarBasePaise, error: 'Failed to validate coupon' }); }
     finally { setValidatingCoupon(false); }
   };
 
@@ -100,28 +103,38 @@ export default function UpgradePage() {
     setError(null);
     setProcessing(true);
 
+    // Generated ONCE per checkout attempt and reused on retry — guarantees the
+    // server treats a refresh-after-success as a no-op instead of double-granting.
+    const idempotencyKey = newIdempotencyKey();
+
     try {
       const orderRes = await fetch(`${process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com'}/v1/billing/order`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
-        body: JSON.stringify({ planId: 'scholar', couponCode: couponApplied?.valid ? couponCode.trim() : undefined }),
+        body: JSON.stringify({ planId: 'scholar', period, couponCode: couponApplied?.valid ? couponCode.trim() : undefined }),
       });
       if (!orderRes.ok) { const e = await orderRes.json().catch(() => ({})) as { message?: string }; throw new Error(e.message || `Order failed: ${orderRes.status}`); }
-      const order = await orderRes.json() as { orderId: string; amount: number; currency: string; keyId: string };
+      const order = await orderRes.json() as { orderId: string; amount: number; currency: string; keyId: string; period: BillingPeriod };
 
       const displayAmount = order.amount / 100;
+      const periodLabel = order.period === 'yearly' ? 'year' : 'month';
       const options = {
         key: order.keyId,
         amount: order.amount,
         currency: order.currency,
         name: 'Nexigrate',
-        description: `Scholar Plan — ₹${displayAmount}/month`,
+        description: `Scholar Plan — ₹${displayAmount}/${periodLabel}`,
         order_id: order.orderId,
         handler: async (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
           try {
             const verifyRes = await fetch(`${process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com'}/v1/billing/verify`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${await getToken()}`,
+                // SAME key on retry → server returns the cached response.
+                'Idempotency-Key': idempotencyKey,
+              },
               body: JSON.stringify(response),
             });
             if (!verifyRes.ok) throw new Error('Verification failed');
@@ -145,6 +158,13 @@ export default function UpgradePage() {
     }
   };
 
+  const yearlySavings = useMemo(() => {
+    const monthly12 = PRICING.scholar.monthly * 12;
+    const saved = monthly12 - PRICING.scholar.yearly;
+    const pct = Math.round((saved / monthly12) * 100);
+    return { saved, pct };
+  }, []);
+
   if (loading || !user) return (
     <main className="flex min-h-dvh items-center justify-center">
       <div className="space-y-3 text-center">
@@ -154,7 +174,8 @@ export default function UpgradePage() {
     </main>
   );
 
-  const scholarPrice = couponApplied?.valid ? couponApplied.finalAmount / 100 : 99;
+  const scholarDisplayPrice = scholarFinalPaise / 100;
+  const scholarStrikethrough = couponApplied?.valid ? PRICING.scholar[period] : null;
   const isCurrentScholar = currentPlan === 'scholar';
 
   return (
@@ -170,6 +191,25 @@ export default function UpgradePage() {
         <h1 className="font-serif text-2xl font-bold text-ink-900">Choose Your Plan</h1>
         <p className="mt-2 text-sm text-muted-500">Unlock unlimited access to accelerate your preparation.</p>
       </section>
+
+      {/* Monthly / Yearly toggle */}
+      <div className="mx-auto mt-6 inline-flex items-center gap-1 rounded-full border border-line-200 bg-paper-50 p-1 self-center">
+        <button
+          onClick={() => setPeriod('monthly')}
+          className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${period === 'monthly' ? 'bg-ember-500 text-white' : 'text-muted-600 hover:text-ink-900'}`}
+        >
+          Monthly
+        </button>
+        <button
+          onClick={() => setPeriod('yearly')}
+          className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors flex items-center gap-2 ${period === 'yearly' ? 'bg-ember-500 text-white' : 'text-muted-600 hover:text-ink-900'}`}
+        >
+          Yearly
+          <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 ${period === 'yearly' ? 'bg-white text-ember-600' : 'bg-ember-500 text-white'}`}>
+            SAVE {yearlySavings.pct}%
+          </span>
+        </button>
+      </div>
 
       {success && <div className="mt-6 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-4 text-center text-sm font-medium text-amber-700 dark:text-amber-300">{success}</div>}
       {error && <div className="banner banner-error mt-6">{error}</div>}
@@ -196,10 +236,17 @@ export default function UpgradePage() {
           <span className="absolute -top-2.5 right-3 rounded-full bg-amber-500 px-3 py-0.5 text-xs font-semibold text-ink-900">Recommended</span>
           <h3 className="font-serif text-lg font-bold text-ink-900">Scholar</h3>
           <p className="mt-2">
-            <span className="font-serif text-3xl font-bold text-ink-900">₹{scholarPrice}</span>
-            <span className="text-sm text-muted-500">/mo</span>
-            {couponApplied?.valid && <span className="ml-2 text-sm line-through text-muted-400">₹99</span>}
+            <span className="font-serif text-3xl font-bold text-ink-900">₹{scholarDisplayPrice}</span>
+            <span className="text-sm text-muted-500">/{period === 'yearly' ? 'yr' : 'mo'}</span>
+            {scholarStrikethrough !== null && (
+              <span className="ml-2 text-sm line-through text-muted-400">₹{scholarStrikethrough}</span>
+            )}
           </p>
+          {period === 'yearly' && (
+            <p className="text-xs text-muted-500 mt-1">
+              ≈ ₹{yearlyEquivMonthly('yearly', 'scholar')}/mo · Save ₹{yearlySavings.saved} per year
+            </p>
+          )}
           <ul className="mt-4 flex-1 space-y-2">
             {SCHOLAR_FEATURES.map(f => (
               <li key={f} className="flex items-start gap-2 text-sm text-ink-800">
@@ -241,7 +288,11 @@ export default function UpgradePage() {
             disabled={isCurrentScholar || processing}
             className={`mt-4 w-full rounded-xl py-3 text-sm font-semibold transition-colors ${isCurrentScholar ? 'bg-paper-200 text-muted-500 cursor-not-allowed' : 'btn-primary'}`}
           >
-            {processing ? 'Processing...' : isCurrentScholar ? '✓ Your Current Plan' : `Buy Now — ₹${scholarPrice}/mo`}
+            {processing
+              ? 'Processing...'
+              : isCurrentScholar
+                ? '✓ Your Current Plan'
+                : `Buy Now — ₹${scholarDisplayPrice}/${period === 'yearly' ? 'yr' : 'mo'}`}
           </button>
         </div>
 
@@ -249,7 +300,10 @@ export default function UpgradePage() {
         <div className="paper-card relative flex flex-col p-5 opacity-70">
           <span className="absolute -top-2.5 right-3 rounded-full bg-stone-500 px-3 py-0.5 text-xs font-semibold text-paper-50">Coming Soon</span>
           <h3 className="font-serif text-lg font-bold text-ink-900">Aspirant</h3>
-          <p className="mt-2"><span className="font-serif text-3xl font-bold text-muted-400">₹299</span><span className="text-sm text-muted-400">/mo</span></p>
+          <p className="mt-2">
+            <span className="font-serif text-3xl font-bold text-muted-400">₹{PRICING.aspirant[period]}</span>
+            <span className="text-sm text-muted-400">/{period === 'yearly' ? 'yr' : 'mo'}</span>
+          </p>
           <ul className="mt-4 flex-1 space-y-2">
             {ASPIRANT_FEATURES.map(f => (
               <li key={f} className="flex items-start gap-2 text-sm text-muted-400">
@@ -266,7 +320,10 @@ export default function UpgradePage() {
         <div className="paper-card relative flex flex-col p-5 opacity-70">
           <span className="absolute -top-2.5 right-3 rounded-full bg-stone-500 px-3 py-0.5 text-xs font-semibold text-paper-50">Coming Soon</span>
           <h3 className="font-serif text-lg font-bold text-ink-900">Achiever</h3>
-          <p className="mt-2"><span className="font-serif text-3xl font-bold text-muted-400">₹599</span><span className="text-sm text-muted-400">/mo</span></p>
+          <p className="mt-2">
+            <span className="font-serif text-3xl font-bold text-muted-400">₹{PRICING.achiever[period]}</span>
+            <span className="text-sm text-muted-400">/{period === 'yearly' ? 'yr' : 'mo'}</span>
+          </p>
           <ul className="mt-4 flex-1 space-y-2">
             {ACHIEVER_FEATURES.map(f => (
               <li key={f} className="flex items-start gap-2 text-sm text-muted-400">
@@ -289,7 +346,7 @@ export default function UpgradePage() {
       </div>
 
       <p className="mt-6 text-center text-xs text-muted-400">
-        Payments processed securely via Razorpay. Cancel anytime from your profile.
+        Payments processed securely via Razorpay. Plans renew automatically based on the chosen period — cancel anytime to stop the next charge.
       </p>
     </main>
   );

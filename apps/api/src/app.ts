@@ -18,13 +18,14 @@ import { makeCurrentAffairsRoutes } from './routes/currentAffairs.js';
 import { InMemoryChatStore, FirestoreChatStore, type ChatStore } from './lib/chatStore.js';
 import { makeChatRoutes } from './routes/chat.js';
 import { makeCreditsRoutes } from './routes/credits.js';
-import { makeBillingRoutes } from './routes/billing.js';
+import { makeBillingRoutes, makeBillingWebhookRoute } from './routes/billing.js';
 import { makeAdminRoutes } from './routes/admin.js';
 import { makeSupportRoutes } from './routes/support.js';
 import { makeEssayRoutes } from './routes/essay.js';
 import { InMemoryCouponStore, FirestoreCouponStore, type CouponStore } from './lib/couponStore.js';
+import { FirestoreIdempotencyStore, InMemoryIdempotencyStore, type IdempotencyStore } from './lib/idempotency.js';
 
-export interface AppDeps { env: Env; logger: Logger; users?: UserStore; aiEngine?: AIEngine; chapters?: ChapterStore; currentAffairs?: CurrentAffairsStore; chatStore?: ChatStore; adminStore?: AdminStore; couponStore?: CouponStore; }
+export interface AppDeps { env: Env; logger: Logger; users?: UserStore; aiEngine?: AIEngine; chapters?: ChapterStore; currentAffairs?: CurrentAffairsStore; chatStore?: ChatStore; adminStore?: AdminStore; couponStore?: CouponStore; idempotency?: IdempotencyStore; }
 
 export function buildApp(deps: AppDeps): Hono {
   const { env, logger } = deps;
@@ -37,6 +38,7 @@ export function buildApp(deps: AppDeps): Hono {
   const currentAffairs = deps.currentAffairs ?? (fs ? new FirestoreCurrentAffairsStore(fs) : new InMemoryCurrentAffairsStore());
   const chatStore = deps.chatStore ?? (fs ? new FirestoreChatStore(fs) : new InMemoryChatStore());
   const couponStore = deps.couponStore ?? (fs ? new FirestoreCouponStore(fs) : new InMemoryCouponStore());
+  const idempotency = deps.idempotency ?? (fs ? new FirestoreIdempotencyStore(fs) : new InMemoryIdempotencyStore());
   const firebaseAuth = getFirebaseAuth(env);
 
   const app = new Hono();
@@ -44,7 +46,7 @@ export function buildApp(deps: AppDeps): Hono {
   app.use('*', cors({
     origin: (origin) => (env.CORS_ALLOWED_ORIGINS.includes(origin) ? origin : null),
     allowMethods: ['GET','POST','PATCH','DELETE','OPTIONS'],
-    allowHeaders: ['Authorization','Content-Type','X-User-Email','X-User-Name','X-User-Photo','X-User-Provider','x-cron-secret'],
+    allowHeaders: ['Authorization','Content-Type','X-User-Email','X-User-Name','X-User-Photo','X-User-Provider','x-cron-secret','Idempotency-Key'],
     maxAge: 600, credentials: true,
   }));
 
@@ -105,6 +107,15 @@ export function buildApp(deps: AppDeps): Hono {
   app.route('/', makeHealthRoutes());
   app.route('/', makeDiagRoutes(env));
   app.get('/', (c) => c.json({ service: 'nexigrate-api', version: '1.0.0' }));
+
+  // Razorpay webhook — MUST be mounted BEFORE the auth-gated /v1 router so
+  // that Razorpay's POST (which carries no Bearer token, only an HMAC
+  // signature) is not rejected by authMiddleware. Trust is established by
+  // verifying the x-razorpay-signature header against the raw request body
+  // inside makeBillingWebhookRoute.
+  app.route('/v1/billing', makeBillingWebhookRoute({
+    users, env, logger, db: fs, coupons: couponStore, idempotency,
+  }));
 
   // Cron endpoint — NO auth required (uses x-cron-secret header instead)
   const cronRoutes = makeCurrentAffairsRoutes({ users, aiEngine, currentAffairs, env, logger });
@@ -176,7 +187,7 @@ export function buildApp(deps: AppDeps): Hono {
   v1.route('/current-affairs', cronRoutes);
   v1.route('/chat', makeChatRoutes({ users, aiEngine, chat: chatStore, logger, env }));
   v1.route('/credits', makeCreditsRoutes({ users, logger, db: fs }));
-  v1.route('/billing', makeBillingRoutes({ users, env, logger, db: fs, coupons: couponStore }));
+  v1.route('/billing', makeBillingRoutes({ users, env, logger, db: fs, coupons: couponStore, idempotency }));
   v1.route('/admin', makeAdminRoutes({ users, adminStore, env, logger, coupons: couponStore, db: fs }));
   v1.route('/support', makeSupportRoutes({ users, db: fs, logger }));
   v1.route('/essay', makeEssayRoutes({ users, aiEngine, logger, db: fs }));

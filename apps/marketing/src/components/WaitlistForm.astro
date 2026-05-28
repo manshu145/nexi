@@ -14,13 +14,14 @@ for (const exam of EXAMS) {
   (groups[exam.category] ??= []).push(exam);
 }
 const categoryLabels: Record<string, string> = {
-  school: 'School (Class 8–12)',
+  school: 'School (Class 5–12)',
   engineering: 'Engineering entrance',
   medical: 'Medical entrance',
   'civil-services': 'Civil services & SSC',
   banking: 'Banking',
   defence: 'Defence',
   state: 'State exams',
+  'professional-skills': 'Professional skills',
 };
 ---
 
@@ -56,9 +57,7 @@ const categoryLabels: Record<string, string> = {
           {Object.entries(groups).map(([category, list]) => (
             <optgroup label={categoryLabels[category] ?? category}>
               {list.map((exam) => (
-                <option value={exam.id}>
-                  {exam.name}{exam.status === 'soon' ? ' (coming soon)' : ''}
-                </option>
+                <option value={exam.id}>{exam.name}</option>
               ))}
             </optgroup>
           ))}
