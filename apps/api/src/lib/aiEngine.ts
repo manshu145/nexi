@@ -95,75 +95,179 @@ export function createAIEngine(env: Env, logger: Logger, adminStore?: AdminStore
   const openai = hasOpenai ? new OpenAI({ apiKey: env.OPENAI_API_KEY }) : null;
   const store = adminStore ?? null;
 
-  /** Internal helper for generating questions with multi-provider fallback */
+  /**
+   * Multi-provider question generator with the resilience properties the
+   * assessment endpoint actually needs in production:
+   *
+   *   - Token budget headroom: 8192 instead of the previous 4096. Hindi
+   *     responses (Devanagari script + GSM-7-style multi-byte handling
+   *     by tokenizers) commonly double the token count of the same
+   *     content in English. 10 detailed MCQs plus explanations plus
+   *     subject + topic fields tipped past 4096 frequently for Stage 1
+   *     in Hindi -- the response would silently truncate mid-JSON, the
+   *     `JSON.parse` would throw, every provider would hit the same
+   *     wall, and the route would 503 with the now-infamous "AI service
+   *     may be busy" message.
+   *
+   *   - Best-effort partial recovery: when JSON.parse fails on a
+   *     truncated response, we try to find the LAST complete `}` before
+   *     the truncation and re-parse that prefix. If we get back >=5
+   *     questions for Stage 1 (which has 10 target), we return what we
+   *     have rather than burning the full provider chain on the same
+   *     bug. The user gets a slightly shorter assessment instead of an
+   *     error.
+   *
+   *   - Useful errors: the thrown message now lists which provider hit
+   *     which failure mode, so admin /admin/logs can diagnose at a
+   *     glance instead of seeing "Failed: Groq: <error>; OpenAI: <error>;
+   *     Gemini failed" with no structure.
+   */
   async function _generateQuestions(prompt: string, endpoint: string, examSlug: string, language: string): Promise<GeneratedMCQ[]> {
     const errors: string[] = [];
+    const MAX_TOKENS = 8192;
+    const MIN_USABLE_QUESTIONS = 5;
+
+    /** Try to extract a usable questions array from a possibly-truncated response. */
+    function recoverQuestions(raw: string): GeneratedMCQ[] | null {
+      // Fast path: clean JSON.
+      try {
+        const parsed = JSON.parse(raw) as { questions?: GeneratedMCQ[] };
+        if (parsed.questions && parsed.questions.length >= MIN_USABLE_QUESTIONS) return parsed.questions;
+        if (parsed.questions && parsed.questions.length > 0) return parsed.questions; // Better than nothing.
+      } catch { /* fall through to recovery */ }
+
+      // Truncated path: walk back from the end to find a balanced JSON
+      // substring. We start from the last `}` and try parsing
+      // progressively shorter prefixes that close any open question
+      // objects + array.
+      const lastObjEnd = raw.lastIndexOf('}');
+      if (lastObjEnd < 0) return null;
+      // Heuristic: close the array + outer object after the last full
+      // question we can see. Find the position of the last `,` before
+      // the truncation, snip there, append `]}` to close cleanly.
+      const head = raw.slice(0, lastObjEnd + 1);
+      const candidates = [head + ']}', head + '}'];
+      for (const candidate of candidates) {
+        try {
+          const parsed = JSON.parse(candidate) as { questions?: GeneratedMCQ[] };
+          if (parsed.questions && parsed.questions.length >= MIN_USABLE_QUESTIONS) return parsed.questions;
+        } catch { /* try next */ }
+      }
+      // Last resort: regex out individual question objects.
+      const matches = raw.match(/\{\s*"id"[^}]*"correctOption"\s*:\s*"[A-D]"[^}]*\}/g);
+      if (matches && matches.length >= MIN_USABLE_QUESTIONS) {
+        const recovered: GeneratedMCQ[] = [];
+        for (const m of matches) {
+          try { recovered.push(JSON.parse(m) as GeneratedMCQ); } catch { /* skip malformed */ }
+        }
+        if (recovered.length >= MIN_USABLE_QUESTIONS) return recovered;
+      }
+      return null;
+    }
+
+    // ── Provider 1: Groq (fastest path) ──────────────────────────────
     if (groq) {
       try {
-        const completion = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 4096, response_format: { type: 'json_object' } });
-        const parsed = JSON.parse(completion.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
-        if (parsed.questions?.length) {
-          const tokens = estimateTokens(completion.choices[0]?.message?.content ?? '');
-          logAICallToStore(store, 'llama-3.3-70b-versatile', tokens, estimateCost('llama-3.3-70b-versatile', tokens), 0, undefined, { status: 'success', endpoint, provider: 'groq', requestPreview: prompt.slice(0, 200), responsePreview: completion.choices[0]?.message?.content?.slice(0, 300) });
-          logger.info('ai.questions_generated', { provider: 'groq', endpoint, examSlug, language, count: parsed.questions.length });
-          return parsed.questions;
+        const completion = await groq.chat.completions.create({
+          model: 'llama-3.3-70b-versatile',
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.7,
+          max_tokens: MAX_TOKENS,
+          response_format: { type: 'json_object' },
+        });
+        const raw = completion.choices[0]?.message?.content ?? '';
+        const finishReason = completion.choices[0]?.finish_reason ?? 'unknown';
+        const recovered = recoverQuestions(raw);
+        if (recovered) {
+          const tokens = estimateTokens(raw);
+          logAICallToStore(store, 'llama-3.3-70b-versatile', tokens, estimateCost('llama-3.3-70b-versatile', tokens), 0, undefined, { status: 'success', endpoint, provider: 'groq', requestPreview: prompt.slice(0, 200), responsePreview: raw.slice(0, 300) });
+          logger.info('ai.questions_generated', { provider: 'groq', endpoint, examSlug, language, count: recovered.length, finishReason });
+          return recovered;
         }
-        errors.push('Groq returned empty');
-      } catch (err) { errors.push(`Groq: ${err instanceof Error ? err.message : String(err)}`); }
-    } else { errors.push('Groq not configured'); }
+        errors.push(`Groq returned ${raw.length} chars, no parseable questions (finish=${finishReason})`);
+      } catch (err) {
+        errors.push(`Groq: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    } else {
+      errors.push('Groq not configured');
+    }
+
+    // ── Provider 2: OpenAI (slower, more reliable) ───────────────────
     if (openai) {
       try {
-        const completion = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 4096, response_format: { type: 'json_object' } });
-        const parsed = JSON.parse(completion.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
-        if (parsed.questions?.length) { logger.info('ai.questions_generated', { provider: 'openai', endpoint, examSlug, language, count: parsed.questions.length }); return parsed.questions; }
-        errors.push('OpenAI returned empty');
-      } catch (err) { errors.push(`OpenAI: ${err instanceof Error ? err.message : String(err)}`); }
-    } else { errors.push('OpenAI not configured'); }
+        const completion = await openai.chat.completions.create({
+          model: 'gpt-4o',
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.7,
+          max_tokens: MAX_TOKENS,
+          response_format: { type: 'json_object' },
+        });
+        const raw = completion.choices[0]?.message?.content ?? '';
+        const finishReason = completion.choices[0]?.finish_reason ?? 'unknown';
+        const recovered = recoverQuestions(raw);
+        if (recovered) {
+          logger.info('ai.questions_generated', { provider: 'openai', endpoint, examSlug, language, count: recovered.length, finishReason });
+          return recovered;
+        }
+        errors.push(`OpenAI returned ${raw.length} chars, no parseable questions (finish=${finishReason})`);
+      } catch (err) {
+        errors.push(`OpenAI: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    } else {
+      errors.push('OpenAI not configured');
+    }
+
+    // ── Provider 3: Gemini (final fallback) ──────────────────────────
     if (env.GEMINI_API_KEY && env.GEMINI_API_KEY.length > 5) {
       try {
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.7, maxOutputTokens: 4096 } }) });
-        if (res.ok) { const data = await res.json() as any; const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''; const jsonMatch = rawText.match(/\{[\s\S]*\}/); if (jsonMatch) { const parsed = JSON.parse(jsonMatch[0]) as { questions: GeneratedMCQ[] }; if (parsed.questions?.length) { logger.info('ai.questions_generated', { provider: 'gemini', endpoint, examSlug, language, count: parsed.questions.length }); return parsed.questions; } } }
-        errors.push('Gemini failed');
-      } catch (err) { errors.push(`Gemini: ${err instanceof Error ? err.message : String(err)}`); }
-    } else { errors.push('Gemini not configured'); }
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.7, maxOutputTokens: MAX_TOKENS },
+          }),
+        });
+        if (res.ok) {
+          const data = (await res.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> }; finishReason?: string }> };
+          const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+          const finishReason = data.candidates?.[0]?.finishReason ?? 'unknown';
+          // Gemini sometimes wraps JSON in ```json ... ``` fences.
+          const stripped = rawText.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '');
+          const recovered = recoverQuestions(stripped);
+          if (recovered) {
+            logger.info('ai.questions_generated', { provider: 'gemini', endpoint, examSlug, language, count: recovered.length, finishReason });
+            return recovered;
+          }
+          errors.push(`Gemini returned ${rawText.length} chars, no parseable questions (finish=${finishReason})`);
+        } else {
+          errors.push(`Gemini HTTP ${res.status}`);
+        }
+      } catch (err) {
+        errors.push(`Gemini: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    } else {
+      errors.push('Gemini not configured');
+    }
+
     logger.error('ai.questions_all_failed', { errors, endpoint, examSlug, language });
-    throw new Error(`Failed to generate questions for ${endpoint}: ${errors.join('; ')}`);
+    logAICallToStore(store, 'all-providers', 0, 0, 0, undefined, {
+      status: 'error',
+      endpoint,
+      error: errors.join(' | '),
+      requestPreview: prompt.slice(0, 200),
+    });
+    throw new Error(`All AI providers failed for ${endpoint} (${examSlug}/${language}): ${errors.join(' | ')}`);
   }
 
   return {
     async generateAssessmentQuestions(examSlug, language = 'en', count = 15) {
       const langInstr = language === 'hi' ? 'Generate all questions and options in Hindi (Devanagari script).' : 'Generate all questions and options in English.';
       const prompt = `You are an expert Indian competitive exam question creator.\n\nGenerate exactly ${count} MCQs for "${examSlug}" exam.\n${langInstr}\n\nRequirements:\n- Mix: 5 easy, 5 medium, 5 hard\n- 4 options (A-D), correct answer, brief explanation\n- Different subjects/topics\n\nRespond ONLY with JSON:\n{"questions":[{"id":"q1","question":"...","options":[{"key":"A","text":"..."},{"key":"B","text":"..."},{"key":"C","text":"..."},{"key":"D","text":"..."}],"correctOption":"A","explanation":"...","difficulty":"easy","subject":"...","topic":"..."}]}`;
-      const errors: string[] = [];
-      // Attempt 1: Groq (fast)
-      if (groq) {
-        try {
-          const completion = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 4096, response_format: { type: 'json_object' } });
-          const parsed = JSON.parse(completion.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
-          if (parsed.questions?.length) { const tokens = estimateTokens(completion.choices[0]?.message?.content ?? ''); logAICallToStore(store, 'llama-3.3-70b-versatile', tokens, estimateCost('llama-3.3-70b-versatile', tokens), 0, undefined, { status: 'success', endpoint: 'generateAssessmentQuestions', provider: 'groq', requestPreview: prompt.slice(0, 200), responsePreview: completion.choices[0]?.message?.content?.slice(0, 300) }); logger.info('ai.questions_generated', { provider: 'groq', examSlug, language, count: parsed.questions.length }); return parsed.questions; }
-          errors.push('Groq returned empty');
-        } catch (err) { errors.push(`Groq: ${err instanceof Error ? err.message : String(err)}`); }
-      } else { errors.push('Groq not configured'); }
-      // Attempt 2: OpenAI
-      if (openai) {
-        try {
-          const completion = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 4096, response_format: { type: 'json_object' } });
-          const parsed = JSON.parse(completion.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
-          if (parsed.questions?.length) { logger.info('ai.questions_generated', { provider: 'openai', examSlug, language, count: parsed.questions.length }); return parsed.questions; }
-          errors.push('OpenAI returned empty');
-        } catch (err) { errors.push(`OpenAI: ${err instanceof Error ? err.message : String(err)}`); }
-      } else { errors.push('OpenAI not configured'); }
-      // Attempt 3: Gemini
-      if (env.GEMINI_API_KEY && env.GEMINI_API_KEY.length > 5) {
-        try {
-          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.7, maxOutputTokens: 4096 } }) });
-          if (res.ok) { const data = await res.json() as any; const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''; const jsonMatch = rawText.match(/\{[\s\S]*\}/); if (jsonMatch) { const parsed = JSON.parse(jsonMatch[0]) as { questions: GeneratedMCQ[] }; if (parsed.questions?.length) { logger.info('ai.questions_generated', { provider: 'gemini', examSlug, language, count: parsed.questions.length }); return parsed.questions; } } }
-          errors.push('Gemini failed');
-        } catch (err) { errors.push(`Gemini: ${err instanceof Error ? err.message : String(err)}`); }
-      } else { errors.push('Gemini not configured'); }
-      logger.error('ai.questions_all_failed', { errors, examSlug, language });
-      logAICallToStore(store, 'all-providers', 0, 0, 0, undefined, { status: 'error', endpoint: 'generateAssessmentQuestions', error: errors.join('; '), requestPreview: prompt.slice(0, 200) });
-      throw new Error(`Failed to generate assessment questions: ${errors.join('; ')}`);
+      // Delegate to the resilient internal helper so the legacy 15-question
+      // endpoint inherits the larger token budget and partial-recovery
+      // behaviour added in the assessment-AI-resilience hotfix.
+      return _generateQuestions(prompt, 'generateAssessmentQuestions', examSlug, language);
     },
 
     async generateStage1Questions(examSlug, language = 'en') {

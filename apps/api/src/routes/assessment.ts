@@ -63,8 +63,17 @@ export function makeAssessmentRoutes(deps: AssessmentRoutesDeps): Hono {
       deps.logger.info('assessment.stage1_generated', { examSlug: parsed.data.examSlug, count: questions.length });
       return c.json({ questions, stage: 1, totalStages: 3 });
     } catch (err) {
-      deps.logger.error('assessment.stage1_error', { examSlug: parsed.data.examSlug, error: err instanceof Error ? err.message : String(err) });
-      throw new HTTPException(503, { message: 'Assessment generation failed. AI service may be busy. Please try again in a moment.' });
+      // Log the FULL error chain for admin /admin/logs visibility (the
+      // engine throws with each provider's failure mode joined by ' | ').
+      // The user-facing message stays friendly + actionable.
+      deps.logger.error('assessment.stage1_error', {
+        examSlug: parsed.data.examSlug,
+        language: parsed.data.language,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw new HTTPException(503, {
+        message: 'Could not generate your assessment right now. Please tap Retry — if it still fails after a minute, switch your language preference and try again.',
+      });
     }
   });
 
@@ -83,8 +92,14 @@ export function makeAssessmentRoutes(deps: AssessmentRoutesDeps): Hono {
       deps.logger.info('assessment.stage2_generated', { examSlug: parsed.data.examSlug, count: questions.length });
       return c.json({ questions, stage: 2, totalStages: 3 });
     } catch (err) {
-      deps.logger.error('assessment.stage2_error', { examSlug: parsed.data.examSlug, error: err instanceof Error ? err.message : String(err) });
-      throw new HTTPException(503, { message: 'Stage 2 generation failed. AI service may be busy. Please try again.' });
+      deps.logger.error('assessment.stage2_error', {
+        examSlug: parsed.data.examSlug,
+        language: parsed.data.language,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw new HTTPException(503, {
+        message: 'Stage 2 generation failed. Tap Retry; if it persists, your previous answers are saved and you can resume from where you left off.',
+      });
     }
   });
 
@@ -104,8 +119,14 @@ export function makeAssessmentRoutes(deps: AssessmentRoutesDeps): Hono {
       deps.logger.info('assessment.stage3_generated', { examSlug: parsed.data.examSlug, count: questions.length });
       return c.json({ questions, stage: 3, totalStages: 3 });
     } catch (err) {
-      deps.logger.error('assessment.stage3_error', { examSlug: parsed.data.examSlug, error: err instanceof Error ? err.message : String(err) });
-      throw new HTTPException(503, { message: 'Stage 3 generation failed. AI service may be busy. Please try again.' });
+      deps.logger.error('assessment.stage3_error', {
+        examSlug: parsed.data.examSlug,
+        language: parsed.data.language,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw new HTTPException(503, {
+        message: 'Stage 3 generation failed. Tap Retry; your previous answers are saved.',
+      });
     }
   });
 
