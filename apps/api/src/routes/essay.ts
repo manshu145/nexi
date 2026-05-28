@@ -142,7 +142,7 @@ Respond ONLY with valid JSON:
       // Use GPT-4o for grading (most accurate)
       const response = await deps.aiEngine.chat(
         [{ role: 'user', content: gradePrompt }],
-        { exam, level: user.onboardingLevel ?? 'beginner', language: 'en' },
+        { exam, level: user.onboardingLevel ?? 'beginner', language },
         'gpt4o'
       );
 

@@ -226,8 +226,8 @@ Respond ONLY with valid JSON:
       </header>
 
       <section className="mt-6">
-        <h1 className="font-serif text-xl font-bold text-ink-900">✍️ Practice Set</h1>
-        <p className="mt-1 text-sm text-muted-500">Write answers, get AI-graded feedback with detailed analysis</p>
+        <h1 className="font-serif text-xl font-bold text-ink-900">{getUserLanguage() === 'hi' ? '✍️ अभ्यास सेट' : '✍️ Practice Set'}</h1>
+        <p className="mt-1 text-sm text-muted-500">{getUserLanguage() === 'hi' ? 'उत्तर लिखें, AI से विस्तृत मूल्यांकन पाएं' : 'Write answers, get AI-graded feedback with detailed analysis'}</p>
         {usageInfo && (
           <p className="mt-2 text-xs text-muted-400">
             Usage: {usageInfo.used}/{usageInfo.limit} this {usageInfo.plan === 'free' ? 'week' : 'month'}
