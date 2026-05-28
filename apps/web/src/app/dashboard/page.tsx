@@ -93,7 +93,7 @@ export default function DashboardPage() {
   const levelLabel = me?.onboardingLevel ?? 'beginner';
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-4xl flex-col px-5 pt-6 pb-8">
+    <main className="mx-auto flex min-h-dvh max-w-4xl flex-col px-5 pt-6 pb-8 overflow-x-hidden">
       {/* Header */}
       <header className="flex items-center justify-between">
         <Logo />

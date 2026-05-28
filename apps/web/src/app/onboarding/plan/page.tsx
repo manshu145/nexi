@@ -14,7 +14,7 @@ const PLAN_ICONS: Record<PlanId, string> = {
 };
 
 const PLAN_HIGHLIGHTS: Record<PlanId, string[]> = {
-  free: ['10 daily MCQs', '2 chapters/day', '100 credits to start'],
+  free: ['10 daily MCQs', '2 chapters/day', '200 credits to start'],
   scholar: ['Unlimited chapters & MCQs', 'AI Tutor access', 'Current Affairs', 'No credit deduction'],
   aspirant: ['Everything in Scholar', 'Advanced analytics', 'Priority support'],
   achiever: ['Everything in Aspirant', 'Essay grading', '1-on-1 mentorship'],

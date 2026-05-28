@@ -50,6 +50,10 @@ export default function ProfilePage() {
       if (isPhoneUser && !hasEmail && email.trim()) {
         data.email = email.trim();
       }
+      // Auto-save phone number from Firebase if available
+      if (user?.phoneNumber) {
+        data.phone = user.phoneNumber;
+      }
       await api.saveOnboarding(data);
       router.push('/onboarding/exam');
     }
