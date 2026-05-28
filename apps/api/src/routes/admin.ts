@@ -261,6 +261,16 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
     return c.json({ success: true });
   });
 
+  // PATCH /v1/admin/announcements/:id — update announcement
+  app.patch('/announcements/:id', async (c) => {
+    const id = c.req.param('id');
+    const body = await c.req.json().catch(() => null) as Record<string, any> | null;
+    if (!body) throw new HTTPException(400, { message: 'body required' });
+    await deps.adminStore.saveAnnouncement({ ...body, id });
+    deps.logger.info('admin.announcement_updated', { id });
+    return c.json({ success: true });
+  });
+
   // ━━━ EMAIL ━━━
   // POST /v1/admin/email/send — send email to one user or bulk
   app.post('/email/send', async (c) => {

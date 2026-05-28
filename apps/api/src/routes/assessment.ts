@@ -6,7 +6,7 @@ import type { Logger } from '../logger.js';
 import type { UserStore } from '../lib/userStore.js';
 import type { AIEngine, GeneratedMCQ, StageResults } from '../lib/aiEngine.js';
 
-export interface AssessmentRoutesDeps { users: UserStore; aiEngine: AIEngine; logger: Logger; }
+export interface AssessmentRoutesDeps { users: UserStore; aiEngine: AIEngine; logger: Logger; env?: import('../env.js').Env; }
 
 const questionsSchema = z.object({ examSlug: z.string().min(1), language: z.enum(['en', 'hi']).default('en') });
 
@@ -123,6 +123,19 @@ export function makeAssessmentRoutes(deps: AssessmentRoutesDeps): Hono {
       if (result.strongAreas) (updateData as any).strongAreas = result.strongAreas;
 
       await deps.users.update(principal.userId, updateData as any);
+
+      // Trigger welcome email
+      try {
+        const { createEmailService } = await import('../lib/emailService.js');
+        if (deps.env) {
+          const emailService = createEmailService(deps.env, deps.logger);
+          const updatedUser = await deps.users.get(principal.userId);
+          if (updatedUser?.email) {
+            await emailService.sendWelcome(updatedUser.email, updatedUser.name ?? 'Student', result.level, updatedUser.credits ?? 100, updatedUser.language ?? 'en');
+          }
+        }
+      } catch { /* email is non-critical */ }
+
       deps.logger.info('assessment.multi_stage_submitted', {
         userId: principal.userId,
         score: result.score,

@@ -186,6 +186,19 @@ export function makeBillingRoutes(deps: BillingRoutesDeps): Hono {
     }
 
     deps.logger.info('billing.verified', { userId: principal.userId, planId, expiresAt, couponCode });
+
+    // Send payment success email
+    try {
+      const { createEmailService } = await import('../lib/emailService.js');
+      const emailService = createEmailService(deps.env, deps.logger);
+      const user = await deps.users.get(principal.userId);
+      if (user?.email) {
+        const orderSnap2 = deps.db ? await deps.db.collection('billingOrders').doc(body.razorpay_order_id).get() : null;
+        const amount = orderSnap2?.exists ? ((orderSnap2.data()?.amount ?? 0) / 100) : 0;
+        await emailService.sendPaymentSuccess(user.email, user.name ?? 'Student', planId ?? 'scholar', expiresAt ?? '', amount);
+      }
+    } catch { /* email is non-critical */ }
+
     return c.json({ success: true, plan: planId, expiresAt });
   });
 
@@ -258,11 +271,13 @@ export function makeBillingRoutes(deps: BillingRoutesDeps): Hono {
     try {
       const snap = await deps.db.collection('billingOrders')
         .where('uid', '==', principal.userId)
-        .where('status', '==', 'completed')
-        .orderBy('completedAt', 'desc')
         .limit(10)
         .get();
-      const payments = snap.docs.map(d => d.data());
+      const payments = snap.docs
+        .map(d => d.data())
+        .filter(p => p.status === 'completed')
+        .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''))
+        .slice(0, 10);
       return c.json({ payments });
     } catch {
       return c.json({ payments: [] });

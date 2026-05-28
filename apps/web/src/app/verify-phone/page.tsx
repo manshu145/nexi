@@ -83,6 +83,11 @@ export default function VerifyPhonePage() {
     setVerifying(true);
     try {
       await verifyPhoneOtp(confirmationResult, otp);
+      // Save phone number to user profile in backend
+      try {
+        const { api } = await import('~/lib/api');
+        await api.updateProfile({ phone: phone.trim() });
+      } catch { /* non-critical — phone is already linked in Firebase Auth */ }
       // Phone successfully linked, redirect to onboarding or dashboard
       router.replace('/onboarding/language');
     } catch (err) {
