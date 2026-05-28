@@ -56,6 +56,18 @@ export default function DashboardPage() {
         const res = await api.me();
         if (c) return;
         setMe(res.user);
+        // If credits appear 0 for a very new user, retry once after a delay
+        if ((res.user.credits === 0 || !res.user.credits) && res.user.createdAt) {
+          const createdMs = new Date(res.user.createdAt).getTime();
+          if (Date.now() - createdMs < 5 * 60 * 1000) {
+            setTimeout(async () => {
+              try {
+                const retry = await api.me();
+                if (retry.user.credits > 0) setMe(retry.user);
+              } catch {}
+            }, 2000);
+          }
+        }
         // Phone verification mandatory — redirect if not verified
         if (!res.user.phone && !user.phoneNumber) {
           // Grace period: allow skip once for 24hrs
