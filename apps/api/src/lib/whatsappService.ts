@@ -8,9 +8,8 @@ export interface WhatsAppService {
 
 export function createWhatsAppService(env: Env, logger: Logger): WhatsAppService {
   // WhatsApp Business API via Meta Cloud API
-  // Requires: WHATSAPP_PHONE_NUMBER_ID and WHATSAPP_TOKEN env vars (not yet in env.ts — graceful fallback)
-  const token = (env as any).WHATSAPP_TOKEN ?? '';
-  const phoneNumberId = (env as any).WHATSAPP_PHONE_NUMBER_ID ?? '';
+  const token = env.WHATSAPP_TOKEN ?? '';
+  const phoneNumberId = env.WHATSAPP_PHONE_NUMBER_ID ?? '';
   const configured = !!(token && token.length > 5 && phoneNumberId && phoneNumberId.length > 5);
 
   return {
