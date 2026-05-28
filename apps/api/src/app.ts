@@ -26,6 +26,7 @@ import { InMemoryCouponStore, FirestoreCouponStore, type CouponStore } from './l
 import { FirestoreIdempotencyStore, InMemoryIdempotencyStore, type IdempotencyStore } from './lib/idempotency.js';
 import { FirestoreCreditLedger, InMemoryCreditLedger, type CreditLedger } from './lib/creditLedger.js';
 import { FirestorePlatformConfigStore, InMemoryPlatformConfigStore, type PlatformConfigStore } from './lib/platformConfigStore.js';
+import { makePublicRoutes } from './routes/public.js';
 
 export interface AppDeps { env: Env; logger: Logger; users?: UserStore; aiEngine?: AIEngine; chapters?: ChapterStore; currentAffairs?: CurrentAffairsStore; chatStore?: ChatStore; adminStore?: AdminStore; couponStore?: CouponStore; idempotency?: IdempotencyStore; ledger?: CreditLedger; config?: PlatformConfigStore; }
 
@@ -121,6 +122,16 @@ export function buildApp(deps: AppDeps): Hono {
     users, env, logger, db: fs, coupons: couponStore, idempotency,
   }));
 
+  // Public endpoints (no Firebase ID token required) -- mounted BEFORE the
+  // /v1 auth gate. Today this covers:
+  //   POST /v1/logs/error  -- the front-end error boundary fires this on a
+  //     React render crash, when getIdToken() may itself have failed. Was
+  //     auth-gated pre-PR-06 which silently dropped every crash report.
+  //   GET  /v1/branding    -- splash-screen boot data (logo, tagline,
+  //     welcome-bonus preview). Used before sign-in, so cannot require auth.
+  // Both have their own validation + rate limiting inside makePublicRoutes.
+  app.route('/v1', makePublicRoutes({ adminStore, config, logger }));
+
   // Cron endpoint — NO auth required (uses x-cron-secret header instead)
   const cronRoutes = makeCurrentAffairsRoutes({ users, aiEngine, currentAffairs, env, logger });
   app.post('/v1/current-affairs/ingest', async (c) => {
@@ -196,29 +207,9 @@ export function buildApp(deps: AppDeps): Hono {
   v1.route('/support', makeSupportRoutes({ users, db: fs, logger }));
   v1.route('/essay', makeEssayRoutes({ users, aiEngine, logger, db: fs }));
 
-  // POST /v1/logs/error — web app error reporting (no auth required for error boundary)
-  v1.post('/logs/error', async (c) => {
-    const body = await c.req.json().catch(() => null) as { message?: string; stack?: string; route?: string; userId?: string } | null;
-    if (body?.message) {
-      await adminStore.logError({ id: crypto.randomUUID(), message: body.message, stack: body.stack, route: body.route, userId: body.userId, timestamp: new Date().toISOString(), severity: 'warning' });
-    }
-    return c.json({ ok: true });
-  });
-
-  // GET /v1/branding — public branding settings (logo, favicon, tagline) — no auth required
-  v1.get('/branding', async (c) => {
-    try {
-      const settings = await adminStore.getSeoSettings();
-      return c.json({
-        logoUrl: settings?.logoUrl || '',
-        favicon: settings?.favicon || '',
-        tagline: settings?.tagline || 'Study Smarter, Score Higher',
-        taglineHi: settings?.taglineHi || 'स्मार्ट पढ़ो, ज़्यादा स्कोर करो',
-      });
-    } catch {
-      return c.json({ logoUrl: '', favicon: '', tagline: 'Study Smarter, Score Higher', taglineHi: '' });
-    }
-  });
+  // (POST /v1/logs/error and GET /v1/branding are now mounted on the
+  // PUBLIC router via makePublicRoutes() above, so the front-end error
+  // boundary and the splash screen can reach them without an ID token.)
 
   // GET /v1/announcements — active announcements for users (non-admin)
   v1.get('/announcements', async (c) => {

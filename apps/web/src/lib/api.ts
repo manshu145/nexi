@@ -153,6 +153,45 @@ export const api = {
   async pingSession() { return (await authedFetch('/v1/users/me/session/ping', { method: 'POST' })).json() as Promise<{ok:boolean}>; },
   async endSession() { return (await authedFetch('/v1/users/me/session/end', { method: 'POST' })).json() as Promise<{ok:boolean}>; },
 
+  // ─── Public boot data (no auth required) ───────────────────────────────
+  // Mirrors the server's PublicRoutes shape: branding info plus the live
+  // signup-bonus preview so splash screens / marketing copy don't have to
+  // hard-code the welcome credit count.
+  async getBranding(): Promise<BrandingInfo> {
+    const API_URL = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com';
+    const res = await fetch(`${API_URL}/v1/branding`, {
+      // Browser-side cache hint matches the server's Cache-Control header.
+      // No Authorization header -- this route is intentionally public.
+      cache: 'default',
+    });
+    if (!res.ok) throw new Error(`branding: ${res.status}`);
+    return (await res.json()) as BrandingInfo;
+  },
+  /**
+   * Best-effort error report. Does NOT throw -- the caller is the React
+   * error boundary and we don't want a follow-up exception to mask the
+   * original stack. Sends without auth so a render crash that broke the
+   * Firebase client can still phone home.
+   */
+  async reportClientError(err: { message: string; stack?: string; route?: string; digest?: string; userId?: string }): Promise<void> {
+    const API_URL = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com';
+    try {
+      await fetch(`${API_URL}/v1/logs/error`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: err.message.slice(0, 2000),
+          stack: err.stack?.slice(0, 8000),
+          route: err.route?.slice(0, 500),
+          digest: err.digest?.slice(0, 200),
+          userId: err.userId?.slice(0, 128),
+        }),
+      });
+    } catch {
+      // Swallow -- nothing useful we can do at this layer.
+    }
+  },
+
   // ─── Admin: platform configuration ─────────────────────────────────────
   // The plan matrix (price + features) and credit-reward rate tables both
   // live in `platformConfig/*` Firestore docs. Reads return the live merged
@@ -197,6 +236,22 @@ export interface ChatSession { id: string; userId: string; title: string; messag
 export interface ChatSessionSummary { id: string; title: string; createdAt: string; updatedAt: string; messageCount: number; }
 export interface Plan { id: string; name: string; nameHi: string; price: number; yearlyPrice: number; dailyMcq: number; mockTests: number; aiTutor: boolean; currentAffairs: boolean; essayGrading: boolean; }
 export interface ReferralStats { code: string; referralUrl: string; totalReferrals: number; pendingReferrals: number; completedReferrals: number; totalEarned: number; }
+
+/**
+ * Splash-screen / marketing-flavoured boot data. Server source:
+ * `apps/api/src/routes/public.ts` (route GET /v1/branding).
+ */
+export interface BrandingInfo {
+  siteName: string;
+  siteNameHi: string;
+  logoUrl: string;
+  favicon: string;
+  tagline: string;
+  taglineHi: string;
+  supportEmail: string;
+  signupBonusPreview: number;
+  currency: string;
+}
 
 /**
  * Plan row as returned by the admin endpoints. Extends the public PlanConfig
