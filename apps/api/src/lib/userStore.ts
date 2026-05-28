@@ -73,7 +73,37 @@ export class InMemoryUserStore implements UserStore {
 const COL = 'users';
 export class FirestoreUserStore implements UserStore {
   constructor(private readonly db: Firestore) {}
-  async getOrCreate(uid: UserId, init: UserStoreInit) { const ref = this.db.collection(COL).doc(uid); const snap = await ref.get(); if (snap.exists) return snap.data() as StoredUser; const u = newUser(uid, init, new Date().toISOString()); await ref.set(u); return u; }
+  async getOrCreate(uid: UserId, init: UserStoreInit) {
+    const ref = this.db.collection(COL).doc(uid);
+    const snap = await ref.get();
+    if (snap.exists) {
+      const existing = snap.data() as StoredUser;
+      return existing;
+    }
+
+    // Before creating: check for duplicate by email (merge if found)
+    if (init.email) {
+      try {
+        const dupeSnap = await this.db.collection(COL).where('email', '==', init.email).limit(1).get();
+        if (!dupeSnap.empty) {
+          const dupeDoc = dupeSnap.docs[0]!;
+          const dupeData = dupeDoc.data() as StoredUser;
+          // Merge: copy existing user data to new UID doc, delete old
+          const merged: StoredUser = { ...dupeData, id: uid, firebaseUid: uid, updatedAt: asISODateTime(new Date().toISOString()) };
+          await ref.set(merged);
+          // Delete the old duplicate document
+          if (dupeDoc.id !== uid) {
+            await this.db.collection(COL).doc(dupeDoc.id).delete().catch(() => {});
+          }
+          return merged;
+        }
+      } catch { /* dedup check failed — continue with creation */ }
+    }
+
+    const u = newUser(uid, init, new Date().toISOString());
+    await ref.set(u);
+    return u;
+  }
   async get(uid: UserId) { const snap = await this.db.collection(COL).doc(uid).get(); return snap.exists ? (snap.data() as StoredUser) : null; }
   async update(uid: UserId, data: Partial<StoredUser>) { const ref = this.db.collection(COL).doc(uid); await ref.set({ ...data, updatedAt: new Date().toISOString() }, { merge: true }); return (await ref.get()).data() as StoredUser; }
   async listAll() { const snap = await this.db.collection('users').limit(100).get(); return snap.docs.map(d => d.data() as StoredUser); }

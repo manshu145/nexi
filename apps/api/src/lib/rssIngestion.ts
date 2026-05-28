@@ -41,11 +41,36 @@ export interface RawNewsItem {
 /**
  * Fetch and parse RSS feeds. Returns raw items from all sources.
  * Handles failures gracefully — a single feed error doesn't break the whole ingestion.
+ * Tries to load feeds from Firestore first, falls back to hardcoded NEWS_SOURCES.
  */
-async function fetchRssFeeds(logger: Logger): Promise<RawNewsItem[]> {
+async function fetchRssFeeds(logger: Logger, firestoreDb?: import('firebase-admin/firestore').Firestore): Promise<RawNewsItem[]> {
+  // Try loading feeds from Firestore first
+  let feedSources = NEWS_SOURCES.map(s => ({ name: s.name, rss: s.rss }));
+  if (firestoreDb) {
+    try {
+      const snap = await firestoreDb.collection('newsFeeds').where('isActive', '==', true).get();
+      if (!snap.empty) {
+        const firestoreFeeds = snap.docs.map(d => {
+          const data = d.data();
+          return { name: data.name as string, rss: data.url as string };
+        }).filter(f => f.name && f.rss);
+        if (firestoreFeeds.length > 0) {
+          // Merge: Firestore feeds + hardcoded (deduplicate by RSS URL)
+          const seenUrls = new Set(firestoreFeeds.map(f => f.rss));
+          const merged = [...firestoreFeeds, ...feedSources.filter(s => !seenUrls.has(s.rss))];
+          feedSources = merged;
+          logger.info('rss.feeds_from_firestore', { count: firestoreFeeds.length, total: merged.length });
+        }
+      }
+    } catch (err) {
+      logger.warn('rss.firestore_feeds_fallback', { error: err instanceof Error ? err.message : String(err) });
+      // Fallback to hardcoded feeds
+    }
+  }
+
   const allItems: RawNewsItem[] = [];
   const results = await Promise.allSettled(
-    NEWS_SOURCES.map(async (source) => {
+    feedSources.map(async (source) => {
       try {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 15000);
@@ -103,6 +128,10 @@ function cleanHtml(text: string): string {
 
 /**
  * Categorize and summarize news items using AI (Gemini Flash).
+ * Uses a 3-layer processing approach:
+ * Layer 1: Categorize & deduplicate
+ * Layer 2: Summarize with comprehensive detail
+ * Layer 3: Generate exam-relevant bullet points (minimum 3)
  */
 async function summarizeItems(items: RawNewsItem[], env: Env, logger: Logger): Promise<CurrentAffairsStoreItem[]> {
   if (!env.GEMINI_API_KEY) {
@@ -123,23 +152,34 @@ async function summarizeItems(items: RawNewsItem[], env: Env, logger: Logger): P
     try {
       const prompt = `You are a current affairs summarizer for Indian competitive exam students (UPSC, SSC, Banking, NEET, JEE).
 
-Given these news headlines, create a JSON array of summarized items. For each item:
+Given these news headlines, process them in 3 layers:
+
+LAYER 1 — CATEGORIZE & DEDUPLICATE:
 - Assign a category from: national, international, economy, science-tech, environment, sports, awards, agreements, reports, other
-- Write a comprehensive summary of MINIMUM 400 words covering:
+- Merge duplicate stories covering the same event into one
+
+LAYER 2 — COMPREHENSIVE SUMMARY:
+- Write a summary of MINIMUM 400 words covering:
   1. What happened (2-3 paragraphs with full context)
   2. Background & context (1-2 paragraphs explaining the history/context)
   3. Key facts and figures mentioned in the article
   4. Why it matters for India / exam relevance (which exams might ask about this)
   5. Related topics a student should study alongside this
+
+LAYER 3 — BULLET POINTS (MANDATORY MINIMUM 3):
+- Generate at least 3 concise bullet points highlighting key facts for quick revision
+- Each bullet should be a standalone fact that could appear in an exam question
+- Keep each bullet under 100 characters
+
+For each item output:
 - Keep the headline concise (max 80 chars)
-- Deduplicate: if multiple items cover the same story, merge into one
 - Write in simple, clear language suitable for students
 
 News items:
 ${batch.map((item, i) => `${i + 1}. [${item.source}] ${item.title} — ${item.description.slice(0, 150)}`).join('\n')}
 
 Respond ONLY with valid JSON:
-{"items":[{"id":"ca-1","headline":"...","summary":"...","category":"national","sources":["Source Name"],"factChecked":true}]}`;
+{"items":[{"id":"ca-1","headline":"...","summary":"...","bullets":["fact 1","fact 2","fact 3"],"category":"national","sources":["Source Name"],"factChecked":true}]}`;
 
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
         method: 'POST',
@@ -161,13 +201,24 @@ Respond ONLY with valid JSON:
       // Extract JSON from response (may have markdown fences)
       const jsonMatch = rawText.match(/\{[\s\S]*\}/);
       if (!jsonMatch) { logger.warn('rss.gemini_no_json', { raw: rawText.slice(0, 200) }); continue; }
-      const parsed = JSON.parse(jsonMatch[0]) as { items: { id: string; headline: string; summary: string; category: CurrentAffairsCategory; sources: string[]; factChecked: boolean }[] };
+      const parsed = JSON.parse(jsonMatch[0]) as { items: { id: string; headline: string; summary: string; bullets?: string[]; category: CurrentAffairsCategory; sources: string[]; factChecked: boolean }[] };
 
       for (const item of (parsed.items ?? [])) {
+        // Validate: ensure bullets array has at least 3 items
+        const bullets = item.bullets ?? [];
+        if (bullets.length < 3) {
+          // Generate fallback bullets from headline/summary
+          while (bullets.length < 3) {
+            if (bullets.length === 0) bullets.push(item.headline);
+            else if (bullets.length === 1) bullets.push(`Category: ${item.category}`);
+            else bullets.push(`Source: ${item.sources.join(', ')}`);
+          }
+        }
+
         allSummarized.push({
           id: `${today}-${item.id}-${Math.random().toString(36).slice(2, 6)}`,
           headline: item.headline,
-          body: item.summary,
+          body: item.summary + '\n\n**Key Points:**\n' + bullets.map(b => `• ${b}`).join('\n'),
           category: item.category,
           sources: item.sources,
           relevantExams: [],
@@ -202,8 +253,9 @@ export async function ingestCurrentAffairs(
 ): Promise<{ fetched: number; saved: number }> {
   logger.info('rss.ingestion_start', { sources: NEWS_SOURCES.length });
 
-  // 1. Fetch all feeds
-  const rawItems = await fetchRssFeeds(logger);
+  // 1. Fetch all feeds (try Firestore feeds first, fallback to hardcoded)
+  const db = (store as any).db as import('firebase-admin/firestore').Firestore | undefined;
+  const rawItems = await fetchRssFeeds(logger, db);
   logger.info('rss.fetched', { total: rawItems.length });
 
   if (rawItems.length === 0) return { fetched: 0, saved: 0 };

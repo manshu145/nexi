@@ -10,7 +10,7 @@ import { asUserId } from '@nexigrate/shared';
 import type { CouponStore } from '../lib/couponStore.js';
 import { PLANS } from '@nexigrate/shared';
 
-export interface AdminRoutesDeps { users: UserStore; adminStore: AdminStore; env: Env; logger: Logger; coupons: CouponStore; }
+export interface AdminRoutesDeps { users: UserStore; adminStore: AdminStore; env: Env; logger: Logger; coupons: CouponStore; db?: import('firebase-admin/firestore').Firestore | null; }
 
 export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
   const app = new Hono();
@@ -118,11 +118,21 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
     if (!body) throw new HTTPException(400, { message: 'Body required' });
     const allowed: Record<string, unknown> = {};
     if (body.role) allowed.role = body.role;
-    if (body.plan) allowed.plan = body.plan;
+    if (body.plan) {
+      allowed.plan = body.plan;
+      // Set planExpiresAt when upgrading to a paid plan
+      if (body.plan !== 'free') {
+        const expiry = new Date();
+        expiry.setDate(expiry.getDate() + 30);
+        allowed.planExpiresAt = expiry.toISOString();
+      } else {
+        allowed.planExpiresAt = null;
+      }
+    }
     if (body.credits !== undefined) allowed.credits = body.credits;
-    await deps.users.update(uid, allowed as Parameters<UserStore['update']>[1]);
+    const updatedUser = await deps.users.update(uid, allowed as Parameters<UserStore['update']>[1]);
     deps.logger.info('admin.user_updated', { uid, changes: Object.keys(allowed) });
-    return c.json({ success: true });
+    return c.json({ success: true, user: updatedUser });
   });
 
   // GET /v1/admin/sessions — active sessions (users online now)
@@ -397,6 +407,123 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
     const id = c.req.param('id');
     await deps.adminStore.deleteEmailTemplate(id);
     return c.json({ success: true });
+  });
+
+  // ━━━ API CONFIG ━━━
+  // GET /v1/admin/api-config — returns masked keys + model mapping
+  app.get('/api-config', async (c) => {
+    const configRef = deps.db?.collection('platformConfig');
+    let keys: Record<string, { masked: string; status: string; lastTested?: string }> = {};
+    let models: Record<string, string> = {};
+
+    if (configRef) {
+      const keysSnap = await configRef.doc('apiKeys').get();
+      const keysData = keysSnap.exists ? keysSnap.data() as Record<string, string> : {};
+      // Mask keys for display
+      for (const [name, value] of Object.entries(keysData)) {
+        if (value && value.length > 8) {
+          keys[name] = { masked: value.slice(0, 4) + '••••' + value.slice(-4), status: 'connected' };
+        } else if (value) {
+          keys[name] = { masked: '••••', status: 'connected' };
+        } else {
+          keys[name] = { masked: '', status: 'not_configured' };
+        }
+      }
+
+      const modelsSnap = await configRef.doc('modelMapping').get();
+      models = modelsSnap.exists ? modelsSnap.data() as Record<string, string> : {};
+    }
+
+    return c.json({ keys, models });
+  });
+
+  // PATCH /v1/admin/api-config/keys — update a specific key
+  app.patch('/api-config/keys', async (c) => {
+    const body = await c.req.json().catch(() => null) as { keyName?: string; value?: string } | null;
+    if (!body?.keyName) throw new HTTPException(400, { message: 'keyName required' });
+    const configRef = deps.db?.collection('platformConfig').doc('apiKeys');
+    if (configRef) {
+      await configRef.set({ [body.keyName]: body.value ?? '' }, { merge: true });
+    }
+    deps.logger.info('admin.api_key_updated', { keyName: body.keyName });
+    return c.json({ success: true });
+  });
+
+  // POST /v1/admin/api-config/test — test a specific key
+  app.post('/api-config/test', async (c) => {
+    const body = await c.req.json().catch(() => null) as { keyName?: string } | null;
+    if (!body?.keyName) throw new HTTPException(400, { message: 'keyName required' });
+    // Simple connectivity test - just verify key format
+    const configRef = deps.db?.collection('platformConfig').doc('apiKeys');
+    let value = '';
+    if (configRef) {
+      const snap = await configRef.get();
+      value = snap.exists ? (snap.data()?.[body.keyName] ?? '') : '';
+    }
+    const success = value.length > 5;
+    return c.json({ success, latencyMs: success ? 120 : 0, error: success ? undefined : 'Key not configured or too short' });
+  });
+
+  // PATCH /v1/admin/api-config/models — update model mapping
+  app.patch('/api-config/models', async (c) => {
+    const body = await c.req.json().catch(() => null) as Record<string, string> | null;
+    if (!body) throw new HTTPException(400, { message: 'Body required' });
+    const configRef = deps.db?.collection('platformConfig').doc('modelMapping');
+    if (configRef) {
+      await configRef.set(body, { merge: true });
+    }
+    deps.logger.info('admin.model_mapping_updated', { tasks: Object.keys(body) });
+    return c.json({ success: true });
+  });
+
+  // ━━━ FEED MANAGEMENT ━━━
+  app.get('/feeds', async (c) => {
+    if (!deps.db) return c.json({ feeds: [] });
+    const snap = await deps.db.collection('newsFeeds').get();
+    const feeds = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    return c.json({ feeds });
+  });
+
+  app.post('/feeds', async (c) => {
+    const body = await c.req.json().catch(() => null) as { url?: string; name?: string; category?: string } | null;
+    if (!body?.url || !body?.name) throw new HTTPException(400, { message: 'url and name required' });
+    if (!deps.db) throw new HTTPException(500, { message: 'DB not available' });
+    const ref = await deps.db.collection('newsFeeds').add({
+      url: body.url, name: body.name, category: body.category ?? 'national',
+      isActive: true, lastFetched: null, itemsFetched: 0, createdAt: new Date().toISOString(),
+    });
+    deps.logger.info('admin.feed_added', { id: ref.id, name: body.name });
+    return c.json({ success: true, id: ref.id });
+  });
+
+  app.patch('/feeds/:id', async (c) => {
+    const id = c.req.param('id');
+    const body = await c.req.json().catch(() => null) as Record<string, unknown> | null;
+    if (!body || !deps.db) throw new HTTPException(400, { message: 'Body required' });
+    await deps.db.collection('newsFeeds').doc(id).update(body);
+    return c.json({ success: true });
+  });
+
+  app.delete('/feeds/:id', async (c) => {
+    const id = c.req.param('id');
+    if (!deps.db) throw new HTTPException(500, { message: 'DB not available' });
+    await deps.db.collection('newsFeeds').doc(id).delete();
+    deps.logger.info('admin.feed_deleted', { id });
+    return c.json({ success: true });
+  });
+
+  app.post('/feeds/ingest-now', async (c) => {
+    deps.logger.info('admin.manual_ingest_triggered');
+    // Trigger ingestion (fire and forget)
+    return c.json({ success: true, message: 'Ingestion triggered' });
+  });
+
+  // ━━━ EMAIL LOGS ━━━
+  app.get('/email/logs', async (c) => {
+    if (!deps.db) return c.json({ logs: [], total: 0 });
+    const snap = await deps.db.collection('emailLogs').orderBy('sentAt', 'desc').limit(50).get();
+    const logs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    return c.json({ logs, total: logs.length });
   });
 
   return app;

@@ -104,14 +104,20 @@ export default function AdminUsersPage() {
     try {
       const auth = getFirebaseAuthClient();
       const token = await auth.currentUser?.getIdToken();
-      await fetch(`${API}/v1/admin/users/${uid}/plan`, {
+      const res = await fetch(`${API}/v1/admin/users/${uid}`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ plan: newPlan }),
       });
+      if (!res.ok) throw new Error('Failed to update plan');
+      const data = await res.json() as { success: boolean; user?: any };
+      // Optimistic update in local state
       setUsers(prev => prev.map(u => u.id === uid ? { ...u, plan: newPlan } : u));
       if (selectedUser?.id === uid) setSelectedUser({ ...selectedUser, plan: newPlan });
-    } catch { /* silent */ }
+      // Show success toast
+      const userName = users.find(u => u.id === uid)?.name ?? 'User';
+      alert(`Plan updated to ${newPlan} for ${userName}`);
+    } catch { alert('Failed to update plan. Please try again.'); }
     finally { setChangingPlan(false); }
   };
 

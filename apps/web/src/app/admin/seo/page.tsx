@@ -46,6 +46,9 @@ export default function AdminSeoPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [faviconPreview, setFaviconPreview] = useState<string | null>(null);
+  const [ogPreview, setOgPreview] = useState<string | null>(null);
 
   useEffect(() => { if (!loading && !user) router.replace('/admin/login'); }, [user, loading, router]);
 
@@ -130,10 +133,6 @@ export default function AdminSeoPage() {
             <input value={settings.canonicalUrl} onChange={e => updateField('canonicalUrl', e.target.value)} className="input mt-1" placeholder="https://nexigrate.com" />
           </div>
           <div>
-            <label className="text-xs font-medium text-ink-700">OG Image URL (Social sharing preview)</label>
-            <input value={settings.ogImage} onChange={e => updateField('ogImage', e.target.value)} className="input mt-1" placeholder="https://nexigrate.com/og-image.png" />
-          </div>
-          <div>
             <label className="text-xs font-medium text-ink-700">Google Analytics ID</label>
             <input value={settings.googleAnalyticsId} onChange={e => updateField('googleAnalyticsId', e.target.value)} className="input mt-1" placeholder="G-XXXXXXXXXX" />
           </div>
@@ -150,17 +149,70 @@ export default function AdminSeoPage() {
         <p className="text-xs text-muted-500 mt-1">Logo, favicon, and taglines</p>
         <div className="mt-4 space-y-4">
           <div>
-            <label className="text-xs font-medium text-ink-700">Logo URL</label>
-            <input value={settings.logoUrl} onChange={e => updateField('logoUrl', e.target.value)} className="input mt-1" placeholder="https://nexigrate.com/logo.svg" />
-            {settings.logoUrl && (
+            <label className="text-xs font-medium text-ink-700">Logo</label>
+            <div className="mt-1 flex items-center gap-3">
+              <input value={settings.logoUrl} onChange={e => updateField('logoUrl', e.target.value)} className="input flex-1" placeholder="https://nexigrate.com/logo.svg" />
+              <label className="cursor-pointer rounded-lg border border-stone-300 px-3 py-2 text-xs font-medium text-stone-600 hover:bg-stone-100 transition-colors">
+                📁 Upload
+                <input type="file" accept="image/*" className="hidden" onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const url = URL.createObjectURL(file);
+                    setLogoPreview(url);
+                  }
+                }} />
+              </label>
+            </div>
+            {(logoPreview || settings.logoUrl) && (
               <div className="mt-2 p-3 bg-paper-200 rounded-lg inline-block">
-                <img src={settings.logoUrl} alt="Logo preview" className="h-8 max-w-[200px] object-contain" />
+                <img src={logoPreview || settings.logoUrl} alt="Logo preview" className="h-8 max-w-[200px] object-contain" />
+                {logoPreview && <p className="text-[10px] text-amber-600 mt-1">Upload to Firebase Storage on save</p>}
               </div>
             )}
           </div>
           <div>
-            <label className="text-xs font-medium text-ink-700">Favicon URL</label>
-            <input value={settings.favicon} onChange={e => updateField('favicon', e.target.value)} className="input mt-1" placeholder="https://nexigrate.com/favicon.ico" />
+            <label className="text-xs font-medium text-ink-700">Favicon</label>
+            <div className="mt-1 flex items-center gap-3">
+              <input value={settings.favicon} onChange={e => updateField('favicon', e.target.value)} className="input flex-1" placeholder="https://nexigrate.com/favicon.ico" />
+              <label className="cursor-pointer rounded-lg border border-stone-300 px-3 py-2 text-xs font-medium text-stone-600 hover:bg-stone-100 transition-colors">
+                📁 Upload
+                <input type="file" accept="image/*" className="hidden" onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const url = URL.createObjectURL(file);
+                    setFaviconPreview(url);
+                  }
+                }} />
+              </label>
+            </div>
+            {(faviconPreview || settings.favicon) && (
+              <div className="mt-2 p-3 bg-paper-200 rounded-lg inline-block">
+                <img src={faviconPreview || settings.favicon} alt="Favicon preview" className="h-6 w-6 object-contain" />
+                {faviconPreview && <p className="text-[10px] text-amber-600 mt-1">Upload to Firebase Storage on save</p>}
+              </div>
+            )}
+          </div>
+          <div>
+            <label className="text-xs font-medium text-ink-700">OG Image (Social sharing preview)</label>
+            <div className="mt-1 flex items-center gap-3">
+              <input value={settings.ogImage} onChange={e => updateField('ogImage', e.target.value)} className="input flex-1" placeholder="https://nexigrate.com/og-image.png" />
+              <label className="cursor-pointer rounded-lg border border-stone-300 px-3 py-2 text-xs font-medium text-stone-600 hover:bg-stone-100 transition-colors">
+                📁 Upload
+                <input type="file" accept="image/*" className="hidden" onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const url = URL.createObjectURL(file);
+                    setOgPreview(url);
+                  }
+                }} />
+              </label>
+            </div>
+            {(ogPreview || settings.ogImage) && (
+              <div className="mt-2 p-3 bg-paper-200 rounded-lg inline-block">
+                <img src={ogPreview || settings.ogImage} alt="OG Image preview" className="h-24 max-w-[300px] object-contain" />
+                {ogPreview && <p className="text-[10px] text-amber-600 mt-1">Upload to Firebase Storage on save</p>}
+              </div>
+            )}
           </div>
           <div>
             <label className="text-xs font-medium text-ink-700">Tagline (English)</label>

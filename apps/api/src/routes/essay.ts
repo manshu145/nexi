@@ -27,7 +27,7 @@ export function makeEssayRoutes(deps: EssayRoutesDeps): Hono {
 
     if (deps.db) {
       try {
-        // Count essays this period
+        // Count essays this period — single field query to avoid composite index requirement
         const now = new Date();
         const periodStart = user.plan === 'free'
           ? new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) // last 7 days
@@ -35,9 +35,8 @@ export function makeEssayRoutes(deps: EssayRoutesDeps): Hono {
 
         const snap = await deps.db.collection('essaySubmissions')
           .where('userId', '==', principal.userId)
-          .where('submittedAt', '>=', periodStart.toISOString())
           .get();
-        used = snap.size;
+        used = snap.docs.filter(d => (d.data().submittedAt ?? '') >= periodStart.toISOString()).length;
       } catch { /* fallback to 0 */ }
     }
 
@@ -99,9 +98,9 @@ Respond ONLY with valid JSON:
         : new Date(now.getFullYear(), now.getMonth(), 1);
       const snap = await deps.db.collection('essaySubmissions')
         .where('userId', '==', principal.userId)
-        .where('submittedAt', '>=', periodStart.toISOString())
         .get();
-      if (snap.size >= limit) {
+      const usedCount = snap.docs.filter(d => (d.data().submittedAt ?? '') >= periodStart.toISOString()).length;
+      if (usedCount >= limit) {
         throw new HTTPException(429, { message: `Essay limit reached (${limit} per ${user.plan === 'free' ? 'week' : 'month'}). Upgrade for more.` });
       }
     }
