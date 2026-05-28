@@ -8,7 +8,7 @@ import type { Firestore } from 'firebase-admin/firestore';
 
 export interface CreditsRoutesDeps { users: UserStore; logger: Logger; db?: Firestore | null; referrals?: ReferralStore; }
 
-const CREDIT_REWARDS: Record<string, number> = { daily_login: 10, mcq_complete: 5, streak_7: 25, streak_30: 100 };
+const CREDIT_REWARDS: Record<string, number> = { daily_login: 10, mcq_complete: 50, mcq_attempt: 5, streak_7: 25, streak_30: 100 };
 
 export function makeCreditsRoutes(deps: CreditsRoutesDeps): Hono {
   const app = new Hono();
@@ -87,11 +87,11 @@ export function makeCreditsRoutes(deps: CreditsRoutesDeps): Hono {
       return c.json({ completed: false });
     }
 
-    // Award referrer +50 credits
+    // Award referrer +100 credits
     const referrer = await deps.users.get(result.referrerId);
     if (referrer) {
-      await deps.users.update(result.referrerId, { credits: (referrer.credits ?? 0) + 50 } as any);
-      deps.logger.info('referral.completed', { referrer: result.referrerId, referred: principal.userId, creditsAwarded: 50 });
+      await deps.users.update(result.referrerId, { credits: (referrer.credits ?? 0) + 100 } as any);
+      deps.logger.info('referral.completed', { referrer: result.referrerId, referred: principal.userId, creditsAwarded: 100 });
     }
 
     return c.json({ completed: true, referrerId: result.referrerId });
