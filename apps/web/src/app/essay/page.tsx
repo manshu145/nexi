@@ -8,6 +8,18 @@ import { AILoader } from '~/components/ui/AILoader';
 
 const API = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com';
 
+function getUserLanguage(): 'en' | 'hi' {
+  if (typeof document !== 'undefined') {
+    const m = document.cookie.match(/nexigrate-language=(en|hi)/);
+    if (m) return m[1] as 'en' | 'hi';
+  }
+  if (typeof localStorage !== 'undefined') {
+    const s = localStorage.getItem('nexigrate-language');
+    if (s === 'hi' || s === 'en') return s;
+  }
+  return 'en';
+}
+
 interface EssayQuestion {
   topic: string;
   wordLimit: number;
@@ -93,7 +105,7 @@ export default function EssayPage() {
     setGenerating(true);
     try {
       const token = await user!.getIdToken();
-      const lang = localStorage.getItem('nexigrate-language') || 'en';
+      const lang = getUserLanguage();
       const res = await fetch(`${API}/v1/essay/question`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -143,7 +155,7 @@ export default function EssayPage() {
     setGrading(true);
     try {
       const token = await user!.getIdToken();
-      const lang = localStorage.getItem('nexigrate-language') || 'en';
+      const lang = getUserLanguage();
       const res = await fetch(`${API}/v1/essay/grade`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },

@@ -138,7 +138,7 @@ export default function AdminStatsPage() {
     return (
       <div className="space-y-6">
         <div className="h-7 w-40 rounded bg-paper-300 animate-pulse" />
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
         </div>
         <SkeletonHealthRow />
@@ -155,48 +155,48 @@ export default function AdminStatsPage() {
 
       {/* KPI Cards */}
       {fetchingStats ? (
-        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
         </div>
       ) : (
-        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <div className="paper-card p-5">
+        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="paper-card min-h-0 p-5">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">Total Users</p>
             <p className="font-serif mt-2 text-3xl font-bold text-ink-900">
               {stats?.totalUsers.toLocaleString() ?? '0'}
             </p>
           </div>
-          <div className="paper-card p-5">
+          <div className="paper-card min-h-0 p-5">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">DAU (Today)</p>
             <p className="font-serif mt-2 text-3xl font-bold text-ink-900">
               {stats?.dau.toLocaleString() ?? '0'}
             </p>
           </div>
-          <div className="paper-card p-5">
+          <div className="paper-card min-h-0 p-5">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">Active Now</p>
             <p className="font-serif mt-2 text-3xl font-bold text-ink-900">
               {stats?.activeNow.toLocaleString() ?? '0'}
             </p>
           </div>
-          <div className="paper-card p-5">
+          <div className="paper-card min-h-0 p-5">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">New Today</p>
             <p className="font-serif mt-2 text-3xl font-bold text-ink-900">
               {stats?.newToday.toLocaleString() ?? '0'}
             </p>
           </div>
-          <div className="paper-card p-5">
+          <div className="paper-card min-h-0 p-5">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">Revenue (30d)</p>
             <p className="font-serif mt-2 text-3xl font-bold text-ink-900">
               ₹{stats?.revenue30d.toLocaleString() ?? '0'}
             </p>
           </div>
-          <div className="paper-card p-5">
+          <div className="paper-card min-h-0 p-5">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">AI Cost Today</p>
             <p className="font-serif mt-2 text-3xl font-bold text-ink-900">
               ₹{stats?.aiCostToday.toLocaleString() ?? '0'}
             </p>
           </div>
-          <div className="paper-card p-5">
+          <div className="paper-card min-h-0 p-5">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">PWA Installs</p>
             <p className="font-serif mt-2 text-3xl font-bold text-ink-900">
               {stats?.pwaInstalls?.toLocaleString() ?? '0'}

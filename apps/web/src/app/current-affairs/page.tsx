@@ -230,7 +230,7 @@ export default function CurrentAffairsShortsPage() {
             {/* Card column */}
             <div className="relative w-full max-w-[480px] lg:max-w-[420px] h-full overflow-hidden">
               <div
-                className="absolute inset-0 transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]"
+                className="absolute inset-0 transition-transform duration-300 ease-out"
                 style={{ transform: `translateY(-${currentIdx * 100}%)` }}
               >
                 {filtered.map((item, idx) => (
@@ -286,7 +286,7 @@ export default function CurrentAffairsShortsPage() {
 
       {/* Sticky mobile bottom quiz bar */}
       {filtered.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 z-30 px-4 pb-4 pt-3 bg-gradient-to-t from-paper-50 via-paper-50/95 to-transparent lg:hidden animate-slideUp">
+        <div className="fixed bottom-16 left-0 right-0 z-30 px-4 pb-4 pb-[env(safe-area-inset-bottom)] pt-3 bg-gradient-to-t from-paper-50 via-paper-50/95 to-transparent lg:hidden animate-slideUp">
           <button
             onClick={() => router.push('/current-affairs/quiz')}
             className="w-full rounded-xl bg-ember-500 px-4 py-3.5 text-sm font-bold text-paper-50 shadow-lg hover:bg-ember-600 transition-all duration-150 active:scale-[0.97] flex items-center justify-center gap-2"
@@ -333,7 +333,7 @@ function ShortCard({ item, isActive, liked, bookmarked, likeCount, onLike, onBoo
   return (
     <div className="h-full w-full flex items-center justify-center px-3 py-2 lg:px-0 lg:py-3">
       <div
-        className={`relative w-full h-full rounded-2xl lg:rounded-3xl overflow-hidden shadow-xl border cursor-pointer bg-paper-50 dark:bg-paper-100 transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+        className={`relative w-full h-full rounded-2xl lg:rounded-3xl overflow-hidden shadow-xl border cursor-pointer bg-paper-50 dark:bg-paper-100 transition-all duration-300 ease-out ${
           isActive ? 'scale-100 opacity-100 border-line shadow-xl' : 'scale-[0.94] opacity-20 border-transparent shadow-none'
         }`}
         onClick={onTap}
