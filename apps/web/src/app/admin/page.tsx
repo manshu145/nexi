@@ -52,12 +52,12 @@ function SkeletonHealthRow() {
 function HealthBadge({ name, status }: { name: string; status: 'ok' | 'error' | 'unconfigured' }) {
   const mapped = status === 'ok' ? 'up' : status === 'error' ? 'down' : 'unknown';
   const colors: Record<string, string> = {
-    up: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+    up: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
     down: 'bg-ember-100 text-ember-700 dark:bg-ember-900/30 dark:text-ember-400',
     unknown: 'bg-paper-200 text-muted-500 dark:text-muted-400',
   };
   const dots: Record<string, string> = {
-    up: 'bg-emerald-500',
+    up: 'bg-amber-500',
     down: 'bg-ember-500',
     unknown: 'bg-muted-400',
   };

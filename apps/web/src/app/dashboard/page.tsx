@@ -77,7 +77,7 @@ export default function DashboardPage() {
   const levelLabel = me?.onboardingLevel ?? 'beginner';
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-lg flex-col px-5 pt-6 pb-8">
+    <main className="mx-auto flex min-h-dvh max-w-4xl flex-col px-5 pt-6 pb-8">
       {/* Header */}
       <header className="flex items-center justify-between">
         <Logo />
@@ -86,7 +86,7 @@ export default function DashboardPage() {
             <button onClick={handleInstallApp} className="btn-ghost-sm text-xs flex items-center gap-1">📱 Install</button>
           )}
           {appInstalled && (
-            <span className="text-[10px] text-emerald-600 font-medium">✓ Installed</span>
+            <span className="text-[10px] text-amber-600 font-medium">✓ Installed</span>
           )}
           <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="btn-ghost-sm" aria-label="Toggle theme">{theme === 'dark' ? '☀️' : '🌙'}</button>
           <button onClick={() => router.push('/profile')} className="h-9 w-9 overflow-hidden rounded-full bg-paper-300 border border-line flex items-center justify-center">
@@ -105,10 +105,19 @@ export default function DashboardPage() {
             </span>
           </div>
         )}
+        {me && (
+          <button onClick={() => router.push(me.plan === 'free' ? '/upgrade' : '/profile')} className="mt-2 inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors hover:opacity-80" style={{ background: me.plan === 'free' ? 'var(--color-paper-200)' : undefined, color: me.plan === 'free' ? 'var(--color-muted-500)' : undefined }}>
+            {me.plan === 'free' ? (
+              <><span>Free Plan</span><span className="text-amber-500">· Upgrade →</span></>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-3 py-1 text-xs font-semibold text-stone-900">⭐ {me.plan.charAt(0).toUpperCase() + me.plan.slice(1)} Plan{me.planExpiresAt ? ` · Expires ${new Date(me.planExpiresAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}` : ''}</span>
+            )}
+          </button>
+        )}
         {/* Quick stats inline */}
         <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-ink-700">
           {(me?.currentStreak ?? 0) > 0 && <span className="flex items-center gap-1">🔥 {me?.currentStreak} {tc('days')} streak</span>}
-          <span className="flex items-center gap-1">💎 {me?.credits ?? 0} {tc('credits')}</span>
+          <span className="flex items-center gap-1 cursor-pointer hover:opacity-80" onClick={() => router.push('/credits')}>💎 {me?.credits ?? 0} {tc('credits')}</span>
           <span className="flex items-center gap-1 capitalize">📊 {levelLabel}</span>
         </div>
       </section>
@@ -145,8 +154,8 @@ export default function DashboardPage() {
         >
           <div className="flex items-center gap-2">
             <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ember-500/10 text-xl">📰</span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 dark:bg-emerald-900/30 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-400">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
               LIVE
             </span>
           </div>
@@ -173,30 +182,30 @@ export default function DashboardPage() {
         </button>
       </section>
 
-      {/* Quick Actions - Horizontal scroll on mobile */}
-      <section className="mt-4 flex gap-2.5 overflow-x-auto scrollbar-hide pb-1 animate-fadeIn-delay-2">
-        <button type="button" onClick={() => router.push('/essay')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3 flex-shrink-0">
+      {/* Quick Actions - Grid layout */}
+      <section className="mt-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 animate-fadeIn-delay-2">
+        <button type="button" onClick={() => router.push('/essay')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3">
           <span className="text-base">✍️</span>
           <div className="text-left">
             <p className="text-sm font-semibold text-ink-900 whitespace-nowrap">Practice Set</p>
             <p className="text-[10px] text-muted-500">Write & grade</p>
           </div>
         </button>
-        <button type="button" onClick={() => router.push('/upgrade')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3 flex-shrink-0">
+        <button type="button" onClick={() => router.push('/upgrade')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3">
           <span className="text-base">⭐</span>
           <div className="text-left">
             <p className="text-sm font-semibold text-ink-900 whitespace-nowrap">Upgrade</p>
             <p className="text-[10px] text-muted-500">Go Pro</p>
           </div>
         </button>
-        <button type="button" onClick={() => router.push('/refer')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3 flex-shrink-0">
+        <button type="button" onClick={() => router.push('/refer')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3">
           <span className="text-base">🎁</span>
           <div className="text-left">
             <p className="text-sm font-semibold text-ink-900 whitespace-nowrap">Refer Friends</p>
             <p className="text-[10px] text-muted-500">Earn 50 cr</p>
           </div>
         </button>
-        <button type="button" onClick={() => router.push('/support')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3 flex-shrink-0">
+        <button type="button" onClick={() => router.push('/support')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3">
           <span className="text-base">🛟</span>
           <div className="text-left">
             <p className="text-sm font-semibold text-ink-900 whitespace-nowrap">Support</p>

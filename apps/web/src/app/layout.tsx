@@ -3,6 +3,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import { getLocale, getMessages } from 'next-intl/server';
 import { Providers } from '~/components/providers';
 import { Toaster } from '~/components/toaster';
+import { BottomNav } from '~/components/BottomNav';
 import './globals.css';
 
 export const dynamic = 'force-dynamic';
@@ -28,7 +29,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang={locale} suppressHydrationWarning>
       <body>
         <NextIntlClientProvider messages={messages}>
-          <Providers>{children}<Toaster /></Providers>
+          <Providers>
+            <div className="pb-16 lg:pb-0">{children}</div>
+            <BottomNav />
+            <Toaster />
+          </Providers>
         </NextIntlClientProvider>
       </body>
     </html>
