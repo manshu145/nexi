@@ -173,7 +173,7 @@ export default function ChapterQuizPage() {
   return (
     <main className="mx-auto flex min-h-dvh max-w-lg flex-col px-5 pt-6 pb-16">
       <header className="flex items-center justify-between">
-        <Logo height={28} />
+        <Logo height={36} />
         <span className={`pill ${timer <= 10 ? 'pill-warn' : ''}`}>{timer}s</span>
       </header>
 

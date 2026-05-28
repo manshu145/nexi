@@ -52,7 +52,7 @@ export default function LevelPage() {
     <main className="mx-auto flex min-h-dvh max-w-lg flex-col px-5 pt-6 pb-28">
       <header className="flex items-center justify-between">
         <button onClick={() => router.back()} className="btn-ghost-sm">← Back</button>
-        <Logo height={28} />
+        <Logo height={36} />
       </header>
 
       <section className="mt-6">

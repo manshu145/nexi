@@ -222,7 +222,7 @@ Respond ONLY with valid JSON:
     <main className="mx-auto flex min-h-dvh max-w-2xl flex-col px-5 pt-6 pb-28">
       <header className="flex items-center justify-between">
         <button onClick={() => router.push('/dashboard')} className="btn-ghost-sm">← Dashboard</button>
-        <Logo height={28} />
+        <Logo height={36} />
       </header>
 
       <section className="mt-6">

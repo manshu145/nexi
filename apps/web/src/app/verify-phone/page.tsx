@@ -123,7 +123,7 @@ export default function VerifyPhonePage() {
   return (
     <main className="flex min-h-screen items-center justify-center px-4">
       <div className="paper-card w-full max-w-sm p-8 text-center">
-        <Logo className="text-2xl" height={48} />
+        <Logo className="text-2xl" height={54} />
         <div className="mt-6">
           <span className="text-4xl">📱</span>
           <h1 className="font-serif mt-3 text-xl font-semibold text-ink-900">Verify Your Phone</h1>

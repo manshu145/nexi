@@ -7,7 +7,7 @@ export default function OfflinePage() {
 
   return (
     <main className="flex min-h-dvh flex-col items-center justify-center px-6 text-center">
-      <Logo height={28} />
+      <Logo height={36} />
       <div className="mt-8">
         <span className="text-5xl">📡</span>
       </div>
