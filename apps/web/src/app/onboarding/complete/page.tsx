@@ -58,6 +58,7 @@ export default function CompletePage() {
   const [result, setResult] = useState<AssessmentResult | null>(null);
   const [pageLoading, setPageLoading] = useState(true);
   const [referralBonus, setReferralBonus] = useState<number | null>(null);
+  const [signupBonus, setSignupBonus] = useState(100);
 
   useEffect(() => {
     try {
@@ -72,6 +73,17 @@ export default function CompletePage() {
     } finally {
       setPageLoading(false);
     }
+
+    // Pull the live signup_verified amount from the rate table so the
+    // animated counter shows the same number the server actually awarded.
+    // Falls back to 100 (the locked PR-03 default) on any failure.
+    api.getCreditsBalance()
+      .then((bal) => {
+        if (typeof bal.earnRates?.signup_verified === 'number') {
+          setSignupBonus(bal.earnRates.signup_verified);
+        }
+      })
+      .catch(() => {});
 
     // Apply pending referral code if exists
     const pendingRef = localStorage.getItem('pendingReferral');
@@ -112,10 +124,12 @@ export default function CompletePage() {
         </div>
         <h1 className="font-serif mt-6 text-2xl font-semibold text-ink-900">{t('title')}</h1>
 
-        {/* Animated Credit Counter */}
+        {/* Animated Credit Counter — target reads the live signup_verified
+            amount from the platformConfig rate table so admin edits in
+            /admin/credit-rewards propagate to this celebratory screen. */}
         <div className="mt-6 flex justify-center">
           <div className="rounded-2xl bg-stone-900 border border-amber-500/30 px-8 py-6">
-            <CreditCounter target={200} />
+            <CreditCounter target={signupBonus} />
           </div>
         </div>
 
@@ -123,11 +137,11 @@ export default function CompletePage() {
         <div className="mt-5 px-4">
           {lang === 'hi' ? (
             <p className="text-sm font-medium text-ink-800 leading-relaxed">
-              🎉 Nexigrate में आपका स्वागत है! आपको 200 क्रेडिट्स मिले हैं।
+              🎉 Nexigrate में आपका स्वागत है! आपको {signupBonus} क्रेडिट्स मिले हैं।
             </p>
           ) : (
             <p className="text-sm font-medium text-ink-800 leading-relaxed">
-              🎉 Welcome to Nexigrate! You&apos;ve received 200 credits.
+              🎉 Welcome to Nexigrate! You&apos;ve received {signupBonus} credits.
             </p>
           )}
         </div>

@@ -78,6 +78,15 @@ export default function DashboardPage() {
           }
         }
         if (!res.user.targetExam) { router.replace('/onboarding/language'); return; }
+        // Plan-selection step (PR-05 lock §2.6) is mandatory for new users.
+        // The flag is undefined for users grandfathered in before this PR
+        // -- we treat undefined as "already chosen" so they aren't bounced
+        // back into onboarding mid-product. For new users, false sends
+        // them to /onboarding/plan; the page flips it to true on Continue.
+        if (res.user.onboardingPlanChosen === false) {
+          router.replace('/onboarding/plan');
+          return;
+        }
       }
       catch (e) { if (c) return; setError(e instanceof Error ? e.message : 'Failed to load'); }
       finally { if (!c) setPageLoading(false); }
