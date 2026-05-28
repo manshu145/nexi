@@ -96,6 +96,14 @@ export const EXAMS: readonly Exam[] = [
 
   // ─── Nursing / Paramedical ───
   { id: asExamSlug('nursing-officer'), name: 'Nursing Officer',   category: 'medical',        status: 'live' },
+
+  // ─── Professional Skills ───
+  { id: asExamSlug('it-fundamentals'), name: 'IT Fundamentals', category: 'professional-skills', status: 'live' },
+  { id: asExamSlug('python-basics'), name: 'Python Programming', category: 'professional-skills', status: 'live' },
+  { id: asExamSlug('data-science'), name: 'Data Science', category: 'professional-skills', status: 'live' },
+  { id: asExamSlug('web-development'), name: 'Web Development', category: 'professional-skills', status: 'live' },
+  { id: asExamSlug('digital-marketing'), name: 'Digital Marketing', category: 'professional-skills', status: 'live' },
+  { id: asExamSlug('tally-accounting'), name: 'Tally & Accounting', category: 'professional-skills', status: 'live' },
 ] as const;
 
 export const LIVE_EXAMS = EXAMS.filter((e) => e.status === 'live');

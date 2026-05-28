@@ -189,7 +189,7 @@ export default function DashboardPage() {
             <p className="text-[10px] text-muted-500">Go Pro</p>
           </div>
         </button>
-        <button type="button" onClick={() => router.push('/profile#referral')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3 flex-shrink-0">
+        <button type="button" onClick={() => router.push('/refer')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3 flex-shrink-0">
           <span className="text-base">🎁</span>
           <div className="text-left">
             <p className="text-sm font-semibold text-ink-900 whitespace-nowrap">Refer Friends</p>
