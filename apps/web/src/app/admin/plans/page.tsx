@@ -156,7 +156,7 @@ export default function AdminPlansPage() {
                         <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />Active
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-muted-500">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-stone-200 px-2 py-0.5 text-xs font-medium text-muted-500">
                         Coming Soon
                       </span>
                     )}
@@ -243,7 +243,7 @@ export default function AdminPlansPage() {
                       {c.isActive ? (
                         <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 font-medium text-amber-700 dark:text-amber-400">Active</span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 font-medium text-muted-500">Inactive</span>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-stone-200 px-2 py-0.5 font-medium text-muted-500">Inactive</span>
                       )}
                     </button>
                   </td>

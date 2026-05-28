@@ -247,7 +247,7 @@ export default function UpgradePage() {
 
         {/* ASPIRANT — COMING SOON */}
         <div className="paper-card relative flex flex-col p-5 opacity-70">
-          <span className="absolute -top-2.5 right-3 rounded-full bg-slate-500 px-3 py-0.5 text-xs font-semibold text-paper-50">Coming Soon</span>
+          <span className="absolute -top-2.5 right-3 rounded-full bg-stone-500 px-3 py-0.5 text-xs font-semibold text-paper-50">Coming Soon</span>
           <h3 className="font-serif text-lg font-bold text-ink-900">Aspirant</h3>
           <p className="mt-2"><span className="font-serif text-3xl font-bold text-muted-400">₹299</span><span className="text-sm text-muted-400">/mo</span></p>
           <ul className="mt-4 flex-1 space-y-2">
@@ -257,14 +257,14 @@ export default function UpgradePage() {
               </li>
             ))}
           </ul>
-          <button disabled className="mt-5 w-full rounded-xl py-3 text-sm font-semibold bg-slate-200 dark:bg-slate-700 text-muted-400 cursor-not-allowed">
+          <button disabled className="mt-5 w-full rounded-xl py-3 text-sm font-semibold bg-stone-200 dark:bg-stone-700 text-muted-400 cursor-not-allowed">
             Coming Soon
           </button>
         </div>
 
         {/* ACHIEVER — COMING SOON */}
         <div className="paper-card relative flex flex-col p-5 opacity-70">
-          <span className="absolute -top-2.5 right-3 rounded-full bg-slate-500 px-3 py-0.5 text-xs font-semibold text-paper-50">Coming Soon</span>
+          <span className="absolute -top-2.5 right-3 rounded-full bg-stone-500 px-3 py-0.5 text-xs font-semibold text-paper-50">Coming Soon</span>
           <h3 className="font-serif text-lg font-bold text-ink-900">Achiever</h3>
           <p className="mt-2"><span className="font-serif text-3xl font-bold text-muted-400">₹599</span><span className="text-sm text-muted-400">/mo</span></p>
           <ul className="mt-4 flex-1 space-y-2">
@@ -274,7 +274,7 @@ export default function UpgradePage() {
               </li>
             ))}
           </ul>
-          <button disabled className="mt-5 w-full rounded-xl py-3 text-sm font-semibold bg-slate-200 dark:bg-slate-700 text-muted-400 cursor-not-allowed">
+          <button disabled className="mt-5 w-full rounded-xl py-3 text-sm font-semibold bg-stone-200 dark:bg-stone-700 text-muted-400 cursor-not-allowed">
             Coming Soon
           </button>
         </div>
