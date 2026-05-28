@@ -25,3 +25,4 @@ const config: NextConfig = {
 
 export default withNextIntl(withPWA(config));
 // Build trigger 1779951931
+
