@@ -1,20 +1,19 @@
 'use client';
 import { useEffect } from 'react';
+import { api } from '~/lib/api';
 
 export default function ErrorPage({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
-    // Report error to backend for admin logs
-    const API = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com';
-    fetch(`${API}/v1/logs/error`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: error.message,
-        stack: error.stack,
-        route: typeof window !== 'undefined' ? window.location.pathname : '',
-        digest: error.digest,
-      }),
-    }).catch(() => {});
+    // Best-effort report to the public /v1/logs/error endpoint.
+    // No Authorization header is sent -- this route is intentionally
+    // public so a React render crash that broke the auth client can still
+    // phone home. The helper itself never throws.
+    void api.reportClientError({
+      message: error.message,
+      stack: error.stack,
+      route: typeof window !== 'undefined' ? window.location.pathname : undefined,
+      digest: error.digest,
+    });
   }, [error]);
 
   return (

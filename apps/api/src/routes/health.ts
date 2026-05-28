@@ -7,15 +7,23 @@ export function makeHealthRoutes(): Hono {
   return app;
 }
 
-/** Diagnostic endpoint — shows AI key status without exposing values */
+/**
+ * Diagnostic endpoint -- shows AI provider configuration STATUS without
+ * leaking the keys themselves. Pre-PR-06 this returned the first 6
+ * characters of each key plus the full length, which is enough material
+ * for an attacker to fingerprint a leaked key from logs / GitHub history.
+ * The current shape returns only `configured: boolean` so ops can tell at
+ * a glance which providers are wired without exposing key material.
+ */
 export function makeDiagRoutes(env: { GROQ_API_KEY?: string; OPENAI_API_KEY?: string; GEMINI_API_KEY?: string; PERSISTENCE?: string }): Hono {
   const app = new Hono();
+  const isConfigured = (v?: string) => !!(v && v.length > 5);
   app.get('/diag/ai', (c) => {
     return c.json({
       providers: {
-        groq: { configured: !!(env.GROQ_API_KEY && env.GROQ_API_KEY.length > 5), keyLength: env.GROQ_API_KEY?.length ?? 0, prefix: env.GROQ_API_KEY?.slice(0, 6) ?? '' },
-        openai: { configured: !!(env.OPENAI_API_KEY && env.OPENAI_API_KEY.length > 5), keyLength: env.OPENAI_API_KEY?.length ?? 0, prefix: env.OPENAI_API_KEY?.slice(0, 6) ?? '' },
-        gemini: { configured: !!(env.GEMINI_API_KEY && env.GEMINI_API_KEY.length > 5), keyLength: env.GEMINI_API_KEY?.length ?? 0, prefix: env.GEMINI_API_KEY?.slice(0, 6) ?? '' },
+        groq:   { configured: isConfigured(env.GROQ_API_KEY) },
+        openai: { configured: isConfigured(env.OPENAI_API_KEY) },
+        gemini: { configured: isConfigured(env.GEMINI_API_KEY) },
       },
       persistence: env.PERSISTENCE ?? 'not set',
       timestamp: new Date().toISOString(),
