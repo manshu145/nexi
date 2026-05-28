@@ -339,13 +339,18 @@ function ChatPage() {
       {sidebarOpen && <div className="fixed inset-0 z-30 bg-black/40 md:hidden" onClick={() => setSidebarOpen(false)} />}
 
       {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-40 flex w-64 max-w-[80vw] flex-col border-r border-line bg-paper-50 transition-transform md:static md:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`fixed inset-y-0 left-0 z-40 flex w-72 max-w-[80vw] flex-col border-r border-line bg-paper-50 transition-transform duration-200 ease-out md:static md:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex items-center justify-between p-4 border-b border-line">
           <Logo />
-          <button onClick={() => setSidebarOpen(false)} className="btn-ghost-sm md:hidden" aria-label="Close sidebar">&#x2715;</button>
+          <button onClick={() => setSidebarOpen(false)} className="btn-ghost-sm md:hidden" aria-label="Close sidebar">
+            <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
         </div>
-        <button onClick={startNewChat} className="btn-primary mx-3 mt-3">+ New Chat</button>
-        <nav className="mt-3 flex-1 overflow-y-auto px-3 space-y-1">
+        <button onClick={startNewChat} className="btn-primary mx-3 mt-3 gap-2">
+          <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          New Chat
+        </button>
+        <nav className="mt-3 flex-1 overflow-y-auto px-3 space-y-0.5">
           {sessions.length === 0 && (
             <div className="px-2 py-6 text-center">
               <p className="text-sm text-muted-400">No chats yet.</p>
@@ -416,18 +421,18 @@ function ChatPage() {
               {modelDropdownOpen && (
                 <>
                   <div className="fixed inset-0 z-[60]" onClick={() => setModelDropdownOpen(false)} />
-                  <div className="absolute top-full left-0 mt-1 z-[70] w-52 rounded-xl border border-line bg-paper-50 shadow-lg py-1">
-                    <button onClick={() => handleModelChange('gpt4o')} className={`w-full px-3 py-2 text-left text-sm hover:bg-paper-200 transition-colors ${selectedModel === 'gpt4o' ? 'bg-paper-200 font-medium' : ''}`}>
+                  <div className="absolute top-full left-0 mt-1 z-[70] w-52 rounded-xl border border-line bg-paper-50 shadow-lg py-1 animate-scaleIn origin-top-left">
+                    <button onClick={() => handleModelChange('gpt4o')} className={`w-full px-3 py-2.5 text-left text-sm hover:bg-paper-200 transition-colors ${selectedModel === 'gpt4o' ? 'bg-paper-200 font-medium' : ''}`}>
                       <div className="font-medium text-ink-900">GPT-4o</div>
-                      <div className="text-xs text-muted-400">Deep, detailed responses</div>
+                      <div className="text-[11px] text-muted-400 mt-0.5">Deep, detailed responses</div>
                     </button>
-                    <button onClick={() => handleModelChange('groq')} className={`w-full px-3 py-2 text-left text-sm hover:bg-paper-200 transition-colors ${selectedModel === 'groq' ? 'bg-paper-200 font-medium' : ''}`}>
+                    <button onClick={() => handleModelChange('groq')} className={`w-full px-3 py-2.5 text-left text-sm hover:bg-paper-200 transition-colors ${selectedModel === 'groq' ? 'bg-paper-200 font-medium' : ''}`}>
                       <div className="font-medium text-ink-900">Groq Llama</div>
-                      <div className="text-xs text-muted-400">Fast responses</div>
+                      <div className="text-[11px] text-muted-400 mt-0.5">Fast responses</div>
                     </button>
-                    <button onClick={() => handleModelChange('gemini')} className={`w-full px-3 py-2 text-left text-sm hover:bg-paper-200 transition-colors ${selectedModel === 'gemini' ? 'bg-paper-200 font-medium' : ''}`}>
+                    <button onClick={() => handleModelChange('gemini')} className={`w-full px-3 py-2.5 text-left text-sm hover:bg-paper-200 transition-colors ${selectedModel === 'gemini' ? 'bg-paper-200 font-medium' : ''}`}>
                       <div className="font-medium text-ink-900">Gemini Flash</div>
-                      <div className="text-xs text-muted-400">Visual &amp; diagram focus</div>
+                      <div className="text-[11px] text-muted-400 mt-0.5">Visual &amp; diagram focus</div>
                     </button>
                   </div>
                 </>
@@ -441,30 +446,39 @@ function ChatPage() {
         </header>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-3 sm:px-4 lg:px-6 py-6 space-y-4">
+        <div className="flex-1 overflow-y-auto px-3 sm:px-4 lg:px-6 py-6 space-y-4 scroll-smooth">
           {messages.length === 0 && (
-            <div className="flex flex-col items-center justify-center h-full text-center px-4">
-              <div className="w-12 h-12 rounded-2xl bg-gold-500/10 flex items-center justify-center">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 2L13.5 8.5L20 10L13.5 11.5L12 18L10.5 11.5L4 10L10.5 8.5L12 2Z" fill="currentColor" className="text-gold-500"/></svg>
+            <div className="flex flex-col items-center justify-center h-full text-center px-4 animate-fadeIn">
+              <div className="w-14 h-14 rounded-2xl bg-gold-500/10 flex items-center justify-center animate-pulse">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M12 2L13.5 8.5L20 10L13.5 11.5L12 18L10.5 11.5L4 10L10.5 8.5L12 2Z" fill="currentColor" className="text-gold-500"/></svg>
               </div>
-              <h2 className="font-serif mt-4 text-xl font-bold text-ink-900">
+              <h2 className="font-serif mt-5 text-xl font-bold text-ink-900">
                 {userLang === 'hi'
                   ? `नमस्ते${userName ? ` ${userName}` : ''}, मैं Nexi हूँ`
                   : `Hi${userName ? ` ${userName}` : ''}, I'm Nexi`}
               </h2>
-              <p className="mt-2 text-sm text-muted-500 max-w-sm">
+              <p className="mt-2 text-sm text-muted-500 max-w-sm leading-relaxed">
                 {userLang === 'hi'
                   ? `${userExam ? `${userExam.replace(/-/g, ' ').toUpperCase()} से related` : 'अपनी exam से related'} कुछ भी पूछो। Images attach कर सकते हो या diagrams generate कर सकते हो!`
                   : `Ask me anything about ${userExam ? userExam.replace(/-/g, ' ').toUpperCase() : 'your exam'}. You can also attach images or generate diagrams!`}
               </p>
-              <div className="mt-6 flex flex-wrap justify-center gap-2">
-                {prompts.map(p => (<button key={p} onClick={() => { setInput(p); }} className="pill text-xs">{p}</button>))}
+              <div className="mt-6 flex flex-wrap justify-center gap-2 max-w-md">
+                {prompts.map((p, idx) => (
+                  <button
+                    key={p}
+                    onClick={() => { setInput(p); }}
+                    className="pill text-xs hover:border-ember-500 hover:text-ember-600 transition-all duration-150 active:scale-95"
+                    style={{ animationDelay: `${idx * 80}ms` }}
+                  >
+                    {p}
+                  </button>
+                ))}
               </div>
             </div>
           )}
           {messages.map((msg, i) => (
-            <div key={i} className={`group flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-              <div className={`relative max-w-[90%] sm:max-w-[80%] lg:max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${msg.role === 'user' ? 'bg-ember-500 text-paper-50' : 'paper-card text-ink-900'}`}>
+            <div key={i} className={`group flex flex-col animate-slideUp ${msg.role === 'user' ? 'items-end' : 'items-start'}`} style={{ animationDelay: `${Math.min(i * 50, 200)}ms` }}>
+              <div className={`relative max-w-[90%] sm:max-w-[80%] lg:max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed transition-shadow duration-200 hover:shadow-md ${msg.role === 'user' ? 'bg-ember-500 text-paper-50 rounded-br-md' : 'paper-card text-ink-900 rounded-bl-md'}`}>
                 {msg.role === 'assistant' ? (
                   <div className="prose prose-sm max-w-none dark:prose-invert prose-headings:font-serif prose-blockquote:border-l-ember-500">
                     <ReactMarkdown
@@ -540,15 +554,15 @@ function ChatPage() {
             </div>
           ))}
           {sending && (
-            <div className="flex justify-start">
-              <div className="paper-card max-w-[90%] sm:max-w-[80%] lg:max-w-[75%] rounded-2xl px-4 py-3">
-                <div className="flex items-center gap-2.5">
-                  <span className="flex gap-1 items-center">
-                    <span className="w-2 h-2 rounded-full bg-ember-500/70 animate-bounce" />
+            <div className="flex justify-start animate-slideUp">
+              <div className="paper-card max-w-[90%] sm:max-w-[80%] lg:max-w-[75%] rounded-2xl rounded-bl-md px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <span className="flex gap-1.5 items-center">
+                    <span className="w-2 h-2 rounded-full bg-ember-500 animate-bounce" />
                     <span className="w-2 h-2 rounded-full bg-ember-500/70 animate-bounce" style={{ animationDelay: '0.15s' }} />
-                    <span className="w-2 h-2 rounded-full bg-ember-500/70 animate-bounce" style={{ animationDelay: '0.3s' }} />
+                    <span className="w-2 h-2 rounded-full bg-ember-500/40 animate-bounce" style={{ animationDelay: '0.3s' }} />
                   </span>
-                  <span className="text-xs text-muted-500">Nexi is thinking...</span>
+                  <span className="text-xs text-muted-500 font-medium">Nexi is thinking...</span>
                 </div>
               </div>
             </div>
@@ -581,30 +595,30 @@ function ChatPage() {
         )}
 
         {/* Quick action bar + Input area */}
-        <div className="border-t border-line p-2 sm:p-4 bg-paper-50">
+        <div className="border-t border-line p-2 sm:p-3 bg-paper-50/95 backdrop-blur-sm">
           {/* Quick action buttons row */}
-          <div className="mx-auto max-w-2xl mb-2 flex items-center gap-2 overflow-x-auto pb-1">
+          <div className="mx-auto max-w-2xl mb-2 flex items-center gap-2 overflow-x-auto scrollbar-hide pb-0.5">
             <button
               onClick={handleGenerateImage}
               disabled={!input.trim() || sending || generatingImage}
-              className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-line bg-paper-100 text-xs font-medium text-ink-700 hover:bg-paper-200 hover:text-ink-900 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-line bg-paper-100 text-xs font-medium text-ink-700 hover:bg-paper-200 hover:text-ink-900 hover:border-muted-400 transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
               title="Generate an AI image from your input text"
             >
               {generatingImage ? (
                 <span className="w-3.5 h-3.5 border-2 border-ink-400 border-t-transparent rounded-full animate-spin" />
               ) : (
-                <span>&#x1F5BC;</span>
+                <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
               )}
-              <span>{generatingImage ? 'Generating...' : 'Generate Image'}</span>
+              <span>{generatingImage ? 'Generating...' : 'Image'}</span>
             </button>
             <button
               onClick={handleGenerateDiagram}
               disabled={!input.trim() || sending}
-              className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-line bg-paper-100 text-xs font-medium text-ink-700 hover:bg-paper-200 hover:text-ink-900 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-line bg-paper-100 text-xs font-medium text-ink-700 hover:bg-paper-200 hover:text-ink-900 hover:border-muted-400 transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
               title="Generate a diagram from your input text"
             >
-              <span>&#x1F3A8;</span>
-              <span>Generate Diagram</span>
+              <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+              <span>Diagram</span>
             </button>
           </div>
 
@@ -613,7 +627,7 @@ function ChatPage() {
             {/* Attachment button */}
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="flex-shrink-0 h-10 w-10 rounded-xl border border-line bg-paper-100 flex items-center justify-center text-muted-500 hover:text-ink-900 hover:bg-paper-200 transition-colors"
+              className="flex-shrink-0 h-10 w-10 rounded-xl border border-line bg-paper-100 flex items-center justify-center text-muted-500 hover:text-ink-900 hover:bg-paper-200 hover:border-muted-400 transition-all duration-150 active:scale-95"
               title="Attach image or file"
             >
               <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
@@ -634,16 +648,16 @@ function ChatPage() {
                 onKeyDown={handleKeyDown}
                 placeholder="Type your message..."
                 rows={1}
-                className="input w-full resize-none pr-12 min-h-[44px] max-h-[120px]"
+                className="input w-full resize-none pr-12 min-h-[44px] max-h-[120px] rounded-xl"
                 onInput={(e) => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 120) + 'px'; t.style.overflowY = t.scrollHeight > 120 ? 'auto' : 'hidden'; }}
               />
               <button
                 onClick={sendMessage}
                 disabled={(!input.trim() && attachments.length === 0) || sending}
-                className="absolute right-2 bottom-2 btn-primary h-8 w-8 rounded-lg p-0 flex items-center justify-center disabled:opacity-50 text-sm"
+                className="absolute right-2 bottom-2 h-8 w-8 rounded-lg flex items-center justify-center transition-all duration-150 disabled:opacity-30 disabled:cursor-not-allowed bg-ink-900 text-paper-50 hover:bg-ember-500 active:scale-90"
                 aria-label="Send message"
               >
-                &#x27A4;
+                <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
               </button>
             </div>
           </div>
@@ -652,26 +666,34 @@ function ChatPage() {
 
       {/* Visualize modal */}
       {vizContent && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setVizContent(null)}>
-          <div className="paper-card max-w-lg w-full max-h-[80vh] overflow-auto p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="font-serif text-lg font-bold text-ink-900">Visualization</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fadeIn" onClick={() => setVizContent(null)}>
+          <div className="paper-card max-w-lg w-full max-h-[80vh] overflow-auto p-6 animate-scaleIn" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-serif text-lg font-bold text-ink-900">Visualization</h3>
+              <button onClick={() => setVizContent(null)} className="h-8 w-8 rounded-lg bg-paper-200 flex items-center justify-center text-muted-500 hover:text-ink-900 hover:bg-paper-300 transition-colors">
+                <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
             <MermaidRenderer code={vizContent} />
-            <button onClick={() => setVizContent(null)} className="btn-ghost mt-4 w-full">Close</button>
           </div>
         </div>
       )}
 
       {/* Generated Image modal */}
       {generatedImage && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setGeneratedImage(null)}>
-          <div className="paper-card max-w-lg w-full max-h-[80vh] overflow-auto p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="font-serif text-lg font-bold text-ink-900">Generated Image</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fadeIn" onClick={() => setGeneratedImage(null)}>
+          <div className="paper-card max-w-lg w-full max-h-[80vh] overflow-auto p-6 animate-scaleIn" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-serif text-lg font-bold text-ink-900">Generated Image</h3>
+              <button onClick={() => setGeneratedImage(null)} className="h-8 w-8 rounded-lg bg-paper-200 flex items-center justify-center text-muted-500 hover:text-ink-900 hover:bg-paper-300 transition-colors">
+                <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
             {generatedImage.type === 'image' ? (
-              <img src={generatedImage.content} alt="AI Generated" className="mt-4 w-full rounded-xl border border-line" />
+              <img src={generatedImage.content} alt="AI Generated" className="w-full rounded-xl border border-line" />
             ) : (
               <MermaidRenderer code={generatedImage.content} />
             )}
-            <button onClick={() => setGeneratedImage(null)} className="btn-ghost mt-4 w-full">Close</button>
           </div>
         </div>
       )}

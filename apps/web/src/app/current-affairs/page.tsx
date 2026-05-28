@@ -177,32 +177,33 @@ export default function CurrentAffairsShortsPage() {
     <main className="shorts-shell fixed inset-0 flex flex-col overflow-hidden select-none">
       {/* Top bar */}
       <header className="relative z-20 flex items-center justify-between px-4 pt-3 pb-2">
-        <button onClick={() => router.push('/dashboard')} className="flex items-center gap-1.5 text-ink-700 text-sm font-medium hover:text-ink-900 transition-colors">
+        <button onClick={() => router.push('/dashboard')} className="flex items-center gap-1.5 text-ink-700 text-sm font-medium hover:text-ink-900 transition-colors active:scale-95 rounded-lg px-2 py-1.5 -ml-2 hover:bg-paper-300/50">
           <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
           Back
         </button>
         <div className="flex items-center gap-2">
           <span className="text-ink-900 text-sm font-semibold">Today&apos;s News</span>
-          {isFromYesterday && <span className="text-[10px] px-1.5 py-0.5 rounded bg-ember-500/20 text-ember-600">Yesterday</span>}
+          {isFromYesterday && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-ember-500/15 text-ember-600 font-medium">Yesterday</span>}
         </div>
-        <button onClick={() => router.push('/current-affairs/quiz')} className="inline-flex items-center gap-1.5 rounded-full bg-ember-500 px-3.5 py-1.5 text-xs font-semibold text-paper-50 hover:bg-ember-600 transition-colors shadow-sm">
-          📝 Take Quiz
+        <button onClick={() => router.push('/current-affairs/quiz')} className="inline-flex items-center gap-1.5 rounded-full bg-ember-500 px-3.5 py-1.5 text-xs font-semibold text-paper-50 hover:bg-ember-600 transition-all duration-150 shadow-sm active:scale-95">
+          <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          Quiz
         </button>
       </header>
 
       {/* Category pills */}
-      <div className="relative z-20 px-3 pb-3 flex gap-1.5 overflow-x-auto scrollbar-hide">
+      <div className="relative z-20 px-3 pb-3 flex gap-2 overflow-x-auto scrollbar-hide">
         {CATEGORIES.map(cat => (
           <button
             key={cat.key}
             onClick={() => setActiveTab(cat.key)}
-            className={`flex items-center gap-1 whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+            className={`flex items-center gap-1.5 whitespace-nowrap px-3.5 py-2 rounded-full text-xs font-medium transition-all duration-200 active:scale-95 ${
               activeTab === cat.key
-                ? 'bg-ink-900 text-paper-50 shadow-md'
-                : 'bg-paper-50 text-ink-700 border border-line hover:bg-paper-300'
+                ? 'bg-ink-900 text-paper-50 shadow-md scale-[1.02]'
+                : 'bg-paper-50 text-ink-700 border border-line hover:bg-paper-300 hover:border-muted-400'
             }`}
           >
-            <span>{cat.emoji}</span>
+            <span className="text-sm">{cat.emoji}</span>
             <span>{cat.label}</span>
           </button>
         ))}
@@ -210,10 +211,12 @@ export default function CurrentAffairsShortsPage() {
 
       {/* Shorts container */}
       {filtered.length === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center text-center px-6">
-          <span className="text-5xl">📰</span>
+        <div className="flex-1 flex flex-col items-center justify-center text-center px-6 animate-fadeIn">
+          <div className="w-16 h-16 rounded-2xl bg-paper-300 flex items-center justify-center">
+            <svg width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" className="text-muted-500"><path d="M19 20H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1m2 13a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2z"/></svg>
+          </div>
           <p className="mt-4 font-serif text-xl font-semibold text-ink-900">No news yet</p>
-          <p className="mt-2 text-sm text-muted-500">Refreshes every 30 minutes. Check back soon!</p>
+          <p className="mt-2 text-sm text-muted-500 max-w-xs">Refreshes every 30 minutes. Check back soon!</p>
         </div>
       ) : (
         <div
@@ -262,11 +265,11 @@ export default function CurrentAffairsShortsPage() {
           </div>
 
           {/* Mobile progress dots */}
-          <div className="absolute right-2 top-1/2 -translate-y-1/2 flex flex-col gap-1 z-10 lg:hidden">
+          <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex flex-col gap-1.5 z-10 lg:hidden">
             {filtered.slice(Math.max(0, currentIdx - 3), currentIdx + 4).map((item, i) => {
               const realIdx = Math.max(0, currentIdx - 3) + i;
               return (
-                <div key={item.id} className={`rounded-full transition-all duration-300 ${realIdx === currentIdx ? 'w-1.5 h-4 bg-ember-500' : 'w-1.5 h-1.5 bg-muted-400'}`} />
+                <div key={item.id} className={`rounded-full transition-all duration-300 ease-out ${realIdx === currentIdx ? 'w-2 h-5 bg-ember-500 shadow-sm' : 'w-2 h-2 bg-muted-400/60'}`} />
               );
             })}
           </div>
@@ -283,12 +286,13 @@ export default function CurrentAffairsShortsPage() {
 
       {/* Sticky mobile bottom quiz bar */}
       {filtered.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 z-30 px-4 pb-4 pt-2 bg-gradient-to-t from-paper-50 via-paper-50/95 to-transparent lg:hidden">
+        <div className="fixed bottom-0 left-0 right-0 z-30 px-4 pb-4 pt-3 bg-gradient-to-t from-paper-50 via-paper-50/95 to-transparent lg:hidden animate-slideUp">
           <button
             onClick={() => router.push('/current-affairs/quiz')}
-            className="w-full rounded-xl bg-ember-500 px-4 py-3 text-sm font-bold text-paper-50 shadow-lg hover:bg-ember-600 transition-colors"
+            className="w-full rounded-xl bg-ember-500 px-4 py-3.5 text-sm font-bold text-paper-50 shadow-lg hover:bg-ember-600 transition-all duration-150 active:scale-[0.97] flex items-center justify-center gap-2"
           >
-            📝 Take Today&apos;s Quiz
+            <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+            Take Today&apos;s Quiz
           </button>
         </div>
       )}
@@ -299,9 +303,9 @@ export default function CurrentAffairsShortsPage() {
 /* ─── Desktop Action Button ─── */
 function ActionBtn({ icon, label, active, onClick }: { icon: string; label: string; active?: boolean; onClick: () => void }) {
   return (
-    <button onClick={onClick} className={`flex flex-col items-center gap-1 group transition-transform hover:scale-110 active:scale-95 ${active ? 'scale-105' : ''}`}>
-      <span className="text-2xl">{icon}</span>
-      <span className="text-[11px] text-muted-500 group-hover:text-ink-900 font-medium">{label}</span>
+    <button onClick={onClick} className={`flex flex-col items-center gap-1.5 group transition-all duration-150 hover:scale-110 active:scale-90 ${active ? 'scale-105' : ''}`}>
+      <span className={`text-2xl transition-transform duration-200 ${active ? 'scale-110' : 'group-hover:scale-105'}`}>{icon}</span>
+      <span className="text-[11px] text-muted-500 group-hover:text-ink-900 font-medium transition-colors">{label}</span>
     </button>
   );
 }
@@ -329,68 +333,71 @@ function ShortCard({ item, isActive, liked, bookmarked, likeCount, onLike, onBoo
   return (
     <div className="h-full w-full flex items-center justify-center px-3 py-2 lg:px-0 lg:py-3">
       <div
-        className={`relative w-full h-full rounded-2xl lg:rounded-3xl overflow-hidden shadow-xl border border-line cursor-pointer bg-paper-50 dark:bg-paper-100 transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
-          isActive ? 'scale-100 opacity-100' : 'scale-[0.96] opacity-30'
+        className={`relative w-full h-full rounded-2xl lg:rounded-3xl overflow-hidden shadow-xl border cursor-pointer bg-paper-50 dark:bg-paper-100 transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+          isActive ? 'scale-100 opacity-100 border-line shadow-xl' : 'scale-[0.94] opacity-20 border-transparent shadow-none'
         }`}
         onClick={onTap}
       >
         {/* Image header */}
         <div className="relative h-[35%] min-h-[140px] max-h-[200px] overflow-hidden">
           {!imgError ? (
-            <img src={imageUrl} alt={item.category} className="absolute inset-0 w-full h-full object-cover" loading="lazy" onError={() => setImgError(true)} />
+            <img src={imageUrl} alt={item.category} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 ease-out" style={{ transform: isActive ? 'scale(1)' : 'scale(1.1)' }} loading="lazy" onError={() => setImgError(true)} />
           ) : (
             <div className="absolute inset-0 w-full h-full bg-gradient-to-br from-paper-200 to-paper-300 dark:from-ink-800 dark:to-ink-900 flex items-center justify-center">
               <span className="text-4xl">{emoji}</span>
             </div>
           )}
-          <div className="absolute inset-0" style={{ background: `linear-gradient(180deg, ${getCategoryOverlay(item.category)}80 0%, ${getCategoryOverlay(item.category)}40 50%, transparent 100%)` }} />
+          <div className="absolute inset-0" style={{ background: `linear-gradient(180deg, ${getCategoryOverlay(item.category)}70 0%, ${getCategoryOverlay(item.category)}30 40%, transparent 100%)` }} />
           <div className="absolute top-3 left-3 flex items-center gap-2">
-            <span className="px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider bg-paper-50/90 text-ink-900 backdrop-blur-sm shadow-sm">
+            <span className="px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider bg-paper-50/90 text-ink-900 backdrop-blur-sm shadow-sm border border-line/30">
               {emoji} {item.category}
             </span>
             {item.factChecked && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-500/90 text-white">✓</span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-500/90 text-white shadow-sm">✓ Verified</span>
             )}
           </div>
         </div>
 
         {/* Content area */}
-        <div className="flex flex-col px-4 pt-3 pb-4 h-[65%] overflow-hidden">
+        <div className="flex flex-col px-4 pt-3.5 pb-4 h-[65%] overflow-hidden">
           <h2 className="font-serif text-[15px] lg:text-base font-bold leading-snug text-ink-900 line-clamp-3">
             {item.headline}
           </h2>
-          <div className="mt-2.5 flex-1 overflow-hidden">
-            <ul className="space-y-1.5">
+          <div className="mt-3 flex-1 overflow-hidden">
+            <ul className="space-y-2">
               {keyPoints.slice(0, 3).map((point, i) => (
-                <li key={i} className="flex items-start gap-2 text-[13px] text-ink-700 leading-relaxed">
-                  <span className="mt-1.5 h-1 w-1 rounded-full bg-ember-500 flex-shrink-0" />
+                <li key={i} className="flex items-start gap-2.5 text-[13px] text-ink-700 leading-relaxed">
+                  <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-ember-500 flex-shrink-0" />
                   <span className="line-clamp-2">{point}</span>
                 </li>
               ))}
             </ul>
           </div>
-          <div className="mt-auto pt-2 flex items-center justify-between">
+          <div className="mt-auto pt-2.5 flex items-center justify-between border-t border-line/50">
             {item.sources.length > 0 && (
               <p className="text-[10px] text-muted-400 truncate max-w-[60%]">{item.sources.slice(0, 2).join(' · ')}</p>
             )}
-            <span className="text-[11px] text-ember-500 font-semibold">Read more →</span>
+            <span className="text-[11px] text-ember-500 font-semibold flex items-center gap-1">
+              Read more
+              <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </span>
           </div>
         </div>
 
         {/* Mobile action buttons */}
-        <div className="absolute right-2 bottom-16 flex flex-col items-center gap-3 z-10 lg:hidden">
-          <button onClick={(e) => { e.stopPropagation(); onLike(); }} className="flex flex-col items-center gap-0.5 bg-paper-50/70 backdrop-blur-sm rounded-full p-2 border border-line/50">
-            <span className={`text-lg transition-transform ${liked ? 'scale-125' : ''}`}>{liked ? '❤️' : '🤍'}</span>
-            {likeCount > 0 && <span className="text-[9px] text-ink-800 font-medium">{likeCount}</span>}
+        <div className="absolute right-2.5 bottom-20 flex flex-col items-center gap-2.5 z-10 lg:hidden">
+          <button onClick={(e) => { e.stopPropagation(); onLike(); }} className={`flex flex-col items-center gap-0.5 rounded-full p-2.5 border transition-all duration-150 active:scale-90 ${liked ? 'bg-paper-50/90 border-ember-500/30 shadow-md' : 'bg-paper-50/70 backdrop-blur-sm border-line/50'}`}>
+            <span className={`text-lg transition-transform duration-200 ${liked ? 'scale-110' : ''}`}>{liked ? '❤️' : '🤍'}</span>
+            {likeCount > 0 && <span className="text-[9px] text-ink-800 font-semibold">{likeCount}</span>}
           </button>
-          <button onClick={(e) => { e.stopPropagation(); onBookmark(); }} className="bg-paper-50/70 backdrop-blur-sm rounded-full p-2 border border-line/50">
-            <span className={`text-lg ${bookmarked ? 'scale-110' : ''}`}>{bookmarked ? '🔖' : '📑'}</span>
+          <button onClick={(e) => { e.stopPropagation(); onBookmark(); }} className={`rounded-full p-2.5 border transition-all duration-150 active:scale-90 ${bookmarked ? 'bg-paper-50/90 border-gold-500/30 shadow-md' : 'bg-paper-50/70 backdrop-blur-sm border-line/50'}`}>
+            <span className={`text-lg transition-transform duration-200 ${bookmarked ? 'scale-110' : ''}`}>{bookmarked ? '🔖' : '📑'}</span>
           </button>
-          <button onClick={(e) => { e.stopPropagation(); onShare(); }} className="bg-paper-50/70 backdrop-blur-sm rounded-full p-2 border border-line/50">
-            <span className="text-lg">↗️</span>
+          <button onClick={(e) => { e.stopPropagation(); onShare(); }} className="bg-paper-50/70 backdrop-blur-sm rounded-full p-2.5 border border-line/50 transition-all duration-150 active:scale-90">
+            <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="text-ink-700"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/></svg>
           </button>
-          <button onClick={(e) => { e.stopPropagation(); onAskNexi(); }} className="bg-paper-50/70 backdrop-blur-sm rounded-full p-2 border border-line/50">
-            <span className="text-lg">🤖</span>
+          <button onClick={(e) => { e.stopPropagation(); onAskNexi(); }} className="bg-paper-50/70 backdrop-blur-sm rounded-full p-2.5 border border-line/50 transition-all duration-150 active:scale-90">
+            <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="text-ink-700"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           </button>
         </div>
       </div>
