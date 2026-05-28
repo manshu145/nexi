@@ -283,7 +283,7 @@ export default function SignInPage() {
         )}
 
         {error && <div className="banner banner-error mt-4">{error}</div>}
-        {resetSent && <div className="banner mt-4 bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800 rounded-lg px-4 py-2 text-sm">Password reset email sent! Check your inbox.</div>}
+        {resetSent && <div className="banner mt-4 bg-amber-50 dark:bg-amber-950/20 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 rounded-lg px-4 py-2 text-sm">Password reset email sent! Check your inbox.</div>}
 
         {/* Referral Code Input */}
         <div className="mt-5 border-t border-line pt-4">

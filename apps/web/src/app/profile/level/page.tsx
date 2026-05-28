@@ -44,7 +44,7 @@ export default function LevelPage() {
   );
 
   const levelLabel = userInfo?.onboardingLevel === 'advanced' ? 'Advanced' : userInfo?.onboardingLevel === 'intermediate' ? 'Intermediate' : 'Beginner';
-  const levelColor = userInfo?.onboardingLevel === 'advanced' ? 'text-green-600' : userInfo?.onboardingLevel === 'intermediate' ? 'text-amber-600' : 'text-blue-600';
+  const levelColor = userInfo?.onboardingLevel === 'advanced' ? 'text-amber-600' : userInfo?.onboardingLevel === 'intermediate' ? 'text-amber-500' : 'text-stone-500';
   const totalChaptersDone = analysis?.subjectBreakdown.reduce((sum, s) => sum + s.completed, 0) ?? 0;
   const totalChapters = analysis?.subjectBreakdown.reduce((sum, s) => sum + s.total, 0) ?? 0;
 
@@ -157,12 +157,12 @@ export default function LevelPage() {
       {/* Strong Areas */}
       {analysis && analysis.strongChapters.length > 0 && (
         <div className="paper-card mt-4 p-5">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-green-600">Strong Areas</h2>
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-amber-500">Strong Areas</h2>
           <ul className="mt-3 space-y-2">
             {analysis.strongChapters.slice(0, 5).map((ch) => (
-              <li key={`${ch.subject}/${ch.chapter}`} className="flex items-center justify-between rounded-lg bg-green-50 dark:bg-green-950/20 px-3 py-2">
+              <li key={`${ch.subject}/${ch.chapter}`} className="flex items-center justify-between rounded-lg bg-amber-50 dark:bg-amber-950/20 px-3 py-2">
                 <span className="text-xs text-ink-800 truncate max-w-[65%]">{ch.chapterName}</span>
-                <span className="text-[10px] font-bold text-green-600">{ch.score}%</span>
+                <span className="text-[10px] font-bold text-amber-500">{ch.score}%</span>
               </li>
             ))}
           </ul>

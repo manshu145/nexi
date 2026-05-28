@@ -4,6 +4,7 @@ import { getLocale, getMessages } from 'next-intl/server';
 import { Providers } from '~/components/providers';
 import { Toaster } from '~/components/toaster';
 import { BottomNav } from '~/components/BottomNav';
+import { AnnouncementWrapper } from '~/components/AnnouncementWrapper';
 import './globals.css';
 
 export const dynamic = 'force-dynamic';
@@ -32,6 +33,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <Providers>
             <div className="pb-16 lg:pb-0">{children}</div>
             <BottomNav />
+            <AnnouncementWrapper />
             <Toaster />
           </Providers>
         </NextIntlClientProvider>

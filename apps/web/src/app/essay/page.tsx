@@ -354,9 +354,9 @@ Respond ONLY with valid JSON:
           {/* Strengths */}
           {feedback.strengths.length > 0 && (
             <div className="paper-card p-5">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-green-600">✓ Strengths</h3>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-amber-500">✓ Strengths</h3>
               <ul className="mt-2 space-y-1.5">
-                {feedback.strengths.map((s, i) => <li key={i} className="text-xs text-ink-800 flex items-start gap-2"><span className="text-green-500 mt-0.5">•</span>{s}</li>)}
+                {feedback.strengths.map((s, i) => <li key={i} className="text-xs text-ink-800 flex items-start gap-2"><span className="text-amber-500 mt-0.5">•</span>{s}</li>)}
               </ul>
             </div>
           )}
@@ -392,8 +392,8 @@ Respond ONLY with valid JSON:
                       <p className="text-[10px] font-semibold text-red-500 uppercase mb-1">Your version</p>
                       <p className="text-xs text-ink-700">{rp.original}</p>
                     </div>
-                    <div className="rounded-lg bg-green-50 dark:bg-green-950/20 p-3">
-                      <p className="text-[10px] font-semibold text-green-600 uppercase mb-1">Improved version</p>
+                    <div className="rounded-lg bg-amber-50 dark:bg-amber-950/20 p-3">
+                      <p className="text-[10px] font-semibold text-amber-500 uppercase mb-1">Improved version</p>
                       <p className="text-xs text-ink-700">{rp.improved}</p>
                     </div>
                     <p className="text-[10px] text-muted-500 italic">💡 {rp.reason}</p>

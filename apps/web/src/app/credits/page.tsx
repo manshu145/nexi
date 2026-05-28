@@ -39,7 +39,7 @@ export default function CreditsPage() {
   if (loading || !user || pageLoading) {
     return (
       <main className="flex min-h-dvh items-center justify-center">
-        <AILoader context="credits" />
+        <AILoader context="general" />
       </main>
     );
   }

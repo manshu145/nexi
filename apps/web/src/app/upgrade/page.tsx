@@ -171,7 +171,7 @@ export default function UpgradePage() {
         <p className="mt-2 text-sm text-muted-500">Unlock unlimited access to accelerate your preparation.</p>
       </section>
 
-      {success && <div className="mt-6 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 p-4 text-center text-sm font-medium text-emerald-700 dark:text-emerald-300">{success}</div>}
+      {success && <div className="mt-6 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-4 text-center text-sm font-medium text-amber-700 dark:text-amber-300">{success}</div>}
       {error && <div className="banner banner-error mt-6">{error}</div>}
 
       {/* Plan cards */}
@@ -228,7 +228,7 @@ export default function UpgradePage() {
                 </button>
               </div>
               {couponApplied?.valid && (
-                <p className="text-xs text-emerald-600 dark:text-emerald-400">✓ Code applied! ₹{couponApplied.discount / 100} off</p>
+                <p className="text-xs text-amber-600 dark:text-amber-400">✓ Code applied! ₹{couponApplied.discount / 100} off</p>
               )}
               {couponApplied && !couponApplied.valid && (
                 <p className="text-xs text-red-500">✗ {couponApplied.error || 'Invalid code'}</p>
