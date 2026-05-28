@@ -8,6 +8,49 @@ import { AILoader } from '~/components/ui/AILoader';
 
 const API = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com';
 
+const T = {
+  en: {
+    title: '✍️ Practice Set',
+    subtitle: 'Write answers, get AI-graded feedback with detailed analysis',
+    usage: (used: number, limit: number, plan: string) => `Usage: ${used}/${limit} this ${plan === 'free' ? 'week' : 'month'}`,
+    upgrade: 'Upgrade for more',
+    ready: 'Ready to Practice?',
+    readyDesc: 'AI will generate a question based on your exam & syllabus. You write the answer, and 3 AI models will grade it like a real examiner.',
+    generate: 'Generate Question',
+    generating: 'Generating Question...',
+    limitReached: 'Limit Reached',
+    limitMsg: (plan: string) => plan === 'free' ? "You've used all your attempts. Upgrade to get 15/month." : "You've used all attempts. Resets next month.",
+    question: 'Question',
+    wordLimit: 'Word limit',
+    time: 'Time',
+    minutes: 'minutes',
+    startTimer: 'Start Timer',
+    submit: 'Submit Answer',
+    grading: 'AI is grading your answer...',
+    back: '← Dashboard',
+  },
+  hi: {
+    title: '✍️ अभ्यास सेट',
+    subtitle: 'उत्तर लिखें, AI से विस्तृत फीडबैक पाएं',
+    usage: (used: number, limit: number, plan: string) => `उपयोग: ${used}/${limit} इस ${plan === 'free' ? 'सप्ताह' : 'महीने'}`,
+    upgrade: 'अपग्रेड करें',
+    ready: 'अभ्यास के लिए तैयार?',
+    readyDesc: 'AI आपकी परीक्षा और पाठ्यक्रम के आधार पर प्रश्न बनाएगा। आप उत्तर लिखें, और 3 AI मॉडल इसे असली परीक्षक की तरह ग्रेड करेंगे।',
+    generate: 'प्रश्न बनाएं',
+    generating: 'प्रश्न बन रहा है...',
+    limitReached: 'सीमा पूरी हुई',
+    limitMsg: (plan: string) => plan === 'free' ? 'आपके सारे प्रयास समाप्त हो गए। अपग्रेड करें।' : 'सभी प्रयास उपयोग हो गए। अगले महीने रीसेट होगा।',
+    question: 'प्रश्न',
+    wordLimit: 'शब्द सीमा',
+    time: 'समय',
+    minutes: 'मिनट',
+    startTimer: 'टाइमर शुरू करें',
+    submit: 'उत्तर जमा करें',
+    grading: 'AI आपका उत्तर ग्रेड कर रहा है...',
+    back: '← डैशबोर्ड',
+  },
+};
+
 function getUserLanguage(): 'en' | 'hi' {
   if (typeof document !== 'undefined') {
     const m = document.cookie.match(/nexigrate-language=(en|hi)/);
@@ -52,6 +95,8 @@ export default function EssayPage() {
   const [usageInfo, setUsageInfo] = useState<{ used: number; limit: number; plan: string } | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const lang = getUserLanguage();
+  const t = T[lang];
 
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
 
@@ -221,17 +266,17 @@ Respond ONLY with valid JSON:
   return (
     <main className="mx-auto flex min-h-dvh max-w-2xl flex-col px-5 pt-6 pb-28">
       <header className="flex items-center justify-between">
-        <button onClick={() => router.push('/dashboard')} className="btn-ghost-sm">← Dashboard</button>
+        <button onClick={() => router.push('/dashboard')} className="btn-ghost-sm">{t.back}</button>
         <Logo />
       </header>
 
       <section className="mt-6">
-        <h1 className="font-serif text-xl font-bold text-ink-900">✍️ Practice Set</h1>
-        <p className="mt-1 text-sm text-muted-500">Write answers, get AI-graded feedback with detailed analysis</p>
+        <h1 className="font-serif text-xl font-bold text-ink-900">{t.title}</h1>
+        <p className="mt-1 text-sm text-muted-500">{t.subtitle}</p>
         {usageInfo && (
           <p className="mt-2 text-xs text-muted-400">
-            Usage: {usageInfo.used}/{usageInfo.limit} this {usageInfo.plan === 'free' ? 'week' : 'month'}
-            {usageInfo.plan === 'free' && <span className="text-ember-500 ml-1">· <button onClick={() => router.push('/upgrade')} className="underline">Upgrade for more</button></span>}
+            {t.usage(usageInfo.used, usageInfo.limit, usageInfo.plan)}
+            {usageInfo.plan === 'free' && <span className="text-ember-500 ml-1">· <button onClick={() => router.push('/upgrade')} className="underline">{t.upgrade}</button></span>}
           </p>
         )}
       </section>
@@ -240,17 +285,17 @@ Respond ONLY with valid JSON:
       {step === 'generate' && (
         <section className="mt-8 flex flex-col items-center text-center">
           <span className="text-5xl">✍️</span>
-          <h2 className="mt-4 font-serif text-lg font-bold text-ink-900">Ready to Practice?</h2>
-          <p className="mt-2 text-sm text-muted-500 max-w-sm">AI will generate a question based on your exam & syllabus. You write the answer, and 3 AI models will grade it like a real examiner.</p>
+          <h2 className="mt-4 font-serif text-lg font-bold text-ink-900">{t.ready}</h2>
+          <p className="mt-2 text-sm text-muted-500 max-w-sm">{t.readyDesc}</p>
           <button
             onClick={handleGenerateQuestion}
             disabled={generating || !!(usageInfo && usageInfo.used >= usageInfo.limit)}
             className="btn-primary mt-6 px-8"
           >
-            {generating ? 'Generating Question...' : usageInfo && usageInfo.used >= usageInfo.limit ? 'Limit Reached' : 'Generate Question'}
+            {generating ? t.generating : usageInfo && usageInfo.used >= usageInfo.limit ? t.limitReached : t.generate}
           </button>
           {usageInfo && usageInfo.used >= usageInfo.limit && (
-            <p className="mt-3 text-xs text-red-500">You&apos;ve used all your attempts. {usageInfo.plan === 'free' ? 'Upgrade to get 15/month' : 'Resets next month'}.</p>
+            <p className="mt-3 text-xs text-red-500">{t.limitMsg(usageInfo.plan)}</p>
           )}
         </section>
       )}
