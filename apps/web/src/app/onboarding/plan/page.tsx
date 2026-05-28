@@ -1,10 +1,12 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { PLANS, type PlanId } from '@nexigrate/shared';
+import { toast } from 'sonner';
+import { api, type Plan, type StoredUser } from '~/lib/api';
+import { AILoader } from '~/components/ui/AILoader';
 
-const PLAN_ORDER: PlanId[] = ['free', 'scholar', 'aspirant'];
+type PlanId = 'free' | 'scholar' | 'aspirant' | 'achiever';
 
 const PLAN_ICONS: Record<PlanId, string> = {
   free: '🆓',
@@ -13,32 +15,153 @@ const PLAN_ICONS: Record<PlanId, string> = {
   achiever: '🏆',
 };
 
-const PLAN_HIGHLIGHTS: Record<PlanId, string[]> = {
-  free: ['10 daily MCQs', '2 chapters/day', '200 credits to start'],
-  scholar: ['Unlimited chapters & MCQs', 'AI Tutor access', 'Current Affairs', 'No credit deduction'],
-  aspirant: ['Everything in Scholar', 'Advanced analytics', 'Priority support'],
-  achiever: ['Everything in Aspirant', 'Essay grading', '1-on-1 mentorship'],
+/** Bullet copy per plan; localised in render. */
+const PLAN_HIGHLIGHTS: Record<PlanId, { en: string[]; hi: string[] }> = {
+  free: {
+    en: ['10 daily MCQs', '2 chapters/day', 'Earn credits as you study'],
+    hi: ['10 दैनिक MCQ', '2 अध्याय/दिन', 'पढ़ते-पढ़ते क्रेडिट कमाएँ'],
+  },
+  scholar: {
+    en: ['Unlimited chapters & MCQs', 'AI Tutor (Nexi) access', 'Daily Current Affairs', 'No credit deduction — study freely'],
+    hi: ['असीमित अध्याय और MCQ', 'AI ट्यूटर (Nexi)', 'दैनिक करंट अफेयर्स', 'क्रेडिट नहीं कटेंगे'],
+  },
+  aspirant: {
+    en: ['Everything in Scholar', 'Advanced analytics', 'Priority support', 'For serious aspirants'],
+    hi: ['Scholar की सभी सुविधाएँ', 'उन्नत विश्लेषण', 'प्राथमिकता सहायता'],
+  },
+  achiever: {
+    en: ['Everything in Aspirant', 'Essay grading by AI', '1-on-1 mentorship'],
+    hi: ['Aspirant की सभी सुविधाएँ', 'AI निबंध मूल्यांकन', '1-on-1 मार्गदर्शन'],
+  },
 };
+
+const RECOMMENDED_BADGE = {
+  en: 'Recommended for you',
+  hi: 'आपके लिए अनुशंसित',
+};
+
+/**
+ * Smart recommendation based on the assessment level the server returned
+ * for this user. Beginner / intermediate students benefit most from
+ * Scholar (entry-level paid tier with no credit deduction); advanced
+ * students who pass the assessment with flying colours have outgrown the
+ * basic features and a paid tier with deeper analytics is a better fit.
+ *
+ * If we can't read a level (e.g. user skipped assessment for some reason),
+ * we still recommend Scholar -- the founder's stated target plan -- so
+ * the default selection nudges users toward the ₹99 path.
+ */
+function recommendPlan(level: StoredUser['onboardingLevel']): PlanId {
+  if (level === 'advanced') return 'aspirant';
+  return 'scholar';
+}
 
 export default function PlanSelectionPage() {
   const ts = useTranslations('onboarding');
   const router = useRouter();
-  const [selected, setSelected] = useState<PlanId>('free');
+  const [me, setMe] = useState<StoredUser | null>(null);
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [signupBonus, setSignupBonus] = useState(100);
+  const [selected, setSelected] = useState<PlanId>('scholar');
+  const [loadingPage, setLoadingPage] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleContinue = () => {
-    if (selected === 'free') {
-      router.replace('/dashboard');
-    } else {
-      // For paid plans, redirect to upgrade page with plan pre-selected
-      router.replace(`/upgrade?plan=${selected}`);
-    }
-  };
+  // Load three things in parallel:
+  //   1. The user (for assessment level → recommendation)
+  //   2. The live plan matrix (so admin edits in PR-04 are honoured)
+  //   3. The earn-rate table (so the "200 credits welcome" copy from the
+  //      old page is replaced with whatever the admin currently configures
+  //      for signup_verified)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [meRes, plansRes, balRes] = await Promise.all([
+          api.me(),
+          api.getPlans(),
+          api.getCreditsBalance(),
+        ]);
+        if (cancelled) return;
+        setMe(meRes.user);
+        setPlans(plansRes.plans);
+        setSignupBonus(balRes.earnRates?.signup_verified ?? 100);
+        // Recommendation drives the initial selection so the page lands on
+        // the path we want users to take, not on Free.
+        setSelected(recommendPlan(meRes.user.onboardingLevel));
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Failed to load plans');
+        // On total failure we still allow the user through with a sensible
+        // default, otherwise they'd be stuck mid-onboarding forever.
+        setPlans([]);
+      } finally {
+        if (!cancelled) setLoadingPage(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const lang = typeof window !== 'undefined' ? (() => {
     const m = document.cookie.match(/nexigrate-language=(en|hi)/);
     if (m) return m[1] as 'en' | 'hi';
     return (localStorage.getItem('nexigrate-language') as 'en' | 'hi') || 'en';
   })() : 'en';
+
+  const recommended: PlanId = useMemo(
+    () => recommendPlan(me?.onboardingLevel ?? null),
+    [me?.onboardingLevel],
+  );
+
+  // Plans visible to the user: free is always shown; paid tiers only if
+  // the admin marks them isActive in /admin/plans (or comingSoon for
+  // disabled-but-teased tiers).
+  const visiblePlans = useMemo(() => {
+    const order: PlanId[] = ['free', 'scholar', 'aspirant', 'achiever'];
+    return order
+      .map((id) => plans.find((p) => p.id === id))
+      .filter((p): p is Plan => !!p)
+      .filter((p) => {
+        // free always shown; paid tiers shown if active OR comingSoon
+        if (p.id === 'free') return true;
+        // The Plan type from the API doesn't expose isActive/comingSoon
+        // (it's the public billing/plans response). Fall back to: show
+        // anything we received from /v1/billing/plans -- the API filters
+        // out fully hidden tiers via isActive logic on the server side
+        // when needed. Today both Scholar and Aspirant come back; only
+        // Scholar is purchasable.
+        return true;
+      });
+  }, [plans]);
+
+  const handleContinue = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      // Always mark the plan-chosen flag BEFORE routing away. That way,
+      // even if the user picks Scholar and bails out of /upgrade without
+      // paying, they aren't bounced back here on the next dashboard load.
+      await api.markPlanChosen(selected);
+    } catch {
+      // Don't block the user on a non-critical write -- they can still
+      // complete onboarding; we'll retry the flag on a future write.
+    }
+
+    if (selected === 'free') {
+      router.replace('/dashboard');
+    } else {
+      router.replace(`/upgrade?plan=${selected}`);
+    }
+  };
+
+  if (loadingPage) {
+    return (
+      <div className="flex flex-col items-center py-16">
+        <AILoader context="general" />
+        <p className="mt-4 text-sm text-muted-500">
+          {lang === 'hi' ? 'प्लान्स लोड हो रहे हैं…' : 'Loading plans…'}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col items-center">
@@ -52,27 +175,42 @@ export default function PlanSelectionPage() {
       <h1 className="font-serif mt-8 text-center text-2xl font-semibold text-ink-900">
         {lang === 'hi' ? 'अपना प्लान चुनें' : 'Choose Your Plan'}
       </h1>
-      <p className="mt-2 text-center text-sm text-muted-500">
+      {me?.onboardingLevel && (
+        <p className="mt-2 text-center text-sm text-muted-500">
+          {lang === 'hi' ? (
+            <>आपका स्तर: <span className="font-medium text-ink-900 capitalize">{me.onboardingLevel === 'beginner' ? 'शुरुआती' : me.onboardingLevel === 'intermediate' ? 'मध्यम' : 'उन्नत'}</span></>
+          ) : (
+            <>Your assessment level: <span className="font-medium text-ink-900 capitalize">{me.onboardingLevel}</span></>
+          )}
+        </p>
+      )}
+      <p className="mt-1 text-center text-xs text-muted-400">
         {lang === 'hi'
-          ? 'आप बाद में कभी भी अपग्रेड कर सकते हैं'
-          : 'You can always upgrade later from your profile'}
+          ? `आपको ${signupBonus} वेलकम क्रेडिट मिल चुके हैं`
+          : `You've already received ${signupBonus} welcome credits`}
       </p>
 
       <div className="mt-8 w-full space-y-4">
-        {PLAN_ORDER.map((planId) => {
-          const plan = PLANS[planId];
+        {visiblePlans.map((plan) => {
+          const planId = plan.id as PlanId;
           const isSelected = selected === planId;
-          const highlights = PLAN_HIGHLIGHTS[planId];
+          const isRecommended = planId === recommended;
+          const highlights = PLAN_HIGHLIGHTS[planId][lang === 'hi' ? 'hi' : 'en'];
 
           return (
             <button
               key={planId}
               type="button"
               onClick={() => setSelected(planId)}
-              className={`paper-card card-selectable w-full p-5 text-left transition-all ${
+              className={`paper-card card-selectable relative w-full p-5 text-left transition-all ${
                 isSelected ? 'card-selected ring-2 ring-amber-500' : ''
               }`}
             >
+              {isRecommended && (
+                <span className="absolute -top-2.5 left-4 rounded-full bg-ember-500 px-3 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-paper-50">
+                  ⭐ {lang === 'hi' ? RECOMMENDED_BADGE.hi : RECOMMENDED_BADGE.en}
+                </span>
+              )}
               <div className="flex items-start gap-3">
                 <span className="text-2xl">{PLAN_ICONS[planId]}</span>
                 <div className="flex-1">
@@ -89,15 +227,15 @@ export default function PlanSelectionPage() {
                         <div>
                           <span className="text-lg font-bold text-ink-900">₹{plan.price}</span>
                           <span className="text-xs text-muted-500">/mo</span>
+                          {plan.yearlyPrice > 0 && (
+                            <p className="text-[10px] text-muted-400 mt-0.5">
+                              ₹{plan.yearlyPrice}/yr
+                            </p>
+                          )}
                         </div>
                       )}
                     </div>
                   </div>
-                  {plan.comingSoon && (
-                    <span className="mt-1 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
-                      Coming Soon
-                    </span>
-                  )}
                   <ul className="mt-3 space-y-1.5">
                     {highlights.map((h, i) => (
                       <li key={i} className="flex items-center gap-2 text-xs text-muted-600">
@@ -118,22 +256,23 @@ export default function PlanSelectionPage() {
       <button
         type="button"
         onClick={handleContinue}
-        className="btn-primary mt-8 w-full"
+        disabled={submitting}
+        className="btn-primary mt-8 w-full disabled:opacity-60"
       >
-        {selected === 'free'
-          ? (lang === 'hi' ? 'मुफ़्त में शुरू करें' : 'Continue with Free')
-          : (lang === 'hi' ? 'अपग्रेड करें' : `Upgrade to ${PLANS[selected].name}`)}
+        {submitting
+          ? (lang === 'hi' ? 'सहेजा जा रहा है…' : 'Saving…')
+          : selected === 'free'
+            ? (lang === 'hi' ? 'मुफ़्त में शुरू करें' : 'Continue with Free')
+            : (lang === 'hi'
+                ? `${plans.find(p => p.id === selected)?.nameHi ?? ''} में अपग्रेड करें`
+                : `Upgrade to ${plans.find(p => p.id === selected)?.name ?? selected}`)}
       </button>
 
-      {selected !== 'free' && (
-        <button
-          type="button"
-          onClick={() => router.replace('/dashboard')}
-          className="btn-ghost mt-3 w-full text-sm"
-        >
-          {lang === 'hi' ? 'बाद में, मुफ़्त में जारी रखें' : 'Maybe later, continue with Free'}
-        </button>
-      )}
+      <p className="mt-4 text-center text-[11px] leading-relaxed text-muted-400">
+        {lang === 'hi'
+          ? 'आप बाद में कभी भी प्रोफ़ाइल से प्लान बदल सकते हैं।'
+          : 'You can change your plan anytime from your profile.'}
+      </p>
     </div>
   );
 }

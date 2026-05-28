@@ -21,6 +21,19 @@ export interface UsersRoutesDeps {
 const patchSchema = z.object({ name: z.string().min(1).optional(), phone: z.string().optional(), dob: z.string().optional(), classLevel: z.string().optional(), board: z.string().optional(), school: z.string().optional(), aim: z.string().optional() });
 const onboardingSchema = z.object({ language: z.enum(['en','hi']).optional(), targetExam: z.string().refine(isExamSlug, { message: 'unknown exam slug' }).optional(), name: z.string().min(1).optional(), email: z.string().email().optional(), phone: z.string().optional(), dob: z.string().optional(), classLevel: z.string().optional(), board: z.string().optional(), school: z.string().optional(), aim: z.string().optional() });
 
+/**
+ * Body for POST /v1/users/me/onboarding/plan-chosen.
+ *
+ * The chosen plan is recorded for analytics; the actual plan activation
+ * (for paid tiers) still happens through /v1/billing/order + /verify.
+ * This endpoint exists purely so the dashboard guard knows the user has
+ * been through the post-assessment plan-selection step and shouldn't be
+ * sent back to it.
+ */
+const planChosenSchema = z.object({
+  chosenPlan: z.enum(['free', 'scholar', 'aspirant', 'achiever']),
+});
+
 export function makeUsersRoutes(deps: UsersRoutesDeps): Hono {
   const app = new Hono();
 
@@ -170,6 +183,28 @@ export function makeUsersRoutes(deps: UsersRoutesDeps): Hono {
     const user = await deps.users.update(principal.userId, d as any);
     deps.logger.info('users.onboarding', { userId: principal.userId, ...d });
     return c.json({ user });
+  });
+
+  // POST /v1/users/me/onboarding/plan-chosen — flip the post-assessment
+  // plan-selection gate on. The dashboard guard sends new users to
+  // /onboarding/plan until this fires, so the step is mandatory without
+  // making the page itself a hard wall (the user can still choose Free).
+  // Idempotent: calling it twice with the same plan is a no-op.
+  app.post('/me/onboarding/plan-chosen', async (c) => {
+    const principal = requireAuth(c);
+    const body = await c.req.json().catch(() => null);
+    const parsed = planChosenSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new HTTPException(400, { message: parsed.error.issues[0]?.message ?? 'invalid body' });
+    }
+    const user = await deps.users.update(principal.userId, {
+      onboardingPlanChosen: true,
+    } as never);
+    deps.logger.info('users.onboarding_plan_chosen', {
+      userId: principal.userId,
+      chosenPlan: parsed.data.chosenPlan,
+    });
+    return c.json({ user, chosenPlan: parsed.data.chosenPlan });
   });
 
   // Session tracking — for admin "who's online" and time-on-platform analytics

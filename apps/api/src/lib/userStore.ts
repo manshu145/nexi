@@ -19,6 +19,19 @@ export interface StoredUser {
    * null = active subscription (no cancel intent recorded).
    */
   planCancelledAt: ISODateTime | null;
+  /**
+   * Tri-state flag for the "plan step is mandatory" onboarding gate
+   * introduced in PR-05.
+   *  - `true`  : user has explicitly chosen a plan in /onboarding/plan
+   *              (Free, or by going to /upgrade for a paid tier).
+   *  - `false` : new user has reached at least the assessment but has NOT
+   *              yet seen /onboarding/plan -- dashboard guard MUST send
+   *              them there.
+   *  - `undefined` : grandfathered user from before PR-05; we treat the
+   *              field as already-chosen so they are not redirected back
+   *              into onboarding mid-product.
+   */
+  onboardingPlanChosen?: boolean;
   currentStreak: number; bestStreak: number; lastDailyAt: ISODateTime | null;
   isVerified: boolean; createdAt: ISODateTime; updatedAt: ISODateTime;
 }
@@ -62,6 +75,9 @@ function newUser(uid: UserId, init: UserStoreInit, now: string): StoredUser {
     // through the ledger on first contact, which updates this cache via
     // FieldValue.increment.
     credits: 0, plan: 'free', planExpiresAt: null, planCancelledAt: null,
+    // New users haven't seen the post-assessment plan-selection step yet;
+    // the dashboard guard sends them to /onboarding/plan on first access.
+    onboardingPlanChosen: false,
     currentStreak: 0, bestStreak: 0, lastDailyAt: null, isVerified: false,
     createdAt: asISODateTime(now), updatedAt: asISODateTime(now),
   };
