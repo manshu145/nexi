@@ -10,6 +10,8 @@ const NAV_ITEMS = [
   { label: 'Live Sessions', href: '/admin/sessions', icon: '🟢' },
   { label: 'Plans', href: '/admin/plans', icon: '💳' },
   { label: 'Revenue', href: '/admin/revenue', icon: '💰' },
+  { label: 'API Config', href: '/admin/api-config', icon: '🔑' },
+  { label: 'News Feeds', href: '/admin/feeds', icon: '📡' },
   { label: 'AI & Logs', href: '/admin/logs', icon: '🤖' },
   { label: 'SEO & Branding', href: '/admin/seo', icon: '🔍' },
   { label: 'Announcements', href: '/admin/announcements', icon: '📢' },
