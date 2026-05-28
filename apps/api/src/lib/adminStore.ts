@@ -16,6 +16,7 @@ export interface AdminStats {
   aiCallsThisWeek: number;
   aiCostToday: number;
   activeSessions: number;
+  pwaInstalls: number;
   apiHealth: { openai: 'ok' | 'error' | 'unconfigured'; groq: 'ok' | 'error' | 'unconfigured'; gemini: 'ok' | 'error' | 'unconfigured'; razorpay: 'ok' | 'error' | 'unconfigured' };
 }
 
@@ -108,7 +109,7 @@ export class InMemoryAdminStore implements AdminStore {
   private announcements: Record<string, any>[] = [];
 
   async getFullStats(): Promise<AdminStats> {
-    return { totalUsers: 0, dau: 0, mau: 0, newUsersToday: 0, newUsersThisWeek: 0, revenueToday: 0, revenue7d: 0, revenue30d: 0, revenueTotal: 0, aiCallsToday: this.aiCallLogs.filter(l => l.timestamp.startsWith(new Date().toISOString().split('T')[0]!)).length, aiCallsThisWeek: this.aiCallLogs.length, aiCostToday: 0, activeSessions: this.sessions.size, apiHealth: { openai: 'unconfigured', groq: 'unconfigured', gemini: 'unconfigured', razorpay: 'unconfigured' } };
+    return { totalUsers: 0, dau: 0, mau: 0, newUsersToday: 0, newUsersThisWeek: 0, revenueToday: 0, revenue7d: 0, revenue30d: 0, revenueTotal: 0, aiCallsToday: this.aiCallLogs.filter(l => l.timestamp.startsWith(new Date().toISOString().split('T')[0]!)).length, aiCallsThisWeek: this.aiCallLogs.length, aiCostToday: 0, activeSessions: this.sessions.size, pwaInstalls: 0, apiHealth: { openai: 'unconfigured', groq: 'unconfigured', gemini: 'unconfigured', razorpay: 'unconfigured' } };
   }
   async getUserActivity(_uid: string): Promise<UserActivity> { return { userId: _uid, chapterOpens: [], mockTests: [], chatSessions: [], totalTimeOnPlatform: 0, creditHistory: [] }; }
   async getErrorLogs(page = 1, limit = 20) { const start = (page - 1) * limit; return { logs: this.errorLogs.slice(start, start + limit), total: this.errorLogs.length }; }
@@ -188,10 +189,17 @@ export class FirestoreAdminStore implements AdminStore {
       aiCallsThisWeek = aiWeekSnap.size;
     } catch { /* collection may not exist */ }
 
+    // PWA installs counter
+    let pwaInstalls = 0;
+    try {
+      const statsDoc = await this.db.collection('platformConfig').doc('stats').get();
+      if (statsDoc.exists) pwaInstalls = statsDoc.data()?.pwaInstalls ?? 0;
+    } catch { /* */ }
+
     return {
       totalUsers, dau, mau: totalUsers, newUsersToday, newUsersThisWeek,
       revenueToday, revenue7d, revenue30d, revenueTotal,
-      aiCallsToday, aiCallsThisWeek, aiCostToday, activeSessions,
+      aiCallsToday, aiCallsThisWeek, aiCostToday, activeSessions, pwaInstalls,
       apiHealth: { openai: 'ok', groq: 'ok', gemini: 'ok', razorpay: 'ok' },
     };
   }
@@ -220,11 +228,12 @@ export class FirestoreAdminStore implements AdminStore {
     // Chat sessions summary
     const chatSessions: UserActivity['chatSessions'] = [];
     try {
-      const snap = await this.db.collection('chatSessions').where('userId', '==', uid).orderBy('updatedAt', 'desc').limit(10).get();
+      const snap = await this.db.collection('chatSessions').where('userId', '==', uid).limit(10).get();
       snap.forEach(doc => {
         const d = doc.data();
         chatSessions.push({ sessionId: doc.id, messageCount: d.messages?.length || 0, firstMessage: d.messages?.[0]?.content?.slice(0, 80) || '', timestamp: d.createdAt || '' });
       });
+      chatSessions.sort((a, b) => (b.timestamp).localeCompare(a.timestamp));
     } catch { /* */ }
 
     // Credit history
@@ -383,8 +392,8 @@ export class FirestoreAdminStore implements AdminStore {
 
   async getRevenue(): Promise<{ payments: Record<string, any>[]; total: number }> {
     try {
-      const snap = await this.db.collection('billingOrders').where('status', '==', 'completed').orderBy('completedAt', 'desc').limit(100).get();
-      const payments = snap.docs.map(d => d.data());
+      const snap = await this.db.collection('billingOrders').where('status', '==', 'completed').limit(100).get();
+      const payments = snap.docs.map(d => d.data()).sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''));
       const total = payments.reduce((sum, p) => sum + ((p.amount || 0) / 100), 0);
       return { payments, total };
     } catch { return { payments: [], total: 0 }; }

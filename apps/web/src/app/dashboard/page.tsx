@@ -30,7 +30,11 @@ export default function DashboardPage() {
       setInstallPrompt(e);
     };
     window.addEventListener('beforeinstallprompt', handler);
-    window.addEventListener('appinstalled', () => setAppInstalled(true));
+    window.addEventListener('appinstalled', () => {
+      setAppInstalled(true);
+      // Record PWA install
+      api.recordPwaInstall().catch(() => {});
+    });
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
 
@@ -106,11 +110,11 @@ export default function DashboardPage() {
           </div>
         )}
         {me && (
-          <button onClick={() => router.push(me.plan === 'free' ? '/upgrade' : '/profile')} className="mt-2 inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors hover:opacity-80" style={{ background: me.plan === 'free' ? 'var(--color-paper-200)' : undefined, color: me.plan === 'free' ? 'var(--color-muted-500)' : undefined }}>
-            {me.plan === 'free' ? (
+          <button onClick={() => router.push((me.plan ?? 'free') === 'free' ? '/upgrade' : '/profile')} className="mt-2 inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors hover:opacity-80" style={{ background: (me.plan ?? 'free') === 'free' ? 'var(--color-paper-200)' : undefined, color: (me.plan ?? 'free') === 'free' ? 'var(--color-muted-500)' : undefined }}>
+            {(me.plan ?? 'free') === 'free' ? (
               <><span>Free Plan</span><span className="text-amber-500">· Upgrade →</span></>
             ) : (
-              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-3 py-1 text-xs font-semibold text-stone-900">⭐ {me.plan.charAt(0).toUpperCase() + me.plan.slice(1)} Plan{me.planExpiresAt ? ` · Expires ${new Date(me.planExpiresAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}` : ''}</span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-3 py-1 text-xs font-semibold text-stone-900">⭐ {(me.plan ?? 'free').charAt(0).toUpperCase() + (me.plan ?? 'free').slice(1)} Plan{me.planExpiresAt ? ` · Expires ${new Date(me.planExpiresAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}` : ''}</span>
             )}
           </button>
         )}
