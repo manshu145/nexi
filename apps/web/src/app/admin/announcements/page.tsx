@@ -23,7 +23,7 @@ export default function AdminAnnouncementsPage() {
   const [fetching, setFetching] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState({ title: '', body: '', type: 'banner' as const, targetAudience: 'all' });
+  const [form, setForm] = useState<{ title: string; body: string; type: 'banner' | 'modal' | 'email' | 'all'; targetAudience: string }>({ title: '', body: '', type: 'banner', targetAudience: 'all' });
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
