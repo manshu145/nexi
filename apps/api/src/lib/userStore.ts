@@ -77,8 +77,17 @@ export class FirestoreUserStore implements UserStore {
     const ref = this.db.collection(COL).doc(uid);
     const snap = await ref.get();
     if (snap.exists) {
-      const existing = snap.data() as StoredUser;
-      return existing;
+      const user = snap.data() as StoredUser;
+      // Safety check: if credits are missing/zero and user was created within last 30 days, grant 100 credits
+      if ((user.credits === undefined || user.credits === null || user.credits === 0)) {
+        const createdAt = user.createdAt ? new Date(user.createdAt).getTime() : 0;
+        const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+        if (createdAt > thirtyDaysAgo) {
+          await ref.set({ credits: 100, updatedAt: new Date().toISOString() }, { merge: true });
+          user.credits = 100;
+        }
+      }
+      return user;
     }
 
     // Before creating: check for duplicate by email (merge if found)
@@ -104,7 +113,16 @@ export class FirestoreUserStore implements UserStore {
     await ref.set(u);
     return u;
   }
-  async get(uid: UserId) { const snap = await this.db.collection(COL).doc(uid).get(); return snap.exists ? (snap.data() as StoredUser) : null; }
+  async get(uid: UserId) {
+    const snap = await this.db.collection(COL).doc(uid).get();
+    if (!snap.exists) return null;
+    const user = snap.data() as StoredUser;
+    // Safety: if credits is undefined/null, return as 0
+    if (user.credits === undefined || user.credits === null) {
+      user.credits = 0;
+    }
+    return user;
+  }
   async update(uid: UserId, data: Partial<StoredUser>) { const ref = this.db.collection(COL).doc(uid); await ref.set({ ...data, updatedAt: new Date().toISOString() }, { merge: true }); return (await ref.get()).data() as StoredUser; }
   async listAll() { const snap = await this.db.collection('users').limit(100).get(); return snap.docs.map(d => d.data() as StoredUser); }
   async bumpStreak(uid: UserId) {

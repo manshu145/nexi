@@ -565,6 +565,105 @@ const CLASS_12_CBSE: SyllabusTree = {
 };
 
 
+const IT_FUNDAMENTALS: SyllabusTree = {
+  exam: asExamSlug('it-fundamentals'),
+  examName: 'IT Fundamentals',
+  sourceUrl: '',
+  lastVerified: '2026-05-01',
+  subjects: [
+    { slug: 'computer-basics', name: 'Computer Basics', nameHi: 'कंप्यूटर बेसिक्स', icon: '💻', chapters: [
+      { slug: 'hardware-basics', name: 'Hardware Basics', nameHi: 'हार्डवेयर बेसिक्स', order: 1, estimatedMinutes: 30 },
+      { slug: 'software-and-os', name: 'Software & Operating Systems', nameHi: 'सॉफ्टवेयर और ऑपरेटिंग सिस्टम', order: 2, estimatedMinutes: 35 },
+      { slug: 'networking-basics', name: 'Networking Basics', nameHi: 'नेटवर्किंग बेसिक्स', order: 3, estimatedMinutes: 35 },
+      { slug: 'internet-cybersecurity', name: 'Internet & Cybersecurity', nameHi: 'इंटरनेट और साइबर सुरक्षा', order: 4, estimatedMinutes: 30 },
+      { slug: 'ms-office', name: 'MS Office Suite', nameHi: 'एमएस ऑफिस', order: 5, estimatedMinutes: 40 },
+    ]},
+  ],
+};
+
+const PYTHON_BASICS: SyllabusTree = {
+  exam: asExamSlug('python-basics'),
+  examName: 'Python Programming',
+  sourceUrl: '',
+  lastVerified: '2026-05-01',
+  subjects: [
+    { slug: 'python-core', name: 'Python Core', nameHi: 'पायथन कोर', icon: '🐍', chapters: [
+      { slug: 'variables-data-types', name: 'Variables & Data Types', nameHi: 'वेरिएबल्स और डेटा टाइप्स', order: 1, estimatedMinutes: 30 },
+      { slug: 'control-flow', name: 'Control Flow', nameHi: 'कंट्रोल फ्लो', order: 2, estimatedMinutes: 35 },
+      { slug: 'functions', name: 'Functions', nameHi: 'फंक्शन्स', order: 3, estimatedMinutes: 35 },
+      { slug: 'oop-python', name: 'Object-Oriented Programming', nameHi: 'ऑब्जेक्ट-ओरिएंटेड प्रोग्रामिंग', order: 4, estimatedMinutes: 40 },
+      { slug: 'file-handling', name: 'File Handling', nameHi: 'फाइल हैंडलिंग', order: 5, estimatedMinutes: 30 },
+      { slug: 'libraries-modules', name: 'Libraries & Modules', nameHi: 'लाइब्रेरीज और मॉड्यूल्स', order: 6, estimatedMinutes: 35 },
+    ]},
+  ],
+};
+
+const DATA_SCIENCE: SyllabusTree = {
+  exam: asExamSlug('data-science'),
+  examName: 'Data Science',
+  sourceUrl: '',
+  lastVerified: '2026-05-01',
+  subjects: [
+    { slug: 'data-science-core', name: 'Data Science Core', nameHi: 'डेटा साइंस कोर', icon: '📊', chapters: [
+      { slug: 'statistics-basics', name: 'Statistics Basics', nameHi: 'सांख्यिकी बेसिक्स', order: 1, estimatedMinutes: 35 },
+      { slug: 'numpy-pandas', name: 'NumPy & Pandas', nameHi: 'नम्पाई और पांडास', order: 2, estimatedMinutes: 40 },
+      { slug: 'data-visualization', name: 'Data Visualization', nameHi: 'डेटा विज़ुअलाइज़ेशन', order: 3, estimatedMinutes: 35 },
+      { slug: 'ml-basics', name: 'Machine Learning Basics', nameHi: 'मशीन लर्निंग बेसिक्स', order: 4, estimatedMinutes: 45 },
+      { slug: 'projects', name: 'Mini Projects', nameHi: 'मिनी प्रोजेक्ट्स', order: 5, estimatedMinutes: 50 },
+    ]},
+  ],
+};
+
+const WEB_DEVELOPMENT: SyllabusTree = {
+  exam: asExamSlug('web-development'),
+  examName: 'Web Development',
+  sourceUrl: '',
+  lastVerified: '2026-05-01',
+  subjects: [
+    { slug: 'web-dev-core', name: 'Web Development Core', nameHi: 'वेब डेवलपमेंट कोर', icon: '🌐', chapters: [
+      { slug: 'html-css', name: 'HTML & CSS', nameHi: 'एचटीएमएल और सीएसएस', order: 1, estimatedMinutes: 40 },
+      { slug: 'javascript', name: 'JavaScript', nameHi: 'जावास्क्रिप्ट', order: 2, estimatedMinutes: 45 },
+      { slug: 'react-basics', name: 'React Basics', nameHi: 'रिएक्ट बेसिक्स', order: 3, estimatedMinutes: 45 },
+      { slug: 'backend-basics', name: 'Backend Basics', nameHi: 'बैकएंड बेसिक्स', order: 4, estimatedMinutes: 40 },
+      { slug: 'deployment', name: 'Deployment', nameHi: 'डिप्लॉयमेंट', order: 5, estimatedMinutes: 35 },
+    ]},
+  ],
+};
+
+const DIGITAL_MARKETING: SyllabusTree = {
+  exam: asExamSlug('digital-marketing'),
+  examName: 'Digital Marketing',
+  sourceUrl: '',
+  lastVerified: '2026-05-01',
+  subjects: [
+    { slug: 'digital-marketing-core', name: 'Digital Marketing Core', nameHi: 'डिजिटल मार्केटिंग कोर', icon: '📣', chapters: [
+      { slug: 'seo', name: 'Search Engine Optimization', nameHi: 'सर्च इंजन ऑप्टिमाइज़ेशन', order: 1, estimatedMinutes: 35 },
+      { slug: 'social-media', name: 'Social Media Marketing', nameHi: 'सोशल मीडिया मार्केटिंग', order: 2, estimatedMinutes: 35 },
+      { slug: 'email-marketing', name: 'Email Marketing', nameHi: 'ईमेल मार्केटिंग', order: 3, estimatedMinutes: 30 },
+      { slug: 'analytics', name: 'Analytics & Reporting', nameHi: 'एनालिटिक्स और रिपोर्टिंग', order: 4, estimatedMinutes: 35 },
+      { slug: 'paid-ads', name: 'Paid Advertising', nameHi: 'पेड एडवरटाइज़िंग', order: 5, estimatedMinutes: 35 },
+    ]},
+  ],
+};
+
+const TALLY_ACCOUNTING: SyllabusTree = {
+  exam: asExamSlug('tally-accounting'),
+  examName: 'Tally & Accounting',
+  sourceUrl: '',
+  lastVerified: '2026-05-01',
+  subjects: [
+    { slug: 'tally-core', name: 'Tally & Accounting Core', nameHi: 'टैली और अकाउंटिंग कोर', icon: '📒', chapters: [
+      { slug: 'accounting-basics', name: 'Accounting Basics', nameHi: 'अकाउंटिंग बेसिक्स', order: 1, estimatedMinutes: 35 },
+      { slug: 'tally-interface', name: 'Tally Interface', nameHi: 'टैली इंटरफ़ेस', order: 2, estimatedMinutes: 30 },
+      { slug: 'vouchers', name: 'Vouchers & Entries', nameHi: 'वाउचर और एंट्रीज़', order: 3, estimatedMinutes: 35 },
+      { slug: 'gst-in-tally', name: 'GST in Tally', nameHi: 'टैली में जीएसटी', order: 4, estimatedMinutes: 40 },
+      { slug: 'payroll', name: 'Payroll Management', nameHi: 'पेरोल मैनेजमेंट', order: 5, estimatedMinutes: 35 },
+      { slug: 'reports', name: 'Reports & Analysis', nameHi: 'रिपोर्ट्स और विश्लेषण', order: 6, estimatedMinutes: 30 },
+    ]},
+  ],
+};
+
+
 const SYLLABUS_MAP = new Map<string, SyllabusTree>([
   ['upsc-cse', UPSC_CSE],
   ['ssc-cgl', SSC_CGL],
@@ -572,6 +671,12 @@ const SYLLABUS_MAP = new Map<string, SyllabusTree>([
   ['jee-main', JEE_MAIN],
   ['class-10-cbse', CLASS_10_CBSE],
   ['class-12-cbse', CLASS_12_CBSE],
+  ['it-fundamentals', IT_FUNDAMENTALS],
+  ['python-basics', PYTHON_BASICS],
+  ['data-science', DATA_SCIENCE],
+  ['web-development', WEB_DEVELOPMENT],
+  ['digital-marketing', DIGITAL_MARKETING],
+  ['tally-accounting', TALLY_ACCOUNTING],
 ]);
 
 export function getSyllabus(examSlug: ExamSlug | string): SyllabusTree | null {

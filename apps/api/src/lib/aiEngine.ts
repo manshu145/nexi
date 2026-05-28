@@ -3,10 +3,11 @@ import OpenAI from 'openai';
 import type { Env } from '../env.js';
 import type { Logger } from '../logger.js';
 import type { AdminStore } from './adminStore.js';
+import type { UserContext } from './chapterStore.js';
 
 export interface MCQOption { key: 'A' | 'B' | 'C' | 'D'; text: string; }
 export interface GeneratedMCQ { id: string; question: string; options: MCQOption[]; correctOption: 'A' | 'B' | 'C' | 'D'; explanation: string; difficulty: 'easy' | 'medium' | 'hard'; subject?: string; topic?: string; }
-export interface AssessmentResult { score: number; total: number; level: 'beginner' | 'intermediate' | 'advanced'; message: string; messageHi: string; }
+export interface AssessmentResult { score: number; total: number; level: 'beginner' | 'intermediate' | 'advanced'; message: string; messageHi: string; weakAreas?: string[]; strongAreas?: string[]; }
 
 export interface GeneratedSyllabus {
   exam: string;
@@ -17,11 +18,20 @@ export interface GeneratedSyllabus {
 export type VisualizationType = 'diagram' | 'mindmap' | 'flowchart' | 'timeline' | 'image';
 export interface VisualizationResult { type: 'mermaid' | 'image'; content: string; /* mermaid code or image URL */ }
 
+export interface StageResults {
+  questions: GeneratedMCQ[];
+  answers: { questionId: string; chosen: string | null }[];
+}
+
 export interface AIEngine {
   generateAssessmentQuestions(examSlug: string, language: 'en' | 'hi', count?: number): Promise<GeneratedMCQ[]>;
+  generateStage1Questions(examSlug: string, language: 'en' | 'hi'): Promise<GeneratedMCQ[]>;
+  generateStage2Questions(examSlug: string, language: 'en' | 'hi', stage1Results: StageResults): Promise<GeneratedMCQ[]>;
+  generateStage3Questions(examSlug: string, language: 'en' | 'hi', stage1Results: StageResults, stage2Results: StageResults): Promise<GeneratedMCQ[]>;
   scoreAssessment(questions: GeneratedMCQ[], answers: { questionId: string; chosen: string | null }[]): Promise<AssessmentResult>;
-  generateChapterContent(chapter: string, subject: string, exam: string, language: 'en' | 'hi'): Promise<string>;
-  generateChapterMCQs(chapter: string, subject: string, exam: string, language: 'en' | 'hi', count?: number, seed?: string, chapterContent?: string): Promise<GeneratedMCQ[]>;
+  scoreMultiStageAssessment(stage1: StageResults, stage2: StageResults, stage3: StageResults): Promise<AssessmentResult>;
+  generateChapterContent(chapter: string, subject: string, exam: string, language: 'en' | 'hi', userContext?: UserContext): Promise<string>;
+  generateChapterMCQs(chapter: string, subject: string, exam: string, language: 'en' | 'hi', count?: number, seed?: string, chapterContent?: string, userLevel?: 'beginner' | 'intermediate' | 'advanced'): Promise<GeneratedMCQ[]>;
   generateMermaidDiagram(chapter: string, subject: string, exam: string): Promise<string>;
   generateVisualization(topic: string, subject: string, exam: string, type: VisualizationType): Promise<VisualizationResult>;
   generateSyllabus(examSlug: string, examName: string, level: string): Promise<GeneratedSyllabus>;
@@ -85,6 +95,41 @@ export function createAIEngine(env: Env, logger: Logger, adminStore?: AdminStore
   const openai = hasOpenai ? new OpenAI({ apiKey: env.OPENAI_API_KEY }) : null;
   const store = adminStore ?? null;
 
+  /** Internal helper for generating questions with multi-provider fallback */
+  async function _generateQuestions(prompt: string, endpoint: string, examSlug: string, language: string): Promise<GeneratedMCQ[]> {
+    const errors: string[] = [];
+    if (groq) {
+      try {
+        const completion = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 4096, response_format: { type: 'json_object' } });
+        const parsed = JSON.parse(completion.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
+        if (parsed.questions?.length) {
+          const tokens = estimateTokens(completion.choices[0]?.message?.content ?? '');
+          logAICallToStore(store, 'llama-3.3-70b-versatile', tokens, estimateCost('llama-3.3-70b-versatile', tokens), 0, undefined, { status: 'success', endpoint, provider: 'groq', requestPreview: prompt.slice(0, 200), responsePreview: completion.choices[0]?.message?.content?.slice(0, 300) });
+          logger.info('ai.questions_generated', { provider: 'groq', endpoint, examSlug, language, count: parsed.questions.length });
+          return parsed.questions;
+        }
+        errors.push('Groq returned empty');
+      } catch (err) { errors.push(`Groq: ${err instanceof Error ? err.message : String(err)}`); }
+    } else { errors.push('Groq not configured'); }
+    if (openai) {
+      try {
+        const completion = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 4096, response_format: { type: 'json_object' } });
+        const parsed = JSON.parse(completion.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
+        if (parsed.questions?.length) { logger.info('ai.questions_generated', { provider: 'openai', endpoint, examSlug, language, count: parsed.questions.length }); return parsed.questions; }
+        errors.push('OpenAI returned empty');
+      } catch (err) { errors.push(`OpenAI: ${err instanceof Error ? err.message : String(err)}`); }
+    } else { errors.push('OpenAI not configured'); }
+    if (env.GEMINI_API_KEY && env.GEMINI_API_KEY.length > 5) {
+      try {
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.7, maxOutputTokens: 4096 } }) });
+        if (res.ok) { const data = await res.json() as any; const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''; const jsonMatch = rawText.match(/\{[\s\S]*\}/); if (jsonMatch) { const parsed = JSON.parse(jsonMatch[0]) as { questions: GeneratedMCQ[] }; if (parsed.questions?.length) { logger.info('ai.questions_generated', { provider: 'gemini', endpoint, examSlug, language, count: parsed.questions.length }); return parsed.questions; } } }
+        errors.push('Gemini failed');
+      } catch (err) { errors.push(`Gemini: ${err instanceof Error ? err.message : String(err)}`); }
+    } else { errors.push('Gemini not configured'); }
+    logger.error('ai.questions_all_failed', { errors, endpoint, examSlug, language });
+    throw new Error(`Failed to generate questions for ${endpoint}: ${errors.join('; ')}`);
+  }
+
   return {
     async generateAssessmentQuestions(examSlug, language = 'en', count = 15) {
       const langInstr = language === 'hi' ? 'Generate all questions and options in Hindi (Devanagari script).' : 'Generate all questions and options in English.';
@@ -121,6 +166,125 @@ export function createAIEngine(env: Env, logger: Logger, adminStore?: AdminStore
       throw new Error(`Failed to generate assessment questions: ${errors.join('; ')}`);
     },
 
+    async generateStage1Questions(examSlug, language = 'en') {
+      const langInstr = language === 'hi' ? 'Generate all questions and options in Hindi (Devanagari script).' : 'Generate all questions and options in English.';
+      const prompt = `You are an expert Indian competitive exam question creator.\n\nGenerate exactly 10 MCQs for "${examSlug}" exam — Stage 1 Core Subjects assessment.\n${langInstr}\n\nRequirements:\n- These questions assess CORE KNOWLEDGE across all major subjects of this exam\n- For UPSC: History(2) + Geography(2) + Polity(2) + Economy(2) + Science(2)\n- For NEET: Physics(3) + Chemistry(4) + Biology(3)\n- For JEE: Physics(3) + Chemistry(3) + Math(4)\n- For SSC CGL: Reasoning(3) + Quant(3) + GK(2) + English(2)\n- For Class 10/12: Math(3) + Science(3) + Social(2) + English(2)\n- Adapt the distribution based on the specific exam\n- Mix of easy and medium difficulty\n- 4 options (A-D), correct answer, brief explanation\n- MUST include subject and topic fields for each question\n\nRespond ONLY with JSON:\n{"questions":[{"id":"s1-q1","question":"...","options":[{"key":"A","text":"..."},{"key":"B","text":"..."},{"key":"C","text":"..."},{"key":"D","text":"..."}],"correctOption":"A","explanation":"...","difficulty":"medium","subject":"history","topic":"modern-india"}]}`;
+      return _generateQuestions(prompt, 'generateStage1Questions', examSlug, language);
+    },
+
+    async generateStage2Questions(examSlug, language = 'en', stage1Results) {
+      // Calculate stage 1 score to determine difficulty
+      let correct = 0;
+      for (const a of stage1Results.answers) {
+        const q = stage1Results.questions.find(qq => qq.id === a.questionId);
+        if (q && a.chosen === q.correctOption) correct++;
+      }
+      const stage1Pct = (correct / stage1Results.questions.length) * 100;
+      let difficulty: string;
+      if (stage1Pct >= 70) difficulty = 'hard';
+      else if (stage1Pct >= 40) difficulty = 'medium';
+      else difficulty = 'easy';
+
+      const langInstr = language === 'hi' ? 'Generate all questions and options in Hindi (Devanagari script).' : 'Generate all questions and options in English.';
+      const prompt = `You are an expert Indian competitive exam question creator.\n\nGenerate exactly 8 MCQs for "${examSlug}" exam — Stage 2 Difficulty Calibration.\n${langInstr}\n\nThe student scored ${correct}/${stage1Results.questions.length} (${stage1Pct.toFixed(0)}%) in Stage 1.\nBased on this performance, generate ${difficulty.toUpperCase()} level questions.\n\nRequirements:\n- All 8 questions should be ${difficulty} difficulty\n- Cover multiple subjects from the exam syllabus\n- ${difficulty === 'hard' ? 'Analytical, require deep understanding. All 4 options plausible.' : difficulty === 'medium' ? 'Application-based, require careful thought. 2 close options.' : 'Factual recall, straightforward. Clear correct answer.'}\n- 4 options (A-D), correct answer, brief explanation\n- Include subject and topic fields\n\nRespond ONLY with JSON:\n{"questions":[{"id":"s2-q1","question":"...","options":[{"key":"A","text":"..."},{"key":"B","text":"..."},{"key":"C","text":"..."},{"key":"D","text":"..."}],"correctOption":"A","explanation":"...","difficulty":"${difficulty}","subject":"...","topic":"..."}]}`;
+      return _generateQuestions(prompt, 'generateStage2Questions', examSlug, language);
+    },
+
+    async generateStage3Questions(examSlug, language = 'en', stage1Results, _stage2Results) {
+      // Identify weakest subjects from stage 1
+      const subjectScores: Record<string, { correct: number; total: number }> = {};
+      for (const q of stage1Results.questions) {
+        const subj = q.subject ?? 'general';
+        if (!subjectScores[subj]) subjectScores[subj] = { correct: 0, total: 0 };
+        subjectScores[subj]!.total++;
+        const ans = stage1Results.answers.find(a => a.questionId === q.id);
+        if (ans && ans.chosen === q.correctOption) subjectScores[subj]!.correct++;
+      }
+
+      // Find 2 weakest subjects
+      const sorted = Object.entries(subjectScores)
+        .map(([subj, scores]) => ({ subj, pct: (scores.correct / scores.total) * 100 }))
+        .sort((a, b) => a.pct - b.pct);
+      const weakSubjects = sorted.slice(0, 2).map(s => s.subj);
+
+      const langInstr = language === 'hi' ? 'Generate all questions and options in Hindi (Devanagari script).' : 'Generate all questions and options in English.';
+      const prompt = `You are an expert Indian competitive exam question creator.\n\nGenerate exactly 5 MCQs for "${examSlug}" exam — Stage 3 Weak Area Deep Dive.\n${langInstr}\n\nThe student's weakest subjects are: ${weakSubjects.join(', ')}.\nGenerate targeted questions on these weak areas to better understand the gaps.\n\nRequirements:\n- Focus on: ${weakSubjects.join(' and ')}\n- 2-3 questions on the weakest subject, rest on the second weakest\n- Mix of easy and medium difficulty (to identify exact gaps)\n- 4 options (A-D), correct answer, brief explanation\n- Include subject and topic fields\n\nRespond ONLY with JSON:\n{"questions":[{"id":"s3-q1","question":"...","options":[{"key":"A","text":"..."},{"key":"B","text":"..."},{"key":"C","text":"..."},{"key":"D","text":"..."}],"correctOption":"A","explanation":"...","difficulty":"medium","subject":"...","topic":"..."}]}`;
+      return _generateQuestions(prompt, 'generateStage3Questions', examSlug, language);
+    },
+
+    async scoreMultiStageAssessment(stage1, stage2, stage3) {
+      // Calculate per-stage scores
+      const scoreStage = (sr: StageResults) => {
+        let correct = 0;
+        for (const a of sr.answers) {
+          const q = sr.questions.find(qq => qq.id === a.questionId);
+          if (q && a.chosen === q.correctOption) correct++;
+        }
+        return { correct, total: sr.questions.length, pct: sr.questions.length > 0 ? (correct / sr.questions.length) * 100 : 0 };
+      };
+
+      const s1 = scoreStage(stage1);
+      const s2 = scoreStage(stage2);
+      const s3 = scoreStage(stage3);
+
+      // Weighted average: stage1 40%, stage2 40%, stage3 20%
+      const totalPct = (s1.pct * 0.4) + (s2.pct * 0.4) + (s3.pct * 0.2);
+      const totalCorrect = s1.correct + s2.correct + s3.correct;
+      const totalQuestions = s1.total + s2.total + s3.total;
+
+      // Determine level
+      const level: 'beginner' | 'intermediate' | 'advanced' = totalPct > 70 ? 'advanced' : totalPct >= 40 ? 'intermediate' : 'beginner';
+
+      // Identify weak and strong areas from stage 1 subjects
+      const subjectScores: Record<string, { correct: number; total: number }> = {};
+      for (const q of stage1.questions) {
+        const subj = q.subject ?? 'general';
+        if (!subjectScores[subj]) subjectScores[subj] = { correct: 0, total: 0 };
+        subjectScores[subj]!.total++;
+        const ans = stage1.answers.find(a => a.questionId === q.id);
+        if (ans && ans.chosen === q.correctOption) subjectScores[subj]!.correct++;
+      }
+      // Also count stage3 subjects
+      for (const q of stage3.questions) {
+        const subj = q.subject ?? 'general';
+        if (!subjectScores[subj]) subjectScores[subj] = { correct: 0, total: 0 };
+        subjectScores[subj]!.total++;
+        const ans = stage3.answers.find(a => a.questionId === q.id);
+        if (ans && ans.chosen === q.correctOption) subjectScores[subj]!.correct++;
+      }
+
+      const weakAreas: string[] = [];
+      const strongAreas: string[] = [];
+      for (const [subj, scores] of Object.entries(subjectScores)) {
+        const pct = (scores.correct / scores.total) * 100;
+        if (pct < 40) weakAreas.push(subj);
+        else if (pct > 70) strongAreas.push(subj);
+      }
+
+      // Generate message
+      try {
+        const prompt = `Student completed a 3-stage assessment for Indian competitive exam.\nTotal weighted score: ${totalPct.toFixed(1)}% (${totalCorrect}/${totalQuestions} questions correct)\nLevel assigned: ${level}\nWeak areas: ${weakAreas.join(', ') || 'none'}\nStrong areas: ${strongAreas.join(', ') || 'none'}\n\nProvide an encouraging message about their performance. Respond ONLY JSON:\n{"message":"English (2-3 sentences)","messageHi":"Hindi Devanagari (2-3 sentences)"}`;
+        if (openai) {
+          const completion = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 300, response_format: { type: 'json_object' } });
+          const parsed = JSON.parse(completion.choices[0]?.message?.content ?? '{}') as { message: string; messageHi: string };
+          return { score: totalCorrect, total: totalQuestions, level, message: parsed.message, messageHi: parsed.messageHi, weakAreas, strongAreas };
+        }
+      } catch (err) {
+        logger.error('ai.multi_stage_score_error', { error: err instanceof Error ? err.message : String(err) });
+      }
+
+      // Fallback message
+      return {
+        score: totalCorrect,
+        total: totalQuestions,
+        level,
+        message: `You scored ${totalCorrect}/${totalQuestions} (${totalPct.toFixed(0)}%). Level: ${level}. Let's personalize your learning!`,
+        messageHi: `आपने ${totalCorrect}/${totalQuestions} अंक प्राप्त किए (${totalPct.toFixed(0)}%)। स्तर: ${level}। चलिए आपकी पढ़ाई को व्यक्तिगत बनाते हैं!`,
+        weakAreas,
+        strongAreas,
+      };
+    },
+
     async scoreAssessment(questions, answers) {
       let correct = 0;
       for (const a of answers) { const q = questions.find((qq) => qq.id === a.questionId); if (q && a.chosen === q.correctOption) correct++; }
@@ -139,9 +303,41 @@ export function createAIEngine(env: Env, logger: Logger, adminStore?: AdminStore
       }
     },
 
-    async generateChapterContent(chapter, subject, exam, language = 'en') {
+    async generateChapterContent(chapter, subject, exam, language = 'en', userContext?) {
       const langInstr = language === 'hi' ? 'Write the entire chapter in Hindi (Devanagari). Simple, student-friendly language.' : 'Write in clear, student-friendly English.';
-      const prompt = `You are an expert Indian education content writer.\nYou are generating educational content for ${exam}.\nThis content must strictly follow the official ${exam} syllabus.\nOnly cover topics that are part of the official curriculum.\nGround all factual content in NCERT textbooks where applicable.\nDo not add topics outside the official syllabus.\n\nWrite a chapter on "${chapter}" (subject: ${subject}, exam: ${exam}).\n${langInstr}\n\nRequirements:\n- Write as much content as needed to FULLY cover the topic (minimum 1500 words, no maximum limit)\n- Use Markdown format with ## headings for each major section\n- Sections: Introduction, Key Concepts (with detailed examples), Important Definitions, Detailed Explanations, Solved Examples, Important Points to Remember, Common Mistakes, Summary\n- Use ## headings generously — each sub-topic should have its own ## heading\n- Include real-world Indian examples\n- Exam-focused: highlight frequently-asked areas\n- For science/math: include formulas in $...$\n- Reference NCERT concepts and terminology where applicable\n- Be thorough — do NOT cut content short. Cover every aspect a student needs to know.\n\nWrite ONLY the Markdown content.`;
+
+      // Build personalization section based on user level
+      let personalizationInstr = '';
+      const level = userContext?.onboardingLevel ?? 'intermediate';
+
+      if (level === 'beginner') {
+        const weakAreasStr = userContext?.weakAreas?.length ? `The student's weak areas are: ${userContext.weakAreas.join(', ')} — be extra careful to build strong basics in these areas.` : '';
+        personalizationInstr = `This student is a BEGINNER — they are new to this topic.
+Writing style: Simple language, avoid jargon, explain every term.
+Structure: Start with 'What is this?', use many examples from daily life, include memory tricks and mnemonics, use simple analogies.
+Length: 600-800 words. Language: ${language === 'hi' ? 'Hindi' : 'English'}.
+${weakAreasStr}
+End with: 3 key takeaways in bullet points.`;
+      } else if (level === 'advanced') {
+        const strongAreasStr = userContext?.strongAreas?.length ? `Student's strong areas: ${userContext.strongAreas.join(', ')} — use these as reference points.` : '';
+        personalizationInstr = `This student is ADVANCED — high level of preparation.
+Writing style: Analytical and deep, assume strong foundational knowledge.
+Structure: Advanced concepts, critical analysis, inter-topic connections, recent developments, previous year questions with approach strategy, common mistakes to avoid at advanced level.
+Length: 1000-1200 words. Language: ${language === 'hi' ? 'Hindi' : 'English'}.
+${strongAreasStr}
+End with: Examiner perspective and scoring strategy.`;
+      } else {
+        // intermediate
+        const completedStr = userContext?.completedChapters?.length ? `The student has already completed: ${userContext.completedChapters.slice(0, 10).join(', ')} — build connections to those topics where relevant.` : '';
+        personalizationInstr = `This student has basic knowledge — INTERMEDIATE level.
+Writing style: Clear and direct, some technical terms with brief explanation.
+Structure: Quick concept recap, deeper explanation, exam-relevant facts and figures, previous year question patterns.
+Length: 800-1000 words. Language: ${language === 'hi' ? 'Hindi' : 'English'}.
+${completedStr}
+End with: Important facts to remember for exam.`;
+      }
+
+      const prompt = `You are an expert Indian education content writer.\nYou are generating educational content for ${exam}.\nThis content must strictly follow the official ${exam} syllabus.\nOnly cover topics that are part of the official curriculum.\nGround all factual content in NCERT textbooks where applicable.\nDo not add topics outside the official syllabus.\n\nGenerate a chapter on "${chapter}" (subject: ${subject}) for ${exam} preparation.\n${langInstr}\n\n${personalizationInstr}\n\nAdditional Requirements:\n- Use Markdown format with ## headings for each major section\n- Use ## headings generously — each sub-topic should have its own ## heading\n- Include real-world Indian examples\n- Exam-focused: highlight frequently-asked areas\n- For science/math: include formulas in $...$\n- Reference NCERT concepts and terminology where applicable\n- Be thorough and cover every aspect needed for this level.\n\nWrite ONLY the Markdown content.`;
       const startTime = performance.now();
       try {
         if (!openai) throw new Error("OPENAI_API_KEY not configured"); const c = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: 8000 });
@@ -154,11 +350,26 @@ export function createAIEngine(env: Env, logger: Logger, adminStore?: AdminStore
       } catch (err) { logger.error('ai.chapter_error', { error: err instanceof Error ? err.message : String(err) }); throw new Error('Failed to generate chapter content'); }
     },
 
-    async generateChapterMCQs(chapter, subject, exam, language = 'en', count = 10, seed?: string, chapterContent?: string) {
+    async generateChapterMCQs(chapter, subject, exam, language = 'en', count = 10, seed?: string, chapterContent?: string, userLevel?: 'beginner' | 'intermediate' | 'advanced') {
       const langInstr = language === 'hi' ? 'Generate in Hindi (Devanagari).' : 'Generate in English.';
       const seedInstr = seed ? `\nVariation seed: ${seed}. Make these questions DIFFERENT from previous attempts. Use creative angles, tricky options, and less common facts from the content.` : '';
       const contentContext = chapterContent ? `\n\nIMPORTANT: Generate questions ONLY from this specific chapter content. Do NOT ask about topics not covered here:\n---\n${chapterContent.slice(0, 3000)}\n---` : '';
-      const prompt = `Generate exactly ${count} UNIQUE multiple choice questions for chapter "${chapter}" (${subject}, ${exam}).\n${langInstr}${seedInstr}${contentContext}\n\nRules:\n- Questions MUST be based on the chapter content provided above\n- Do NOT ask about topics not covered in the chapter\n- Each question must have exactly 4 options (A/B/C/D), one correct answer, and a brief explanation\n- Mix: 3 easy, 4 medium, 3 hard\n- Include explanation referencing the chapter content\n\nJSON only:\n{"questions":[{"id":"q1","question":"...","options":[{"key":"A","text":"..."},{"key":"B","text":"..."},{"key":"C","text":"..."},{"key":"D","text":"..."}],"correctOption":"A","explanation":"...","difficulty":"easy","subject":"${subject}","topic":"${chapter}"}]}`;
+
+      // Difficulty distribution based on user level
+      let difficultyMix: string;
+      let difficultyStyle: string;
+      if (userLevel === 'beginner') {
+        difficultyMix = '6 easy, 3 medium, 1 hard';
+        difficultyStyle = 'Beginner MCQs: factual recall, straightforward options, test basic understanding.';
+      } else if (userLevel === 'advanced') {
+        difficultyMix = '1 easy, 3 medium, 6 hard';
+        difficultyStyle = 'Advanced MCQs: analysis-based, all 4 options should be plausible, require deep understanding and critical thinking.';
+      } else {
+        difficultyMix = '3 easy, 4 medium, 3 hard';
+        difficultyStyle = 'Intermediate MCQs: application-based, 2 close options that require careful thinking.';
+      }
+
+      const prompt = `Generate exactly ${count} UNIQUE multiple choice questions for chapter "${chapter}" (${subject}, ${exam}).\n${langInstr}${seedInstr}${contentContext}\n\nRules:\n- Questions MUST be based on the chapter content provided above\n- Do NOT ask about topics not covered in the chapter\n- Each question must have exactly 4 options (A/B/C/D), one correct answer, and a brief explanation\n- Mix: ${difficultyMix}\n- ${difficultyStyle}\n- Include explanation referencing the chapter content\n\nJSON only:\n{"questions":[{"id":"q1","question":"...","options":[{"key":"A","text":"..."},{"key":"B","text":"..."},{"key":"C","text":"..."},{"key":"D","text":"..."}],"correctOption":"A","explanation":"...","difficulty":"easy","subject":"${subject}","topic":"${chapter}"}]}`;
       const errors: string[] = [];
       if (groq) {
         try {

@@ -15,6 +15,7 @@ export default function KindleReaderPage() {
   const chapter = params.chapter as string;
 
   const [content, setContent] = useState<ChapterContent | null>(null);
+  const [contentLevel, setContentLevel] = useState<string | null>(null);
   const [pages, setPages] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(0);
   const [pageLoading, setPageLoading] = useState(true);
@@ -82,6 +83,7 @@ export default function KindleReaderPage() {
         const lang = getLanguage();
         const res = await api.getChapterContent(exam, subject, chapter, lang);
         setContent(res.chapter);
+        setContentLevel(res.contentPersonalizedFor ?? res.chapter.contentPersonalizedFor ?? null);
         // Split by ## headings into pages (each section = 1 page)
         const sections = res.chapter.content.split(/(?=^## )/m).filter(s => s.trim());
         setPages(sections.length > 0 ? sections : [res.chapter.content]);
@@ -102,6 +104,7 @@ export default function KindleReaderPage() {
       const lang = getLanguage();
       const res = await api.getChapterContent(exam, subject, chapter, lang);
       setContent(res.chapter);
+      setContentLevel(res.contentPersonalizedFor ?? res.chapter.contentPersonalizedFor ?? null);
       const sections = res.chapter.content.split(/(?=^## )/m).filter(s => s.trim());
       setPages(sections.length > 0 ? sections : [res.chapter.content]);
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed to unlock chapter'); }
@@ -499,6 +502,15 @@ export default function KindleReaderPage() {
           </button>
         </div>
       </div>
+
+      {/* Personalization badge */}
+      {contentLevel && (
+        <div className="flex justify-center px-4 pt-2">
+          <span className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-3 py-1 text-xs font-medium text-stone-900">
+            📊 Personalized for: {contentLevel.charAt(0).toUpperCase() + contentLevel.slice(1)}
+          </span>
+        </div>
+      )}
 
       {/* Book content with 3D page flip */}
       <div className="kindle-book-wrapper">

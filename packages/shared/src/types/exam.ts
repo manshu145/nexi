@@ -18,7 +18,8 @@ export type ExamCategory =
   | 'banking'
   | 'state'
   | 'law'
-  | 'management';
+  | 'management'
+  | 'professional-skills';
 
 export type ExamStatus = 'live' | 'soon';
 

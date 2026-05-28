@@ -143,10 +143,11 @@ export default function EssayPage() {
     setGrading(true);
     try {
       const token = await user!.getIdToken();
+      const lang = localStorage.getItem('nexigrate-language') || 'en';
       const res = await fetch(`${API}/v1/essay/grade`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ topic: question.topic, answer, wordLimit: question.wordLimit, examContext: question.examContext }),
+        body: JSON.stringify({ topic: question.topic, answer, wordLimit: question.wordLimit, examContext: question.examContext, language: lang }),
       });
       if (!res.ok) {
         // Fallback: use chat API for grading
