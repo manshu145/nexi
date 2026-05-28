@@ -31,6 +31,10 @@ export default function ProfilePage() {
   const [school, setSchool] = useState('');
   const [aim, setAim] = useState('');
   const [referralStats, setReferralStats] = useState<ReferralStats | null>(null);
+  // Cancellation modal state — kept local so a refresh re-fetches /subscription.
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
   useEffect(() => { if (!user) return; (async () => { try { const r = await api.me(); setMe(r.user); setName(r.user.name); setPhone(r.user.phone ?? ''); setDob(r.user.dob ?? ''); setSchool(r.user.school ?? ''); setAim(r.user.aim ?? ''); } catch { toast.error('Failed to load'); } finally { setPageLoading(false); } })(); }, [user]);
@@ -45,6 +49,26 @@ export default function ProfilePage() {
   }, [user]);
 
   const handleSave = async () => { setSaving(true); try { const r = await api.updateProfile({ name: name.trim(), phone: phone.trim()||undefined, dob: dob||undefined, school: school.trim()||undefined, aim: aim.trim()||undefined }); setMe(r.user); setEditing(false); toast.success(t('saved')); } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed'); } finally { setSaving(false); } };
+
+  const handleCancelPlan = async () => {
+    if (cancelling) return;
+    setCancelling(true);
+    try {
+      const res = await api.cancelSubscription(cancelReason);
+      // Mirror the server response into local state so the UI flips
+      // immediately to the cancelled banner without a round-trip refetch.
+      setMe((prev) => prev ? { ...prev, planCancelledAt: res.planCancelledAt } : prev);
+      setCancelOpen(false);
+      setCancelReason('');
+      toast.success(res.alreadyCancelled
+        ? 'Plan was already cancelled.'
+        : 'Plan cancelled. Access continues until expiry.');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to cancel. Please try again.');
+    } finally {
+      setCancelling(false);
+    }
+  };
 
   if (loading || !user || pageLoading) return <main className="flex min-h-dvh items-center justify-center"><AILoader context="general" /></main>;
   const examName = me?.targetExam ? EXAM_BY_SLUG.get(me.targetExam)?.name ?? me.targetExam : '—';
@@ -111,32 +135,143 @@ export default function ProfilePage() {
       {/* Plan & Billing */}
       <section className="mt-6">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">Plan & Billing</h2>
-        <div className="mt-3 paper-card p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-ink-900 capitalize">{me?.plan ?? 'free'} Plan</p>
-              <p className="text-xs text-muted-500">{me?.planExpiresAt ? `Renews on ${new Date(me.planExpiresAt).toLocaleDateString('en-IN')}` : 'Free forever'}</p>
+        {(() => {
+          const plan = me?.plan ?? 'free';
+          const isPaid = plan !== 'free';
+          const expiresAt = me?.planExpiresAt ?? null;
+          const cancelledAt = me?.planCancelledAt ?? null;
+          // "Active" here means: paid plan AND expiry is still in the future.
+          // We trust the server's planExpiresAt rather than re-deriving from
+          // a billing-cycle clock so cancelled-but-not-expired plans still
+          // show as active (with a cancelled banner).
+          const isActive = isPaid && !!expiresAt && new Date(expiresAt).getTime() > Date.now();
+          const isCancelledActive = isActive && !!cancelledAt;
+          const expiryLabel = expiresAt
+            ? new Date(expiresAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+            : null;
+          return (
+            <div className="mt-3 paper-card p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-ink-900 capitalize">{plan} Plan</p>
+                  <p className="text-xs text-muted-500">
+                    {!isActive && !isPaid && 'Free forever'}
+                    {!isActive && isPaid && 'Plan expired — renew to regain access'}
+                    {isActive && !isCancelledActive && expiryLabel && `Renews on ${expiryLabel}`}
+                    {isCancelledActive && expiryLabel && `Cancelled — access until ${expiryLabel}`}
+                  </p>
+                </div>
+                <span className={`pill text-xs ${
+                  !isActive && !isPaid ? '' :
+                  isCancelledActive ? 'bg-stone-200 text-stone-700' :
+                  isActive ? 'bg-ember-500/20 text-ember-700' : 'bg-stone-200 text-stone-700'
+                }`}>
+                  {!isActive && !isPaid ? 'Free' : isCancelledActive ? 'Cancelled' : isActive ? 'Active' : 'Expired'}
+                </span>
+              </div>
+
+              {/* Cancelled-but-active explainer banner */}
+              {isCancelledActive && expiryLabel && (
+                <div className="rounded-lg border border-line bg-paper-200 p-3 text-xs leading-relaxed text-muted-600 dark:text-muted-400">
+                  Your subscription is cancelled. You'll keep full <span className="capitalize font-medium text-ink-900">{plan}</span> access until <span className="font-medium text-ink-900">{expiryLabel}</span>, then drop to Free automatically. No further charges.
+                </div>
+              )}
+
+              {/* Credits progress */}
+              <div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-500">Credits</span>
+                  <span className="font-medium text-ink-900">{me?.credits ?? 0}</span>
+                </div>
+                <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-paper-300">
+                  <div className="h-full rounded-full bg-ember-500 transition-all" style={{ width: `${Math.min(100, ((me?.credits ?? 0) / 200) * 100)}%` }} />
+                </div>
+              </div>
+
+              {/* Action buttons — different layouts per state */}
+              <div className="flex flex-col gap-2 pt-1 sm:flex-row">
+                {!isActive && (
+                  <button onClick={() => router.push('/upgrade')} className="btn-primary flex-1 text-sm">
+                    {isPaid ? 'Renew Plan' : 'Upgrade Plan'}
+                  </button>
+                )}
+                {isActive && !isCancelledActive && (
+                  <>
+                    <button onClick={() => router.push('/upgrade')} className="btn-primary flex-1 text-sm">Change Plan</button>
+                    <button
+                      onClick={() => setCancelOpen(true)}
+                      className="btn-ghost flex-1 text-sm text-muted-500 hover:text-red-500"
+                    >
+                      Cancel Plan
+                    </button>
+                  </>
+                )}
+                {isCancelledActive && (
+                  <button onClick={() => router.push('/upgrade')} className="btn-primary flex-1 text-sm">
+                    Resume Plan
+                  </button>
+                )}
+              </div>
             </div>
-            <span className={`pill text-xs ${me?.plan === 'free' ? '' : 'bg-ember-500/20 text-ember-700'}`}>
-              {me?.plan === 'free' ? 'Free' : 'Active'}
-            </span>
-          </div>
-          {/* Credits progress */}
-          <div>
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-muted-500">Credits</span>
-              <span className="font-medium text-ink-900">{me?.credits ?? 0}</span>
+          );
+        })()}
+      </section>
+
+      {/* Cancel-plan confirmation modal — rendered as a portal-like overlay
+          on top of the page. Backdrop click and Escape both dismiss. */}
+      {cancelOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cancel-plan-title"
+          className="fixed inset-0 z-50 flex items-end justify-center sm:items-center bg-black/50 backdrop-blur-sm"
+          onClick={(e) => { if (e.target === e.currentTarget) setCancelOpen(false); }}
+        >
+          <div className="paper-card w-full max-w-md p-5 sm:p-6 m-3 animate-in fade-in zoom-in-95">
+            <h3 id="cancel-plan-title" className="font-serif text-xl font-semibold text-ink-900">
+              Cancel your {me?.plan} plan?
+            </h3>
+            <p className="mt-2 text-sm leading-relaxed text-muted-600 dark:text-muted-400">
+              You'll keep full access until <span className="font-medium text-ink-900">
+                {me?.planExpiresAt ? new Date(me.planExpiresAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'expiry'}
+              </span>, then drop to Free automatically. <strong className="text-ink-900">No refund applies</strong> for the current period — that's how our policy works for everyone.
+            </p>
+
+            <div className="mt-4">
+              <label className="mb-1 block text-xs font-medium text-muted-500">
+                What made you cancel? <span className="text-muted-400">(optional, helps us improve)</span>
+              </label>
+              <textarea
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value.slice(0, 200))}
+                rows={2}
+                placeholder="Too expensive · Not using enough · Missing feature · …"
+                className="input w-full resize-none text-sm"
+              />
+              <p className="mt-1 text-right text-[10px] text-muted-400">{cancelReason.length}/200</p>
             </div>
-            <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-paper-300">
-              <div className="h-full rounded-full bg-ember-500 transition-all" style={{ width: `${Math.min(100, ((me?.credits ?? 0) / 200) * 100)}%` }} />
+
+            <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row">
+              <button
+                type="button"
+                onClick={() => { setCancelOpen(false); setCancelReason(''); }}
+                className="btn-primary flex-1 text-sm"
+                disabled={cancelling}
+              >
+                Keep my plan
+              </button>
+              <button
+                type="button"
+                onClick={handleCancelPlan}
+                disabled={cancelling}
+                className="rounded-xl border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/20 px-4 py-3 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-950/40 transition-colors disabled:opacity-60"
+              >
+                {cancelling ? 'Cancelling…' : 'Cancel anyway'}
+              </button>
             </div>
-          </div>
-          <div className="flex gap-2 pt-1">
-            <button onClick={() => router.push('/upgrade')} className="btn-primary flex-1 text-sm">Upgrade Plan</button>
-            <button onClick={() => router.push('/upgrade')} className="btn-ghost flex-1 text-sm">Manage Subscription</button>
           </div>
         </div>
-      </section>
+      )}
 
       {/* Refer & Earn */}
       <section className="mt-6" id="referral">

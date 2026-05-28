@@ -95,9 +95,13 @@ export async function grantPlan(deps: GrantPlanDeps, input: GrantPlanInput): Pro
   const newExpiry = computeNewExpiry(currentPlan, currentExpiresAt, input.period);
 
   // 3. Update user record.
+  //    Also clears planCancelledAt: a fresh paid period is, by definition,
+  //    a "resume" -- the user is no longer in the cancelled-but-still-active
+  //    transitional state.
   await users.update(input.uid, {
     plan: input.planId,
     planExpiresAt: newExpiry,
+    planCancelledAt: null,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any);
 

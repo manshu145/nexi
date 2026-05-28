@@ -23,7 +23,11 @@ export const FAQ: readonly FaqItem[] = [
   },
   {
     q: 'Is my data safe?',
-    a: 'Your data is stored in India (Mumbai region), encrypted in transit and at rest, and never sold. We are building to be DPDP Act 2023 compliant from day one, including verifiable parental consent for users under 18. Your verification documents are deleted from active storage 30 days after approval.',
+    a: 'Your data is stored in India (Mumbai region), encrypted in transit and at rest, and never sold. We are building to be DPDP Act 2023 compliant from day one. We do not run third-party ad trackers on the site, and minors should use Nexigrate with the knowledge of a parent or guardian.',
+  },
+  {
+    q: 'How do I cancel my paid plan?',
+    a: 'One click — open your profile, go to Plan & Billing, and tap "Cancel Plan". You keep full access to whatever you paid for until the period ends, then drop to the Free plan automatically. There is no auto-renewal, no future charge, and no refund on completed payments — that trade-off is what lets us keep prices low and avoid renewal nag emails. You can resume any time before the period ends and your plan picks up where it left off.',
   },
   {
     q: 'Why do I need to verify my phone number?',

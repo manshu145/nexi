@@ -346,7 +346,7 @@ export default function UpgradePage() {
       </div>
 
       <p className="mt-6 text-center text-xs text-muted-400">
-        Payments processed securely via Razorpay. Plans renew automatically based on the chosen period — cancel anytime to stop the next charge.
+        Payments processed securely via Razorpay. Plans are one-time charges for the period chosen — there is no auto-renewal. <strong className="text-muted-500">No refunds</strong> on paid plans; cancel any time from your profile to stop the next charge while keeping access until the current period ends.
       </p>
     </main>
   );
