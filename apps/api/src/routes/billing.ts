@@ -8,15 +8,14 @@ import type { Env } from '../env.js';
 import type { Firestore } from 'firebase-admin/firestore';
 import { createHmac } from 'node:crypto';
 import {
-  PLANS,
   isPlanActive,
-  priceFor,
   asUserId,
   type PlanId,
   type BillingPeriod,
 } from '@nexigrate/shared';
 import { grantPlan } from '../lib/billing.js';
 import type { IdempotencyStore } from '../lib/idempotency.js';
+import type { PlatformConfigStore } from '../lib/platformConfigStore.js';
 
 export interface BillingRoutesDeps {
   users: UserStore;
@@ -25,6 +24,12 @@ export interface BillingRoutesDeps {
   db: Firestore | null;
   coupons: CouponStore;
   idempotency: IdempotencyStore;
+  /**
+   * Source of truth for the plan matrix (price, features, isActive). The
+   * defaults come from `@nexigrate/shared`; admin edits in /admin/plans
+   * override them via the platformConfig/plans Firestore doc.
+   */
+  config: PlatformConfigStore;
 }
 
 function parsePeriod(input: unknown): BillingPeriod {
@@ -34,12 +39,15 @@ function parsePeriod(input: unknown): BillingPeriod {
 export function makeBillingRoutes(deps: BillingRoutesDeps): Hono {
   const app = new Hono();
 
-  // GET /v1/billing/plans — returns all plans with features + isActive flags
-  app.get('/plans', (c) => {
+  // GET /v1/billing/plans — returns all plans with features + isActive flags.
+  // Reads from the admin-editable platformConfig/plans store, which falls
+  // back to the locked PR-03 defaults from @nexigrate/shared on a fresh
+  // Firestore.
+  app.get('/plans', async (c) => {
     requireAuth(c);
-    const plans = Object.values(PLANS).map(p => ({
+    const planMap = await deps.config.getPlans();
+    const plans = Object.values(planMap).map(p => ({
       ...p,
-      // For disabled plans, add explicit comingSoon message
       ...(p.comingSoon ? { description: 'Coming soon — launching next month!' } : {}),
     }));
     return c.json({ plans });
@@ -57,13 +65,13 @@ export function makeBillingRoutes(deps: BillingRoutesDeps): Hono {
     if (!body?.planId) throw new HTTPException(400, { message: 'planId required' });
 
     const planId = body.planId as PlanId;
-    const plan = PLANS[planId];
+    const plan = await deps.config.getPlan(planId);
     if (!plan) throw new HTTPException(400, { message: 'Invalid plan' });
     if (!plan.isActive) throw new HTTPException(400, { message: 'This plan is not available yet. Coming soon!' });
     if (planId === 'free') throw new HTTPException(400, { message: 'Cannot purchase free plan' });
 
     const period = parsePeriod(body.period);
-    const baseRupees = priceFor(planId, period);
+    const baseRupees = await deps.config.priceFor(planId, period);
     if (baseRupees <= 0) throw new HTTPException(400, { message: 'Invalid price for plan/period' });
 
     // RAZORPAY_KEY_ID is a public key (not secret). Default to test key if not set.
@@ -144,11 +152,11 @@ export function makeBillingRoutes(deps: BillingRoutesDeps): Hono {
     if (!body?.couponCode || !body?.planId) throw new HTTPException(400, { message: 'couponCode and planId required' });
 
     const planId = body.planId as PlanId;
-    const plan = PLANS[planId];
+    const plan = await deps.config.getPlan(planId);
     if (!plan) throw new HTTPException(400, { message: 'Invalid plan' });
 
     const period = parsePeriod(body.period);
-    const baseAmount = priceFor(planId, period) * 100;
+    const baseAmount = (await deps.config.priceFor(planId, period)) * 100;
     const validation = await deps.coupons.validate(body.couponCode.trim(), planId, principal.userId, baseAmount);
     return c.json(validation);
   });

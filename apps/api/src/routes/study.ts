@@ -11,6 +11,7 @@ import type { Firestore } from 'firebase-admin/firestore';
 import type { Env } from '../env.js';
 import { InMemoryMCQPoolStore, FirestoreMCQPoolStore, type MCQPoolStore } from '../lib/mcqPoolStore.js';
 import type { CreditLedger } from '../lib/creditLedger.js';
+import type { PlatformConfigStore } from '../lib/platformConfigStore.js';
 
 export interface StudyRoutesDeps {
   users: UserStore;
@@ -21,6 +22,8 @@ export interface StudyRoutesDeps {
   env: Env;
   mcqPool?: MCQPoolStore;
   ledger: CreditLedger;
+  /** Live earn amounts read from platformConfig (admin-editable). */
+  config: PlatformConfigStore;
 }
 
 export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
@@ -69,6 +72,7 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
         const spendResult = await deps.ledger.spend({
           userId: asUserId(principal.userId),
           reason: 'read_chapter',
+          amount: await deps.config.getSpendAmounts().then(s => s.read_chapter),
           sourceRef: `${exam}/${subject}/${chapter}`,
           idempotencyKey: `read_chapter:${principal.userId}:${exam}/${subject}/${chapter}:${userLevel}`,
         });
@@ -127,14 +131,15 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
       // idempotency key tied to this attempt).
       if (creditsDeducted && user) {
         try {
+          const refundAmount = await deps.config.getSpendAmounts().then(s => s.read_chapter);
           await deps.ledger.award({
             userId: asUserId(principal.userId),
             source: 'admin_grant',
-            amount: 5,
+            amount: refundAmount,
             sourceRef: `refund:${exam}/${subject}/${chapter}`,
             idempotencyKey: `refund:read_chapter:${principal.userId}:${exam}/${subject}/${chapter}:${Date.now()}`,
           });
-          deps.logger.info('study.credits_refunded', { userId: principal.userId, amount: 5, reason: 'ai_failure' });
+          deps.logger.info('study.credits_refunded', { userId: principal.userId, amount: refundAmount, reason: 'ai_failure' });
         } catch (refundErr) {
           deps.logger.error('study.credits_refund_failed', {
             userId: principal.userId,
@@ -236,13 +241,15 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
     // Award credits via the append-only ledger.
     //
     // Two distinct earn sources, both idempotent on `(userId, exam/subject/chapter)`:
-    //   1. chapter_complete (+20) -- granted once per chapter regardless of score,
+    //   1. chapter_complete -- granted once per chapter regardless of score,
     //      so genuine engagement is rewarded even when the quiz is hard.
-    //   2. mcq_pass (+10) -- additionally granted when score >= 70%, the founder-
-    //      locked passing threshold for credit awards.
+    //   2. mcq_pass         -- additionally granted when score >= 70%, the
+    //      founder-locked passing threshold for credit awards.
     //
-    // Replays of the same /complete call (browser refresh, double-click) return
-    // kind: 'duplicate' from the ledger and award nothing -- which closes the
+    // Amounts are read from platformConfig (admin-editable); the locked PR-03
+    // defaults stay as the fallback if no override is configured. Replays of
+    // the same /complete call (browser refresh, double-click) return
+    // kind: 'duplicate' from the ledger and award nothing, which closes the
     // pre-PR-03 exploit where users farmed credits by reposting completion.
     const refKey = `${exam}/${subject}/${chapter}`;
     let creditsAwarded = 0;
@@ -250,6 +257,7 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
     const completeResult = await deps.ledger.award({
       userId: asUserId(principal.userId),
       source: 'chapter_complete',
+      amount: await deps.config.getEarnAmount('chapter_complete'),
       sourceRef: refKey,
       idempotencyKey: `chapter_complete:${principal.userId}:${refKey}`,
     });
@@ -260,6 +268,7 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
       const passResult = await deps.ledger.award({
         userId: asUserId(principal.userId),
         source: 'mcq_pass',
+        amount: await deps.config.getEarnAmount('mcq_pass'),
         sourceRef: refKey,
         idempotencyKey: `mcq_pass:${principal.userId}:${refKey}`,
       });
