@@ -23,13 +23,23 @@ export interface PlanConfig {
   name: string;
   nameHi: string;
   price: number;             // monthly price in INR (0 for free)
-  yearlyPrice: number;       // yearly price in INR (0 for free)
+  yearlyPrice: number;       // yearly price in INR (0 for free) — locked at 30% off vs 12×monthly
   isActive: boolean;         // can users subscribe to this plan right now?
   comingSoon: boolean;       // show "Coming Soon" badge
   features: PlanFeatures;
 }
 
 export type PlanId = 'free' | 'scholar' | 'aspirant' | 'achiever';
+export type BillingPeriod = 'monthly' | 'yearly';
+
+/** Yearly discount expressed as a fraction. 0.30 = 30% off vs 12× monthly. */
+export const YEARLY_DISCOUNT = 0.30;
+
+/** Days granted per billing period. */
+export const PERIOD_DAYS: Record<BillingPeriod, number> = {
+  monthly: 30,
+  yearly: 365,
+};
 
 export const PLANS: Readonly<Record<PlanId, PlanConfig>> = {
   free: {
@@ -55,7 +65,7 @@ export const PLANS: Readonly<Record<PlanId, PlanConfig>> = {
     name: 'Scholar',
     nameHi: 'विद्वान',
     price: 99,
-    yearlyPrice: 999,
+    yearlyPrice: 830, // 99×12=1188 → 30% off → ₹831.6 → rounded down to clean ₹830
     isActive: true,
     comingSoon: false,
     features: {
@@ -73,7 +83,7 @@ export const PLANS: Readonly<Record<PlanId, PlanConfig>> = {
     name: 'Aspirant',
     nameHi: 'अभ्यर्थी',
     price: 299,
-    yearlyPrice: 2999,
+    yearlyPrice: 2510, // 299×12=3588 → 30% off → ₹2511.6 → rounded down to ₹2510
     isActive: false,
     comingSoon: true,
     features: {
@@ -91,7 +101,7 @@ export const PLANS: Readonly<Record<PlanId, PlanConfig>> = {
     name: 'Achiever',
     nameHi: 'उपलब्धिकर्ता',
     price: 599,
-    yearlyPrice: 5999,
+    yearlyPrice: 5030, // 599×12=7188 → 30% off → ₹5031.6 → rounded down to ₹5030
     isActive: false,
     comingSoon: true,
     features: {
@@ -120,6 +130,36 @@ export function shouldDeductCredits(plan: string, planExpiresAt: string | null):
   if (!isPlanActive(plan, planExpiresAt)) return true;
   // Active paid plan → no deduction
   return false;
+}
+
+/** Price for a given plan + period in INR (rupees). Returns 0 for free or invalid combos. */
+export function priceFor(planId: PlanId, period: BillingPeriod): number {
+  const plan = PLANS[planId];
+  if (!plan) return 0;
+  return period === 'yearly' ? plan.yearlyPrice : plan.price;
+}
+
+/** Number of days a plan grants for a given period. */
+export function daysFor(period: BillingPeriod): number {
+  return PERIOD_DAYS[period];
+}
+
+/**
+ * Calculate the new plan expiry timestamp.
+ * If the user already has an ACTIVE plan, extend from current expiry (don't lose paid days).
+ * If expired or new, start from now.
+ */
+export function computeNewExpiry(
+  currentPlan: string,
+  currentExpiresAt: string | null,
+  period: BillingPeriod,
+  now: Date = new Date(),
+): string {
+  const days = PERIOD_DAYS[period];
+  const baseMs = isPlanActive(currentPlan, currentExpiresAt)
+    ? new Date(currentExpiresAt as string).getTime()
+    : now.getTime();
+  return new Date(baseMs + days * 24 * 60 * 60 * 1000).toISOString();
 }
 
 // Keep backward compat — re-export old types

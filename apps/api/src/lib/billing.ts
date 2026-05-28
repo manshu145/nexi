@@ -1,0 +1,146 @@
+/**
+ * Single source of truth for plan activation.
+ *
+ * Both /v1/billing/verify (client-side) and /v1/billing/webhook (Razorpay)
+ * MUST go through this helper so:
+ *  - the duration is correct for the period (monthly = 30d, yearly = 365d)
+ *  - if the user already has an active plan, we EXTEND from current expiry
+ *    instead of resetting from now (no lost paid days)
+ *  - the order doc + coupon usage are updated atomically with user state
+ *  - both call sites are idempotent via the same {idempotency} store
+ *
+ * Why a separate file: the previous implementation duplicated this logic
+ * inside both the verify handler and the webhook handler with subtle
+ * divergence — one always granted 30 days regardless of period, the other
+ * also always granted 30 days. Centralising prevents drift.
+ */
+
+import type { Firestore } from 'firebase-admin/firestore';
+import {
+  PLANS,
+  computeNewExpiry,
+  type BillingPeriod,
+  type PlanId,
+  type UserId,
+} from '@nexigrate/shared';
+import type { UserStore } from './userStore.js';
+import type { CouponStore } from './couponStore.js';
+import type { Logger } from '../logger.js';
+
+export interface GrantPlanInput {
+  /** Already-trusted user id. Webhook handlers must wrap raw strings via `asUserId()`. */
+  uid: UserId;
+  planId: PlanId;
+  period: BillingPeriod;
+  /** Razorpay payment id — used to mark the order completed and as audit reference. */
+  paymentId: string;
+  /** Razorpay order id — used to update the billingOrders doc. */
+  orderId: string;
+  /** Coupon code if one was applied; the store will increment its usage counter. */
+  couponCode?: string | null;
+  /** Source of the activation (for logging only). */
+  source: 'verify' | 'webhook';
+}
+
+export interface GrantPlanResult {
+  plan: PlanId;
+  expiresAt: string;
+  /** True if the user's plan/expiry was actually changed. False if the order was already completed. */
+  changed: boolean;
+}
+
+export interface GrantPlanDeps {
+  users: UserStore;
+  coupons: CouponStore;
+  db: Firestore | null;
+  logger: Logger;
+}
+
+/**
+ * Activate or extend a user's plan after a successful payment.
+ *
+ * Idempotent on `orderId`: if the orders doc is already `completed`, this is a
+ * no-op and the function returns `changed: false` with the existing expiry
+ * loaded from the user record.
+ */
+export async function grantPlan(deps: GrantPlanDeps, input: GrantPlanInput): Promise<GrantPlanResult> {
+  const { users, coupons, db, logger } = deps;
+
+  if (input.planId === 'free') {
+    throw new Error('cannot grant free plan via billing');
+  }
+  if (!PLANS[input.planId]) {
+    throw new Error(`unknown planId: ${input.planId}`);
+  }
+
+  // 1. Idempotency check via order status.
+  // If the order is already 'completed', do nothing (do NOT extend twice).
+  if (db) {
+    const orderSnap = await db.collection('billingOrders').doc(input.orderId).get();
+    if (orderSnap.exists && orderSnap.data()?.status === 'completed') {
+      const user = await users.get(input.uid);
+      const expiresAt = (user as unknown as { planExpiresAt?: string })?.planExpiresAt
+        ?? new Date().toISOString();
+      logger.info('billing.grant_skipped_already_completed', {
+        uid: input.uid, orderId: input.orderId, source: input.source,
+      });
+      return { plan: input.planId, expiresAt, changed: false };
+    }
+  }
+
+  // 2. Compute new expiry — extend if active, else start fresh.
+  const user = await users.get(input.uid);
+  const currentPlan = user?.plan ?? 'free';
+  const currentExpiresAt = (user as unknown as { planExpiresAt?: string | null })?.planExpiresAt ?? null;
+  const newExpiry = computeNewExpiry(currentPlan, currentExpiresAt, input.period);
+
+  // 3. Update user record.
+  await users.update(input.uid, {
+    plan: input.planId,
+    planExpiresAt: newExpiry,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any);
+
+  // 4. Mark order completed + record coupon usage (best-effort — never fail the grant on these).
+  if (db) {
+    try {
+      await db.collection('billingOrders').doc(input.orderId).set({
+        status: 'completed',
+        paymentId: input.paymentId,
+        period: input.period,
+        completedAt: new Date().toISOString(),
+        completedVia: input.source,
+        grantedExpiresAt: newExpiry,
+      }, { merge: true });
+    } catch (e) {
+      logger.warn('billing.order_status_update_failed', {
+        orderId: input.orderId, error: e instanceof Error ? e.message : String(e),
+      });
+    }
+
+    if (input.couponCode) {
+      try {
+        await coupons.incrementUsage(input.couponCode);
+        await db.collection('users').doc(input.uid).collection('usedCoupons').doc(input.couponCode).set({
+          usedAt: new Date().toISOString(),
+          orderId: input.orderId,
+        });
+      } catch (e) {
+        logger.warn('billing.coupon_usage_update_failed', {
+          coupon: input.couponCode, error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
+  }
+
+  logger.info('billing.granted', {
+    uid: input.uid,
+    planId: input.planId,
+    period: input.period,
+    expiresAt: newExpiry,
+    extendedFrom: currentExpiresAt,
+    source: input.source,
+  });
+
+  return { plan: input.planId, expiresAt: newExpiry, changed: true };
+}

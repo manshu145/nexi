@@ -23,6 +23,21 @@ async function authedFetch(path: string, init: RequestInit = {}): Promise<Respon
   return res;
 }
 
+/**
+ * Generate a cryptographically-random idempotency key (UUID v4).
+ * Use this for any mutation that you want to safely retry — the server will
+ * dedupe based on this key for ~24 hours.
+ */
+export function newIdempotencyKey(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
+  // Fallback for older browsers — RFC4122-shaped pseudo-random.
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 export interface StoredUser { id: string; email: string; name: string; phone: string|null; photoURL: string|null; language: 'en'|'hi'; targetExam: ExamSlug|null; classLevel: string|null; board: string|null; school: string|null; dob: string|null; aim: string|null; onboardingScore: number|null; onboardingLevel: 'beginner'|'intermediate'|'advanced'|null; credits: number; plan: 'free'|'scholar'|'aspirant'|'achiever'; planExpiresAt: string|null; currentStreak: number; bestStreak: number; lastDailyAt: string|null; isVerified: boolean; role: 'student'|'admin'; createdAt: string; }
 export interface MeResponse { user: StoredUser; dailyStreak: { streak: number; creditsEarned: number }; }
 export interface MCQOption { key: 'A'|'B'|'C'|'D'; text: string; }
@@ -85,8 +100,19 @@ export const api = {
 
   // Billing
   async getPlans() { return (await authedFetch('/v1/billing/plans')).json() as Promise<{plans:Plan[]}>; },
-  async createOrder(planId: string, period: 'monthly'|'yearly') { return (await authedFetch('/v1/billing/order', { method: 'POST', body: JSON.stringify({ planId, period }) })).json() as Promise<{orderId:string; amount:number; currency:string; key:string; keyId?:string}>; },
-  async verifyPayment(data: {razorpay_order_id:string; razorpay_payment_id:string; razorpay_signature:string; planId?:string; period?:'monthly'|'yearly'}) { return (await authedFetch('/v1/billing/verify', { method: 'POST', body: JSON.stringify(data) })).json() as Promise<{success:boolean; plan:string; expiresAt:string}>; },
+  async createOrder(planId: string, period: 'monthly'|'yearly', couponCode?: string) {
+    return (await authedFetch('/v1/billing/order', {
+      method: 'POST',
+      body: JSON.stringify({ planId, period, couponCode }),
+    })).json() as Promise<{orderId:string; amount:number; currency:string; key:string; keyId?:string; period:'monthly'|'yearly'}>;
+  },
+  async verifyPayment(data: {razorpay_order_id:string; razorpay_payment_id:string; razorpay_signature:string}, idempotencyKey?: string) {
+    return (await authedFetch('/v1/billing/verify', {
+      method: 'POST',
+      headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+      body: JSON.stringify(data),
+    })).json() as Promise<{success:boolean; plan:string; expiresAt:string; period:'monthly'|'yearly'}>;
+  },
   async getSubscription() { return (await authedFetch('/v1/billing/subscription')).json() as Promise<{plan:string; planExpiresAt:string|null; isActive:boolean; daysRemaining:number; credits:number}>; },
 
   // Session tracking

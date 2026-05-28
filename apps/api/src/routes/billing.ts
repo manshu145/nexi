@@ -7,7 +7,16 @@ import type { CouponStore } from '../lib/couponStore.js';
 import type { Env } from '../env.js';
 import type { Firestore } from 'firebase-admin/firestore';
 import { createHmac } from 'node:crypto';
-import { PLANS, isPlanActive, type PlanId } from '@nexigrate/shared';
+import {
+  PLANS,
+  isPlanActive,
+  priceFor,
+  asUserId,
+  type PlanId,
+  type BillingPeriod,
+} from '@nexigrate/shared';
+import { grantPlan } from '../lib/billing.js';
+import type { IdempotencyStore } from '../lib/idempotency.js';
 
 export interface BillingRoutesDeps {
   users: UserStore;
@@ -15,6 +24,11 @@ export interface BillingRoutesDeps {
   logger: Logger;
   db: Firestore | null;
   coupons: CouponStore;
+  idempotency: IdempotencyStore;
+}
+
+function parsePeriod(input: unknown): BillingPeriod {
+  return input === 'yearly' ? 'yearly' : 'monthly';
 }
 
 export function makeBillingRoutes(deps: BillingRoutesDeps): Hono {
@@ -31,10 +45,15 @@ export function makeBillingRoutes(deps: BillingRoutesDeps): Hono {
     return c.json({ plans });
   });
 
-  // POST /v1/billing/order — create Razorpay order
+  // POST /v1/billing/order — create Razorpay order for a (planId, period) pair.
+  // Body: { planId: 'scholar' | 'aspirant' | 'achiever', period: 'monthly' | 'yearly', couponCode?: string }
   app.post('/order', async (c) => {
     const principal = requireAuth(c);
-    const body = await c.req.json().catch(() => null) as { planId?: string; couponCode?: string } | null;
+    const body = await c.req.json().catch(() => null) as {
+      planId?: string;
+      period?: string;
+      couponCode?: string;
+    } | null;
     if (!body?.planId) throw new HTTPException(400, { message: 'planId required' });
 
     const planId = body.planId as PlanId;
@@ -43,13 +62,17 @@ export function makeBillingRoutes(deps: BillingRoutesDeps): Hono {
     if (!plan.isActive) throw new HTTPException(400, { message: 'This plan is not available yet. Coming soon!' });
     if (planId === 'free') throw new HTTPException(400, { message: 'Cannot purchase free plan' });
 
+    const period = parsePeriod(body.period);
+    const baseRupees = priceFor(planId, period);
+    if (baseRupees <= 0) throw new HTTPException(400, { message: 'Invalid price for plan/period' });
+
     // RAZORPAY_KEY_ID is a public key (not secret). Default to test key if not set.
     const razorpayKeyId = deps.env.RAZORPAY_KEY_ID || 'rzp_test_SsPfzbJUMaK7Ow';
     if (!deps.env.RAZORPAY_KEY_SECRET) {
       throw new HTTPException(503, { message: 'Payment system not configured. RAZORPAY_KEY_SECRET missing.' });
     }
 
-    const baseAmount = plan.price * 100; // paise (monthly only for now)
+    const baseAmount = baseRupees * 100; // paise
     let finalAmount = baseAmount;
     let couponCode: string | null = null;
 
@@ -75,7 +98,7 @@ export function makeBillingRoutes(deps: BillingRoutesDeps): Hono {
           amount: finalAmount,
           currency: 'INR',
           receipt,
-          notes: { uid: principal.userId, planId, couponCode: couponCode || '' },
+          notes: { uid: principal.userId, planId, period, couponCode: couponCode || '' },
         }),
       });
 
@@ -86,12 +109,13 @@ export function makeBillingRoutes(deps: BillingRoutesDeps): Hono {
 
       const order = await res.json() as { id: string; amount: number; currency: string };
 
-      // Save order to Firestore
+      // Save order to Firestore — period is the key new field (verifies + webhooks read it).
       if (deps.db) {
         await deps.db.collection('billingOrders').doc(order.id).set({
           orderId: order.id,
           uid: principal.userId,
           planId,
+          period,
           amount: finalAmount,
           originalAmount: baseAmount,
           couponCode,
@@ -102,8 +126,10 @@ export function makeBillingRoutes(deps: BillingRoutesDeps): Hono {
         });
       }
 
-      deps.logger.info('billing.order_created', { userId: principal.userId, planId, orderId: order.id, amount: finalAmount, couponCode });
-      return c.json({ orderId: order.id, amount: finalAmount, currency: order.currency, keyId: razorpayKeyId });
+      deps.logger.info('billing.order_created', {
+        userId: principal.userId, planId, period, orderId: order.id, amount: finalAmount, couponCode,
+      });
+      return c.json({ orderId: order.id, amount: finalAmount, currency: order.currency, keyId: razorpayKeyId, period });
     } catch (err) {
       if (err instanceof HTTPException) throw err;
       deps.logger.error('billing.order_error', { error: err instanceof Error ? err.message : String(err) });
@@ -114,19 +140,21 @@ export function makeBillingRoutes(deps: BillingRoutesDeps): Hono {
   // POST /v1/billing/validate-coupon — validate coupon without creating order
   app.post('/validate-coupon', async (c) => {
     const principal = requireAuth(c);
-    const body = await c.req.json().catch(() => null) as { couponCode?: string; planId?: string } | null;
+    const body = await c.req.json().catch(() => null) as { couponCode?: string; planId?: string; period?: string } | null;
     if (!body?.couponCode || !body?.planId) throw new HTTPException(400, { message: 'couponCode and planId required' });
 
     const planId = body.planId as PlanId;
     const plan = PLANS[planId];
     if (!plan) throw new HTTPException(400, { message: 'Invalid plan' });
 
-    const baseAmount = plan.price * 100;
+    const period = parsePeriod(body.period);
+    const baseAmount = priceFor(planId, period) * 100;
     const validation = await deps.coupons.validate(body.couponCode.trim(), planId, principal.userId, baseAmount);
     return c.json(validation);
   });
 
-  // POST /v1/billing/verify — verify payment after Razorpay checkout
+  // POST /v1/billing/verify — verify payment after Razorpay checkout (browser handler).
+  // Idempotent on `razorpay_payment_id`: a retry returns the cached response.
   app.post('/verify', async (c) => {
     const principal = requireAuth(c);
     const body = await c.req.json().catch(() => null) as {
@@ -141,7 +169,17 @@ export function makeBillingRoutes(deps: BillingRoutesDeps): Hono {
 
     if (!deps.env.RAZORPAY_KEY_SECRET) throw new HTTPException(503, { message: 'Payment system not configured' });
 
-    // Verify signature
+    // 1. Idempotency — if we've seen this payment_id before, return the cached response.
+    const idemKey = body.razorpay_payment_id;
+    const cached = await deps.idempotency.get<{ success: boolean; plan: string; expiresAt: string }>(
+      'billing.verify', idemKey,
+    );
+    if (cached && cached.status === 'completed') {
+      deps.logger.info('billing.verify_idempotent_replay', { userId: principal.userId, paymentId: idemKey });
+      return c.json(cached.response);
+    }
+
+    // 2. Verify Razorpay HMAC signature (proves Razorpay signed this payment).
     const expectedSig = createHmac('sha256', deps.env.RAZORPAY_KEY_SECRET)
       .update(`${body.razorpay_order_id}|${body.razorpay_payment_id}`)
       .digest('hex');
@@ -151,104 +189,66 @@ export function makeBillingRoutes(deps: BillingRoutesDeps): Hono {
       throw new HTTPException(400, { message: 'Payment verification failed' });
     }
 
-    // Fetch order from Firestore to get planId and couponCode
+    // 3. Load order — read planId, period, and couponCode from the trusted server-side doc.
     let planId: PlanId = 'scholar';
+    let period: BillingPeriod = 'monthly';
     let couponCode: string | null = null;
+    let amountPaise = 0;
 
     if (deps.db) {
       const orderSnap = await deps.db.collection('billingOrders').doc(body.razorpay_order_id).get();
       if (orderSnap.exists) {
         const orderData = orderSnap.data()!;
+        // SECURITY: ensure the order belongs to the authenticated user.
+        if (orderData.uid && orderData.uid !== principal.userId) {
+          deps.logger.warn('billing.verify_uid_mismatch', {
+            userId: principal.userId, orderUid: orderData.uid, orderId: body.razorpay_order_id,
+          });
+          throw new HTTPException(403, { message: 'Order does not belong to current user' });
+        }
         planId = (orderData.planId as PlanId) || 'scholar';
+        period = parsePeriod(orderData.period);
         couponCode = orderData.couponCode || null;
+        amountPaise = orderData.amount || 0;
       }
     }
 
-    // Upgrade user plan — 30 days from now
-    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-    await deps.users.update(principal.userId, { plan: planId, planExpiresAt: expiresAt } as any);
-
-    // Update order status
-    if (deps.db) {
-      await deps.db.collection('billingOrders').doc(body.razorpay_order_id).set({
-        status: 'completed',
+    // 4. Activate the plan (extends if active, else starts fresh).
+    const result = await grantPlan(
+      { users: deps.users, coupons: deps.coupons, db: deps.db, logger: deps.logger },
+      {
+        uid: principal.userId,
+        planId,
+        period,
         paymentId: body.razorpay_payment_id,
-        completedAt: new Date().toISOString(),
-      }, { merge: true });
+        orderId: body.razorpay_order_id,
+        couponCode,
+        source: 'verify',
+      },
+    );
 
-      // Mark coupon as used by this user
-      if (couponCode) {
-        await deps.coupons.incrementUsage(couponCode);
-        await deps.db.collection('users').doc(principal.userId).collection('usedCoupons').doc(couponCode).set({
-          usedAt: new Date().toISOString(),
-        });
-      }
-    }
+    const response = { success: true, plan: result.plan, expiresAt: result.expiresAt, period };
 
-    deps.logger.info('billing.verified', { userId: principal.userId, planId, expiresAt, couponCode });
+    // 5. Cache the response under the payment id so retries are no-ops.
+    await deps.idempotency.put('billing.verify', idemKey, response);
 
-    // Send payment success email
+    // 6. Send confirmation email — non-blocking, best-effort.
     try {
       const { createEmailService } = await import('../lib/emailService.js');
       const emailService = createEmailService(deps.env, deps.logger);
       const user = await deps.users.get(principal.userId);
       if (user?.email) {
-        const orderSnap2 = deps.db ? await deps.db.collection('billingOrders').doc(body.razorpay_order_id).get() : null;
-        const amount = orderSnap2?.exists ? ((orderSnap2.data()?.amount ?? 0) / 100) : 0;
-        await emailService.sendPaymentSuccess(user.email, user.name ?? 'Student', planId ?? 'scholar', expiresAt ?? '', amount);
+        await emailService.sendPaymentSuccess(
+          user.email,
+          user.name ?? 'Student',
+          planId,
+          result.expiresAt,
+          amountPaise / 100,
+        );
       }
     } catch { /* email is non-critical */ }
 
-    return c.json({ success: true, plan: planId, expiresAt });
-  });
-
-  // POST /v1/billing/webhook — Razorpay webhook (NO auth — uses webhook signature)
-  app.post('/webhook', async (c) => {
-    const webhookSecret = deps.env.RAZORPAY_WEBHOOK_SECRET;
-    if (!webhookSecret) return c.json({ ok: true }); // silently ignore if not configured
-
-    const signature = c.req.header('x-razorpay-signature') ?? '';
-    const rawBody = await c.req.text();
-
-    const expectedSig = createHmac('sha256', webhookSecret).update(rawBody).digest('hex');
-    if (expectedSig !== signature) {
-      deps.logger.warn('billing.webhook_signature_mismatch');
-      return c.json({ ok: false }, 400);
-    }
-
-    try {
-      const payload = JSON.parse(rawBody) as { event?: string; payload?: { payment?: { entity?: { order_id?: string; id?: string; status?: string } } } };
-      const event = payload.event;
-      const payment = payload.payload?.payment?.entity;
-
-      if (event === 'payment.captured' && payment?.order_id) {
-        // Fallback activation — same logic as verify
-        if (deps.db) {
-          const orderSnap = await deps.db.collection('billingOrders').doc(payment.order_id).get();
-          if (orderSnap.exists) {
-            const orderData = orderSnap.data()!;
-            if (orderData.status === 'pending') {
-              const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-              await deps.users.update(orderData.uid, { plan: orderData.planId, planExpiresAt: expiresAt } as any);
-              await deps.db.collection('billingOrders').doc(payment.order_id).set({
-                status: 'completed', paymentId: payment.id, completedAt: new Date().toISOString(),
-              }, { merge: true });
-              if (orderData.couponCode) await deps.coupons.incrementUsage(orderData.couponCode);
-              deps.logger.info('billing.webhook_activated', { uid: orderData.uid, planId: orderData.planId, orderId: payment.order_id });
-            }
-          }
-        }
-      } else if (event === 'payment.failed' && payment?.order_id) {
-        if (deps.db) {
-          await deps.db.collection('billingOrders').doc(payment.order_id).set({ status: 'failed' }, { merge: true });
-        }
-        deps.logger.info('billing.webhook_failed', { orderId: payment.order_id });
-      }
-    } catch (err) {
-      deps.logger.error('billing.webhook_error', { error: err instanceof Error ? err.message : String(err) });
-    }
-
-    return c.json({ ok: true });
+    return c.json(response);
   });
 
   // GET /v1/billing/subscription — current plan info
@@ -256,7 +256,7 @@ export function makeBillingRoutes(deps: BillingRoutesDeps): Hono {
     const principal = requireAuth(c);
     const user = await deps.users.get(principal.userId);
     const plan = user?.plan ?? 'free';
-    const planExpiresAt = (user as any)?.planExpiresAt ?? null;
+    const planExpiresAt = (user as unknown as { planExpiresAt?: string | null })?.planExpiresAt ?? null;
     const isActive = isPlanActive(plan, planExpiresAt);
     const daysRemaining = planExpiresAt ? Math.max(0, Math.ceil((new Date(planExpiresAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000))) : 0;
 
@@ -281,6 +281,160 @@ export function makeBillingRoutes(deps: BillingRoutesDeps): Hono {
       return c.json({ payments });
     } catch {
       return c.json({ payments: [] });
+    }
+  });
+
+  return app;
+}
+
+// ---------------------------------------------------------------------------
+// Webhook router — mounted SEPARATELY from the auth-gated v1 namespace because
+// Razorpay does not (and cannot) send a Bearer token; trust is established
+// through the HMAC signature on the raw request body.
+// ---------------------------------------------------------------------------
+
+export interface BillingWebhookDeps {
+  users: UserStore;
+  env: Env;
+  logger: Logger;
+  db: Firestore | null;
+  coupons: CouponStore;
+  idempotency: IdempotencyStore;
+}
+
+interface RazorpayPaymentEntity {
+  id?: string;
+  order_id?: string;
+  status?: string;
+  amount?: number;
+  notes?: Record<string, string>;
+}
+
+interface RazorpayWebhookPayload {
+  event?: string;
+  payload?: {
+    payment?: { entity?: RazorpayPaymentEntity };
+  };
+}
+
+export function makeBillingWebhookRoute(deps: BillingWebhookDeps): Hono {
+  const app = new Hono();
+
+  // POST /v1/billing/webhook — Razorpay event handler.
+  // Auth: HMAC signature on raw body (NOT a Bearer token).
+  // Idempotency: cached on razorpay_payment_id, so duplicate webhook deliveries are safe.
+  app.post('/webhook', async (c) => {
+    const webhookSecret = deps.env.RAZORPAY_WEBHOOK_SECRET;
+
+    // No secret configured → ack 200 so Razorpay stops retrying, but log a warning.
+    // We never want to silently fail-open and grant a plan, so missing secret = noop.
+    if (!webhookSecret || webhookSecret === 'not_set') {
+      deps.logger.warn('billing.webhook_secret_missing');
+      return c.json({ ok: true, ignored: 'webhook_secret_not_configured' });
+    }
+
+    const signature = c.req.header('x-razorpay-signature') ?? '';
+    const rawBody = await c.req.text();
+
+    const expectedSig = createHmac('sha256', webhookSecret).update(rawBody).digest('hex');
+    if (expectedSig !== signature) {
+      deps.logger.warn('billing.webhook_signature_mismatch');
+      return c.json({ ok: false, error: 'invalid_signature' }, 400);
+    }
+
+    let payload: RazorpayWebhookPayload;
+    try {
+      payload = JSON.parse(rawBody) as RazorpayWebhookPayload;
+    } catch (err) {
+      deps.logger.error('billing.webhook_parse_error', { error: err instanceof Error ? err.message : String(err) });
+      return c.json({ ok: false, error: 'invalid_json' }, 400);
+    }
+
+    const event = payload.event ?? 'unknown';
+    const payment = payload.payload?.payment?.entity;
+
+    try {
+      if (event === 'payment.captured' && payment?.order_id && payment.id) {
+        // Idempotency: skip if we've already processed this payment id.
+        const cached = await deps.idempotency.get('billing.webhook', payment.id);
+        if (cached && cached.status === 'completed') {
+          deps.logger.info('billing.webhook_idempotent_replay', { paymentId: payment.id });
+          return c.json({ ok: true, replayed: true });
+        }
+
+        if (!deps.db) {
+          deps.logger.warn('billing.webhook_no_db');
+          return c.json({ ok: true, ignored: 'no_db' });
+        }
+
+        const orderSnap = await deps.db.collection('billingOrders').doc(payment.order_id).get();
+        if (!orderSnap.exists) {
+          deps.logger.warn('billing.webhook_unknown_order', { orderId: payment.order_id });
+          return c.json({ ok: true, ignored: 'unknown_order' });
+        }
+
+        const orderData = orderSnap.data() as {
+          uid?: string;
+          planId?: PlanId;
+          period?: string;
+          couponCode?: string | null;
+          status?: string;
+        };
+
+        if (orderData.status === 'completed') {
+          // Already activated by /verify — webhook is a redundant safety net.
+          await deps.idempotency.put('billing.webhook', payment.id, { ok: true, alreadyCompleted: true });
+          return c.json({ ok: true, alreadyCompleted: true });
+        }
+
+        if (!orderData.uid || !orderData.planId) {
+          deps.logger.error('billing.webhook_malformed_order', { orderId: payment.order_id });
+          return c.json({ ok: false, error: 'malformed_order' }, 500);
+        }
+
+        const result = await grantPlan(
+          { users: deps.users, coupons: deps.coupons, db: deps.db, logger: deps.logger },
+          {
+            uid: asUserId(orderData.uid),
+            planId: orderData.planId,
+            period: parsePeriod(orderData.period),
+            paymentId: payment.id,
+            orderId: payment.order_id,
+            couponCode: orderData.couponCode ?? null,
+            source: 'webhook',
+          },
+        );
+
+        await deps.idempotency.put('billing.webhook', payment.id, {
+          ok: true,
+          plan: result.plan,
+          expiresAt: result.expiresAt,
+          changed: result.changed,
+        });
+
+        return c.json({ ok: true, plan: result.plan, expiresAt: result.expiresAt });
+      }
+
+      if (event === 'payment.failed' && payment?.order_id) {
+        if (deps.db) {
+          await deps.db.collection('billingOrders').doc(payment.order_id).set({
+            status: 'failed',
+            failedAt: new Date().toISOString(),
+          }, { merge: true });
+        }
+        deps.logger.info('billing.webhook_failed', { orderId: payment.order_id });
+        return c.json({ ok: true });
+      }
+
+      // Other events (refund.processed, order.paid, etc) — ack but don't act.
+      deps.logger.info('billing.webhook_ignored_event', { event });
+      return c.json({ ok: true, ignored: event });
+    } catch (err) {
+      deps.logger.error('billing.webhook_error', {
+        event, error: err instanceof Error ? err.message : String(err),
+      });
+      // Return 500 so Razorpay retries the webhook later.
+      return c.json({ ok: false, error: 'processing_error' }, 500);
     }
   });
 
