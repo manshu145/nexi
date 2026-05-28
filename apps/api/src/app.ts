@@ -119,6 +119,55 @@ export function buildApp(deps: AppDeps): Hono {
     return c.json({ success: true, ...result });
   });
 
+  // Cron endpoint — streak reminder (Cloud Scheduler: daily 7pm IST)
+  app.post('/v1/notifications/streak-check', async (c) => {
+    const cronSecret = c.req.header('x-cron-secret');
+    if (cronSecret !== env.CRON_SECRET) {
+      return c.json({ error: 'unauthorized' }, 401);
+    }
+    logger.info('cron.streak_check_start');
+    let sent = 0;
+    let skipped = 0;
+    try {
+      const { createEmailService } = await import('./lib/emailService.js');
+      const emailService = createEmailService(env, logger);
+
+      // Query users who haven't been active today (streak at risk)
+      if (fs) {
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const todayISO = todayStart.toISOString();
+
+        // Get users with active streaks who haven't logged in today
+        const snap = await fs.collection('users')
+          .where('currentStreak', '>', 0)
+          .limit(500)
+          .get();
+
+        for (const doc of snap.docs) {
+          const u = doc.data() as { email?: string; name?: string; currentStreak?: number; lastDailyAt?: string; language?: string };
+          // Skip if already active today
+          if (u.lastDailyAt && u.lastDailyAt >= todayISO) { skipped++; continue; }
+          // Skip if no email
+          if (!u.email) { skipped++; continue; }
+
+          const success = await emailService.sendStreakReminder(
+            u.email,
+            u.name ?? 'Student',
+            u.currentStreak ?? 0,
+            (u.language as 'en' | 'hi') ?? 'en',
+          );
+          if (success) sent++;
+        }
+      }
+      logger.info('cron.streak_check_done', { sent, skipped });
+      return c.json({ success: true, sent, skipped });
+    } catch (err) {
+      logger.error('cron.streak_check_error', { error: err instanceof Error ? err.message : String(err) });
+      return c.json({ success: false, error: 'Streak check failed' }, 500);
+    }
+  });
+
   const v1 = new Hono();
   v1.use('*', authMiddleware(firebaseAuth));
   v1.route('/users', makeUsersRoutes({ users, logger, db: fs }));

@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { EXAMS } from '@nexigrate/shared';
 import { api } from '~/lib/api';
 
-const CAT_LABELS: Record<string, string> = { 'school': 'School (Class 8-12)', 'engineering': 'Engineering', 'medical': 'Medical', 'civil-services': 'Civil Services & SSC', 'banking': 'Banking', 'defence': 'Defence', 'state': 'State Exams' };
+const CAT_LABELS: Record<string, string> = { 'school': 'School (Class 5-12)', 'engineering': 'Engineering', 'medical': 'Medical', 'civil-services': 'Civil Services & SSC', 'banking': 'Banking', 'defence': 'Defence', 'state': 'State Exams', 'law': 'Law', 'management': 'Management', 'professional-skills': 'Professional Skills' };
 
 export default function ExamPage() {
   const t = useTranslations('onboarding.exam');

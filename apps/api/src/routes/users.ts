@@ -10,7 +10,7 @@ import type { Firestore } from 'firebase-admin/firestore';
 export interface UsersRoutesDeps { users: UserStore; logger: Logger; db?: Firestore | null; }
 
 const patchSchema = z.object({ name: z.string().min(1).optional(), phone: z.string().optional(), dob: z.string().optional(), classLevel: z.string().optional(), board: z.string().optional(), school: z.string().optional(), aim: z.string().optional() });
-const onboardingSchema = z.object({ language: z.enum(['en','hi']).optional(), targetExam: z.string().refine(isExamSlug, { message: 'unknown exam slug' }).optional(), name: z.string().min(1).optional(), phone: z.string().optional(), dob: z.string().optional(), classLevel: z.string().optional(), board: z.string().optional(), school: z.string().optional(), aim: z.string().optional() });
+const onboardingSchema = z.object({ language: z.enum(['en','hi']).optional(), targetExam: z.string().refine(isExamSlug, { message: 'unknown exam slug' }).optional(), name: z.string().min(1).optional(), email: z.string().email().optional(), phone: z.string().optional(), dob: z.string().optional(), classLevel: z.string().optional(), board: z.string().optional(), school: z.string().optional(), aim: z.string().optional() });
 
 export function makeUsersRoutes(deps: UsersRoutesDeps): Hono {
   const app = new Hono();
@@ -77,6 +77,7 @@ export function makeUsersRoutes(deps: UsersRoutesDeps): Hono {
     if (parsed.data.language) d.language = parsed.data.language;
     if (parsed.data.targetExam) d.targetExam = asExamSlug(parsed.data.targetExam);
     if (parsed.data.name) d.name = parsed.data.name;
+    if (parsed.data.email) d.email = parsed.data.email;
     if (parsed.data.phone) d.phone = parsed.data.phone;
     if (parsed.data.dob) d.dob = parsed.data.dob;
     if (parsed.data.classLevel) d.classLevel = parsed.data.classLevel;

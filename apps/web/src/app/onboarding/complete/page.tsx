@@ -138,7 +138,7 @@ export default function CompletePage() {
           <p className="mt-4 text-sm text-muted-500 leading-relaxed">{lang === 'hi' ? result.messageHi : result.message}</p>
         </>)}
       </div>
-      <button type="button" onClick={() => router.replace('/dashboard')} className="btn-primary mt-10 w-full">{t('startLearning')}</button>
+      <button type="button" onClick={() => router.replace('/onboarding/plan')} className="btn-primary mt-10 w-full">{t('startLearning')}</button>
       {referralBonus && (
         <div className="mt-4 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 p-4 text-center">
           <p className="text-sm font-medium text-amber-700 dark:text-amber-400">🎉 Referral applied! You got {referralBonus} bonus credits</p>

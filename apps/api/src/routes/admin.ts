@@ -536,6 +536,20 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
     return c.json({ logs, total: logs.length });
   });
 
+  // GET /v1/admin/users/:uid/chat — list all chat sessions for a user
+  app.get('/users/:uid/chat', async (c) => {
+    const uid = c.req.param('uid');
+    if (!deps.db) return c.json({ sessions: [] });
+    try {
+      const snap = await deps.db.collection('users').doc(uid).collection('chatHistory').orderBy('updatedAt', 'desc').limit(50).get();
+      const sessions = snap.docs.map(d => {
+        const data = d.data() as { id?: string; title?: string; createdAt?: string; updatedAt?: string; messages?: unknown[] };
+        return { id: d.id, title: data.title ?? 'Untitled', createdAt: data.createdAt ?? '', updatedAt: data.updatedAt ?? '', messageCount: data.messages?.length ?? 0 };
+      });
+      return c.json({ sessions });
+    } catch { return c.json({ sessions: [] }); }
+  });
+
   // GET /v1/admin/users/:uid/chat/:sessionId — full chat session (admin read-only)
   app.get('/users/:uid/chat/:sessionId', async (c) => {
     const uid = c.req.param('uid');
