@@ -106,13 +106,16 @@ Respond ONLY with valid JSON:
       }
     }
 
-    const body = await c.req.json().catch(() => null) as { topic?: string; answer?: string; wordLimit?: number; examContext?: string } | null;
+    const body = await c.req.json().catch(() => null) as { topic?: string; answer?: string; wordLimit?: number; examContext?: string; language?: string } | null;
     if (!body?.topic || !body?.answer) throw new HTTPException(400, { message: 'topic and answer required' });
 
     const wordCount = body.answer.trim().split(/\s+/).length;
     const exam = body.examContext ?? user.targetExam ?? 'general';
+    const language = (body?.language as 'en' | 'hi') || user.language || 'en';
+    const langInstr = language === 'hi' ? 'Provide all feedback text (comments, strengths, weaknesses, improvements, rewritten paragraphs) in Hindi (Devanagari script).' : '';
 
     const gradePrompt = `You are a strict ${exam.toUpperCase()} exam answer evaluator. Grade this answer critically and thoroughly.
+${langInstr}
 
 QUESTION: ${body.topic}
 WORD LIMIT: ${body.wordLimit ?? 250} words
