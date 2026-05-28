@@ -257,10 +257,106 @@ export function makeBillingRoutes(deps: BillingRoutesDeps): Hono {
     const user = await deps.users.get(principal.userId);
     const plan = user?.plan ?? 'free';
     const planExpiresAt = (user as unknown as { planExpiresAt?: string | null })?.planExpiresAt ?? null;
+    const planCancelledAt = (user as unknown as { planCancelledAt?: string | null })?.planCancelledAt ?? null;
     const isActive = isPlanActive(plan, planExpiresAt);
     const daysRemaining = planExpiresAt ? Math.max(0, Math.ceil((new Date(planExpiresAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000))) : 0;
 
-    return c.json({ plan, planExpiresAt, isActive, daysRemaining, credits: user?.credits ?? 0 });
+    return c.json({
+      plan,
+      planExpiresAt,
+      planCancelledAt,
+      isActive,
+      isCancelled: isActive && !!planCancelledAt,
+      daysRemaining,
+      credits: user?.credits ?? 0,
+    });
+  });
+
+  // POST /v1/billing/cancel — cancel the active paid plan.
+  //
+  // Semantics (locked by founder decision in PR-02 plan):
+  //  - No refund is issued, ever.
+  //  - The user keeps full access to their current plan until planExpiresAt.
+  //  - planCancelledAt is set so the UI can show the cancelled banner and
+  //    suppress renewal nudges. The plan field itself is NOT changed --
+  //    natural expiry will downgrade the user to 'free' when planExpiresAt
+  //    passes (no scheduled job needed; isPlanActive() returns false).
+  //  - Cancelling a free plan is a no-op (returns 400 so the UI can hide
+  //    the button rather than silently succeed).
+  //  - Idempotent: cancelling an already-cancelled plan returns the same
+  //    response without re-sending the email.
+  app.post('/cancel', async (c) => {
+    const principal = requireAuth(c);
+    const body = await c.req.json().catch(() => null) as { reason?: string } | null;
+    const reason = (body?.reason ?? '').toString().trim().slice(0, 200) || null;
+
+    const user = await deps.users.get(principal.userId);
+    if (!user) throw new HTTPException(404, { message: 'User not found' });
+
+    const plan = user.plan ?? 'free';
+    const planExpiresAt = (user as unknown as { planExpiresAt?: string | null })?.planExpiresAt ?? null;
+
+    if (plan === 'free' || !isPlanActive(plan, planExpiresAt)) {
+      throw new HTTPException(400, { message: 'No active paid plan to cancel' });
+    }
+
+    const alreadyCancelled = !!(user as unknown as { planCancelledAt?: string | null }).planCancelledAt;
+    if (alreadyCancelled) {
+      return c.json({
+        success: true,
+        alreadyCancelled: true,
+        plan,
+        planExpiresAt,
+        planCancelledAt: (user as unknown as { planCancelledAt: string }).planCancelledAt,
+      });
+    }
+
+    const cancelledAt = new Date().toISOString();
+    await deps.users.update(principal.userId, { planCancelledAt: cancelledAt } as never);
+
+    // Audit trail in Firestore (analytics, churn dashboard) -- best effort.
+    if (deps.db) {
+      try {
+        await deps.db.collection('subscriptionEvents').add({
+          uid: principal.userId,
+          type: 'cancel',
+          plan,
+          reason,
+          planExpiresAt,
+          createdAt: cancelledAt,
+        });
+      } catch (e) {
+        deps.logger.warn('billing.cancel_audit_failed', {
+          userId: principal.userId, error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
+
+    deps.logger.info('billing.cancelled', {
+      userId: principal.userId, plan, planExpiresAt, reason,
+    });
+
+    // Confirmation email -- non-blocking, best-effort.
+    try {
+      const { createEmailService } = await import('../lib/emailService.js');
+      const emailService = createEmailService(deps.env, deps.logger);
+      if (user.email) {
+        await emailService.sendCancellationConfirmation(
+          user.email,
+          user.name ?? 'Student',
+          plan,
+          planExpiresAt ?? cancelledAt,
+        );
+      }
+    } catch { /* email is non-critical */ }
+
+    return c.json({
+      success: true,
+      alreadyCancelled: false,
+      plan,
+      planExpiresAt,
+      planCancelledAt: cancelledAt,
+    });
   });
 
   // GET /v1/billing/history — last 10 completed payments for current user

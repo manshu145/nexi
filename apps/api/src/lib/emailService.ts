@@ -8,6 +8,7 @@ export interface EmailService {
   sendStreakReminder(to: string, name: string, streak: number, language: 'en' | 'hi'): Promise<boolean>;
   sendPlanExpiry(to: string, name: string, plan: string, expiresAt: string, language: 'en' | 'hi'): Promise<boolean>;
   sendPaymentSuccess(to: string, name: string, plan: string, expiresAt: string, amount: number): Promise<boolean>;
+  sendCancellationConfirmation(to: string, name: string, plan: string, expiresAt: string): Promise<boolean>;
   sendCustom(to: string, subject: string, htmlBody: string): Promise<boolean>;
 }
 
@@ -120,6 +121,31 @@ export function createEmailService(env: Env, logger: Logger): EmailService {
     async sendPaymentSuccess(to, name, plan, expiresAt, amount) {
       const subject = `✅ Payment Successful — ${plan} Plan Activated!`;
       const content = `<h2 style="color:#1C1917;margin:0 0 16px">✅ Payment Confirmed!</h2><p style="color:#44403C;line-height:1.6">Hi ${name}, your payment of ₹${amount} was successful.</p><table style="width:100%;border-collapse:collapse;margin:16px 0"><tr><td style="padding:8px;border-bottom:1px solid #E7E5E4;color:#78716C">Plan</td><td style="padding:8px;border-bottom:1px solid #E7E5E4;color:#1C1917;font-weight:600">${plan}</td></tr><tr><td style="padding:8px;border-bottom:1px solid #E7E5E4;color:#78716C">Valid Until</td><td style="padding:8px;border-bottom:1px solid #E7E5E4;color:#1C1917;font-weight:600">${expiresAt}</td></tr><tr><td style="padding:8px;color:#78716C">Amount</td><td style="padding:8px;color:#1C1917;font-weight:600">₹${amount}</td></tr></table>${ctaButton('Go to Dashboard →', 'https://app.nexigrate.com/dashboard')}`;
+      return send(to, subject, baseTemplate(content));
+    },
+
+    async sendCancellationConfirmation(to, name, plan, expiresAt) {
+      // Format the expiry date in a friendly way (DD Mon YYYY) so the
+      // email reads naturally in either Hindi or English.
+      const expiryDate = (() => {
+        try {
+          return new Date(expiresAt).toLocaleDateString('en-IN', {
+            day: 'numeric', month: 'long', year: 'numeric',
+          });
+        } catch {
+          return expiresAt;
+        }
+      })();
+      const subject = `Your ${plan} plan has been cancelled`;
+      const content = `<h2 style="color:#1C1917;margin:0 0 16px">Cancellation confirmed</h2>
+<p style="color:#44403C;line-height:1.6">Hi ${name}, we've cancelled your <strong>${plan}</strong> plan as requested. Sorry to see you reduce your prep cadence — we'd love to know what we could do better. Just hit reply.</p>
+<table style="width:100%;border-collapse:collapse;margin:16px 0">
+  <tr><td style="padding:8px;border-bottom:1px solid #E7E5E4;color:#78716C">What you keep</td><td style="padding:8px;border-bottom:1px solid #E7E5E4;color:#1C1917;font-weight:600">Full ${plan} access until ${expiryDate}</td></tr>
+  <tr><td style="padding:8px;border-bottom:1px solid #E7E5E4;color:#78716C">After that</td><td style="padding:8px;border-bottom:1px solid #E7E5E4;color:#1C1917;font-weight:600">You drop to the Free plan automatically</td></tr>
+  <tr><td style="padding:8px;color:#78716C">Future charges</td><td style="padding:8px;color:#1C1917;font-weight:600">None. We never auto-renew.</td></tr>
+</table>
+<p style="color:#44403C;line-height:1.6;font-size:13px">Per our <a href="https://nexigrate.com/refund" style="color:#D97706">policy</a>, no refund is issued for the current period — but you keep every benefit until the date above. Change your mind any time before then and your plan resumes seamlessly.</p>
+${ctaButton('Resume my plan →', 'https://app.nexigrate.com/upgrade')}`;
       return send(to, subject, baseTemplate(content));
     },
 

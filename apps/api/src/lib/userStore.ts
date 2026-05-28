@@ -8,6 +8,17 @@ export interface StoredUser {
   board: Board | null; school: string | null; dob: string | null; aim: string | null;
   onboardingScore: number | null; onboardingLevel: 'beginner' | 'intermediate' | 'advanced' | null;
   credits: number; plan: 'free' | 'scholar' | 'aspirant' | 'achiever'; planExpiresAt: ISODateTime | null;
+  /**
+   * ISO datetime at which the user clicked "Cancel Plan" in profile.
+   *
+   * Cancellation is non-destructive: the user keeps `plan` access until
+   * `planExpiresAt`, no refund is issued, and the API simply stops nudging
+   * them to renew. If the user buys again before `planExpiresAt`, the
+   * billing flow clears this field (resume).
+   *
+   * null = active subscription (no cancel intent recorded).
+   */
+  planCancelledAt: ISODateTime | null;
   currentStreak: number; bestStreak: number; lastDailyAt: ISODateTime | null;
   isVerified: boolean; createdAt: ISODateTime; updatedAt: ISODateTime;
 }
@@ -28,7 +39,7 @@ function newUser(uid: UserId, init: UserStoreInit, now: string): StoredUser {
     photoURL: init.photoURL, primaryProvider: init.primaryProvider, role: 'student',
     language: 'en', targetExam: null, classLevel: null, board: null, school: null,
     dob: null, aim: null, onboardingScore: null, onboardingLevel: null,
-    credits: 200, plan: 'free', planExpiresAt: null,
+    credits: 200, plan: 'free', planExpiresAt: null, planCancelledAt: null,
     currentStreak: 0, bestStreak: 0, lastDailyAt: null, isVerified: false,
     createdAt: asISODateTime(now), updatedAt: asISODateTime(now),
   };

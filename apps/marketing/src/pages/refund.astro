@@ -6,119 +6,150 @@ import Footer from '~/components/Footer.astro';
 export const prerender = true;
 ---
 
-<Layout title="Refund and Cancellation — Nexigrate" description="Nexigrate's refund and cancellation policy." pathname="/refund">
+<Layout title="Cancellation and No-Refund Policy — Nexigrate" description="How cancellation works at Nexigrate, and why we do not issue refunds on paid plans." pathname="/refund">
   <Nav />
   <main id="main" class="mx-auto max-w-3xl px-5 py-16 sm:py-20">
-    <p class="pill mb-5">Refund</p>
+    <p class="pill mb-5">Refund &amp; Cancellation</p>
     <h1 class="font-serif text-4xl font-semibold leading-tight text-ink-900 sm:text-5xl">
-      Refund and Cancellation Policy
+      Cancellation and No-Refund Policy
     </h1>
     <p class="mt-3 text-sm text-muted-500">
-      Effective date: 23 May 2026 · Currency: Indian Rupee (₹).
+      Effective date: 28 May 2026 · Currency: Indian Rupee (₹).
     </p>
 
     <div class="mt-10 space-y-8 leading-relaxed text-ink-800">
       <p>
-        We want every paying student to feel that the upgrade was worth it.
-        If you don’t, we will refund you. Read the rules below before you pay
-        so we’re both on the same page.
+        Nexigrate plans are charged once for the period you choose (one month
+        or one year). They do not auto-renew, and we do not issue refunds on
+        money that has already been charged. The trade-off, in plain language:
+        you stay in full control of when you spend, and we never put you on
+        a recurring charge you forgot about.
       </p>
 
       <section>
         <h2 class="font-serif text-2xl font-semibold text-ink-900">1. Free plan</h2>
         <p class="mt-3">
-          The Nexigrate free plan stays free. No charge, no refund needed.
+          The Free plan is free forever. There is nothing to refund and
+          nothing to cancel. Use it as long as you like.
         </p>
       </section>
 
       <section>
-        <h2 class="font-serif text-2xl font-semibold text-ink-900">2. 7-day refund window</h2>
+        <h2 class="font-serif text-2xl font-semibold text-ink-900">2. Paid plans — no refunds</h2>
         <p class="mt-3">
-          For our paid plans (Scholar, Aspirant, Achiever — monthly or yearly),
-          you can request a full refund within <strong>7 calendar days</strong>
-          of the payment date for any reason, no questions asked, as long as:
+          For Scholar, Aspirant, and Achiever (monthly or yearly), we do
+          <strong>not</strong> issue refunds once a payment has been
+          completed. This applies to every reason — change of mind, accidental
+          purchase, no longer needing the plan, switching to a different
+          tool — without exception. Please make sure the plan and period are
+          right for you before you check out.
+        </p>
+        <p class="mt-3">
+          We chose this rule deliberately. It lets us keep prices low,
+          avoid auto-renewals, and refuse the dark patterns that other
+          subscription products use to discourage cancellation. The
+          flip-side, of course, is that you bear the responsibility of
+          choosing carefully — there is no "try and refund" path. The Free
+          plan exists for that.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="font-serif text-2xl font-semibold text-ink-900">3. Cancellation</h2>
+        <p class="mt-3">
+          You can cancel a paid plan at any time from
+          <a class="text-ember-600 underline" href="https://app.nexigrate.com/profile">your profile</a>
+          (Plan &amp; Billing → Cancel Plan). When you cancel:
         </p>
         <ul class="mt-3 list-disc space-y-1 pl-6">
-          <li>You have not consumed more than 25% of the plan’s included
-              mock tests; and</li>
-          <li>You have not exported or shared more than 100 MCQ
-              explanations.</li>
+          <li>
+            Your plan stays <strong>fully active until the date already paid
+            for</strong>. You don't lose any feature you paid for, and your
+            credit balance is untouched.
+          </li>
+          <li>
+            On that date, your account drops to the Free plan automatically.
+            No further charges, ever.
+          </li>
+          <li>
+            <strong>No refund</strong> is issued for the unused part of the
+            current period — that is the rule above.
+          </li>
         </ul>
         <p class="mt-3">
-          The thresholds exist so the refund window cannot be used as a free
-          one-week trial of the paid tier.
+          You can resume a cancelled plan at any time before it expires by
+          starting a new period from
+          <a class="text-ember-600 underline" href="https://app.nexigrate.com/upgrade">the upgrade page</a>;
+          the new period will extend from your current expiry date so no paid
+          days are lost.
         </p>
       </section>
 
       <section>
-        <h2 class="font-serif text-2xl font-semibold text-ink-900">3. Pro-rated refunds for yearly plans</h2>
+        <h2 class="font-serif text-2xl font-semibold text-ink-900">4. Service issues — what we will do</h2>
         <p class="mt-3">
-          If you cancel a yearly subscription after the 7-day window, you can
-          ask for a pro-rated refund of the unused months, minus a 10%
-          processing fee. We do not pro-rate monthly subscriptions; they end
-          at the close of the period you paid for.
+          The no-refund rule does not let us off the hook for keeping the
+          Service working. If we materially break what you paid for —
+          extended outages, persistent incorrect content, or a feature that
+          stops working — we will make it right by either:
         </p>
-      </section>
-
-      <section>
-        <h2 class="font-serif text-2xl font-semibold text-ink-900">4. Service issues</h2>
-        <p class="mt-3">
-          If the Service is materially broken — extended outages, persistent
-          incorrect content, or a feature you specifically paid for stops
-          working — we will refund the affected period in full regardless of
-          the timing rules above. Email us with the date and a short
-          description of the problem.
-        </p>
-      </section>
-
-      <section>
-        <h2 class="font-serif text-2xl font-semibold text-ink-900">5. How to request a refund</h2>
-        <ol class="mt-3 list-decimal space-y-2 pl-6">
+        <ul class="mt-3 list-disc space-y-1 pl-6">
           <li>
-            Email <a class="text-ember-600 underline" href="mailto:hello@nexigrate.com">hello@nexigrate.com</a>
-            from the email address registered on the account.
+            <strong>Extending</strong> your current period by at least the
+            time you lost; or
           </li>
           <li>
-            Include the Razorpay <em>payment ID</em> from your receipt
-            (starts with <code>pay_</code>).
+            <strong>Granting credits</strong> equivalent to the affected
+            value, usable against any feature.
           </li>
-          <li>
-            One line on what went wrong (helps us improve, and is mandatory
-            for service-issue refunds).
-          </li>
-        </ol>
+        </ul>
         <p class="mt-3">
-          We acknowledge within 2 working days and process eligible refunds
-          within 5–7 working days. The refund returns to the same payment
-          method (UPI, card, netbanking) used for the original charge. Bank
-          processing times may add another 3–5 business days.
+          Email
+          <a class="text-ember-600 underline" href="mailto:hello@nexigrate.com">hello@nexigrate.com</a>
+          with the date, the Razorpay payment ID
+          (starts with <code>pay_</code>), and a one-line description of what
+          broke. We acknowledge within 2 working days and resolve eligible
+          cases within 5 working days.
         </p>
       </section>
 
       <section>
-        <h2 class="font-serif text-2xl font-semibold text-ink-900">6. Cancellation</h2>
+        <h2 class="font-serif text-2xl font-semibold text-ink-900">5. Failed or duplicate payments</h2>
         <p class="mt-3">
-          Subscriptions do not auto-renew. You don’t need to cancel to stop
-          being billed; you simply don’t renew. To delete your account
-          entirely, see the deletion section of our
-          <a class="text-ember-600 underline" href="/privacy">Privacy Policy</a>.
+          If your bank or UPI app charged you but your plan did not activate,
+          that is not a refund — it's a failed transaction we want to fix.
+          Email us with the Razorpay payment ID; we will either activate your
+          plan or, if Razorpay confirms the charge could not be captured,
+          arrange the reversal through them. The same applies to accidental
+          duplicate payments for the same plan.
         </p>
       </section>
 
       <section>
-        <h2 class="font-serif text-2xl font-semibold text-ink-900">7. Disputes</h2>
+        <h2 class="font-serif text-2xl font-semibold text-ink-900">6. Chargebacks</h2>
         <p class="mt-3">
-          If we can’t agree on a refund, the <a class="text-ember-600 underline" href="/terms">Terms of Service</a>
-          dispute and jurisdiction clauses apply. Please raise a chargeback
-          only as a last resort — chargebacks cost both of us money and time
-          we’d rather spend on the product.
+          Please email us before raising a chargeback with your bank or card
+          issuer. Chargebacks cost both of us money and time we would rather
+          spend on the product, and almost everything they could fix can be
+          fixed faster by writing to
+          <a class="text-ember-600 underline" href="mailto:hello@nexigrate.com">hello@nexigrate.com</a>.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="font-serif text-2xl font-semibold text-ink-900">7. Updates to this policy</h2>
+        <p class="mt-3">
+          We may update this policy from time to time. Material changes will
+          be announced on this page at least 7 days before they take effect.
+          The version that applies to a payment is the one that was live at
+          the time of that payment.
         </p>
       </section>
 
       <section>
         <h2 class="font-serif text-2xl font-semibold text-ink-900">8. Contact</h2>
         <p class="mt-3">
-          Questions about a refund or cancellation:
+          Questions about cancellation or a service issue:
           <a class="text-ember-600 underline" href="mailto:hello@nexigrate.com">hello@nexigrate.com</a>.
         </p>
       </section>
