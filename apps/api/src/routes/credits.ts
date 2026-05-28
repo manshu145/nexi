@@ -6,7 +6,8 @@ import type { UserStore } from '../lib/userStore.js';
 import { InMemoryReferralStore, FirestoreReferralStore, type ReferralStore } from '../lib/referralStore.js';
 import type { Firestore } from 'firebase-admin/firestore';
 import type { CreditLedger } from '../lib/creditLedger.js';
-import { CREDIT_EARN_AMOUNTS, CREDIT_SPEND_AMOUNTS } from '@nexigrate/shared';
+import type { PlatformConfigStore } from '../lib/platformConfigStore.js';
+import { asUserId } from '@nexigrate/shared';
 
 export interface CreditsRoutesDeps {
   users: UserStore;
@@ -14,6 +15,8 @@ export interface CreditsRoutesDeps {
   db?: Firestore | null;
   referrals?: ReferralStore;
   ledger: CreditLedger;
+  /** Source of truth for current earn/spend amounts (admin-editable). */
+  config: PlatformConfigStore;
 }
 
 export function makeCreditsRoutes(deps: CreditsRoutesDeps): Hono {
@@ -22,22 +25,22 @@ export function makeCreditsRoutes(deps: CreditsRoutesDeps): Hono {
 
   // ─── Balance + history ────────────────────────────────────────────────────
 
-  // GET /v1/credits/balance — current balance, plan, and the locked rates so
-  // the /credits page renders the same numbers the server actually awards.
+  // GET /v1/credits/balance — current balance, plan, and the LIVE rate
+  // tables (read from platformConfig, not from compile-time constants) so
+  // the /credits page renders the same numbers the server will award.
   app.get('/balance', async (c) => {
     const principal = requireAuth(c);
-    const [user, balance] = await Promise.all([
+    const [user, balance, earnRates, spendRates] = await Promise.all([
       deps.users.get(principal.userId),
       deps.ledger.getBalance(principal.userId),
+      deps.config.getEarnAmounts(),
+      deps.config.getSpendAmounts(),
     ]);
     return c.json({
       credits: balance,
       plan: user?.plan ?? 'free',
-      // Surface the locked rate tables so the client never has to hard-code
-      // them. When PR-04 makes these admin-editable, this endpoint becomes
-      // the single source of truth.
-      earnRates: CREDIT_EARN_AMOUNTS,
-      spendRates: CREDIT_SPEND_AMOUNTS,
+      earnRates,
+      spendRates,
     });
   });
 
@@ -76,10 +79,13 @@ export function makeCreditsRoutes(deps: CreditsRoutesDeps): Hono {
     }
 
     // Idempotent on (invitee, referrerId): a retry of /apply for the same
-    // pairing collapses to one ledger row.
+    // pairing collapses to one ledger row. Amount is read from the live
+    // platformConfig so admin edits via /admin/credit-rewards take effect
+    // on the next call without a redeploy.
     const result = await deps.ledger.award({
       userId: principal.userId,
       source: 'referral_bonus',
+      amount: await deps.config.getEarnAmount('referral_bonus'),
       sourceRef: referrerId,
       idempotencyKey: `referral_bonus:${principal.userId}:${referrerId}`,
     });
@@ -106,8 +112,9 @@ export function makeCreditsRoutes(deps: CreditsRoutesDeps): Hono {
     }
 
     const award = await deps.ledger.award({
-      userId: result.referrerId,
+      userId: asUserId(result.referrerId),
       source: 'referral_signup',
+      amount: await deps.config.getEarnAmount('referral_signup'),
       sourceRef: principal.userId,
       idempotencyKey: `referral_signup:${result.referrerId}:${principal.userId}`,
     });

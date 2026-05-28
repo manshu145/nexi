@@ -146,6 +146,38 @@ export const api = {
   async startSession() { return (await authedFetch('/v1/users/me/session/start', { method: 'POST' })).json() as Promise<{sessionId:string; startedAt:string}>; },
   async pingSession() { return (await authedFetch('/v1/users/me/session/ping', { method: 'POST' })).json() as Promise<{ok:boolean}>; },
   async endSession() { return (await authedFetch('/v1/users/me/session/end', { method: 'POST' })).json() as Promise<{ok:boolean}>; },
+
+  // ─── Admin: platform configuration ─────────────────────────────────────
+  // The plan matrix (price + features) and credit-reward rate tables both
+  // live in `platformConfig/*` Firestore docs. Reads return the live merged
+  // values (Firestore overrides on top of the locked PR-03 defaults from
+  // shared). PATCH writes a partial -- only fields you include are
+  // overwritten.
+  async adminGetPlans() {
+    return (await authedFetch('/v1/admin/plans')).json() as Promise<{ plans: AdminPlan[] }>;
+  },
+  async adminUpdatePlan(planId: string, patch: Partial<AdminPlanPatch>) {
+    return (await authedFetch(`/v1/admin/plans/${planId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    })).json() as Promise<{ success: boolean; plan: AdminPlan }>;
+  },
+  async adminGetCreditRewards() {
+    return (await authedFetch('/v1/admin/credit-rewards')).json() as Promise<{
+      earn: Record<string, number>;
+      spend: Record<string, number>;
+    }>;
+  },
+  async adminUpdateCreditRewards(patch: { earn?: Record<string, number>; spend?: Record<string, number> }) {
+    return (await authedFetch('/v1/admin/credit-rewards', {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    })).json() as Promise<{
+      success: boolean;
+      earn: Record<string, number>;
+      spend: Record<string, number>;
+    }>;
+  },
 };
 
 export interface CurrentAffairsItem { id: string; headline: string; body: string; category: string; sources: string[]; summary: string; factChecked: boolean; date: string; publishedAt: string; }
@@ -159,6 +191,44 @@ export interface ChatSession { id: string; userId: string; title: string; messag
 export interface ChatSessionSummary { id: string; title: string; createdAt: string; updatedAt: string; messageCount: number; }
 export interface Plan { id: string; name: string; nameHi: string; price: number; yearlyPrice: number; dailyMcq: number; mockTests: number; aiTutor: boolean; currentAffairs: boolean; essayGrading: boolean; }
 export interface ReferralStats { code: string; referralUrl: string; totalReferrals: number; pendingReferrals: number; completedReferrals: number; totalEarned: number; }
+
+/**
+ * Plan row as returned by the admin endpoints. Extends the public PlanConfig
+ * shape with a `subscribers` count so the editor table can show how many
+ * users are on each tier today.
+ */
+export interface AdminPlanFeatures {
+  dailyMCQ: number;
+  mockTests: number;
+  aiTutor: boolean;
+  currentAffairs: boolean;
+  essayGrading: boolean;
+  chaptersPerDay: number;
+  creditDeduction: boolean;
+}
+
+export interface AdminPlan {
+  id: 'free' | 'scholar' | 'aspirant' | 'achiever';
+  name: string;
+  nameHi: string;
+  price: number;
+  yearlyPrice: number;
+  isActive: boolean;
+  comingSoon: boolean;
+  features: AdminPlanFeatures;
+  subscribers: number;
+}
+
+/** Partial shape for PATCH /v1/admin/plans/:planId. */
+export interface AdminPlanPatch {
+  name: string;
+  nameHi: string;
+  price: number;
+  yearlyPrice: number;
+  isActive: boolean;
+  comingSoon: boolean;
+  features: Partial<AdminPlanFeatures>;
+}
 
 /**
  * One row in the credit ledger as the backend serialises it.

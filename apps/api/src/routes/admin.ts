@@ -8,9 +8,19 @@ import type { Env } from '../env.js';
 import { asUserId } from '@nexigrate/shared';
 
 import type { CouponStore } from '../lib/couponStore.js';
-import { PLANS } from '@nexigrate/shared';
+import type { PlatformConfigStore } from '../lib/platformConfigStore.js';
+import type { CreditEarnSource, CreditSpendReason, PlanConfig, PlanId } from '@nexigrate/shared';
 
-export interface AdminRoutesDeps { users: UserStore; adminStore: AdminStore; env: Env; logger: Logger; coupons: CouponStore; db?: import('firebase-admin/firestore').Firestore | null; }
+export interface AdminRoutesDeps {
+  users: UserStore;
+  adminStore: AdminStore;
+  env: Env;
+  logger: Logger;
+  coupons: CouponStore;
+  db?: import('firebase-admin/firestore').Firestore | null;
+  /** Platform configuration store (plan matrix + credit rewards). */
+  config: PlatformConfigStore;
+}
 
 export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
   const app = new Hono();
@@ -321,13 +331,73 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
   });
 
   // ━━━ PLANS & COUPONS ━━━
-  // GET /v1/admin/plans — all plans with subscriber counts
+  // GET /v1/admin/plans — current plan matrix (live, admin-editable) +
+  // subscriber counts. Reads from platformConfig (Firestore-backed) so an
+  // edit via PATCH below is reflected on the next call after the cache TTL.
   app.get('/plans', async (c) => {
-    const users = await deps.users.listAll?.() ?? [];
+    const [users, planMap] = await Promise.all([
+      deps.users.listAll?.() ?? Promise.resolve([]),
+      deps.config.getPlans(),
+    ]);
     const planCounts: Record<string, number> = { free: 0, scholar: 0, aspirant: 0, achiever: 0 };
     for (const u of users) planCounts[u.plan] = (planCounts[u.plan] ?? 0) + 1;
-    const plans = Object.values(PLANS).map(p => ({ ...p, subscribers: planCounts[p.id] ?? 0 }));
+    const plans = Object.values(planMap).map(p => ({ ...p, subscribers: planCounts[p.id] ?? 0 }));
     return c.json({ plans });
+  });
+
+  // PATCH /v1/admin/plans/:planId — update one plan's price/features/flags.
+  // Body accepts any subset of PlanConfig (price, yearlyPrice, isActive,
+  // comingSoon, features.{...}). Unspecified fields are unchanged.
+  // The store sanitises numeric inputs and ignores any attempt to rename
+  // the plan id, so this endpoint is safe to expose to admin alone.
+  app.patch('/plans/:planId', async (c) => {
+    const planId = c.req.param('planId') as PlanId;
+    const allowed: PlanId[] = ['free', 'scholar', 'aspirant', 'achiever'];
+    if (!allowed.includes(planId)) throw new HTTPException(400, { message: 'Invalid planId' });
+    const body = (await c.req.json().catch(() => null)) as Partial<PlanConfig> | null;
+    if (!body || typeof body !== 'object') throw new HTTPException(400, { message: 'Body required' });
+    try {
+      const next = await deps.config.updatePlan(planId, body);
+      deps.logger.info('admin.plan_updated', {
+        planId,
+        keys: Object.keys(body).filter(k => k !== 'id'),
+      });
+      return c.json({ success: true, plan: next });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Update failed';
+      throw new HTTPException(500, { message: msg });
+    }
+  });
+
+  // ━━━ CREDIT REWARDS ━━━
+  // GET /v1/admin/credit-rewards — current earn + spend rate tables (live).
+  app.get('/credit-rewards', async (c) => {
+    const [earn, spend] = await Promise.all([
+      deps.config.getEarnAmounts(),
+      deps.config.getSpendAmounts(),
+    ]);
+    return c.json({ earn, spend });
+  });
+
+  // PATCH /v1/admin/credit-rewards — update one or more reward amounts.
+  // Body shape: { earn?: { signup_verified?: 100, ... }, spend?: { read_chapter?: 5, ... } }
+  // Each key must be a valid enum value; non-numeric or negative values are
+  // dropped silently by the store sanitiser.
+  app.patch('/credit-rewards', async (c) => {
+    const body = (await c.req.json().catch(() => null)) as {
+      earn?: Partial<Record<CreditEarnSource, number>>;
+      spend?: Partial<Record<CreditSpendReason, number>>;
+    } | null;
+    if (!body || typeof body !== 'object') throw new HTTPException(400, { message: 'Body required' });
+    const result = await deps.config.updateRewards({
+      earn: body.earn,
+      spend: body.spend,
+    });
+    deps.logger.info('admin.credit_rewards_updated', {
+      earn: Object.keys(body.earn ?? {}),
+      spend: Object.keys(body.spend ?? {}),
+    });
+    return c.json({ success: true, ...result });
   });
 
   // GET /v1/admin/coupons — list all coupons

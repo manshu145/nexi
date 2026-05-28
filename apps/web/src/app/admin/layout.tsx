@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { label: 'Users', href: '/admin/users', icon: '👥' },
   { label: 'Live Sessions', href: '/admin/sessions', icon: '🟢' },
   { label: 'Plans', href: '/admin/plans', icon: '💳' },
+  { label: 'Credit Rewards', href: '/admin/credit-rewards', icon: '💎' },
   { label: 'Revenue', href: '/admin/revenue', icon: '💰' },
   { label: 'API Config', href: '/admin/api-config', icon: '🔑' },
   { label: 'News Feeds', href: '/admin/feeds', icon: '📡' },

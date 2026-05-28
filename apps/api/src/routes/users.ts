@@ -7,12 +7,15 @@ import type { Logger } from '../logger.js';
 import type { UserStore } from '../lib/userStore.js';
 import type { Firestore } from 'firebase-admin/firestore';
 import type { CreditLedger } from '../lib/creditLedger.js';
+import type { PlatformConfigStore } from '../lib/platformConfigStore.js';
 
 export interface UsersRoutesDeps {
   users: UserStore;
   logger: Logger;
   db?: Firestore | null;
   ledger: CreditLedger;
+  /** Live earn amounts read from platformConfig (admin-editable). */
+  config: PlatformConfigStore;
 }
 
 const patchSchema = z.object({ name: z.string().min(1).optional(), phone: z.string().optional(), dob: z.string().optional(), classLevel: z.string().optional(), board: z.string().optional(), school: z.string().optional(), aim: z.string().optional() });
@@ -53,14 +56,18 @@ export function makeUsersRoutes(deps: UsersRoutesDeps): Hono {
     // event -- the ledger's idempotency layer collapses retries.
     const userId = asUserId(principal.userId);
 
-    // 1. Sign-up bonus (+100). Fired once per user, ever.
+    // 1. Sign-up bonus. Fired once per user, ever. Amount comes from
+    //    platformConfig so admin can change the welcome bonus without a
+    //    redeploy; default falls back to the locked PR-03 value via the
+    //    config store.
     await deps.ledger.award({
       userId,
       source: 'signup_verified',
+      amount: await deps.config.getEarnAmount('signup_verified'),
       idempotencyKey: `signup_verified:${principal.userId}`,
     });
 
-    // 2. Daily login (+5). Idempotency key includes the IST date so a fresh
+    // 2. Daily login. Idempotency key includes the IST date so a fresh
     //    grant fires on the first /me call of each new IST day.
     let dailyAwarded = 0;
     if (bump.wasBumped) {
@@ -68,17 +75,19 @@ export function makeUsersRoutes(deps: UsersRoutesDeps): Hono {
       const dailyResult = await deps.ledger.award({
         userId,
         source: 'daily_login',
+        amount: await deps.config.getEarnAmount('daily_login'),
         idempotencyKey: `daily_login:${principal.userId}:${istDay}`,
       });
       if (dailyResult.kind === 'awarded') dailyAwarded = dailyResult.event.amount;
 
-      // 3. Streak milestones (+5 at 7, +10 at 30). Each is single-shot per
-      //    streak cycle; if the user breaks and re-builds the streak they
-      //    earn it again on the new milestone day.
+      // 3. Streak milestones. Each is single-shot per streak cycle; if the
+      //    user breaks and re-builds the streak they earn it again on the
+      //    new milestone day.
       if (bump.crossedSeven) {
         await deps.ledger.award({
           userId,
           source: 'streak_7d',
+          amount: await deps.config.getEarnAmount('streak_7d'),
           idempotencyKey: `streak_7d:${principal.userId}:${istDay}`,
         });
       }
@@ -86,6 +95,7 @@ export function makeUsersRoutes(deps: UsersRoutesDeps): Hono {
         await deps.ledger.award({
           userId,
           source: 'streak_30d',
+          amount: await deps.config.getEarnAmount('streak_30d'),
           idempotencyKey: `streak_30d:${principal.userId}:${istDay}`,
         });
       }
