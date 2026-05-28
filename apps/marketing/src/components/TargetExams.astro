@@ -1,39 +1,26 @@
 ---
-import { LIVE_EXAMS, SOON_EXAMS } from '~/data/exams';
+import { LIVE_EXAMS } from '~/data/exams';
 ---
 
 <section id="exams" class="section">
   <div class="mx-auto max-w-6xl px-5 py-20 sm:py-24">
-    <div class="flex flex-col items-start justify-between gap-6 sm:flex-row sm:items-end">
-      <div class="max-w-2xl">
-        <p class="pill mb-5">Exams</p>
-        <h2 class="font-serif text-3xl font-semibold leading-tight text-ink-900 sm:text-4xl">
-          Built for every serious Indian student.
-        </h2>
-        <p class="mt-4 text-lg leading-relaxed text-ink-800">
-          We launch with five exams done flawlessly, then expand. We refuse to
-          ship fifty exams half-built.
-        </p>
-      </div>
+    <div class="max-w-2xl">
+      <p class="pill mb-5">Exams</p>
+      <h2 class="font-serif text-3xl font-semibold leading-tight text-ink-900 sm:text-4xl">
+        One platform. Every exam.
+      </h2>
+      <p class="mt-4 text-lg leading-relaxed text-ink-800">
+        From Class 5 to UPSC, covering all major boards and competitive exams across India. 40+ exams live now.
+      </p>
     </div>
 
-    <div class="mt-12">
-      <div class="mt-4 flex flex-wrap gap-2.5">
-        {LIVE_EXAMS.map((exam) => (
-          <span class="pill">
-            <span class="inline-block h-1.5 w-1.5 rounded-full bg-ember-600"></span>
-            {exam.name}
-          </span>
-        ))}
-      </div>
-    </div>
-
-    <div class="mt-10">
-      <div class="mt-4 flex flex-wrap gap-2.5">
-        {SOON_EXAMS.map((exam) => (
-          <span class="pill pill-soon">{exam.name}</span>
-        ))}
-      </div>
+    <div class="mt-12 flex flex-wrap gap-2.5">
+      {LIVE_EXAMS.map((exam) => (
+        <span class="pill cursor-default">
+          <span class="inline-block h-1.5 w-1.5 rounded-full bg-ember-600"></span>
+          {exam.name}
+        </span>
+      ))}
     </div>
 
     <p class="mt-10 max-w-3xl text-sm text-muted-500">
