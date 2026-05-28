@@ -40,7 +40,7 @@ export function Logo({
       alt="Nexigrate"
       width={width}
       height={height}
-      className={`object-contain ${className}`}
+      className={`object-contain drop-shadow-sm dark:drop-shadow-none ${className}`}
       style={{ height: `${height}px`, width: 'auto' }}
     />
   );

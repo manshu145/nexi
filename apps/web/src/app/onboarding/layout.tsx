@@ -12,7 +12,7 @@ export default function OnboardingLayout({ children }: { children: React.ReactNo
   if (loading || !user) return <main className="flex min-h-screen items-center justify-center"><AILoader context="general" /></main>;
   return (
     <main className="mx-auto flex min-h-screen max-w-lg flex-col px-4 pt-8 pb-16 sm:px-6">
-      <header className="mb-8 text-center"><Logo height={40} className="mx-auto" /></header>
+      <header className="mb-8 text-center"><Logo height={48} className="mx-auto" /></header>
       {children}
     </main>
   );
