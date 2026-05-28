@@ -1,13 +1,19 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { asExamSlug, isExamSlug } from '@nexigrate/shared';
+import { asExamSlug, asUserId, isExamSlug } from '@nexigrate/shared';
 import { requireAuth } from '../auth.js';
 import type { Logger } from '../logger.js';
 import type { UserStore } from '../lib/userStore.js';
 import type { Firestore } from 'firebase-admin/firestore';
+import type { CreditLedger } from '../lib/creditLedger.js';
 
-export interface UsersRoutesDeps { users: UserStore; logger: Logger; db?: Firestore | null; }
+export interface UsersRoutesDeps {
+  users: UserStore;
+  logger: Logger;
+  db?: Firestore | null;
+  ledger: CreditLedger;
+}
 
 const patchSchema = z.object({ name: z.string().min(1).optional(), phone: z.string().optional(), dob: z.string().optional(), classLevel: z.string().optional(), board: z.string().optional(), school: z.string().optional(), aim: z.string().optional() });
 const onboardingSchema = z.object({ language: z.enum(['en','hi']).optional(), targetExam: z.string().refine(isExamSlug, { message: 'unknown exam slug' }).optional(), name: z.string().min(1).optional(), email: z.string().email().optional(), phone: z.string().optional(), dob: z.string().optional(), classLevel: z.string().optional(), board: z.string().optional(), school: z.string().optional(), aim: z.string().optional() });
@@ -15,16 +21,83 @@ const onboardingSchema = z.object({ language: z.enum(['en','hi']).optional(), ta
 export function makeUsersRoutes(deps: UsersRoutesDeps): Hono {
   const app = new Hono();
 
+  /**
+   * Calendar day in IST (Asia/Kolkata) for a given ISO timestamp. Used as
+   * part of the idempotency key for `daily_login` and the streak-milestone
+   * grants so each IST day is its own logical event.
+   */
+  function istDateKey(iso: string): string {
+    const t = new Date(iso).getTime() + 5.5 * 60 * 60 * 1000;
+    const d = new Date(t);
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+  }
+
   app.get('/me', async (c) => {
     const principal = requireAuth(c);
     const email = c.req.header('x-user-email') ?? '';
     const name = c.req.header('x-user-name') ?? principal.email.split('@')[0] ?? 'Student';
     const photo = c.req.header('x-user-photo') ?? null;
     const provider = (c.req.header('x-user-provider') as 'google'|'phone') || 'google';
-    const user = await deps.users.getOrCreate(principal.userId, { email, name, photoURL: photo, primaryProvider: provider });
-    const { streak, credits } = await deps.users.bumpStreak(principal.userId);
+    // Ensure user exists. Returned doc isn't used downstream because we
+    // re-read at the bottom after ledger writes, but the call's side
+    // effect (creating the row on first contact) is required.
+    await deps.users.getOrCreate(principal.userId, { email, name, photoURL: photo, primaryProvider: provider });
+
+    // Compute streak first (this also persists currentStreak/bestStreak/lastDailyAt)
+    // and figure out which milestones to award. The bumpStreak method itself
+    // never touches credits anymore -- it just tells us what crossed.
+    const bump = await deps.users.bumpStreak(principal.userId);
+
+    // All credit grants are idempotent on `(userId, source[+ref])`. Calling
+    // /me a thousand times never awards more than once for the same logical
+    // event -- the ledger's idempotency layer collapses retries.
+    const userId = asUserId(principal.userId);
+
+    // 1. Sign-up bonus (+100). Fired once per user, ever.
+    await deps.ledger.award({
+      userId,
+      source: 'signup_verified',
+      idempotencyKey: `signup_verified:${principal.userId}`,
+    });
+
+    // 2. Daily login (+5). Idempotency key includes the IST date so a fresh
+    //    grant fires on the first /me call of each new IST day.
+    let dailyAwarded = 0;
+    if (bump.wasBumped) {
+      const istDay = istDateKey(new Date().toISOString());
+      const dailyResult = await deps.ledger.award({
+        userId,
+        source: 'daily_login',
+        idempotencyKey: `daily_login:${principal.userId}:${istDay}`,
+      });
+      if (dailyResult.kind === 'awarded') dailyAwarded = dailyResult.event.amount;
+
+      // 3. Streak milestones (+5 at 7, +10 at 30). Each is single-shot per
+      //    streak cycle; if the user breaks and re-builds the streak they
+      //    earn it again on the new milestone day.
+      if (bump.crossedSeven) {
+        await deps.ledger.award({
+          userId,
+          source: 'streak_7d',
+          idempotencyKey: `streak_7d:${principal.userId}:${istDay}`,
+        });
+      }
+      if (bump.crossedThirty) {
+        await deps.ledger.award({
+          userId,
+          source: 'streak_30d',
+          idempotencyKey: `streak_30d:${principal.userId}:${istDay}`,
+        });
+      }
+    }
+
+    // Re-read after ledger writes so the returned `credits` cache reflects
+    // the just-awarded amounts.
     const freshUser = await deps.users.get(principal.userId);
-    return c.json({ user: freshUser, dailyStreak: { streak, creditsEarned: credits } });
+    return c.json({
+      user: freshUser,
+      dailyStreak: { streak: bump.streak, creditsEarned: dailyAwarded },
+    });
   });
 
   app.patch('/me', async (c) => {

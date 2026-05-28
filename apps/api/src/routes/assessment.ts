@@ -5,8 +5,19 @@ import { requireAuth } from '../auth.js';
 import type { Logger } from '../logger.js';
 import type { UserStore } from '../lib/userStore.js';
 import type { AIEngine, GeneratedMCQ, StageResults } from '../lib/aiEngine.js';
+import type { CreditLedger } from '../lib/creditLedger.js';
 
-export interface AssessmentRoutesDeps { users: UserStore; aiEngine: AIEngine; logger: Logger; env?: import('../env.js').Env; }
+export interface AssessmentRoutesDeps {
+  users: UserStore;
+  aiEngine: AIEngine;
+  logger: Logger;
+  env?: import('../env.js').Env;
+  // The credit ledger is not consumed inside this file today, but completing
+  // an assessment is the natural place to award future engagement bonuses
+  // (e.g. "first assessment finished"). Accepting the dep at the boundary
+  // means PR-04 onwards can wire those grants without changing call sites.
+  ledger?: CreditLedger;
+}
 
 const questionsSchema = z.object({ examSlug: z.string().min(1), language: z.enum(['en', 'hi']).default('en') });
 

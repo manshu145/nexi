@@ -29,7 +29,25 @@ export interface UserStore {
   getOrCreate(uid: UserId, init: UserStoreInit): Promise<StoredUser>;
   get(uid: UserId): Promise<StoredUser | null>;
   update(uid: UserId, data: Partial<StoredUser>): Promise<StoredUser>;
-  bumpStreak(uid: UserId): Promise<{ streak: number; credits: number }>;
+  /**
+   * Recompute and persist the daily streak based on `lastDailyAt`.
+   *
+   * As of PR-03 this method NO LONGER awards credits; it just keeps the
+   * streak fields in sync and tells the caller which streak milestones
+   * (if any) were just crossed so the caller can run those awards through
+   * the credit ledger (which gives us idempotency, expiry buckets, and a
+   * proper history trail). Returns:
+   *   - `streak`: the user's currentStreak after the bump
+   *   - `wasBumped`: false on the second-and-later /me call of an IST day
+   *   - `crossedSeven` / `crossedThirty`: true on the single bump that
+   *     promotes the streak to 7 or 30, so a stair-step bonus fires once.
+   */
+  bumpStreak(uid: UserId): Promise<{
+    streak: number;
+    wasBumped: boolean;
+    crossedSeven: boolean;
+    crossedThirty: boolean;
+  }>;
   listAll?(): Promise<StoredUser[]>;
 }
 
@@ -39,7 +57,11 @@ function newUser(uid: UserId, init: UserStoreInit, now: string): StoredUser {
     photoURL: init.photoURL, primaryProvider: init.primaryProvider, role: 'student',
     language: 'en', targetExam: null, classLevel: null, board: null, school: null,
     dob: null, aim: null, onboardingScore: null, onboardingLevel: null,
-    credits: 200, plan: 'free', planExpiresAt: null, planCancelledAt: null,
+    // Cached balance starts at zero -- the credit ledger is the source of
+    // truth and the `users.ts /me` handler awards `signup_verified` (+100)
+    // through the ledger on first contact, which updates this cache via
+    // FieldValue.increment.
+    credits: 0, plan: 'free', planExpiresAt: null, planCancelledAt: null,
     currentStreak: 0, bestStreak: 0, lastDailyAt: null, isVerified: false,
     createdAt: asISODateTime(now), updatedAt: asISODateTime(now),
   };
@@ -74,10 +96,23 @@ export class InMemoryUserStore implements UserStore {
   async bumpStreak(uid: UserId) {
     const u = this.users.get(uid); if (!u) throw new Error(`user ${uid} not found`);
     const { currentStreak, bestStreak, alreadyBumped } = computeStreak(u);
-    if (alreadyBumped) return { streak: u.currentStreak, credits: 0 };
-    let cr = 10; if (currentStreak === 7) cr += 25; if (currentStreak === 30) cr += 100;
-    const updated: StoredUser = { ...u, currentStreak, bestStreak, lastDailyAt: asISODateTime(new Date().toISOString()), credits: u.credits + cr, updatedAt: asISODateTime(new Date().toISOString()) };
-    this.users.set(uid, updated); return { streak: currentStreak, credits: cr };
+    if (alreadyBumped) {
+      return { streak: u.currentStreak, wasBumped: false, crossedSeven: false, crossedThirty: false };
+    }
+    const updated: StoredUser = {
+      ...u,
+      currentStreak,
+      bestStreak,
+      lastDailyAt: asISODateTime(new Date().toISOString()),
+      updatedAt: asISODateTime(new Date().toISOString()),
+    };
+    this.users.set(uid, updated);
+    return {
+      streak: currentStreak,
+      wasBumped: true,
+      crossedSeven: currentStreak === 7,
+      crossedThirty: currentStreak === 30,
+    };
   }
 }
 
@@ -88,17 +123,11 @@ export class FirestoreUserStore implements UserStore {
     const ref = this.db.collection(COL).doc(uid);
     const snap = await ref.get();
     if (snap.exists) {
-      const user = snap.data() as StoredUser;
-      // Safety check: if credits are missing/zero and user was created within last 30 days, grant 200 credits
-      if ((user.credits === undefined || user.credits === null || user.credits === 0)) {
-        const createdAt = user.createdAt ? new Date(user.createdAt).getTime() : 0;
-        const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
-        if (createdAt > thirtyDaysAgo) {
-          await ref.set({ credits: 200, updatedAt: new Date().toISOString() }, { merge: true });
-          user.credits = 200;
-        }
-      }
-      return user;
+      // Existing user: return as-is. Credit grants (including the
+      // signup_verified +100) flow through the ledger from the /me handler;
+      // they are idempotent on (userId, source) so calling /me ten times
+      // never grants more than once.
+      return snap.data() as StoredUser;
     }
 
     // Before creating: check for duplicate by email (merge if found)
@@ -142,11 +171,19 @@ export class FirestoreUserStore implements UserStore {
       const snap = await tx.get(ref); if (!snap.exists) throw new Error(`user ${uid} not found`);
       const cur = snap.data() as StoredUser;
       const { currentStreak, bestStreak, alreadyBumped } = computeStreak(cur);
-      if (alreadyBumped) return { streak: cur.currentStreak, credits: 0 };
-      let cr = 10; if (currentStreak === 7) cr += 25; if (currentStreak === 30) cr += 100;
+      if (alreadyBumped) {
+        return { streak: cur.currentStreak, wasBumped: false, crossedSeven: false, crossedThirty: false };
+      }
       const now = asISODateTime(new Date().toISOString());
-      tx.set(ref, { currentStreak, bestStreak, lastDailyAt: now, credits: cur.credits + cr, updatedAt: now }, { merge: true });
-      return { streak: currentStreak, credits: cr };
+      // Streak fields only -- no direct credit mutation. Credits flow
+      // through the ledger from the route handler.
+      tx.set(ref, { currentStreak, bestStreak, lastDailyAt: now, updatedAt: now }, { merge: true });
+      return {
+        streak: currentStreak,
+        wasBumped: true,
+        crossedSeven: currentStreak === 7,
+        crossedThirty: currentStreak === 30,
+      };
     });
   }
 }

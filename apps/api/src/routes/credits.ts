@@ -5,59 +5,65 @@ import type { Logger } from '../logger.js';
 import type { UserStore } from '../lib/userStore.js';
 import { InMemoryReferralStore, FirestoreReferralStore, type ReferralStore } from '../lib/referralStore.js';
 import type { Firestore } from 'firebase-admin/firestore';
+import type { CreditLedger } from '../lib/creditLedger.js';
+import { CREDIT_EARN_AMOUNTS, CREDIT_SPEND_AMOUNTS } from '@nexigrate/shared';
 
-export interface CreditsRoutesDeps { users: UserStore; logger: Logger; db?: Firestore | null; referrals?: ReferralStore; }
-
-const CREDIT_REWARDS: Record<string, number> = { daily_login: 10, mcq_complete: 50, mcq_attempt: 5, streak_7: 25, streak_30: 100 };
+export interface CreditsRoutesDeps {
+  users: UserStore;
+  logger: Logger;
+  db?: Firestore | null;
+  referrals?: ReferralStore;
+  ledger: CreditLedger;
+}
 
 export function makeCreditsRoutes(deps: CreditsRoutesDeps): Hono {
   const app = new Hono();
   const referrals = deps.referrals ?? (deps.db ? new FirestoreReferralStore(deps.db) : new InMemoryReferralStore());
 
-  // GET /v1/credits/balance
+  // ─── Balance + history ────────────────────────────────────────────────────
+
+  // GET /v1/credits/balance — current balance, plan, and the locked rates so
+  // the /credits page renders the same numbers the server actually awards.
   app.get('/balance', async (c) => {
     const principal = requireAuth(c);
-    const user = await deps.users.get(principal.userId);
-    return c.json({ credits: user?.credits ?? 0, plan: user?.plan ?? 'free' });
+    const [user, balance] = await Promise.all([
+      deps.users.get(principal.userId),
+      deps.ledger.getBalance(principal.userId),
+    ]);
+    return c.json({
+      credits: balance,
+      plan: user?.plan ?? 'free',
+      // Surface the locked rate tables so the client never has to hard-code
+      // them. When PR-04 makes these admin-editable, this endpoint becomes
+      // the single source of truth.
+      earnRates: CREDIT_EARN_AMOUNTS,
+      spendRates: CREDIT_SPEND_AMOUNTS,
+    });
   });
 
-  // POST /v1/credits/earn
-  app.post('/earn', async (c) => {
+  // GET /v1/credits/events — paginated ledger history for the current user.
+  // Most recent first; backed by the append-only `creditEvents` collection.
+  app.get('/events', async (c) => {
     const principal = requireAuth(c);
-    const body = await c.req.json().catch(() => null) as { type?: string } | null;
-    const type = body?.type;
-    if (!type || !CREDIT_REWARDS[type]) throw new HTTPException(400, { message: `Invalid type. Valid: ${Object.keys(CREDIT_REWARDS).join(', ')}` });
-
-    const user = await deps.users.get(principal.userId);
-    if (!user) throw new HTTPException(404, { message: 'User not found' });
-
-    // daily_login check: only once per day
-    if (type === 'daily_login') {
-      const today = new Date().toISOString().split('T')[0]!;
-      const lastDaily = user.lastDailyAt?.split('T')[0];
-      if (lastDaily === today) return c.json({ credited: 0, balance: user.credits, message: 'Already claimed today' });
-    }
-
-    const reward = CREDIT_REWARDS[type]!;
-    const newBalance = (user.credits ?? 0) + reward;
-    await deps.users.update(principal.userId, { credits: newBalance, ...(type === 'daily_login' ? { lastDailyAt: new Date().toISOString() } : {}) } as any);
-
-    deps.logger.info('credits.earned', { userId: principal.userId, type, reward, balance: newBalance });
-    return c.json({ credited: reward, balance: newBalance });
+    const limit = Math.min(Math.max(parseInt(c.req.query('limit') ?? '50', 10) || 50, 1), 200);
+    const before = c.req.query('before') || undefined;
+    const events = await deps.ledger.listEvents(principal.userId, { limit, before });
+    return c.json({ events, limit });
   });
 
-  // ─── Referral Endpoints ──────────────────────────────────────────────────
+  // ─── Referral Endpoints ───────────────────────────────────────────────────
 
   // GET /v1/credits/referral — get user's referral code + stats
   app.get('/referral', async (c) => {
     const principal = requireAuth(c);
-    // Ensure user has a code (creates if not exists)
+    // Ensure user has a code (creates if not exists).
     await referrals.createReferralCode(principal.userId);
     const stats = await referrals.getStats(principal.userId);
     return c.json(stats);
   });
 
-  // POST /v1/credits/referral/apply — apply a referral code during onboarding
+  // POST /v1/credits/referral/apply — invitee applies a code during onboarding.
+  // Awards the invitee bonus (referral_bonus = 100) via the ledger.
   app.post('/referral/apply', async (c) => {
     const principal = requireAuth(c);
     const body = await c.req.json().catch(() => null) as { referralCode?: string } | null;
@@ -69,17 +75,29 @@ export function makeCreditsRoutes(deps: CreditsRoutesDeps): Hono {
       return c.json({ success: false, message: 'Invalid or already-used referral code' });
     }
 
-    // Give referred user bonus credits (+25)
-    const user = await deps.users.get(principal.userId);
-    if (user) {
-      await deps.users.update(principal.userId, { credits: (user.credits ?? 0) + 25 } as any);
-    }
+    // Idempotent on (invitee, referrerId): a retry of /apply for the same
+    // pairing collapses to one ledger row.
+    const result = await deps.ledger.award({
+      userId: principal.userId,
+      source: 'referral_bonus',
+      sourceRef: referrerId,
+      idempotencyKey: `referral_bonus:${principal.userId}:${referrerId}`,
+    });
 
-    deps.logger.info('referral.applied', { newUser: principal.userId, referrerId, code });
-    return c.json({ success: true, bonusCredits: 25 });
+    deps.logger.info('referral.applied', {
+      newUser: principal.userId,
+      referrerId,
+      code,
+      ledgerKind: result.kind,
+    });
+    return c.json({
+      success: true,
+      bonusCredits: result.kind === 'awarded' ? result.event.amount : 0,
+    });
   });
 
-  // POST /v1/credits/referral/complete — called when referred user completes onboarding
+  // POST /v1/credits/referral/complete — invitee finished onboarding;
+  // pay the referrer their bonus (referral_signup = 50).
   app.post('/referral/complete', async (c) => {
     const principal = requireAuth(c);
     const result = await referrals.completeReferral(principal.userId);
@@ -87,12 +105,18 @@ export function makeCreditsRoutes(deps: CreditsRoutesDeps): Hono {
       return c.json({ completed: false });
     }
 
-    // Award referrer +100 credits
-    const referrer = await deps.users.get(result.referrerId);
-    if (referrer) {
-      await deps.users.update(result.referrerId, { credits: (referrer.credits ?? 0) + 100 } as any);
-      deps.logger.info('referral.completed', { referrer: result.referrerId, referred: principal.userId, creditsAwarded: 100 });
-    }
+    const award = await deps.ledger.award({
+      userId: result.referrerId,
+      source: 'referral_signup',
+      sourceRef: principal.userId,
+      idempotencyKey: `referral_signup:${result.referrerId}:${principal.userId}`,
+    });
+
+    deps.logger.info('referral.completed', {
+      referrer: result.referrerId,
+      referred: principal.userId,
+      creditsAwarded: award.kind === 'awarded' ? award.event.amount : 0,
+    });
 
     return c.json({ completed: true, referrerId: result.referrerId });
   });

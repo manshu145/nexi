@@ -92,8 +92,29 @@ export const api = {
   async deleteAllChatSessions() { return (await authedFetch('/v1/chat/history/all', { method: 'DELETE' })).json() as Promise<{success:boolean}>; },
 
   // Credits
-  async getCreditsBalance() { return (await authedFetch('/v1/credits/balance')).json() as Promise<{credits:number; plan:string}>; },
-  async earnCredits(type: string) { return (await authedFetch('/v1/credits/earn', { method: 'POST', body: JSON.stringify({ type }) })).json() as Promise<{credited:number; balance:number; message?:string}>; },
+  async getCreditsBalance() {
+    return (await authedFetch('/v1/credits/balance')).json() as Promise<{
+      credits: number;
+      plan: string;
+      earnRates: Record<string, number>;
+      spendRates: Record<string, number>;
+    }>;
+  },
+  /**
+   * Append-only ledger history for the current user. Most-recent first.
+   * Pass `before` (ISO timestamp from the oldest event you've already seen)
+   * to load the next page; the server caps `limit` to 200.
+   */
+  async getCreditEvents(opts?: { limit?: number; before?: string }) {
+    const params = new URLSearchParams();
+    if (opts?.limit) params.set('limit', String(opts.limit));
+    if (opts?.before) params.set('before', opts.before);
+    const qs = params.toString();
+    return (await authedFetch(`/v1/credits/events${qs ? `?${qs}` : ''}`)).json() as Promise<{
+      events: CreditEvent[];
+      limit: number;
+    }>;
+  },
   async getReferralStats() { return (await authedFetch('/v1/credits/referral')).json() as Promise<ReferralStats>; },
   async applyReferral(referralCode: string) { return (await authedFetch('/v1/credits/referral/apply', { method: 'POST', body: JSON.stringify({ referralCode }) })).json() as Promise<{success:boolean; bonusCredits?:number; message?:string}>; },
   async completeReferral() { return (await authedFetch('/v1/credits/referral/complete', { method: 'POST' })).json() as Promise<{completed:boolean}>; },
@@ -138,5 +159,50 @@ export interface ChatSession { id: string; userId: string; title: string; messag
 export interface ChatSessionSummary { id: string; title: string; createdAt: string; updatedAt: string; messageCount: number; }
 export interface Plan { id: string; name: string; nameHi: string; price: number; yearlyPrice: number; dailyMcq: number; mockTests: number; aiTutor: boolean; currentAffairs: boolean; essayGrading: boolean; }
 export interface ReferralStats { code: string; referralUrl: string; totalReferrals: number; pendingReferrals: number; completedReferrals: number; totalEarned: number; }
+
+/**
+ * One row in the credit ledger as the backend serialises it.
+ * Discriminated on `event.kind`: 'earn' rows carry a `source`, 'spend' rows
+ * carry a `reason`, and 'expire' rows are emitted by the nightly sweeper.
+ */
+export type CreditEarnSource =
+  | 'signup_verified'
+  | 'daily_login'
+  | 'chapter_complete'
+  | 'mcq_pass'
+  | 'mcq_fail_attempted'
+  | 'streak_7d'
+  | 'streak_30d'
+  | 'referral_signup'
+  | 'referral_retained_7d'
+  | 'referral_bonus'
+  | 'admin_grant'
+  | 'subscription_grant';
+
+export type CreditSpendReason =
+  | 'read_chapter'
+  | 'focus_session_1h'
+  | 'mock_test'
+  | 'ai_tutor_question'
+  | 'concept_video'
+  | 'long_answer_grading'
+  | 'admin_revoke';
+
+export type CreditEventKind =
+  | { kind: 'earn'; source: CreditEarnSource }
+  | { kind: 'spend'; reason: CreditSpendReason }
+  | { kind: 'expire' };
+
+export interface CreditEvent {
+  id: string;
+  userId: string;
+  /** Positive for earn, negative for spend or expire. */
+  amount: number;
+  event: CreditEventKind;
+  sourceRef: string | null;
+  occurredAt: string;
+  createdAt: string;
+  expiresAt: string | null;
+}
 
 export { ApiError };
