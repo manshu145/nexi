@@ -23,6 +23,22 @@
         { "fieldPath": "isActive", "order": "ASCENDING" },
         { "fieldPath": "lastFetched", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "creditEvents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "occurredAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "creditEvents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "occurredAt", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

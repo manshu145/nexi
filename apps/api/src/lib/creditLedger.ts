@@ -168,28 +168,31 @@ export class FirestoreCreditLedger implements CreditLedger {
 
   async listEvents(userId: UserId, opts: LedgerListOptions = {}): Promise<LedgerEventDto[]> {
     const limit = Math.min(Math.max(opts.limit ?? 50, 1), 200);
-    let q = this.db
+    // Single-field query (userId only) avoids the composite index requirement
+    // that Firestore would impose for `where + orderBy` on different fields.
+    // We sort + paginate in memory because per-user event volume is bounded
+    // (typical heavy user: ~hundreds of events/year, well under Firestore's
+    // 1MB-per-page limit). The composite index in firestore.indexes.json
+    // gets created in the background; once it's `READY` we can switch this
+    // method to a server-side ordered+paginated query, but the change must
+    // not block on that build (which can take 5-30 minutes).
+    const snap = await this.db
       .collection(COL_EVENTS)
       .where('userId', '==', userId)
-      .orderBy('occurredAt', 'desc')
-      .limit(limit);
-    if (opts.before) {
-      q = q.startAfter(opts.before);
-    }
-    const snap = await q.get();
-    return snap.docs.map((d) => {
-      const data = d.data() as CreditEvent;
-      return {
-        id: data.id,
-        userId: data.userId,
-        amount: data.amount,
-        event: data.event,
-        sourceRef: data.sourceRef,
-        occurredAt: data.occurredAt,
-        createdAt: data.createdAt,
-        expiresAt: data.expiresAt,
-      };
-    });
+      .get();
+    const events = snap.docs.map((d) => d.data() as CreditEvent);
+    events.sort((a, b) => (a.occurredAt < b.occurredAt ? 1 : a.occurredAt > b.occurredAt ? -1 : 0));
+    const filtered = opts.before ? events.filter((e) => e.occurredAt < opts.before!) : events;
+    return filtered.slice(0, limit).map((data) => ({
+      id: data.id,
+      userId: data.userId,
+      amount: data.amount,
+      event: data.event,
+      sourceRef: data.sourceRef,
+      occurredAt: data.occurredAt,
+      createdAt: data.createdAt,
+      expiresAt: data.expiresAt,
+    }));
   }
 
   // ---------- internals ----------
@@ -224,11 +227,18 @@ export class FirestoreCreditLedger implements CreditLedger {
       }
 
       // 2. Load the full ledger inside the txn so the engine sees a
-      //    consistent snapshot.
+      //    consistent snapshot. Single-field query (userId only) -- sorting
+      //    happens in memory, which avoids a composite-index requirement
+      //    that would block first-deploy traffic until Firestore finishes
+      //    building the index. See listEvents() for the same rationale.
       const ledgerSnap = await tx.get(
-        this.db.collection(COL_EVENTS).where('userId', '==', userId).orderBy('occurredAt', 'asc'),
+        this.db.collection(COL_EVENTS).where('userId', '==', userId),
       );
-      const ledger = ledgerSnap.docs.map((d) => d.data() as CreditEvent);
+      const ledger = ledgerSnap.docs
+        .map((d) => d.data() as CreditEvent)
+        .sort((a, b) =>
+          a.occurredAt < b.occurredAt ? -1 : a.occurredAt > b.occurredAt ? 1 : 0,
+        );
 
       // 3. Run the engine and let the work fn decide what to write.
       return work(tx, ledger);
@@ -286,12 +296,16 @@ export class FirestoreCreditLedger implements CreditLedger {
   }
 
   private async loadLedger(userId: UserId): Promise<CreditEvent[]> {
+    // Single-field query + in-memory sort -- see listEvents() for why.
     const snap = await this.db
       .collection(COL_EVENTS)
       .where('userId', '==', userId)
-      .orderBy('occurredAt', 'asc')
       .get();
-    return snap.docs.map((d) => d.data() as CreditEvent);
+    return snap.docs
+      .map((d) => d.data() as CreditEvent)
+      .sort((a, b) =>
+        a.occurredAt < b.occurredAt ? -1 : a.occurredAt > b.occurredAt ? 1 : 0,
+      );
   }
 }
 
