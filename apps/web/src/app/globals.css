@@ -1178,3 +1178,72 @@ button.paper-card:hover {
 /* ----- Toast notification animation ----- */
 @keyframes toastIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
 .animate-toast-in { animation: toastIn 0.2s ease-out forwards; }
+
+
+/* ----- Smooth expand/collapse for accordion content ----- */
+@keyframes expandIn {
+  from { opacity: 0; max-height: 0; }
+  to { opacity: 1; max-height: 2000px; }
+}
+.animate-expandIn {
+  animation: expandIn 0.3s ease-out forwards;
+  overflow: hidden;
+}
+
+/* ----- Scale-in for modals and overlays ----- */
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+.animate-scaleIn {
+  animation: scaleIn 0.2s ease-out forwards;
+}
+
+/* ----- Slide-up for bottom sheets and panels ----- */
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-slideUp {
+  animation: slideUp 0.25s ease-out forwards;
+}
+
+/* ----- Improved focus states for accessibility ----- */
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--color-ember-500);
+  outline-offset: 2px;
+  border-radius: 0.25rem;
+}
+
+/* ----- Smooth page transitions ----- */
+main {
+  animation: fadeIn 0.2s ease-out;
+}
+
+/* ----- Better scrollbar styling ----- */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-muted-400);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-muted-500);
+}
+
+/* ----- Haptic feedback simulation for touch ----- */
+@media (hover: none) and (pointer: coarse) {
+  .paper-card:active {
+    transform: scale(0.97);
+    transition: transform 80ms ease;
+  }
+  .btn-primary:active {
+    transform: scale(0.95) !important;
+  }
+}
