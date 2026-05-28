@@ -341,11 +341,11 @@ export async function ingestCurrentAffairs(
 
   logger.info('rss.ingestion_complete', { fetched: rawItems.length, saved: itemsToSave.length });
 
-  // 6. Cleanup: delete currentAffairs buckets older than 48 hours
+  // 6. Cleanup: delete currentAffairs buckets older than 24 hours
   try {
     const istOffset = 5.5 * 60 * 60 * 1000;
     const istNow = new Date(Date.now() + istOffset);
-    const cutoff = new Date(istNow.getTime() - 48 * 60 * 60 * 1000);
+    const cutoff = new Date(istNow.getTime() - 24 * 60 * 60 * 1000);
     const cutoffKey = cutoff.toISOString().split('T')[0]!;
 
     // Use Firestore from store if available (duck-type check for db property)

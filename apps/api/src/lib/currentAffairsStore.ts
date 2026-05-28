@@ -47,6 +47,8 @@ export interface CurrentAffairsStore {
   toggleBookmark(itemId: string, userId: string): Promise<{ bookmarked: boolean }>;
   /** Get user's bookmarked item IDs */
   getUserBookmarks(userId: string): Promise<string[]>;
+  /** Delete news items older than 24 hours from Firestore */
+  cleanupOldItems?(): Promise<number>;
   /** Get user's liked item IDs */
   getUserLikes(userId: string): Promise<string[]>;
   /** Get like count for items */
@@ -340,5 +342,37 @@ export class FirestoreCurrentAffairsStore implements CurrentAffairsStore {
       }
     } catch { /* fallback to zeros */ }
     return counts;
+  }
+
+  /** Delete news items older than 24 hours from Firestore */
+  async cleanupOldItems(): Promise<number> {
+    let deleted = 0;
+    try {
+      const now = new Date();
+      const istOffset = 5.5 * 60 * 60 * 1000;
+      const istNow = new Date(now.getTime() + istOffset);
+      const istTodayKey = istNow.toISOString().split('T')[0]!;
+
+      // Get all date docs in currentAffairs collection
+      const allDocs = await this.db.collection('currentAffairs').listDocuments();
+      for (const docRef of allDocs) {
+        const dateKey = docRef.id; // format: YYYY-MM-DD
+        // Skip today's items
+        if (dateKey === istTodayKey) continue;
+        // Check if this date is older than 24 hours
+        const docDate = new Date(dateKey + 'T00:00:00+05:30');
+        const ageMs = now.getTime() - docDate.getTime();
+        if (ageMs > 24 * 60 * 60 * 1000) {
+          // Delete all items in this date bucket
+          const itemsSnap = await docRef.collection('items').get();
+          const batch = this.db.batch();
+          itemsSnap.docs.forEach(d => { batch.delete(d.ref); deleted++; });
+          // Delete the parent date doc too
+          batch.delete(docRef);
+          await batch.commit();
+        }
+      }
+    } catch { /* cleanup is non-critical */ }
+    return deleted;
   }
 }
