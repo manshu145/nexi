@@ -77,7 +77,7 @@ export default function AdminSessionsPage() {
     <div>
       <div className="flex items-center gap-3">
         <h1 className="font-serif text-2xl font-bold text-ink-900">Live Sessions</h1>
-        <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+        <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
           {count} online
         </span>
       </div>

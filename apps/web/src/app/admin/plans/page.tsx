@@ -152,8 +152,8 @@ export default function AdminPlansPage() {
                   <td className="px-4 py-3 text-muted-600 dark:text-muted-400">{p.price === 0 ? 'Free' : `₹${p.price}/mo`}</td>
                   <td className="px-4 py-3">
                     {p.isActive ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 dark:bg-emerald-900/30 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />Active
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
+                        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />Active
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-muted-500">
@@ -241,7 +241,7 @@ export default function AdminPlansPage() {
                   <td className="px-4 py-3">
                     <button onClick={() => handleToggleCoupon(c.code, c.isActive)} className="text-xs">
                       {c.isActive ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 dark:bg-emerald-900/30 px-2 py-0.5 font-medium text-emerald-700 dark:text-emerald-400">Active</span>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 font-medium text-amber-700 dark:text-amber-400">Active</span>
                       ) : (
                         <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 font-medium text-muted-500">Inactive</span>
                       )}

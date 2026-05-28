@@ -55,7 +55,7 @@ const API = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com';
 const SEVERITY_COLORS: Record<string, string> = {
   critical: 'bg-ember-100 text-ember-700 dark:bg-ember-900/30 dark:text-ember-400',
   warning: 'bg-gold-100 text-gold-700 dark:bg-gold-900/30 dark:text-gold-400',
-  info: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  info: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
 };
 
 function SkeletonLogRow() {
@@ -295,16 +295,16 @@ export default function AdminLogsPage() {
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1.5">
-                <span className={`inline-block h-2 w-2 rounded-full ${autoRefresh ? 'bg-emerald-500 animate-pulse' : 'bg-muted-400'}`} />
+                <span className={`inline-block h-2 w-2 rounded-full ${autoRefresh ? 'bg-amber-500 animate-pulse' : 'bg-muted-400'}`} />
                 <span className="text-xs text-muted-500">{autoRefresh ? 'Live (10s)' : 'Paused'}</span>
               </div>
-              <button onClick={() => setAutoRefresh(!autoRefresh)} className={`pill text-xs ${autoRefresh ? 'bg-emerald-600 text-paper-50 border-emerald-600' : ''}`}>
+              <button onClick={() => setAutoRefresh(!autoRefresh)} className={`pill text-xs ${autoRefresh ? 'bg-amber-600 text-paper-50 border-amber-600' : ''}`}>
                 {autoRefresh ? '⏸ Pause' : '▶ Live'}
               </button>
             </div>
             <div className="flex gap-2 text-xs">
               <span className="px-2 py-1 rounded bg-paper-200 text-ink-700">Total: {debugLogs.length}</span>
-              <span className="px-2 py-1 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">✓ {debugLogs.filter(l => l.status !== 'error').length}</span>
+              <span className="px-2 py-1 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">✓ {debugLogs.filter(l => l.status !== 'error').length}</span>
               <span className="px-2 py-1 rounded bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">✗ {debugLogs.filter(l => l.status === 'error').length}</span>
             </div>
           </div>
@@ -335,7 +335,7 @@ export default function AdminLogsPage() {
                       <td className="px-3 py-2 text-xs text-ink-800">${log.cost.toFixed(5)}</td>
                       <td className="px-3 py-2 text-xs text-ink-800">{log.latencyMs}ms</td>
                       <td className="px-3 py-2">
-                        <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium ${log.status === 'error' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'}`}>
+                        <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium ${log.status === 'error' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'}`}>
                           {log.status === 'error' ? '✗' : '✓'}
                         </span>
                       </td>
