@@ -5,8 +5,18 @@ import { asISODateTime, type ExamSlug, type ISODateTime, type UserId, type Study
  * Chapter content store + progress tracking.
  *
  * Chapter content is AI-generated on first request, then cached in Firestore.
+ * Cache key includes user level so Beginner/Intermediate/Advanced get different content.
  * Progress is stored per user per exam.
  */
+
+export interface UserContext {
+  targetExam: string;
+  onboardingScore: number;
+  onboardingLevel: 'beginner' | 'intermediate' | 'advanced';
+  completedChapters: string[];
+  weakAreas: string[];      // chapters with score < 60%
+  strongAreas: string[];    // chapters with score >= 80%
+}
 
 export interface ChapterContent {
   exam: ExamSlug;
@@ -16,10 +26,12 @@ export interface ChapterContent {
   content: string; // markdown
   generatedAt: ISODateTime;
   generatedBy: string; // model id
+  userLevel?: 'beginner' | 'intermediate' | 'advanced';
+  contentPersonalizedFor?: 'beginner' | 'intermediate' | 'advanced';
 }
 
 export interface ChapterStore {
-  getChapter(exam: string, subject: string, chapter: string, language: 'en' | 'hi'): Promise<ChapterContent | null>;
+  getChapter(exam: string, subject: string, chapter: string, language: 'en' | 'hi', level?: 'beginner' | 'intermediate' | 'advanced'): Promise<ChapterContent | null>;
   saveChapter(content: ChapterContent): Promise<void>;
   getProgress(userId: UserId, exam: string): Promise<StudyProgress>;
   saveProgress(userId: UserId, exam: string, subject: string, chapter: string, score: number): Promise<StudyProgress>;
@@ -31,20 +43,22 @@ export class InMemoryChapterStore implements ChapterStore {
   private chapters = new Map<string, ChapterContent>();
   private progress = new Map<string, StudyProgress>();
 
-  private chapterKey(exam: string, subject: string, chapter: string, lang: string) {
-    return `${exam}:${subject}:${chapter}:${lang}`;
+  private chapterKey(exam: string, subject: string, chapter: string, lang: string, level?: string) {
+    // Include level in cache key so different levels get different content
+    const levelSuffix = level ? `:${level}` : '';
+    return `${exam}:${subject}:${chapter}:${lang}${levelSuffix}`;
   }
 
   private progressKey(userId: string, exam: string) {
     return `${userId}:${exam}`;
   }
 
-  async getChapter(exam: string, subject: string, chapter: string, language: 'en' | 'hi') {
-    return this.chapters.get(this.chapterKey(exam, subject, chapter, language)) ?? null;
+  async getChapter(exam: string, subject: string, chapter: string, language: 'en' | 'hi', level?: 'beginner' | 'intermediate' | 'advanced') {
+    return this.chapters.get(this.chapterKey(exam, subject, chapter, language, level)) ?? null;
   }
 
   async saveChapter(content: ChapterContent) {
-    this.chapters.set(this.chapterKey(content.exam, content.subject, content.chapter, content.language), content);
+    this.chapters.set(this.chapterKey(content.exam, content.subject, content.chapter, content.language, content.userLevel), content);
   }
 
   async getProgress(userId: UserId, exam: string): Promise<StudyProgress> {
@@ -80,18 +94,20 @@ export class InMemoryChapterStore implements ChapterStore {
 export class FirestoreChapterStore implements ChapterStore {
   constructor(private readonly db: Firestore) {}
 
-  private chapterDocId(exam: string, subject: string, chapter: string, lang: string) {
-    return `${exam}_${subject}_${chapter}_${lang}`;
+  private chapterDocId(exam: string, subject: string, chapter: string, lang: string, level?: string) {
+    // Include level in Firestore doc ID so each level gets its own cached content
+    const levelSuffix = level ? `_${level}` : '';
+    return `${exam}_${subject}_${chapter}_${lang}${levelSuffix}`;
   }
 
-  async getChapter(exam: string, subject: string, chapter: string, language: 'en' | 'hi') {
+  async getChapter(exam: string, subject: string, chapter: string, language: 'en' | 'hi', level?: 'beginner' | 'intermediate' | 'advanced') {
     const snap = await this.db.collection('chapter_content')
-      .doc(this.chapterDocId(exam, subject, chapter, language)).get();
+      .doc(this.chapterDocId(exam, subject, chapter, language, level)).get();
     return snap.exists ? (snap.data() as ChapterContent) : null;
   }
 
   async saveChapter(content: ChapterContent) {
-    const docId = this.chapterDocId(content.exam, content.subject, content.chapter, content.language);
+    const docId = this.chapterDocId(content.exam, content.subject, content.chapter, content.language, content.userLevel);
     await this.db.collection('chapter_content').doc(docId).set(content);
   }
 
