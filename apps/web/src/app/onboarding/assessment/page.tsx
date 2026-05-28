@@ -6,7 +6,27 @@ import { toast } from 'sonner';
 import { api, type GeneratedMCQ } from '~/lib/api';
 import { AILoader } from '~/components/ui/AILoader';
 
-type Phase = 'intro' | 'quiz' | 'submitting' | 'error';
+type Phase = 'intro' | 'quiz' | 'stage-transition' | 'submitting' | 'error';
+type Stage = 1 | 2 | 3;
+
+interface StageData {
+  questions: GeneratedMCQ[];
+  answers: Map<string, string | null>;
+}
+
+const STAGE_LABELS: Record<Stage, { en: string; hi: string }> = {
+  1: { en: 'Core Knowledge', hi: 'मूल ज्ञान' },
+  2: { en: 'Difficulty Calibration', hi: 'कठिनाई जांच' },
+  3: { en: 'Weak Area Deep Dive', hi: 'कमजोर क्षेत्र गहन परीक्षण' },
+};
+
+const STAGE_INTROS: Record<Stage, { en: string; hi: string }> = {
+  1: { en: 'Let\'s start with questions across core subjects to understand your current level.', hi: 'आइए आपके वर्तमान स्तर को समझने के लिए मूल विषयों के प्रश्नों से शुरू करते हैं।' },
+  2: { en: 'Based on your answers, here are more targeted questions to precisely determine your level...', hi: 'आपके उत्तरों के आधार पर, आपके स्तर को सटीक रूप से निर्धारित करने के लिए और प्रश्न...' },
+  3: { en: 'Let\'s explore your weak areas more deeply to personalize your learning...', hi: 'आइए आपकी पढ़ाई को व्यक्तिगत बनाने के लिए कमजोर क्षेत्रों को गहराई से समझते हैं...' },
+};
+
+const TOTAL_QUESTIONS = 23; // 10 + 8 + 5
 
 export default function AssessmentPage() {
   const t = useTranslations('onboarding.assessment');
@@ -14,29 +34,54 @@ export default function AssessmentPage() {
   const tc = useTranslations('common');
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>('intro');
-  const [questions, setQuestions] = useState<GeneratedMCQ[]>([]);
+  const [currentStage, setCurrentStage] = useState<Stage>(1);
+  const [stageData, setStageData] = useState<Record<Stage, StageData>>({
+    1: { questions: [], answers: new Map() },
+    2: { questions: [], answers: new Map() },
+    3: { questions: [], answers: new Map() },
+  });
   const [idx, setIdx] = useState(0);
-  const [answers, setAnswers] = useState<Map<string, string | null>>(new Map());
-  const [timer, setTimer] = useState(30);
+  const [timer, setTimer] = useState(45);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lang = useRef<'en' | 'hi'>('en');
+
+  // Get language on mount
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      const m = document.cookie.match(/nexigrate-language=(en|hi)/);
+      if (m) { lang.current = m[1] as 'en' | 'hi'; return; }
+    }
+    if (typeof window !== 'undefined') {
+      const s = localStorage.getItem('nexigrate-language');
+      if (s === 'hi' || s === 'en') lang.current = s;
+    }
+  }, []);
+
+  const currentQuestions = stageData[currentStage].questions;
+  const currentAnswers = stageData[currentStage].answers;
+  const currentQuestion = currentQuestions[idx];
+
+  // Calculate global progress (across all stages)
+  const questionsAnsweredBefore = (currentStage === 1 ? 0 : currentStage === 2 ? 10 : 18);
+  const globalProgress = questionsAnsweredBefore + idx;
+  const progressPct = Math.round((globalProgress / TOTAL_QUESTIONS) * 100);
 
   const startAssessment = async () => {
     setLoading(true); setError(null); setPhase('intro');
     try {
-      const lang = (() => {
-        if (typeof document !== 'undefined') { const m = document.cookie.match(/nexigrate-language=(en|hi)/); if (m) return m[1] as 'en' | 'hi'; }
-        if (typeof window !== 'undefined') { const s = localStorage.getItem('nexigrate-language'); if (s === 'hi' || s === 'en') return s; }
-        return 'en' as const;
-      })();
       const meRes = await api.me();
       const exam = meRes.user.targetExam ?? 'jee-main';
-      const res = await api.getAssessmentQuestions(exam, lang);
+      const res = await api.getStage1Questions(exam, lang.current);
       if (!res.questions || res.questions.length === 0) {
         throw new Error('No questions received from AI. Service may be busy.');
       }
-      setQuestions(res.questions); setPhase('quiz'); setTimer(30);
+      setStageData(prev => ({ ...prev, 1: { questions: res.questions, answers: new Map() } }));
+      setCurrentStage(1);
+      setIdx(0);
+      setTimer(45);
+      setPhase('quiz');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to generate questions';
       setError(msg);
@@ -45,47 +90,150 @@ export default function AssessmentPage() {
     } finally { setLoading(false); }
   };
 
+  const loadStage2 = async () => {
+    setPhase('stage-transition');
+    try {
+      const meRes = await api.me();
+      const exam = meRes.user.targetExam ?? 'jee-main';
+      const stage1Results = {
+        questions: stageData[1].questions,
+        answers: Array.from(stageData[1].answers.entries()).map(([qId, chosen]) => ({ questionId: qId, chosen })),
+      };
+      const res = await api.getStage2Questions(exam, lang.current, stage1Results);
+      if (!res.questions || res.questions.length === 0) throw new Error('No Stage 2 questions received.');
+      setStageData(prev => ({ ...prev, 2: { questions: res.questions, answers: new Map() } }));
+      setCurrentStage(2);
+      setIdx(0);
+      setTimer(45);
+      setPhase('quiz');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to generate Stage 2 questions';
+      setError(msg);
+      setPhase('error');
+      toast.error(msg);
+    }
+  };
+
+  const loadStage3 = async () => {
+    setPhase('stage-transition');
+    try {
+      const meRes = await api.me();
+      const exam = meRes.user.targetExam ?? 'jee-main';
+      const stage1Results = {
+        questions: stageData[1].questions,
+        answers: Array.from(stageData[1].answers.entries()).map(([qId, chosen]) => ({ questionId: qId, chosen })),
+      };
+      const stage2Results = {
+        questions: stageData[2].questions,
+        answers: Array.from(stageData[2].answers.entries()).map(([qId, chosen]) => ({ questionId: qId, chosen })),
+      };
+      const res = await api.getStage3Questions(exam, lang.current, stage1Results, stage2Results);
+      if (!res.questions || res.questions.length === 0) throw new Error('No Stage 3 questions received.');
+      setStageData(prev => ({ ...prev, 3: { questions: res.questions, answers: new Map() } }));
+      setCurrentStage(3);
+      setIdx(0);
+      setTimer(45);
+      setPhase('quiz');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to generate Stage 3 questions';
+      setError(msg);
+      setPhase('error');
+      toast.error(msg);
+    }
+  };
+
   const submitAssessment = useCallback(async () => {
     setPhase('submitting');
     try {
-      const arr = questions.map((q) => ({ questionId: q.id, chosen: answers.get(q.id) ?? null }));
-      const result = await api.submitAssessment(questions, arr);
+      const toResults = (sd: StageData) => ({
+        questions: sd.questions,
+        answers: Array.from(sd.answers.entries()).map(([qId, chosen]) => ({ questionId: qId, chosen })),
+      });
+      const result = await api.submitMultiStageAssessment(
+        toResults(stageData[1]),
+        toResults(stageData[2]),
+        toResults(stageData[3]),
+      );
       sessionStorage.setItem('nexigrate-assessment-result', JSON.stringify(result));
       router.push('/onboarding/complete');
-    } catch (err) { toast.error(err instanceof Error ? err.message : 'Submit failed'); setPhase('quiz'); }
-  }, [questions, answers, router]);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Submit failed');
+      setPhase('quiz');
+    }
+  }, [stageData, router]);
 
   const handleNext = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
-    if (idx >= questions.length - 1) submitAssessment();
-    else { setIdx((i) => i + 1); setTimer(30); }
-  }, [idx, questions.length, submitAssessment]);
 
+    const isLastInStage = idx >= currentQuestions.length - 1;
+
+    if (isLastInStage) {
+      // Move to next stage or submit
+      if (currentStage === 1) loadStage2();
+      else if (currentStage === 2) loadStage3();
+      else submitAssessment();
+    } else {
+      setIdx((i) => i + 1);
+      setTimer(45);
+    }
+  }, [idx, currentQuestions.length, currentStage, submitAssessment]);
+
+  // Timer effect
   useEffect(() => {
     if (phase !== 'quiz') return;
-    timerRef.current = setInterval(() => { setTimer((p) => { if (p <= 1) { handleNext(); return 30; } return p - 1; }); }, 1000);
+    timerRef.current = setInterval(() => {
+      setTimer((p) => {
+        if (p <= 1) { handleNext(); return 45; }
+        return p - 1;
+      });
+    }, 1000);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [phase, idx, handleNext]);
+  }, [phase, idx, currentStage, handleNext]);
+
+  const selectAnswer = (key: string) => {
+    setStageData(prev => {
+      const stage = prev[currentStage];
+      const newAnswers = new Map(stage.answers);
+      newAnswers.set(currentQuestions[idx]!.id, key);
+      return { ...prev, [currentStage]: { ...stage, answers: newAnswers } };
+    });
+  };
 
   // INTRO phase
   if (phase === 'intro') return (
     <div className="flex flex-col items-center">
       <div className="pill">{ts('step', { current: 4, total: 5 })}</div>
-      <div className="mt-4 flex w-full max-w-xs gap-1">{[1,2,3,4,5].map(s => <div key={s} className={`h-1.5 flex-1 rounded-full ${s <= 4 ? 'bg-ember-500' : 'bg-paper-300'}`} />)}</div>
+      <div className="mt-4 flex w-full max-w-xs gap-1">{[1, 2, 3, 4, 5].map(s => <div key={s} className={`h-1.5 flex-1 rounded-full ${s <= 4 ? 'bg-ember-500' : 'bg-paper-300'}`} />)}</div>
       <h1 className="font-serif mt-8 text-center text-2xl font-semibold text-ink-900">{t('title')}</h1>
       <p className="mt-2 text-center text-sm text-muted-500">{t('subtitle')}</p>
-      <div className="paper-card mt-8 w-full p-5"><p className="text-sm text-ink-800 leading-relaxed">{t('description')}</p></div>
+      <div className="paper-card mt-8 w-full p-5">
+        <p className="text-sm text-ink-800 leading-relaxed">{t('description')}</p>
+        <div className="mt-4 space-y-2">
+          <div className="flex items-center gap-2 text-xs text-muted-500">
+            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-100 text-amber-700 text-[10px] font-bold">1</span>
+            <span>Core Knowledge — 10 questions across all subjects</span>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-muted-500">
+            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-100 text-amber-700 text-[10px] font-bold">2</span>
+            <span>Difficulty Calibration — 8 targeted questions</span>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-muted-500">
+            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-100 text-amber-700 text-[10px] font-bold">3</span>
+            <span>Weak Area Deep Dive — 5 personalization questions</span>
+          </div>
+        </div>
+      </div>
       <button type="button" onClick={startAssessment} disabled={loading} className="btn-primary mt-6 w-full">
         {loading ? tc('loading') : t('startButton')}
       </button>
     </div>
   );
 
-  // ERROR phase — AI service unavailable
+  // ERROR phase
   if (phase === 'error') return (
     <div className="flex flex-col items-center">
       <div className="pill">{ts('step', { current: 4, total: 5 })}</div>
-      <div className="mt-4 flex w-full max-w-xs gap-1">{[1,2,3,4,5].map(s => <div key={s} className={`h-1.5 flex-1 rounded-full ${s <= 4 ? 'bg-ember-500' : 'bg-paper-300'}`} />)}</div>
+      <div className="mt-4 flex w-full max-w-xs gap-1">{[1, 2, 3, 4, 5].map(s => <div key={s} className={`h-1.5 flex-1 rounded-full ${s <= 4 ? 'bg-ember-500' : 'bg-paper-300'}`} />)}</div>
       <div className="mt-12 text-center">
         <span className="text-4xl">⚠️</span>
         <h2 className="font-serif mt-4 text-xl font-semibold text-ink-900">Assessment could not be generated</h2>
@@ -98,38 +246,95 @@ export default function AssessmentPage() {
     </div>
   );
 
+  // STAGE TRANSITION phase — loading next stage
+  if (phase === 'stage-transition') return (
+    <div className="flex min-h-[40vh] flex-col items-center justify-center">
+      <AILoader context="assessment" />
+      <p className="mt-4 text-sm font-medium text-ink-800">Calculating next questions...</p>
+      <p className="mt-2 text-xs text-muted-500">
+        {currentStage === 1
+          ? 'Analyzing your core knowledge to calibrate difficulty...'
+          : 'Identifying weak areas for deeper assessment...'}
+      </p>
+      {/* Progress bar */}
+      <div className="mt-6 w-full max-w-xs">
+        <div className="h-2 w-full overflow-hidden rounded-full bg-paper-200">
+          <div className="h-full rounded-full bg-amber-500 transition-all duration-500" style={{ width: `${progressPct}%` }} />
+        </div>
+        <p className="mt-1 text-center text-[10px] text-muted-400">{globalProgress}/{TOTAL_QUESTIONS} questions completed</p>
+      </div>
+    </div>
+  );
+
   // SUBMITTING phase
   if (phase === 'submitting') return (
     <div className="flex min-h-[40vh] flex-col items-center justify-center">
-      <AILoader context="assessment" /><p className="mt-4 text-sm text-muted-500">{t('submitting')}</p>
+      <AILoader context="assessment" />
+      <p className="mt-4 text-sm text-muted-500">{t('submitting')}</p>
+      <p className="mt-2 text-xs text-muted-400">Personalizing your learning experience...</p>
     </div>
   );
 
   // QUIZ phase
-  const q = questions[idx]; if (!q) return null;
-  const sel = answers.get(q.id);
+  if (!currentQuestion) return null;
+  const sel = currentAnswers.get(currentQuestion.id);
+  const stageLabel = STAGE_LABELS[currentStage];
+  const questionInStage = idx + 1;
+  const totalInStage = currentQuestions.length;
 
   return (
     <div className="flex flex-col items-center">
+      {/* Onboarding progress */}
       <div className="pill">{ts('step', { current: 4, total: 5 })}</div>
-      <div className="mt-4 flex w-full max-w-xs gap-1">{[1,2,3,4,5].map(s => <div key={s} className={`h-1.5 flex-1 rounded-full ${s <= 4 ? 'bg-ember-500' : 'bg-paper-300'}`} />)}</div>
-      <div className="mt-6 flex w-full items-center justify-between">
-        <p className="text-sm font-medium text-ink-800">{t('question', { current: idx+1, total: questions.length })}</p>
+      <div className="mt-4 flex w-full max-w-xs gap-1">{[1, 2, 3, 4, 5].map(s => <div key={s} className={`h-1.5 flex-1 rounded-full ${s <= 4 ? 'bg-ember-500' : 'bg-paper-300'}`} />)}</div>
+
+      {/* Stage indicator */}
+      <div className="mt-4 flex w-full items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-amber-500 text-xs font-bold text-stone-900">{currentStage}</span>
+          <span className="text-xs font-medium text-ink-800">Stage {currentStage} of 3 — {lang.current === 'hi' ? stageLabel.hi : stageLabel.en}</span>
+        </div>
         <span className={`pill ${timer <= 10 ? 'pill-warn' : ''}`}>{t('timeLeft', { seconds: timer })}</span>
       </div>
-      <div className="mt-3 flex w-full gap-1">{questions.map((_, i) => <div key={i} className={`h-2.5 w-2.5 rounded-full ${i < idx ? 'bg-ember-500' : i === idx ? 'bg-ember-500' : answers.get(questions[i]?.id ?? '') ? 'bg-ember-500/40' : 'bg-paper-300'}`} />)}</div>
-      <div className="paper-card mt-6 w-full p-5">
-        <p className="text-sm font-medium leading-relaxed text-ink-900">{q.question}</p>
+
+      {/* Global progress bar */}
+      <div className="mt-3 w-full">
+        <div className="h-2 w-full overflow-hidden rounded-full bg-paper-200">
+          <div className="h-full rounded-full bg-amber-500 transition-all duration-300" style={{ width: `${progressPct}%` }} />
+        </div>
+        <div className="mt-1 flex justify-between text-[10px] text-muted-400">
+          <span>Question {questionInStage}/{totalInStage} in this stage</span>
+          <span>{globalProgress + 1}/{TOTAL_QUESTIONS} overall</span>
+        </div>
+      </div>
+
+      {/* Stage dots (question indicators within stage) */}
+      <div className="mt-3 flex w-full gap-1">{currentQuestions.map((_, i) => <div key={i} className={`h-2.5 w-2.5 rounded-full ${i < idx ? 'bg-amber-500' : i === idx ? 'bg-amber-500' : currentAnswers.get(currentQuestions[i]?.id ?? '') ? 'bg-amber-500/40' : 'bg-paper-300'}`} />)}</div>
+
+      {/* Question card */}
+      <div className="paper-card mt-5 w-full p-5">
+        {currentQuestion.subject && (
+          <span className="mb-2 inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+            {currentQuestion.subject}{currentQuestion.topic ? ` • ${currentQuestion.topic}` : ''}
+          </span>
+        )}
+        <p className="text-sm font-medium leading-relaxed text-ink-900">{currentQuestion.question}</p>
         <div className="mt-4 space-y-2">
-          {q.options.map((opt) => (
-            <button key={opt.key} type="button" onClick={() => setAnswers(new Map(answers).set(q.id, opt.key))}
+          {currentQuestion.options.map((opt) => (
+            <button key={opt.key} type="button" onClick={() => selectAnswer(opt.key)}
               className={`paper-card card-selectable w-full px-4 py-3 text-left text-sm ${sel === opt.key ? 'card-selected' : ''}`}>
               <span className="font-medium">{opt.key}.</span> {opt.text}
             </button>
           ))}
         </div>
       </div>
-      <button type="button" onClick={handleNext} className="btn-primary mt-4 w-full">{idx >= questions.length - 1 ? 'Submit' : tc('next')}</button>
+
+      {/* Next button */}
+      <button type="button" onClick={handleNext} className="btn-primary mt-4 w-full">
+        {idx >= currentQuestions.length - 1
+          ? currentStage === 3 ? 'Submit Assessment' : `Next Stage →`
+          : tc('next')}
+      </button>
     </div>
   );
 }

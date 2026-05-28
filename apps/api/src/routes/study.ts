@@ -4,7 +4,7 @@ import { requireAuth } from '../auth.js';
 import type { Logger } from '../logger.js';
 import type { UserStore } from '../lib/userStore.js';
 import type { AIEngine } from '../lib/aiEngine.js';
-import type { ChapterStore } from '../lib/chapterStore.js';
+import type { ChapterStore, UserContext } from '../lib/chapterStore.js';
 import { getSyllabus, getSyllabusWithFallback, type SyllabusFallbackDeps } from '../lib/syllabusStore.js';
 import { asISODateTime } from '@nexigrate/shared';
 import type { Firestore } from 'firebase-admin/firestore';
@@ -40,20 +40,23 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
     return c.json({ syllabus });
   });
 
-  // GET /v1/study/:exam/:subject/:chapter — AI-generate chapter content (cached)
+  // GET /v1/study/:exam/:subject/:chapter — AI-generate chapter content (cached per level)
   app.get('/:exam/:subject/:chapter', async (c) => {
     const principal = requireAuth(c);
     const { exam, subject, chapter } = c.req.param();
     const language = (c.req.query('lang') as 'en' | 'hi') || 'en';
 
-    // Check cache first (before deducting credits)
-    let content = await deps.chapters.getChapter(exam, subject, chapter, language);
+    // Fetch user to get level and build context
+    const user = await deps.users.get(principal.userId);
+    const userLevel = user?.onboardingLevel ?? 'intermediate';
+
+    // Check cache first (before deducting credits) — cache key now includes level
+    let content = await deps.chapters.getChapter(exam, subject, chapter, language, userLevel);
     if (content) {
-      return c.json({ chapter: content });
+      return c.json({ chapter: content, userLevel, contentPersonalizedFor: userLevel });
     }
 
     // Credit deduction for free plan users (only for non-cached content)
-    const user = await deps.users.get(principal.userId);
     let creditsDeducted = false;
     if (user) {
       const { shouldDeductCredits } = await import('@nexigrate/shared');
@@ -68,9 +71,28 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
       }
     }
 
+    // Build full user context for personalization
+    const progress = await deps.chapters.getProgress(principal.userId, exam);
+    const weakAreas: string[] = [];
+    const strongAreas: string[] = [];
+    for (const [chKey, score] of Object.entries(progress.chapterScores)) {
+      const s = score as number;
+      if (s < 60) weakAreas.push(chKey.split('/').pop() ?? chKey);
+      else if (s >= 80) strongAreas.push(chKey.split('/').pop() ?? chKey);
+    }
+
+    const userContext: UserContext = {
+      targetExam: user?.targetExam ?? exam,
+      onboardingScore: user?.onboardingScore ?? 0,
+      onboardingLevel: userLevel,
+      completedChapters: progress.completedChapters.map((ch: string) => ch.split('/').pop() ?? ch),
+      weakAreas,
+      strongAreas,
+    };
+
     // Generate with AI and cache
     try {
-      const markdown = await deps.aiEngine.generateChapterContent(chapter, subject, exam, language);
+      const markdown = await deps.aiEngine.generateChapterContent(chapter, subject, exam, language, userContext);
       content = {
         exam: exam as any,
         subject,
@@ -79,9 +101,11 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
         content: markdown,
         generatedAt: asISODateTime(new Date().toISOString()),
         generatedBy: 'gpt-4o',
+        userLevel,
+        contentPersonalizedFor: userLevel,
       };
       await deps.chapters.saveChapter(content);
-      deps.logger.info('study.chapter_generated', { exam, subject, chapter, language, userId: principal.userId });
+      deps.logger.info('study.chapter_generated', { exam, subject, chapter, language, userId: principal.userId, level: userLevel });
     } catch (err) {
       // Refund credits on AI failure
       if (creditsDeducted && user) {
@@ -91,7 +115,7 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
       throw err;
     }
 
-    return c.json({ chapter: content });
+    return c.json({ chapter: content, userLevel, contentPersonalizedFor: userLevel });
   });
 
   // GET /v1/study/:exam/:subject/:chapter/quiz — unique MCQs from pool (never repeats)
@@ -100,14 +124,18 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
     const { exam, subject, chapter } = c.req.param();
     const language = (c.req.query('lang') as 'en' | 'hi') || 'en';
     try {
+      // Get user level for difficulty calibration
+      const user = await deps.users.get(principal.userId);
+      const userLevel = user?.onboardingLevel ?? 'intermediate';
+
       // Fetch cached chapter content to ensure quiz is based on what student read
-      const cachedContent = await deps.chapters.getChapter(exam, subject, chapter, language);
+      const cachedContent = await deps.chapters.getChapter(exam, subject, chapter, language, userLevel);
       const chapterText = cachedContent?.content ?? undefined;
 
       const questions = await mcqPool.getChapterQuiz(
-        exam, subject, chapter, principal.userId, language, 10, deps.aiEngine, deps.logger, chapterText,
+        exam, subject, chapter, principal.userId, language, 10, deps.aiEngine, deps.logger, chapterText, userLevel,
       );
-      return c.json({ questions });
+      return c.json({ questions, userLevel });
     } catch (err) {
       deps.logger.error('study.quiz_error', { exam, subject, chapter, language, error: err instanceof Error ? err.message : String(err) });
       throw new HTTPException(503, { message: 'Quiz generation failed. AI service may be unavailable. Please try again.' });
