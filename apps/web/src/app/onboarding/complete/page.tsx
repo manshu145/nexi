@@ -115,7 +115,7 @@ export default function CompletePage() {
         {/* Animated Credit Counter */}
         <div className="mt-6 flex justify-center">
           <div className="rounded-2xl bg-stone-900 border border-amber-500/30 px-8 py-6">
-            <CreditCounter target={100} />
+            <CreditCounter target={200} />
           </div>
         </div>
 
@@ -123,11 +123,11 @@ export default function CompletePage() {
         <div className="mt-5 px-4">
           {lang === 'hi' ? (
             <p className="text-sm font-medium text-ink-800 leading-relaxed">
-              🎉 Nexigrate में आपका स्वागत है! आपको 100 क्रेडिट्स मिले हैं।
+              🎉 Nexigrate में आपका स्वागत है! आपको 200 क्रेडिट्स मिले हैं।
             </p>
           ) : (
             <p className="text-sm font-medium text-ink-800 leading-relaxed">
-              🎉 Welcome to Nexigrate! You&apos;ve received 100 credits.
+              🎉 Welcome to Nexigrate! You&apos;ve received 200 credits.
             </p>
           )}
         </div>

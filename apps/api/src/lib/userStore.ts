@@ -78,13 +78,13 @@ export class FirestoreUserStore implements UserStore {
     const snap = await ref.get();
     if (snap.exists) {
       const user = snap.data() as StoredUser;
-      // Safety check: if credits are missing/zero and user was created within last 30 days, grant 100 credits
+      // Safety check: if credits are missing/zero and user was created within last 30 days, grant 200 credits
       if ((user.credits === undefined || user.credits === null || user.credits === 0)) {
         const createdAt = user.createdAt ? new Date(user.createdAt).getTime() : 0;
         const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
         if (createdAt > thirtyDaysAgo) {
-          await ref.set({ credits: 100, updatedAt: new Date().toISOString() }, { merge: true });
-          user.credits = 100;
+          await ref.set({ credits: 200, updatedAt: new Date().toISOString() }, { merge: true });
+          user.credits = 200;
         }
       }
       return user;
