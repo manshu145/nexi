@@ -6,10 +6,11 @@ import type { UserStore } from '../lib/userStore.js';
 import type { AIEngine } from '../lib/aiEngine.js';
 import type { ChapterStore, UserContext } from '../lib/chapterStore.js';
 import { getSyllabus, getSyllabusWithFallback, type SyllabusFallbackDeps } from '../lib/syllabusStore.js';
-import { asISODateTime } from '@nexigrate/shared';
+import { asISODateTime, asUserId } from '@nexigrate/shared';
 import type { Firestore } from 'firebase-admin/firestore';
 import type { Env } from '../env.js';
 import { InMemoryMCQPoolStore, FirestoreMCQPoolStore, type MCQPoolStore } from '../lib/mcqPoolStore.js';
+import type { CreditLedger } from '../lib/creditLedger.js';
 
 export interface StudyRoutesDeps {
   users: UserStore;
@@ -19,6 +20,7 @@ export interface StudyRoutesDeps {
   db: Firestore | null;
   env: Env;
   mcqPool?: MCQPoolStore;
+  ledger: CreditLedger;
 }
 
 export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
@@ -56,18 +58,30 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
       return c.json({ chapter: content, userLevel, contentPersonalizedFor: userLevel });
     }
 
-    // Credit deduction for free plan users (only for non-cached content)
+    // Free-plan users pay `read_chapter` credits via the append-only ledger.
+    // Idempotency key collapses retries on the same chapter to one charge,
+    // and the ledger refuses to over-spend so we get atomic refusal instead
+    // of a silent negative balance.
     let creditsDeducted = false;
     if (user) {
       const { shouldDeductCredits } = await import('@nexigrate/shared');
       if (shouldDeductCredits(user.plan, user.planExpiresAt)) {
-        // Free plan: deduct 5 credits per chapter open
-        if (user.credits < 5) {
+        const spendResult = await deps.ledger.spend({
+          userId: asUserId(principal.userId),
+          reason: 'read_chapter',
+          sourceRef: `${exam}/${subject}/${chapter}`,
+          idempotencyKey: `read_chapter:${principal.userId}:${exam}/${subject}/${chapter}:${userLevel}`,
+        });
+        if (spendResult.kind === 'insufficient') {
           throw new HTTPException(402, { message: 'insufficient_credits' });
         }
-        await deps.users.update(principal.userId, { credits: user.credits - 5 } as any);
-        creditsDeducted = true;
-        deps.logger.info('study.credits_deducted', { userId: principal.userId, amount: 5, newBalance: user.credits - 5 });
+        creditsDeducted = spendResult.kind === 'spent';
+        if (creditsDeducted) {
+          deps.logger.info('study.credits_deducted', {
+            userId: principal.userId,
+            amount: -spendResult.event.amount,
+          });
+        }
       }
     }
 
@@ -107,10 +121,26 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
       await deps.chapters.saveChapter(content);
       deps.logger.info('study.chapter_generated', { exam, subject, chapter, language, userId: principal.userId, level: userLevel });
     } catch (err) {
-      // Refund credits on AI failure
+      // AI failed after we deducted credits -- award them back as an
+      // admin_grant so the ledger stays balanced (we don't reverse the
+      // original spend, we just credit the same amount with a unique
+      // idempotency key tied to this attempt).
       if (creditsDeducted && user) {
-        await deps.users.update(principal.userId, { credits: user.credits } as any);
-        deps.logger.info('study.credits_refunded', { userId: principal.userId, amount: 5, reason: 'ai_failure' });
+        try {
+          await deps.ledger.award({
+            userId: asUserId(principal.userId),
+            source: 'admin_grant',
+            amount: 5,
+            sourceRef: `refund:${exam}/${subject}/${chapter}`,
+            idempotencyKey: `refund:read_chapter:${principal.userId}:${exam}/${subject}/${chapter}:${Date.now()}`,
+          });
+          deps.logger.info('study.credits_refunded', { userId: principal.userId, amount: 5, reason: 'ai_failure' });
+        } catch (refundErr) {
+          deps.logger.error('study.credits_refund_failed', {
+            userId: principal.userId,
+            error: refundErr instanceof Error ? refundErr.message : String(refundErr),
+          });
+        }
       }
       throw err;
     }
@@ -199,27 +229,58 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
     const principal = requireAuth(c);
     const { exam, subject, chapter } = c.req.param();
     const body = await c.req.json().catch(() => null) as { score?: number } | null;
-    const score = body?.score ?? 0;
+    const score = Math.max(0, Math.min(100, Math.round(body?.score ?? 0)));
 
     const progress = await deps.chapters.saveProgress(principal.userId, exam, subject, chapter, score);
 
-    // Award credits: +5 for any attempt, +45 bonus for passing (>=80%) = 50 total
-    let creditsAwarded = 5;
-    if (score >= 80) creditsAwarded = 50;
-    
-    // Actually add credits to user's balance
-    const currentUser = await deps.users.get(principal.userId);
-    if (currentUser) {
-      const newBalance = (currentUser.credits ?? 0) + creditsAwarded;
-      await deps.users.update(principal.userId, { credits: newBalance } as any);
-      deps.logger.info('study.credits_awarded', { userId: principal.userId, amount: creditsAwarded, newBalance });
+    // Award credits via the append-only ledger.
+    //
+    // Two distinct earn sources, both idempotent on `(userId, exam/subject/chapter)`:
+    //   1. chapter_complete (+20) -- granted once per chapter regardless of score,
+    //      so genuine engagement is rewarded even when the quiz is hard.
+    //   2. mcq_pass (+10) -- additionally granted when score >= 70%, the founder-
+    //      locked passing threshold for credit awards.
+    //
+    // Replays of the same /complete call (browser refresh, double-click) return
+    // kind: 'duplicate' from the ledger and award nothing -- which closes the
+    // pre-PR-03 exploit where users farmed credits by reposting completion.
+    const refKey = `${exam}/${subject}/${chapter}`;
+    let creditsAwarded = 0;
+
+    const completeResult = await deps.ledger.award({
+      userId: asUserId(principal.userId),
+      source: 'chapter_complete',
+      sourceRef: refKey,
+      idempotencyKey: `chapter_complete:${principal.userId}:${refKey}`,
+    });
+    if (completeResult.kind === 'awarded') creditsAwarded += completeResult.event.amount;
+
+    const passed = score >= 70;
+    if (passed) {
+      const passResult = await deps.ledger.award({
+        userId: asUserId(principal.userId),
+        source: 'mcq_pass',
+        sourceRef: refKey,
+        idempotencyKey: `mcq_pass:${principal.userId}:${refKey}`,
+      });
+      if (passResult.kind === 'awarded') creditsAwarded += passResult.event.amount;
     }
 
-    // Determine next chapter
+    deps.logger.info('study.credits_awarded', {
+      userId: principal.userId,
+      exam,
+      subject,
+      chapter,
+      score,
+      passed,
+      creditsAwarded,
+    });
+
+    // Determine next chapter (unlock requires a passing score).
     const syllabus = getSyllabus(exam);
     let nextChapter: string | null = null;
     let unlocked = false;
-    if (syllabus && score >= 80) {
+    if (syllabus && passed) {
       const subjectData = syllabus.subjects.find(s => s.slug === subject);
       if (subjectData) {
         const currentIdx = subjectData.chapters.findIndex(ch => ch.slug === chapter);
@@ -231,7 +292,7 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
     }
 
     deps.logger.info('study.chapter_completed', { userId: principal.userId, exam, subject, chapter, score, unlocked });
-    return c.json({ progress, nextChapter, unlocked, creditsAwarded, passed: score >= 80 });
+    return c.json({ progress, nextChapter, unlocked, creditsAwarded, passed });
   });
 
   // GET /v1/study/progress/:examSlug — progress for current user

@@ -11,19 +11,25 @@ import type { CreditEarnSource, CreditSpendReason } from '../types/credit.js';
  * Config.
  */
 
-/** Earn amounts in whole credits. */
+/**
+ * Earn amounts in whole credits. Locked by founder decision in PR-03.
+ * Future edits should land via the planned admin Plans/Rewards editor
+ * (PR-04). Keep these values in sync with the marketing site copy and the
+ * /credits page so the same number a user sees is the same number they get.
+ */
 export const CREDIT_EARN_AMOUNTS: Readonly<Record<CreditEarnSource, number>> = {
-  signup_verified: 200,
-  daily_login: 10,
-  mcq_pass: 50,
+  signup_verified: 100,
+  daily_login: 5,
+  chapter_complete: 20,
+  mcq_pass: 10,
   mcq_fail_attempted: 5,
-  streak_7d: 25,
-  streak_30d: 100,
-  referral_signup: 100,
-  referral_retained_7d: 200,
-  referral_bonus: 25, // bonus credits for referred user on signup
-  admin_grant: 0, // amount is supplied per-grant; this default is a sentinel
-  subscription_grant: 0, // supplied per-tier; sentinel
+  streak_7d: 5,
+  streak_30d: 10,
+  referral_signup: 50,         // paid to the referrer when invitee signs up
+  referral_retained_7d: 0,     // disabled for launch; revisit with retention data
+  referral_bonus: 100,         // bonus credits for the referred user on signup
+  admin_grant: 0,              // amount supplied per-grant; this default is a sentinel
+  subscription_grant: 0,       // supplied per-tier; sentinel
 };
 
 /** Spend amounts in whole credits (always positive; ledger sign is applied by the engine). */
@@ -44,17 +50,18 @@ export const CREDIT_SPEND_AMOUNTS: Readonly<Record<CreditSpendReason, number>> =
  * because that's the user-facing unit ("expires in 14 days").
  */
 export const CREDIT_BUCKET_EXPIRY_DAYS: Readonly<Record<CreditEarnSource, number | null>> = {
-  signup_verified: 14,
-  daily_login: 30,
-  mcq_pass: 30,
-  mcq_fail_attempted: 30,
-  streak_7d: 60,
-  streak_30d: 90,
-  referral_signup: 60,
-  referral_retained_7d: 60,
-  referral_bonus: 30,
-  admin_grant: null,
-  subscription_grant: 35,
+  signup_verified: 90,         // generous initial runway so new users don't lose them while onboarding
+  daily_login: 60,
+  chapter_complete: 90,
+  mcq_pass: 90,
+  mcq_fail_attempted: 60,
+  streak_7d: 90,
+  streak_30d: 180,
+  referral_signup: 90,
+  referral_retained_7d: 90,
+  referral_bonus: 90,
+  admin_grant: null,           // never expires by default
+  subscription_grant: 35,      // expires shortly after the next billing cycle
 };
 
 /** Threshold used by the "expiring soon" UX hint on the dashboard. */

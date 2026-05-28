@@ -17,15 +17,16 @@ import type { CreditEventId, ISODateTime, UserId } from './brand.js';
  */
 
 export type CreditEarnSource =
-  | 'signup_verified'         // +100, expires in 14 days
-  | 'daily_login'             // +10
-  | 'mcq_pass'                // +15
-  | 'mcq_fail_attempted'      // +5
-  | 'streak_7d'               // +25
-  | 'streak_30d'              // +100
-  | 'referral_signup'         // +50 (paid to the referrer)
-  | 'referral_retained_7d'    // +200 (paid to the referrer)
-  | 'referral_bonus'          // +25 (paid to the referred user on signup)
+  | 'signup_verified'         // +100, one-time on user creation
+  | 'daily_login'             // +5, once per IST day
+  | 'chapter_complete'        // +20, once per (exam, subject, chapter)
+  | 'mcq_pass'                // +10, once per quiz attempt with score >= 70%
+  | 'mcq_fail_attempted'      // +5, once per quiz attempt with score < 70%
+  | 'streak_7d'               // +5, when streak first reaches 7
+  | 'streak_30d'              // +10, when streak first reaches 30
+  | 'referral_signup'         // +50, paid to the referrer once invitee signs up
+  | 'referral_retained_7d'    // +0 (placeholder for future retention bonus)
+  | 'referral_bonus'          // +100, paid to the referred user on signup
   | 'admin_grant'             // discretionary, e.g. apology credits
   | 'subscription_grant';     // monthly grant from active subscription
 
