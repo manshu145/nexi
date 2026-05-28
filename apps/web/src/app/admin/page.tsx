@@ -13,6 +13,7 @@ interface AdminStats {
   aiCostToday: number;
   activeSessions?: number;
   newUsersToday?: number;
+  pwaInstalls?: number;
 }
 
 interface ApiHealthStatus {
@@ -193,6 +194,12 @@ export default function AdminStatsPage() {
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">AI Cost Today</p>
             <p className="font-serif mt-2 text-3xl font-bold text-ink-900">
               ₹{stats?.aiCostToday.toLocaleString() ?? '0'}
+            </p>
+          </div>
+          <div className="paper-card p-5">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">PWA Installs</p>
+            <p className="font-serif mt-2 text-3xl font-bold text-ink-900">
+              {stats?.pwaInstalls?.toLocaleString() ?? '0'}
             </p>
           </div>
         </div>

@@ -37,8 +37,8 @@ export function makeSupportRoutes(deps: SupportRoutesDeps): Hono {
   app.get('/tickets', async (c) => {
     const principal = requireAuth(c);
     if (!deps.db) return c.json({ tickets: [] });
-    const snap = await deps.db.collection('supportTickets').where('userId', '==', principal.userId).orderBy('createdAt', 'desc').limit(20).get();
-    const tickets = snap.docs.map(d => d.data());
+    const snap = await deps.db.collection('supportTickets').where('userId', '==', principal.userId).limit(20).get();
+    const tickets = snap.docs.map(d => d.data()).sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
     return c.json({ tickets });
   });
 

@@ -108,6 +108,22 @@ export function makeUsersRoutes(deps: UsersRoutesDeps): Hono {
     return c.json({ ok: true });
   });
 
+  // POST /v1/users/me/pwa-install — record PWA installation
+  app.post('/me/pwa-install', async (c) => {
+    const principal = requireAuth(c);
+    if (deps.db) {
+      try {
+        const { FieldValue } = await import('firebase-admin/firestore');
+        await deps.db.collection('platformConfig').doc('stats').set(
+          { pwaInstalls: FieldValue.increment(1) },
+          { merge: true }
+        );
+      } catch { /* non-critical */ }
+    }
+    deps.logger.info('users.pwa_install', { userId: principal.userId });
+    return c.json({ ok: true });
+  });
+
   // GET /v1/users/announcements — public: active announcements for current user
   app.get('/announcements', async (c) => {
     requireAuth(c);
@@ -117,12 +133,12 @@ export function makeUsersRoutes(deps: UsersRoutesDeps): Hono {
         const now = new Date().toISOString();
         const snap = await deps.db.collection('announcements')
           .where('isActive', '==', true)
-          .orderBy('createdAt', 'desc')
           .limit(10)
           .get();
         const announcements = snap.docs
           .map(d => d.data())
-          .filter(a => !a.expiresAt || a.expiresAt > now);
+          .filter(a => !a.expiresAt || a.expiresAt > now)
+          .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
         return c.json({ announcements });
       } catch { /* fall through */ }
     }
