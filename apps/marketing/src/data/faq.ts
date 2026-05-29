@@ -7,7 +7,7 @@ export const FAQ: readonly FaqItem[] = [
   },
   {
     q: 'How do credits work?',
-    a: 'Every action you take to demonstrate effort earns credits, every action you take to learn spends them. Sign up earns 200 credits. Passing a daily MCQ earns 50. Referring a verified friend earns 100. Reading a chapter costs 5. A mock test costs 20. Even a failed MCQ attempt earns 5 credits, so no serious student ever gets locked out.',
+    a: 'Every action you take to demonstrate effort earns credits, every action you take to learn spends them. Sign-up earns 100 credits, daily login earns 5, completing a chapter earns 20, and passing the daily MCQ at 70%+ earns 10. A 7-day streak adds 5, a 30-day streak adds 10. Reading a chapter costs 5, a mock test costs 20, a question to the AI tutor costs 2. Refer a friend and you earn 50 while they get 100. Defaults can be tuned by us — your in-app Credits page always shows the live earn and spend rates.',
   },
   {
     q: 'Which exams are covered now?',
@@ -15,11 +15,11 @@ export const FAQ: readonly FaqItem[] = [
   },
   {
     q: 'How do you make sure the content is correct?',
-    a: 'Every chapter, MCQ, and explanation goes through a 3-AI verification pipeline (OpenAI, Gemini, and Groq Llama, from three different model families) and is then reviewed by a human subject-matter expert before it is shown to a student. Every fact is traceable back to its primary source — NCERT, UPSC PYQs, or an official Government of India publication.',
+    a: 'Every chapter, MCQ, and explanation goes through a 3-layer AI verification pipeline (OpenAI, Gemini, and Groq Llama, from three different model families). Outputs where the three disagree, or any single model flags low confidence, are auto-regenerated rather than shipped to students. Every fact is traceable back to its primary source — NCERT, UPSC PYQs, or an official Government of India publication.',
   },
   {
-    q: 'When does the mobile app launch?',
-    a: 'The web PWA ships first; the React Native iOS and Android apps follow within four to six weeks. They share the same TypeScript codebase and the same backend, so the experience is identical.',
+    q: 'Is there a mobile app?',
+    a: 'Yes — Nexigrate is a Progressive Web App (PWA), which means you can install it on your phone like a native app. On Android: open nexigrate.com or app.nexigrate.com in Chrome and tap "Add to Home Screen" from the menu. On iPhone: open in Safari and tap the share button, then "Add to Home Screen". You\'ll get a fast, full-screen, native-feeling experience with offline support for cached chapters. Native iOS and Android apps may follow later, but the PWA is what we ship today and what we recommend for now.',
   },
   {
     q: 'Is my data safe?',
