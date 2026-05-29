@@ -50,10 +50,25 @@ export function makeUsersRoutes(deps: UsersRoutesDeps): Hono {
 
   app.get('/me', async (c) => {
     const principal = requireAuth(c);
-    const email = c.req.header('x-user-email') ?? '';
-    const name = c.req.header('x-user-name') ?? principal.email.split('@')[0] ?? 'Student';
-    const photo = c.req.header('x-user-photo') ?? null;
-    const provider = (c.req.header('x-user-provider') as 'google'|'phone') || 'google';
+    // Identity fields come from the verified Firebase ID token claims
+    // attached to `principal` by the auth middleware -- NOT from
+    // X-User-* request headers (lock §1.5 fix). The client cannot forge
+    // these, so a malicious caller can no longer write arbitrary email
+    // or display name onto another user's Firestore doc on first
+    // contact, and they cannot impersonate the SUPER_ADMIN_EMAIL by
+    // typing it into a header.
+    //
+    // For email/name/picture/provider fall-back chains:
+    //   - email      : trusted, may be '' for phone-only signups
+    //   - name       : token's `name` claim (Google profile name) ->
+    //                  email-prefix as a last resort -> 'Student'
+    //   - picture    : token's `picture` claim or null
+    //   - provider   : 'phone' iff Firebase issued via phone OTP,
+    //                  else 'google' (covers password + google.com etc.)
+    const email = principal.email;
+    const name = principal.name ?? (email ? email.split('@')[0] : null) ?? 'Student';
+    const photo = principal.picture;
+    const provider = principal.signInProvider;
     // Ensure user exists. Returned doc isn't used downstream because we
     // re-read at the bottom after ledger writes, but the call's side
     // effect (creating the row on first contact) is required.
