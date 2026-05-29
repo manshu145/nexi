@@ -140,7 +140,7 @@ export default function CurrentAffairsQuizPage() {
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-ink-900">{q.question}</p>
                     <p className="mt-1 text-xs text-muted-500">
-                      Your: {userAns != null && userAns >= 0 ? ansKeys[userAns] : 'Skipped'} · Correct: {q.correctOption}
+                      Your: {userAns != null && userAns >= 0 ? ansKeys[userAns] : (typeof document !== 'undefined' && /nexigrate-language=hi/.test(document.cookie) ? 'छोड़ा गया' : 'Skipped')} · Correct: {q.correctOption}
                     </p>
                     <p className="mt-1 text-xs text-ink-700">{q.explanation}</p>
                   </div>

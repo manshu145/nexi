@@ -152,7 +152,7 @@ export default function ChapterQuizPage() {
                     </span>
                     <div>
                       <p className="text-sm font-medium text-ink-900">{q.question}</p>
-                      <p className="mt-1 text-xs text-muted-500">Your answer: {chosen ?? 'Skipped'} · Correct: {q.correctOption}</p>
+                      <p className="mt-1 text-xs text-muted-500">Your answer: {chosen ?? (typeof document !== 'undefined' && /nexigrate-language=hi/.test(document.cookie) ? 'छोड़ा गया' : 'Skipped')} · Correct: {q.correctOption}</p>
                       <p className="mt-1 text-xs text-ink-700">{q.explanation}</p>
                     </div>
                   </div>
