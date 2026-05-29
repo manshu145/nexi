@@ -111,6 +111,8 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
     // Generate with AI and cache
     try {
       const markdown = await deps.aiEngine.generateChapterContent(chapter, subject, exam, language, userContext);
+      // Lock §3.8: ~$0.05 per chapter (GPT-4o gen + Gemini Flash verify).
+      await deps.aiEngine.recordAICost(principal.userId, 0.05);
       content = {
         exam: exam as any,
         subject,

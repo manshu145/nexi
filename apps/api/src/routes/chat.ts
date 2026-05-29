@@ -62,6 +62,10 @@ export function makeChatRoutes(deps: ChatRoutesDeps): Hono {
 
         // Call AI (text-only)
         response = await deps.aiEngine.chat(messages, userContext, body.model);
+        // Track AI cost for per-user daily cap (lock §3.8). ~$0.005 per
+        // gpt-4o chat exchange; conservative estimate covers all 3
+        // providers without requiring per-provider attribution.
+        await deps.aiEngine.recordAICost(principal.userId, 0.005);
       }
 
       // Save AI response
