@@ -181,7 +181,7 @@ ${batch.map((item, i) => `${i + 1}. [${item.source}] ${item.title} — ${item.de
 Respond ONLY with valid JSON:
 {"items":[{"id":"ca-1","headline":"...","summary":"...","bullets":["fact 1","fact 2","fact 3"],"category":"national","sources":["Source Name"],"factChecked":true}]}`;
 
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
