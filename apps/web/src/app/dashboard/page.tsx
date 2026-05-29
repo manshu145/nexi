@@ -230,6 +230,13 @@ export default function DashboardPage() {
 
       {/* Quick Actions - Grid layout */}
       <section className="mt-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 animate-fadeIn-delay-2">
+        <button type="button" onClick={() => router.push('/leaderboard')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3">
+          <span className="text-base">🏆</span>
+          <div className="text-left">
+            <p className="text-sm font-semibold text-ink-900 whitespace-nowrap">Leaderboard</p>
+            <p className="text-[10px] text-muted-500">Top streaks</p>
+          </div>
+        </button>
         <button type="button" onClick={() => router.push('/essay')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3">
           <span className="text-base">✍️</span>
           <div className="text-left">
