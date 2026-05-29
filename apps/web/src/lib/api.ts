@@ -158,10 +158,6 @@ export const api = {
    * server's USER_DATA_COLLECTIONS map). The browser receives a
    * Content-Disposition: attachment response so it pops a save dialog
    * with filename "nexigrate-data-YYYY-MM-DD.json".
-   *
-   * Returns the raw Blob + the suggested filename so the caller can
-   * choose whether to save it directly or transform it (e.g. show a
-   * preview before saving).
    */
   async exportMyData(): Promise<{ blob: Blob; filename: string }> {
     const res = await authedFetch('/v1/users/me/export-data');
@@ -170,8 +166,6 @@ export const api = {
       throw new Error(`Failed to export data: ${res.status} ${body.slice(0, 200)}`);
     }
     const blob = await res.blob();
-    // Pull filename out of Content-Disposition or fall back to a
-    // sensible default keyed on today's IST date.
     const cd = res.headers.get('Content-Disposition') ?? '';
     const m = cd.match(/filename="([^"]+)"/);
     const filename = m?.[1] ?? `nexigrate-data-${new Date().toISOString().slice(0, 10)}.json`;
@@ -180,10 +174,7 @@ export const api = {
 
   /**
    * Permanently delete the signed-in user's account and every record we
-   * hold for them (right-to-erasure). Returns a partial-success summary
-   * if any collection failed -- in that case the user should contact
-   * support to complete the deletion. After a successful call, the
-   * caller MUST sign out + clear local storage; the next /me will 401.
+   * hold for them (right-to-erasure).
    */
   async deleteAccount(): Promise<{
     success: boolean;
@@ -194,6 +185,48 @@ export const api = {
     message: string;
   }> {
     return (await authedFetch('/v1/users/me', { method: 'DELETE' })).json();
+  },
+
+  // ─── Mock tests (lock §5.5) ─────────────────────────────────────────────
+  async startMockTest(input: { examSlug: string; language?: 'en' | 'hi'; questionCount?: number; durationMinutes?: number }) {
+    return (await authedFetch('/v1/mock-tests/start', {
+      method: 'POST', body: JSON.stringify(input),
+    })).json() as Promise<{
+      attemptId: string; examSlug: string; language: 'en' | 'hi';
+      durationMinutes: number; total: number; startedAt: string; creditCost: number;
+      questions: Array<{ id: string; question: string; options: { key: 'A'|'B'|'C'|'D'; text: string }[]; difficulty?: string; subject?: string; topic?: string }>;
+    }>;
+  },
+  async getMockTest(id: string) {
+    return (await authedFetch(`/v1/mock-tests/${encodeURIComponent(id)}`)).json() as Promise<{
+      id: string; examSlug: string; language: 'en'|'hi'; status: 'in_progress'|'submitted'|'expired';
+      startedAt: string; durationMinutes: number; submittedAt: string|null;
+      total: number; score: number|null; percentage: number|null;
+      subjectBreakdown: Record<string, { correct: number; total: number }>|null;
+      questions: Array<{ id: string; question: string; options: { key: 'A'|'B'|'C'|'D'; text: string }[]; difficulty?: string; subject?: string; topic?: string; correctOption?: 'A'|'B'|'C'|'D'; explanation?: string }>;
+      answers?: Record<string, 'A'|'B'|'C'|'D'|null>;
+      creditCost: number;
+    }>;
+  },
+  async submitMockTest(id: string, answers: Array<{ questionId: string; chosen: 'A'|'B'|'C'|'D'|null }>) {
+    return (await authedFetch(`/v1/mock-tests/${encodeURIComponent(id)}/submit`, {
+      method: 'POST', body: JSON.stringify({ answers }),
+    })).json() as Promise<{
+      id: string; score: number; total: number; percentage: number;
+      subjectBreakdown: Record<string, { correct: number; total: number }>;
+      submittedAt: string;
+      questions: Array<{ id: string; question: string; options: { key: 'A'|'B'|'C'|'D'; text: string }[]; correctOption: 'A'|'B'|'C'|'D'; explanation: string; difficulty?: string; subject?: string; topic?: string }>;
+      answers: Record<string, 'A'|'B'|'C'|'D'|null>;
+    }>;
+  },
+  async getMockTestHistory() {
+    return (await authedFetch('/v1/mock-tests/history')).json() as Promise<{
+      attempts: Array<{
+        id: string; examSlug: string; language: 'en'|'hi'; status: 'in_progress'|'submitted'|'expired';
+        startedAt: string; submittedAt: string|null; total: number;
+        score: number|null; percentage: number|null; durationMinutes: number;
+      }>;
+    }>;
   },
 
   // Session tracking
