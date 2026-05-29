@@ -64,6 +64,7 @@ export const USER_DATA_COLLECTIONS: readonly UserDataCollection[] = [
   { name: 'essaySubmissions',    userField: 'userId' },
   { name: 'supportTickets',      userField: 'userId' },
   { name: 'creditLedger',        userField: 'userId' },
+  { name: 'mockTestAttempts',    userField: 'userId' },
   { name: 'referrals',           userField: ['referrerId', 'inviteeId'] },
   { name: 'referralCodes',       userField: 'userId' },
   { name: 'activityLog',         userField: 'userId' },
@@ -167,6 +168,22 @@ export async function eraseUserData(
       if (col.subcollectionOf === 'users') {
         const snap = await db.collection('users').doc(userId).collection(col.name).get();
         snap.docs.forEach(d => refs.push(d.ref));
+        // Special case: chatHistory has a `messages` SUB-subcollection
+        // (post-PR-24 schema) that must be walked + deleted before the
+        // parent doc is removed. Firestore does NOT auto-cascade.
+        if (col.name === 'chatHistory') {
+          for (const sessionDoc of snap.docs) {
+            const messagesCol = sessionDoc.ref.collection('messages');
+            while (true) {
+              const msgSnap = await messagesCol.limit(FIRESTORE_BATCH_LIMIT).get();
+              if (msgSnap.empty) break;
+              const batch = db.batch();
+              msgSnap.docs.forEach(m => batch.delete(m.ref));
+              await batch.commit();
+              if (msgSnap.size < FIRESTORE_BATCH_LIMIT) break;
+            }
+          }
+        }
       } else if (col.userField) {
         const fields = Array.isArray(col.userField) ? col.userField : [col.userField];
         for (const field of fields) {
