@@ -158,7 +158,7 @@ export const api = {
     })).json() as Promise<{
       attemptId: string; examSlug: string; language: 'en' | 'hi';
       durationMinutes: number; total: number; startedAt: string; creditCost: number;
-      questions: Array<{ id: string; question: string; options: { key: 'A'|'B'|'C'|'D'; text: string }[]; difficulty: string; subject?: string; topic?: string }>;
+      questions: Array<{ id: string; question: string; options: { key: 'A'|'B'|'C'|'D'; text: string }[]; difficulty?: string; subject?: string; topic?: string }>;
     }>;
   },
   async getMockTest(id: string) {
@@ -167,7 +167,7 @@ export const api = {
       startedAt: string; durationMinutes: number; submittedAt: string|null;
       total: number; score: number|null; percentage: number|null;
       subjectBreakdown: Record<string, { correct: number; total: number }>|null;
-      questions: Array<{ id: string; question: string; options: { key: 'A'|'B'|'C'|'D'; text: string }[]; difficulty: string; subject?: string; topic?: string; correctOption?: 'A'|'B'|'C'|'D'; explanation?: string }>;
+      questions: Array<{ id: string; question: string; options: { key: 'A'|'B'|'C'|'D'; text: string }[]; difficulty?: string; subject?: string; topic?: string; correctOption?: 'A'|'B'|'C'|'D'; explanation?: string }>;
       answers?: Record<string, 'A'|'B'|'C'|'D'|null>;
       creditCost: number;
     }>;
@@ -179,7 +179,7 @@ export const api = {
       id: string; score: number; total: number; percentage: number;
       subjectBreakdown: Record<string, { correct: number; total: number }>;
       submittedAt: string;
-      questions: Array<{ id: string; question: string; options: { key: 'A'|'B'|'C'|'D'; text: string }[]; correctOption: 'A'|'B'|'C'|'D'; explanation: string; subject?: string; topic?: string }>;
+      questions: Array<{ id: string; question: string; options: { key: 'A'|'B'|'C'|'D'; text: string }[]; correctOption: 'A'|'B'|'C'|'D'; explanation: string; difficulty?: string; subject?: string; topic?: string }>;
       answers: Record<string, 'A'|'B'|'C'|'D'|null>;
     }>;
   },
