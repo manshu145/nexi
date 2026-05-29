@@ -49,21 +49,21 @@ export function AnnouncementPopup({ announcements }: { announcements: Announceme
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4" onClick={handleClose}>
-      <div className="absolute inset-0 bg-stone-950/60 backdrop-blur-sm" />
-      <div className="relative w-full max-w-[380px] rounded-2xl border border-amber-500/50 bg-stone-900 p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+      <div className="absolute inset-0 bg-ink-950/60 backdrop-blur-sm" />
+      <div className="relative w-full max-w-[380px] rounded-2xl border border-ember-500/50 bg-paper-50 p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
         {/* Close button */}
-        <button onClick={handleClose} className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full text-stone-400 hover:bg-stone-800 hover:text-stone-100 transition-colors">✕</button>
-        
+        <button onClick={handleClose} className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full text-muted-500 hover:bg-paper-200 hover:text-ink-900 transition-colors">✕</button>
+
         {/* Content */}
-        <h3 className="font-serif text-lg font-bold text-stone-100 pr-6">{current.title}</h3>
-        {current.date && <p className="mt-1 text-xs text-stone-500">{current.date}</p>}
-        <p className="mt-3 text-sm leading-relaxed text-stone-300">{current.body}</p>
-        
+        <h3 className="font-serif text-lg font-bold text-ink-900 pr-6">{current.title}</h3>
+        {current.date && <p className="mt-1 text-xs text-muted-500">{current.date}</p>}
+        <p className="mt-3 text-sm leading-relaxed text-ink-800">{current.body}</p>
+
         {/* Countdown */}
         <div className="mt-5">
-          <p className="text-[10px] text-stone-500 mb-1">Closing in {countdown} seconds...</p>
-          <div className="h-1 w-full overflow-hidden rounded-full bg-stone-800">
-            <div className="h-full rounded-full bg-amber-500 transition-all duration-1000 ease-linear" style={{ width: `${(countdown / 10) * 100}%` }} />
+          <p className="text-[10px] text-muted-500 mb-1">Closing in {countdown} seconds...</p>
+          <div className="h-1 w-full overflow-hidden rounded-full bg-paper-300">
+            <div className="h-full rounded-full bg-ember-500 transition-all duration-1000 ease-linear" style={{ width: `${(countdown / 10) * 100}%` }} />
           </div>
         </div>
       </div>
