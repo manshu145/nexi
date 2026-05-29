@@ -33,7 +33,21 @@ export interface StoredUser {
    */
   onboardingPlanChosen?: boolean;
   currentStreak: number; bestStreak: number; lastDailyAt: ISODateTime | null;
-  isVerified: boolean; createdAt: ISODateTime; updatedAt: ISODateTime;
+  isVerified: boolean;
+  /**
+   * True iff the user has completed Firebase phone-number verification
+   * (either a phone-only signup, or an email/Google signup that was
+   * subsequently linked at /verify-phone). Set server-side from the
+   * Firebase ID token's `phone_number` claim on every /me call -- the
+   * client cannot lie about this.
+   *
+   * The dashboard guard treats `phoneVerified === true` as the gate;
+   * legacy users who have a phone string but were created before this
+   * field existed are auto-migrated on their next /me call (the flag is
+   * derived from the trusted token claim, so they don't need to re-OTP).
+   */
+  phoneVerified: boolean;
+  createdAt: ISODateTime; updatedAt: ISODateTime;
 }
 
 export interface UserStoreInit { email: string; name: string; photoURL: string | null; primaryProvider: 'google' | 'phone'; }
@@ -79,6 +93,9 @@ function newUser(uid: UserId, init: UserStoreInit, now: string): StoredUser {
     // the dashboard guard sends them to /onboarding/plan on first access.
     onboardingPlanChosen: false,
     currentStreak: 0, bestStreak: 0, lastDailyAt: null, isVerified: false,
+    // Phone is unverified at signup; the /me handler flips this to true
+    // once Firebase Auth has issued a token with a phone_number claim.
+    phoneVerified: false,
     createdAt: asISODateTime(now), updatedAt: asISODateTime(now),
   };
 }
