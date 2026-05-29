@@ -6,7 +6,7 @@ const API = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com';
 
 class ApiError extends Error { constructor(public readonly status: number, message: string) { super(message); } }
 
-async function authedFetch(path: string, init: RequestInit = {}): Promise<Response> {
+export async function authedFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const auth = getFirebaseAuthClient();
   const user = auth.currentUser;
   if (!user) throw new ApiError(401, 'not signed in');
