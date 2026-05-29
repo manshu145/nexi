@@ -56,6 +56,7 @@ export interface PlatformConfigStore {
   getEarnAmounts(): Promise<Record<CreditEarnSource, number>>;
   getEarnAmount(source: CreditEarnSource): Promise<number>;
   getSpendAmounts(): Promise<Record<CreditSpendReason, number>>;
+  getSpendAmount(reason: CreditSpendReason): Promise<number>;
   /** Patch one or more reward amounts. Unspecified keys are unchanged. */
   updateRewards(input: {
     earn?: Partial<Record<CreditEarnSource, number>>;
@@ -135,6 +136,11 @@ export class FirestorePlatformConfigStore implements PlatformConfigStore {
 
   async getSpendAmounts(): Promise<Record<CreditSpendReason, number>> {
     return (await this.loadRewards()).spend;
+  }
+
+  async getSpendAmount(reason: CreditSpendReason): Promise<number> {
+    const spend = await this.getSpendAmounts();
+    return spend[reason] ?? 0;
   }
 
   async updateRewards(input: {
@@ -227,6 +233,10 @@ export class InMemoryPlatformConfigStore implements PlatformConfigStore {
 
   async getSpendAmounts() {
     return { ...CREDIT_SPEND_AMOUNTS, ...this.spendOverride } as Record<CreditSpendReason, number>;
+  }
+
+  async getSpendAmount(reason: CreditSpendReason) {
+    return (await this.getSpendAmounts())[reason];
   }
 
   async updateRewards(input: {

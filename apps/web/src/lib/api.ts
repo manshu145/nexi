@@ -151,6 +151,48 @@ export const api = {
     })).json() as Promise<{success:boolean; alreadyCancelled:boolean; plan:string; planExpiresAt:string|null; planCancelledAt:string}>;
   },
 
+  // ─── Mock tests (lock §5.5) ─────────────────────────────────────────────
+  async startMockTest(input: { examSlug: string; language?: 'en' | 'hi'; questionCount?: number; durationMinutes?: number }) {
+    return (await authedFetch('/v1/mock-tests/start', {
+      method: 'POST', body: JSON.stringify(input),
+    })).json() as Promise<{
+      attemptId: string; examSlug: string; language: 'en' | 'hi';
+      durationMinutes: number; total: number; startedAt: string; creditCost: number;
+      questions: Array<{ id: string; question: string; options: { key: 'A'|'B'|'C'|'D'; text: string }[]; difficulty: string; subject?: string; topic?: string }>;
+    }>;
+  },
+  async getMockTest(id: string) {
+    return (await authedFetch(`/v1/mock-tests/${encodeURIComponent(id)}`)).json() as Promise<{
+      id: string; examSlug: string; language: 'en'|'hi'; status: 'in_progress'|'submitted'|'expired';
+      startedAt: string; durationMinutes: number; submittedAt: string|null;
+      total: number; score: number|null; percentage: number|null;
+      subjectBreakdown: Record<string, { correct: number; total: number }>|null;
+      questions: Array<{ id: string; question: string; options: { key: 'A'|'B'|'C'|'D'; text: string }[]; difficulty: string; subject?: string; topic?: string; correctOption?: 'A'|'B'|'C'|'D'; explanation?: string }>;
+      answers?: Record<string, 'A'|'B'|'C'|'D'|null>;
+      creditCost: number;
+    }>;
+  },
+  async submitMockTest(id: string, answers: Array<{ questionId: string; chosen: 'A'|'B'|'C'|'D'|null }>) {
+    return (await authedFetch(`/v1/mock-tests/${encodeURIComponent(id)}/submit`, {
+      method: 'POST', body: JSON.stringify({ answers }),
+    })).json() as Promise<{
+      id: string; score: number; total: number; percentage: number;
+      subjectBreakdown: Record<string, { correct: number; total: number }>;
+      submittedAt: string;
+      questions: Array<{ id: string; question: string; options: { key: 'A'|'B'|'C'|'D'; text: string }[]; correctOption: 'A'|'B'|'C'|'D'; explanation: string; subject?: string; topic?: string }>;
+      answers: Record<string, 'A'|'B'|'C'|'D'|null>;
+    }>;
+  },
+  async getMockTestHistory() {
+    return (await authedFetch('/v1/mock-tests/history')).json() as Promise<{
+      attempts: Array<{
+        id: string; examSlug: string; language: 'en'|'hi'; status: 'in_progress'|'submitted'|'expired';
+        startedAt: string; submittedAt: string|null; total: number;
+        score: number|null; percentage: number|null; durationMinutes: number;
+      }>;
+    }>;
+  },
+
   // Session tracking
   async startSession() { return (await authedFetch('/v1/users/me/session/start', { method: 'POST' })).json() as Promise<{sessionId:string; startedAt:string}>; },
   async pingSession() { return (await authedFetch('/v1/users/me/session/ping', { method: 'POST' })).json() as Promise<{ok:boolean}>; },
