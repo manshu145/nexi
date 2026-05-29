@@ -14,10 +14,13 @@ async function authedFetch(path: string, init: RequestInit = {}): Promise<Respon
   const headers = new Headers(init.headers);
   headers.set('Authorization', `Bearer ${token}`);
   if (!headers.has('Content-Type') && init.body) headers.set('Content-Type', 'application/json');
-  if (user.email) headers.set('X-User-Email', user.email);
-  if (user.displayName) headers.set('X-User-Name', user.displayName);
-  if (user.photoURL) headers.set('X-User-Photo', user.photoURL);
-  headers.set('X-User-Provider', user.providerData[0]?.providerId === 'phone' ? 'phone' : 'google');
+  // Lock §1.5 fix (PR-14): identity headers are no longer set client-side.
+  // The backend reads email / name / picture / sign-in provider from the
+  // verified Firebase ID token claims (`auth.verifyIdToken` in
+  // apps/api/src/auth.ts), so a forged X-User-Email or X-User-Name header
+  // would have no effect anyway. Sending them was both useless and a foot-
+  // gun -- a future refactor could have started trusting them again
+  // without anyone noticing the original threat model. Removed.
   const res = await fetch(`${API}${path}`, { ...init, headers });
   if (!res.ok) { let msg = `${res.status}`; try { const b = await res.json() as {error?:string}; if (b?.error) msg = b.error; } catch {} throw new ApiError(res.status, msg); }
   return res;
