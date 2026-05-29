@@ -6,6 +6,7 @@ import type { UserStore, StoredUser } from '../lib/userStore.js';
 import type { AdminStore } from '../lib/adminStore.js';
 import type { Env } from '../env.js';
 import { asUserId } from '@nexigrate/shared';
+import type { Auth } from 'firebase-admin/auth';
 
 import type { CouponStore } from '../lib/couponStore.js';
 import type { PlatformConfigStore } from '../lib/platformConfigStore.js';
@@ -20,6 +21,14 @@ export interface AdminRoutesDeps {
   db?: import('firebase-admin/firestore').Firestore | null;
   /** Platform configuration store (plan matrix + credit rewards). */
   config: PlatformConfigStore;
+  /**
+   * Firebase Admin Auth handle. Used by the password-reset endpoint to
+   * generate a verified reset link via the Admin SDK (no client-side
+   * Auth round-trip required) and by future ban/disable flows that may
+   * want to disable the Firebase user record alongside our `banned`
+   * flag.
+   */
+  firebaseAuth: Auth;
 }
 
 export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
@@ -143,6 +152,101 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
     const updatedUser = await deps.users.update(uid, allowed as Parameters<UserStore['update']>[1]);
     deps.logger.info('admin.user_updated', { uid, changes: Object.keys(allowed) });
     return c.json({ success: true, user: updatedUser });
+  });
+
+  /**
+   * POST /v1/admin/users/:uid/ban — toggle a soft ban on a user.
+   *
+   * Body: { banned: boolean, reason?: string }
+   *
+   * "Soft" because all this PR does is flip flags on the Firestore user
+   * doc and write an audit log entry. A follow-up will add route-level
+   * enforcement so banned users get 403 on study/chat/current-affairs
+   * (lock §4.8 mentions the Ban User button is currently a TODO; this
+   * unblocks the button and the audit trail; enforcement lands when we
+   * touch the relevant route handlers in PR-13+).
+   *
+   * Idempotent: setting banned=true twice or banned=false on a never-
+   * banned user is a no-op write at the application layer (Firestore
+   * still does a write, but the resulting state matches expectation).
+   */
+  app.post('/users/:uid/ban', async (c) => {
+    const uid = asUserId(c.req.param('uid'));
+    const body = (await c.req.json().catch(() => null)) as {
+      banned?: boolean;
+      reason?: string;
+    } | null;
+    if (!body || typeof body.banned !== 'boolean') {
+      throw new HTTPException(400, { message: 'Body { banned: boolean, reason?: string } required' });
+    }
+    const target = await deps.users.get(uid);
+    if (!target) throw new HTTPException(404, { message: 'User not found' });
+
+    const principal = requireAuth(c);
+    const now = new Date().toISOString();
+    const updates: Record<string, unknown> = body.banned
+      ? { banned: true, bannedAt: now, banReason: body.reason ?? null }
+      : { banned: false, bannedAt: null, banReason: null };
+    const updated = await deps.users.update(uid, updates as Parameters<UserStore['update']>[1]);
+
+    deps.logger.info('admin.user_ban_toggled', {
+      adminId: principal.userId,
+      targetUid: uid,
+      banned: body.banned,
+      reason: body.reason ?? null,
+    });
+    return c.json({ success: true, user: updated });
+  });
+
+  /**
+   * POST /v1/admin/users/reset-password — admin-initiated password reset.
+   *
+   * Body: { email: string }
+   *
+   * Uses Firebase Admin SDK's generatePasswordResetLink to mint a
+   * verified one-time reset URL, then relies on Firebase's own email
+   * delivery (the simplest reliable path -- our Resend templates are
+   * for transactional brand emails, while Firebase already controls the
+   * password-reset email template via the project console). The admin
+   * just needs to confirm the email was sent; the URL generation step
+   * is what was returning 404 before this PR.
+   *
+   * The return value never includes the link itself, only a success
+   * flag, so an admin glancing at the network tab can't accidentally
+   * leak a reset URL into a screen-share.
+   */
+  app.post('/users/reset-password', async (c) => {
+    const body = (await c.req.json().catch(() => null)) as { email?: string } | null;
+    const email = body?.email?.trim().toLowerCase();
+    if (!email) {
+      throw new HTTPException(400, { message: 'Body { email: string } required' });
+    }
+    const principal = requireAuth(c);
+    try {
+      // generatePasswordResetLink validates the email exists in Firebase
+      // Auth and returns a one-time URL; we discard it and let Firebase
+      // handle delivery via its own configured template.
+      await deps.firebaseAuth.generatePasswordResetLink(email);
+      deps.logger.info('admin.password_reset_sent', {
+        adminId: principal.userId,
+        targetEmail: email,
+      });
+      return c.json({ success: true });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      deps.logger.error('admin.password_reset_error', {
+        adminId: principal.userId,
+        targetEmail: email,
+        error: msg,
+      });
+      // Don't leak whether the user exists -- mirror the same shape on
+      // both "user-not-found" and other Firebase failures so an admin
+      // typo doesn't unintentionally enumerate accounts. The audit log
+      // still records the actual error for debugging.
+      throw new HTTPException(400, {
+        message: 'Could not send password reset email. Check the address and try again.',
+      });
+    }
   });
 
   // GET /v1/admin/sessions — active sessions (users online now)

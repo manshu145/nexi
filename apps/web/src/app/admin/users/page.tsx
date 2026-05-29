@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '~/lib/auth-context';
 import { getFirebaseAuthClient } from '~/lib/firebase';
 import { AILoader } from '~/components/ui/AILoader';
+import { toast } from 'sonner';
 
 interface AdminUser {
   id: string;
@@ -18,6 +19,9 @@ interface AdminUser {
   currentStreak?: number;
   bestStreak?: number;
   onboardingLevel?: string;
+  banned?: boolean;
+  bannedAt?: string | null;
+  banReason?: string | null;
   createdAt: string;
 }
 
@@ -148,10 +152,11 @@ export default function AdminUsersPage() {
       // Optimistic update in local state
       setUsers(prev => prev.map(u => u.id === uid ? { ...u, plan: newPlan } : u));
       if (selectedUser?.id === uid) setSelectedUser({ ...selectedUser, plan: newPlan });
-      // Show success toast
+      // Toast feedback (replaces the legacy alert(), which interrupted
+      // the admin's flow with a native dialog).
       const userName = users.find(u => u.id === uid)?.name ?? 'User';
-      alert(`Plan updated to ${newPlan} for ${userName}`);
-    } catch { alert('Failed to update plan. Please try again.'); }
+      toast.success(`Plan updated to ${newPlan} for ${userName}`);
+    } catch { toast.error('Failed to update plan. Please try again.'); }
     finally { setChangingPlan(false); }
   };
 
@@ -159,13 +164,44 @@ export default function AdminUsersPage() {
     try {
       const auth = getFirebaseAuthClient();
       const token = await auth.currentUser?.getIdToken();
-      await fetch(`${API}/v1/admin/users/reset-password`, {
+      const res = await fetch(`${API}/v1/admin/users/reset-password`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
       });
-      alert('Password reset email sent!');
-    } catch { alert('Failed to send reset email'); }
+      if (!res.ok) throw new Error('reset failed');
+      toast.success(`Password reset email sent to ${email}`);
+    } catch { toast.error('Failed to send reset email'); }
+  };
+
+  // Soft ban / unban toggle. The endpoint flips a `banned` flag on the
+  // user doc and writes an audit log entry; route-level enforcement
+  // (banned users hit 403 on study/chat) lands in a follow-up so this
+  // PR can ship the working button without dragging the whole route
+  // tree along.
+  const handleBanToggle = async (uid: string, currentlyBanned: boolean) => {
+    if (!selectedUser) return;
+    const action = currentlyBanned ? 'Unban' : 'Ban';
+    const reason = currentlyBanned
+      ? null
+      : (typeof window !== 'undefined' ? window.prompt(`Reason for banning ${selectedUser.name}?`) : null);
+    if (!currentlyBanned && reason === null) return; // admin cancelled the prompt
+    try {
+      const auth = getFirebaseAuthClient();
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch(`${API}/v1/admin/users/${uid}/ban`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ banned: !currentlyBanned, reason: reason ?? undefined }),
+      });
+      if (!res.ok) throw new Error('ban toggle failed');
+      const data = (await res.json()) as { user?: { banned?: boolean; bannedAt?: string | null; banReason?: string | null } };
+      // Reflect the new state locally so the badge + button label flip
+      // without a refresh.
+      setSelectedUser(prev => prev ? { ...prev, banned: data.user?.banned ?? !currentlyBanned } : prev);
+      setUsers(prev => prev.map(u => u.id === uid ? { ...u, banned: data.user?.banned ?? !currentlyBanned } : u));
+      toast.success(`${action}ned ${selectedUser.name}`);
+    } catch { toast.error(`Failed to ${action.toLowerCase()} user`); }
   };
 
   if (loading || !user) return <div className="flex items-center justify-center py-20"><AILoader context="general" /></div>;
@@ -377,10 +413,14 @@ export default function AdminUsersPage() {
                       🔑 Send Password Reset Email
                     </button>
                     <button
-                      onClick={() => { if (confirm(`Ban user ${selectedUser.name}?`)) { /* TODO: implement ban */ } }}
-                      className="w-full rounded-lg bg-paper-200 border border-ember-500 px-4 py-2 text-sm text-ember-500 hover:bg-paper-200 transition-colors text-left"
+                      onClick={() => handleBanToggle(selectedUser.id, Boolean(selectedUser.banned))}
+                      className={`w-full rounded-lg border px-4 py-2 text-left text-sm transition-colors ${
+                        selectedUser.banned
+                          ? 'border-line bg-paper-200 text-ink-800 hover:bg-paper-300'
+                          : 'border-ember-500 bg-paper-200 text-ember-600 hover:bg-paper-300'
+                      }`}
                     >
-                      🚫 Ban User
+                      {selectedUser.banned ? '✓ Unban User' : '🚫 Ban User'}
                     </button>
                   </div>
                 </div>

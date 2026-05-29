@@ -47,6 +47,20 @@ export interface StoredUser {
    * derived from the trusted token claim, so they don't need to re-OTP).
    */
   phoneVerified: boolean;
+  /**
+   * Soft ban flag set by an admin via POST /v1/admin/users/:id/ban.
+   * `false` (or undefined for grandfathered users) means normal access.
+   * `true` means the admin UI shows a banned badge; future PRs will add
+   * route-level enforcement so banned users can sign in but get 403 on
+   * study, chat, and current-affairs routes (with a "your account has
+   * been suspended" screen). This PR adds the field and the toggle so
+   * the admin button stops being a no-op TODO.
+   */
+  banned?: boolean;
+  /** When the ban was applied. Null if never banned. */
+  bannedAt?: ISODateTime | null;
+  /** Optional reason recorded by the admin for the audit trail. */
+  banReason?: string | null;
   createdAt: ISODateTime; updatedAt: ISODateTime;
 }
 
