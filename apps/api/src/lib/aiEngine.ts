@@ -1,5 +1,6 @@
 import Groq from 'groq-sdk';
 import OpenAI from 'openai';
+import { buildChapterVerifier, type VerificationVerdict, type VerifyChapterFn } from '@nexigrate/ai-pipeline';
 import type { Env } from '../env.js';
 import type { Logger } from '../logger.js';
 import type { AdminStore } from './adminStore.js';
@@ -94,6 +95,35 @@ export function createAIEngine(env: Env, logger: Logger, adminStore?: AdminStore
   const groq = hasGroq ? new Groq({ apiKey: env.GROQ_API_KEY }) : null;
   const openai = hasOpenai ? new OpenAI({ apiKey: env.OPENAI_API_KEY }) : null;
   const store = adminStore ?? null;
+
+  /**
+   * 3-Layer AI verifier (lock §5.2 + marketing §2.4 claim).
+   *
+   * Built once at engine construction, reused for every chapter generation.
+   * The verifier is fail-open by design: if Gemini is down AND OpenAI is
+   * down, it returns `{ verified: true, confidence: 0.5, verifier: 'fallback' }`
+   * so a paying student does NOT get blocked on infrastructure issues. The
+   * caller logs the fallback verdict so we can chase outages.
+   *
+   * Cost: ~$0.0005 per chapter via Gemini Flash (verifier) on top of the
+   * ~$0.05 GPT-4o generation -- a 1% increment in exchange for making the
+   * "verified by 3-layer AI detection" marketing claim true in code.
+   *
+   * If Gemini is missing entirely (e.g. a half-configured staging env)
+   * the verifier is `null` and the route falls back to the legacy
+   * single-provider path with a warning logged at startup.
+   */
+  const chapterVerifier: VerifyChapterFn | null = hasGemini
+    ? buildChapterVerifier({
+        geminiApiKey: env.GEMINI_API_KEY ?? '',
+        openaiApiKey: hasOpenai ? env.OPENAI_API_KEY : undefined,
+      })
+    : null;
+  if (!chapterVerifier) {
+    logger.warn('ai.verifier_disabled', {
+      reason: 'GEMINI_API_KEY missing; chapters will ship without cross-check',
+    });
+  }
 
   /**
    * Multi-provider question generator with the resilience properties the
@@ -443,15 +473,102 @@ End with: Important facts to remember for exam.`;
 
       const prompt = `You are an expert Indian education content writer.\nYou are generating educational content for ${exam}.\nThis content must strictly follow the official ${exam} syllabus.\nOnly cover topics that are part of the official curriculum.\nGround all factual content in NCERT textbooks where applicable.\nDo not add topics outside the official syllabus.\n\nGenerate a chapter on "${chapter}" (subject: ${subject}) for ${exam} preparation.\n${langInstr}\n\n${personalizationInstr}\n\nAdditional Requirements:\n- Use Markdown format with ## headings for each major section\n- Use ## headings generously — each sub-topic should have its own ## heading\n- Include real-world Indian examples\n- Exam-focused: highlight frequently-asked areas\n- For science/math: include formulas in $...$\n- Reference NCERT concepts and terminology where applicable\n- Be thorough and cover every aspect needed for this level.\n\nWrite ONLY the Markdown content.`;
       const startTime = performance.now();
+
+      // Inner: one attempt at the primary generator. Pulled out so we
+      // can call it twice if the verifier flags low confidence on the
+      // first pass (regenerate-with-feedback loop).
+      async function generateOnce(extraInstr?: string): Promise<string> {
+        if (!openai) throw new Error('OPENAI_API_KEY not configured');
+        const finalPrompt = extraInstr ? `${prompt}\n\nADDITIONAL CONSTRAINTS FROM VERIFIER:\n${extraInstr}` : prompt;
+        const c = await openai.chat.completions.create({
+          model: 'gpt-4o',
+          messages: [{ role: 'user', content: finalPrompt }],
+          temperature: 0.6,
+          max_tokens: 8000,
+        });
+        return c.choices[0]?.message?.content ?? '';
+      }
+
       try {
-        if (!openai) throw new Error("OPENAI_API_KEY not configured"); const c = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: 8000 });
-        const content = c.choices[0]?.message?.content ?? '';
+        // Layer 1: primary generation.
+        let content = await generateOnce();
+        let verdict: VerificationVerdict | null = null;
+        let regenerated = false;
+
+        // Layer 2: cross-check via @nexigrate/ai-pipeline.
+        if (chapterVerifier && content.trim().length >= 100) {
+          verdict = await chapterVerifier(content, {
+            exam,
+            subject,
+            chapter,
+            language,
+            level: userContext?.onboardingLevel ?? 'intermediate',
+          });
+
+          // Regenerate ONCE if confidence is below threshold AND the
+          // verifier produced concrete issues we can feed back. Capped
+          // at a single retry so we never burn 3x cost on a chronic
+          // hallucination -- in that case we ship with the warning and
+          // let the admin dashboard surface the low-confidence row.
+          if (!verdict.verified && verdict.issues.length > 0 && verdict.confidence < 0.7) {
+            const feedback = verdict.issues
+              .map((i) => `- ${i.kind}: ${i.message}${i.excerpt ? ` (excerpt: "${i.excerpt}")` : ''}`)
+              .join('\n');
+            const retryHint = `Your previous draft had these issues, fix them:\n${feedback}`;
+            const retried = await generateOnce(retryHint);
+            if (retried.trim().length >= 100) {
+              content = retried;
+              regenerated = true;
+              verdict = await chapterVerifier(content, {
+                exam, subject, chapter, language,
+                level: userContext?.onboardingLevel ?? 'intermediate',
+              });
+            }
+          }
+        }
+
         const tokens = estimateTokens(content + prompt);
         const latencyMs = Math.round(performance.now() - startTime);
-        logAICallToStore(store, 'gpt-4o', tokens, estimateCost('gpt-4o', tokens), latencyMs, undefined, { status: 'success', endpoint: 'generateChapterContent', provider: 'openai', requestPreview: prompt.slice(0, 200), responsePreview: content.slice(0, 300) });
-        logger.info('ai.chapter_generated', { chapter, subject, exam, language, words: content.split(/\s+/).length });
+        logAICallToStore(store, 'gpt-4o', tokens, estimateCost('gpt-4o', tokens), latencyMs, undefined, {
+          status: 'success',
+          endpoint: 'generateChapterContent',
+          provider: 'openai',
+          requestPreview: prompt.slice(0, 200),
+          responsePreview: content.slice(0, 300),
+        });
+        // The verifier verdict is logged separately so the admin can
+        // see, per-chapter, which were verified vs which shipped on the
+        // verifier's fallback path. Issues are summarised, not the full
+        // raw response (that's only useful for one-off debugging and
+        // would bloat the log store).
+        if (verdict) {
+          logger.info('ai.chapter_verified', {
+            chapter,
+            subject,
+            exam,
+            language,
+            verifier: verdict.verifier,
+            verified: verdict.verified,
+            confidence: verdict.confidence,
+            issueCount: verdict.issues.length,
+            issueKinds: verdict.issues.map((i) => i.kind),
+            verifierLatencyMs: verdict.latencyMs,
+            regenerated,
+          });
+        }
+        logger.info('ai.chapter_generated', {
+          chapter,
+          subject,
+          exam,
+          language,
+          words: content.split(/\s+/).length,
+          regenerated,
+        });
         return content;
-      } catch (err) { logger.error('ai.chapter_error', { error: err instanceof Error ? err.message : String(err) }); throw new Error('Failed to generate chapter content'); }
+      } catch (err) {
+        logger.error('ai.chapter_error', { error: err instanceof Error ? err.message : String(err) });
+        throw new Error('Failed to generate chapter content');
+      }
     },
 
     async generateChapterMCQs(chapter, subject, exam, language = 'en', count = 10, seed?: string, chapterContent?: string, userLevel?: 'beginner' | 'intermediate' | 'advanced') {
