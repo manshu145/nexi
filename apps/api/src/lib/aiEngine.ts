@@ -73,7 +73,11 @@ function estimateTokens(text: string): number {
 function estimateCost(model: string, tokens: number): number {
   const rates: Record<string, number> = {
     'gpt-4o': 0.000005,
-    'dall-e-3': 0.04,
+    // dall-e-3 + gpt-image-1 are billed per-image, not per-token. The
+    // call sites pass `tokens=1` and use the rate as the per-image
+    // unit price so the existing per-call cost log line stays valid.
+    'dall-e-3': 0.04,         // 1024x1024 standard quality
+    'gpt-image-1': 0.02,      // 1024x1024 medium quality (cheaper than DALL-E 3)
     'llama-3.3-70b-versatile': 0.0000008,
     'gemini-1.5-flash': 0.0000001,
     'gemini-2.0-flash-exp': 0.0000002,
@@ -648,9 +652,70 @@ End with: Important facts to remember for exam.`;
     },
 
     async generateVisualization(topic: string, subject: string, exam: string, type: VisualizationType): Promise<VisualizationResult> {
-      // For image type: try DALL-E 3 first, fallback to Gemini Imagen, then fallback to diagram (never fail to user)
+      // For image type: try gpt-image-1 (current OpenAI flagship) -> DALL-E 3 ->
+      // Gemini Imagen (multiple model names) -> mermaid fallback. Mermaid
+      // never errors to the user (lock §3.8: 'image generation work kr nhi
+      // raha hai' was caused by the legacy DALL-E 3 path returning short-
+      // lived URLs that expired before the frontend could cache them, and
+      // the Gemini preview model name being out of date).
       if (type === 'image') {
-        // Attempt 1: DALL-E 3 (OpenAI)
+        // ─── Attempt 1: gpt-image-1 (March 2025+, base64 by default) ───
+        //
+        // gpt-image-1 is OpenAI's production image model that succeeded
+        // DALL-E 3 in early 2025. It returns base64-encoded image data
+        // (`b64_json`) so we can hand the frontend a `data:` URL that
+        // never expires, fixing the legacy "image disappears after 1
+        // hour" bug. Pricing on medium quality is roughly half of DALL-E
+        // 3 standard (~$0.02 vs $0.04). Sizes supported: 1024x1024,
+        // 1024x1536, 1536x1024.
+        if (openai) {
+          try {
+            const startTime = performance.now();
+            const imagePrompt = `Educational diagram of "${topic}" for Indian ${exam} students. Clean, labeled, black and white, textbook style. No watermark. Simple and clear for students.`;
+            const imageRes = await openai.images.generate({
+              model: 'gpt-image-1',
+              prompt: imagePrompt,
+              n: 1,
+              size: '1024x1024',
+              // gpt-image-1 quality scale is 'low' | 'medium' | 'high'
+              // (not DALL-E 3's 'standard' | 'hd'). 'medium' gives a
+              // ~10x cost vs 'low' for visibly-better diagrams.
+              quality: 'medium',
+              // Locks the non-streaming overload so the SDK return type
+              // is `ImagesResponse` (not the streaming union). Without
+              // `stream: false` here, openai@6 falls into the
+              // `ImageGenerateParamsBase` overload and `data` is no
+              // longer accessible without a runtime narrowing.
+              stream: false,
+            });
+            const b64 = imageRes.data?.[0]?.b64_json;
+            if (b64) {
+              const dataUrl = `data:image/png;base64,${b64}`;
+              const latencyMs = Math.round(performance.now() - startTime);
+              logAICallToStore(store, 'gpt-image-1', 1, 0.02, latencyMs, undefined, {
+                status: 'success',
+                endpoint: 'generateVisualization',
+                provider: 'openai',
+                requestPreview: imagePrompt.slice(0, 200),
+                responsePreview: 'Image generated as base64 data URL (gpt-image-1)',
+              });
+              logger.info('ai.visualization_image', { topic, subject, exam, provider: 'gpt-image-1' });
+              return { type: 'image', content: dataUrl };
+            }
+          } catch (err) {
+            logger.warn('ai.visualization_gpt_image_failed', {
+              error: err instanceof Error ? err.message : String(err),
+              topic,
+            });
+          }
+        }
+
+        // ─── Attempt 2: DALL-E 3 (legacy fallback) ─────────────────────
+        //
+        // Some org accounts still don't have gpt-image-1 access, so we
+        // fall back to DALL-E 3 if the gpt-image-1 call errors. Same
+        // shape as before -- returns a 1-hour URL, but better than no
+        // image at all. Frontend should download + cache promptly.
         if (openai) {
           try {
             const startTime = performance.now();
@@ -665,7 +730,13 @@ End with: Important facts to remember for exam.`;
             const imageUrl = imageRes.data?.[0]?.url;
             if (imageUrl) {
               const latencyMs = Math.round(performance.now() - startTime);
-              logAICallToStore(store, 'dall-e-3', 1, 0.04, latencyMs, undefined, { status: 'success', endpoint: 'generateVisualization', provider: 'openai', requestPreview: imagePrompt.slice(0, 200), responsePreview: `Image URL generated: ${imageUrl.slice(0, 80)}...` });
+              logAICallToStore(store, 'dall-e-3', 1, 0.04, latencyMs, undefined, {
+                status: 'success',
+                endpoint: 'generateVisualization',
+                provider: 'openai',
+                requestPreview: imagePrompt.slice(0, 200),
+                responsePreview: `Image URL generated (DALL-E 3 fallback): ${imageUrl.slice(0, 80)}...`,
+              });
               logger.info('ai.visualization_image', { topic, subject, exam, provider: 'dalle3' });
               // Note: DALL-E URLs expire in ~1hr. Frontend should cache/download.
               return { type: 'image', content: imageUrl };
@@ -675,40 +746,59 @@ End with: Important facts to remember for exam.`;
           }
         }
 
-        // Attempt 2: Gemini Imagen (gemini-2.0-flash-exp with image response modality)
+        // ─── Attempt 3 + 4: Gemini image generation ────────────────────
+        //
+        // The model that was wired in originally
+        // (`gemini-2.0-flash-preview-image-generation`) was retired by
+        // Google in late 2025 in favour of the production preview at
+        // `gemini-2.5-flash-image-preview`. We try the new name first
+        // and fall back to the old one if the API still has it routed
+        // through aliases for some accounts.
         if (env.GEMINI_API_KEY) {
-          try {
-            const geminiImagePrompt = `Generate an educational black-and-white textbook-style diagram explaining "${topic}" for Indian ${exam} students. Clean labels, simple layout, no text watermarks.`;
-            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${env.GEMINI_API_KEY}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                contents: [{ parts: [{ text: geminiImagePrompt }] }],
-                generationConfig: { temperature: 0.4, maxOutputTokens: 4096, responseModalities: ['TEXT', 'IMAGE'] },
-              }),
-            });
-            if (res.ok) {
-              const data = await res.json() as { candidates?: { content?: { parts?: { text?: string; inlineData?: { mimeType: string; data: string } }[] } }[] };
-              // Check if Gemini returned inline image data
-              const parts = data.candidates?.[0]?.content?.parts ?? [];
-              for (const part of parts) {
-                if (part.inlineData?.data) {
-                  const dataUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-                  logger.info('ai.visualization_image', { topic, subject, exam, provider: 'gemini-imagen' });
-                  return { type: 'image', content: dataUrl };
+          const geminiImagePrompt = `Generate an educational black-and-white textbook-style diagram explaining "${topic}" for Indian ${exam} students. Clean labels, simple layout, no text watermarks.`;
+          const geminiModelsToTry = [
+            'gemini-2.5-flash-image-preview',
+            'gemini-2.0-flash-preview-image-generation',
+          ];
+          for (const modelName of geminiModelsToTry) {
+            try {
+              const res = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${env.GEMINI_API_KEY}`,
+                {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    contents: [{ parts: [{ text: geminiImagePrompt }] }],
+                    generationConfig: { temperature: 0.4, maxOutputTokens: 4096, responseModalities: ['TEXT', 'IMAGE'] },
+                  }),
+                },
+              );
+              if (res.ok) {
+                const data = await res.json() as { candidates?: { content?: { parts?: { text?: string; inlineData?: { mimeType: string; data: string } }[] } }[] };
+                const parts = data.candidates?.[0]?.content?.parts ?? [];
+                for (const part of parts) {
+                  if (part.inlineData?.data) {
+                    const dataUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                    logger.info('ai.visualization_image', { topic, subject, exam, provider: 'gemini-imagen', model: modelName });
+                    return { type: 'image', content: dataUrl };
+                  }
                 }
+                logger.warn('ai.visualization_gemini_no_image_data', { topic, model: modelName, partsCount: parts.length });
+              } else {
+                const errText = await res.text().catch(() => '');
+                logger.warn('ai.visualization_gemini_http_error', { status: res.status, model: modelName, body: errText.slice(0, 200) });
               }
-              logger.warn('ai.visualization_gemini_no_image_data', { topic, partsCount: parts.length });
-            } else {
-              const errText = await res.text().catch(() => '');
-              logger.warn('ai.visualization_gemini_http_error', { status: res.status, body: errText.slice(0, 200) });
+            } catch (err) {
+              logger.warn('ai.visualization_gemini_image_failed', {
+                error: err instanceof Error ? err.message : String(err),
+                model: modelName,
+                topic,
+              });
             }
-          } catch (err) {
-            logger.warn('ai.visualization_gemini_image_failed', { error: err instanceof Error ? err.message : String(err), topic });
           }
         }
 
-        // Attempt 3: Fallback to detailed mermaid diagram (never show error to user)
+        // ─── Attempt 5: Detailed mermaid diagram (never error to user) ─
         logger.info('ai.visualization_image_fallback_to_diagram', { topic, subject, exam });
         // Fall through to generate a detailed diagram instead
       }
