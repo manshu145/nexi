@@ -234,6 +234,16 @@ export const api = {
   async pingSession() { return (await authedFetch('/v1/users/me/session/ping', { method: 'POST' })).json() as Promise<{ok:boolean}>; },
   async endSession() { return (await authedFetch('/v1/users/me/session/end', { method: 'POST' })).json() as Promise<{ok:boolean}>; },
 
+  // ─── Streak leaderboard (lock §5.4) ──────────────────────────────────
+  async getStreakLeaderboard(limit = 20) {
+    return (await authedFetch(`/v1/users/streak-leaderboard?limit=${limit}`)).json() as Promise<{
+      leaderboard: Array<{
+        userId: string; name: string; photoURL: string | null;
+        currentStreak: number; bestStreak: number; targetExam: string | null;
+      }>;
+    }>;
+  },
+
   // ─── Public boot data (no auth required) ───────────────────────────────
   // Mirrors the server's PublicRoutes shape: branding info plus the live
   // signup-bonus preview so splash screens / marketing copy don't have to

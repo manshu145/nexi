@@ -237,6 +237,13 @@ export default function DashboardPage() {
             <p className="text-[10px] text-muted-500">30q · 30min</p>
           </div>
         </button>
+        <button type="button" onClick={() => router.push('/leaderboard')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3">
+          <span className="text-base">🏆</span>
+          <div className="text-left">
+            <p className="text-sm font-semibold text-ink-900 whitespace-nowrap">Leaderboard</p>
+            <p className="text-[10px] text-muted-500">Top streaks</p>
+          </div>
+        </button>
         <button type="button" onClick={() => router.push('/essay')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3">
           <span className="text-base">✍️</span>
           <div className="text-left">
