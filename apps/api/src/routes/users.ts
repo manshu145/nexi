@@ -183,6 +183,24 @@ export function makeUsersRoutes(deps: UsersRoutesDeps): Hono {
     return c.json({ user });
   });
 
+  /**
+   * GET /v1/users/streak-leaderboard
+   *
+   * Lock §5.4 streak leaderboard. Returns up to 50 rows sorted by
+   * currentStreak desc + bestStreak desc as tiebreak. Sanitised:
+   * email + phone never leak; only name, photo, target exam, streak
+   * counts are returned.
+   */
+  app.get('/streak-leaderboard', async (c) => {
+    requireAuth(c);
+    const limit = Math.min(50, Math.max(5, parseInt(c.req.query('limit') ?? '20', 10)));
+    if (!deps.users.getStreakLeaderboard) {
+      return c.json({ leaderboard: [] });
+    }
+    const leaderboard = await deps.users.getStreakLeaderboard(limit);
+    return c.json({ leaderboard });
+  });
+
   // DELETE /v1/users/me — permanently delete user account and all data
   app.delete('/me', async (c) => {
     const principal = requireAuth(c);

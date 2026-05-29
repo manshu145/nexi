@@ -90,6 +90,15 @@ export interface UserStore {
     crossedThirty: boolean;
   }>;
   listAll?(): Promise<StoredUser[]>;
+  /**
+   * Top users by current streak (lock §5.4). Sorted by currentStreak
+   * desc, then bestStreak desc. Excludes streak=0 users. Returns
+   * sanitised public fields only -- email/phone never leak.
+   */
+  getStreakLeaderboard?(limit: number): Promise<Array<{
+    userId: UserId; name: string; photoURL: string | null;
+    currentStreak: number; bestStreak: number; targetExam: string | null;
+  }>>;
 }
 
 function newUser(uid: UserId, init: UserStoreInit, now: string): StoredUser {
@@ -140,6 +149,22 @@ export class InMemoryUserStore implements UserStore {
   async get(uid: UserId) { return this.users.get(uid) ?? null; }
   async update(uid: UserId, data: Partial<StoredUser>) { const u = this.users.get(uid); if (!u) throw new Error(`user ${uid} not found`); const updated = { ...u, ...data, updatedAt: asISODateTime(new Date().toISOString()) }; this.users.set(uid, updated); return updated; }
   async listAll() { return Array.from(this.users.values()); }
+
+  async getStreakLeaderboard(limit: number) {
+    const all = Array.from(this.users.values()).filter(u => u.currentStreak > 0);
+    all.sort((a, b) => {
+      if (a.currentStreak !== b.currentStreak) return b.currentStreak - a.currentStreak;
+      return b.bestStreak - a.bestStreak;
+    });
+    return all.slice(0, limit).map(u => ({
+      userId: u.id,
+      name: u.name,
+      photoURL: u.photoURL,
+      currentStreak: u.currentStreak,
+      bestStreak: u.bestStreak,
+      targetExam: u.targetExam,
+    }));
+  }
   async bumpStreak(uid: UserId) {
     const u = this.users.get(uid); if (!u) throw new Error(`user ${uid} not found`);
     const { currentStreak, bestStreak, alreadyBumped } = computeStreak(u);
@@ -212,6 +237,32 @@ export class FirestoreUserStore implements UserStore {
   }
   async update(uid: UserId, data: Partial<StoredUser>) { const ref = this.db.collection(COL).doc(uid); await ref.set({ ...data, updatedAt: new Date().toISOString() }, { merge: true }); return (await ref.get()).data() as StoredUser; }
   async listAll() { const snap = await this.db.collection('users').limit(100).get(); return snap.docs.map(d => d.data() as StoredUser); }
+
+  async getStreakLeaderboard(limit: number) {
+    // Composite-index-free read: filter by `currentStreak > 0` (single
+    // range query) + orderBy currentStreak desc. Firestore handles this
+    // with the auto-built single-field descending index. Sort by
+    // bestStreak as a tiebreaker in JS since multi-field range+order
+    // would require a composite index.
+    const snap = await this.db.collection('users')
+      .where('currentStreak', '>', 0)
+      .orderBy('currentStreak', 'desc')
+      .limit(Math.min(200, Math.max(limit, limit * 2))) // overfetch a little for tiebreak
+      .get();
+    const rows = snap.docs.map(d => d.data() as StoredUser);
+    rows.sort((a, b) => {
+      if (a.currentStreak !== b.currentStreak) return b.currentStreak - a.currentStreak;
+      return b.bestStreak - a.bestStreak;
+    });
+    return rows.slice(0, limit).map(u => ({
+      userId: u.id,
+      name: u.name,
+      photoURL: u.photoURL,
+      currentStreak: u.currentStreak,
+      bestStreak: u.bestStreak,
+      targetExam: u.targetExam,
+    }));
+  }
   async bumpStreak(uid: UserId) {
     const ref = this.db.collection(COL).doc(uid);
     return this.db.runTransaction(async (tx) => {
