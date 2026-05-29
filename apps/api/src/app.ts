@@ -26,9 +26,11 @@ import { InMemoryCouponStore, FirestoreCouponStore, type CouponStore } from './l
 import { FirestoreIdempotencyStore, InMemoryIdempotencyStore, type IdempotencyStore } from './lib/idempotency.js';
 import { FirestoreCreditLedger, InMemoryCreditLedger, type CreditLedger } from './lib/creditLedger.js';
 import { FirestorePlatformConfigStore, InMemoryPlatformConfigStore, type PlatformConfigStore } from './lib/platformConfigStore.js';
+import { FirestoreMockTestStore, InMemoryMockTestStore, type MockTestStore } from './lib/mockTestStore.js';
 import { makePublicRoutes } from './routes/public.js';
+import { makeMockTestRoutes } from './routes/mockTests.js';
 
-export interface AppDeps { env: Env; logger: Logger; users?: UserStore; aiEngine?: AIEngine; chapters?: ChapterStore; currentAffairs?: CurrentAffairsStore; chatStore?: ChatStore; adminStore?: AdminStore; couponStore?: CouponStore; idempotency?: IdempotencyStore; ledger?: CreditLedger; config?: PlatformConfigStore; }
+export interface AppDeps { env: Env; logger: Logger; users?: UserStore; aiEngine?: AIEngine; chapters?: ChapterStore; currentAffairs?: CurrentAffairsStore; chatStore?: ChatStore; adminStore?: AdminStore; couponStore?: CouponStore; idempotency?: IdempotencyStore; ledger?: CreditLedger; config?: PlatformConfigStore; mockTests?: MockTestStore; }
 
 export function buildApp(deps: AppDeps): Hono {
   const { env, logger } = deps;
@@ -44,6 +46,7 @@ export function buildApp(deps: AppDeps): Hono {
   const idempotency = deps.idempotency ?? (fs ? new FirestoreIdempotencyStore(fs) : new InMemoryIdempotencyStore());
   const ledger = deps.ledger ?? (fs ? new FirestoreCreditLedger(fs, logger) : new InMemoryCreditLedger());
   const config = deps.config ?? (fs ? new FirestorePlatformConfigStore(fs, logger) : new InMemoryPlatformConfigStore());
+  const mockTests = deps.mockTests ?? (fs ? new FirestoreMockTestStore(fs) : new InMemoryMockTestStore());
   const firebaseAuth = getFirebaseAuth(env);
 
   const app = new Hono();
@@ -206,6 +209,7 @@ export function buildApp(deps: AppDeps): Hono {
   v1.route('/admin', makeAdminRoutes({ users, adminStore, env, logger, coupons: couponStore, db: fs, config, firebaseAuth }));
   v1.route('/support', makeSupportRoutes({ users, db: fs, logger }));
   v1.route('/essay', makeEssayRoutes({ users, aiEngine, logger, db: fs }));
+  v1.route('/mock-tests', makeMockTestRoutes({ users, aiEngine, mockTests, ledger, config, logger }));
 
   // (POST /v1/logs/error and GET /v1/branding are now mounted on the
   // PUBLIC router via makePublicRoutes() above, so the front-end error
