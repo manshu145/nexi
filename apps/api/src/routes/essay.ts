@@ -71,6 +71,8 @@ Respond ONLY with valid JSON:
         { exam, level, language },
         'groq'
       );
+      // Lock §3.8: ~$0.002 for a question generation via Groq.
+      await deps.aiEngine.recordAICost(principal.userId, 0.002);
       const jsonMatch = response.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const question = JSON.parse(jsonMatch[0]);
@@ -145,6 +147,8 @@ Respond ONLY with valid JSON:
         { exam, level: user.onboardingLevel ?? 'beginner', language },
         'gpt4o'
       );
+      // Lock §3.8: ~$0.02 for long-form grading via GPT-4o.
+      await deps.aiEngine.recordAICost(principal.userId, 0.02);
 
       const jsonMatch = response.match(/\{[\s\S]*\}/);
       if (!jsonMatch) throw new Error('Failed to parse grading response');

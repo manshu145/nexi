@@ -27,6 +27,7 @@ import { FirestoreIdempotencyStore, InMemoryIdempotencyStore, type IdempotencySt
 import { FirestoreCreditLedger, InMemoryCreditLedger, type CreditLedger } from './lib/creditLedger.js';
 import { FirestorePlatformConfigStore, InMemoryPlatformConfigStore, type PlatformConfigStore } from './lib/platformConfigStore.js';
 import { FirestoreMockTestStore, InMemoryMockTestStore, type MockTestStore } from './lib/mockTestStore.js';
+import { FirestoreAISpendStore, InMemoryAISpendStore, type AISpendStore, DEFAULT_DAILY_AI_CAP_USD } from './lib/aiSpendStore.js';
 import { makePublicRoutes } from './routes/public.js';
 import { makeMockTestRoutes } from './routes/mockTests.js';
 
@@ -38,7 +39,8 @@ export function buildApp(deps: AppDeps): Hono {
   const fs = useFirestore ? getFirebaseFirestore(env) : null;
   const users = deps.users ?? (fs ? new FirestoreUserStore(fs) : new InMemoryUserStore());
   const adminStore = deps.adminStore ?? (fs ? new FirestoreAdminStore(fs) : new InMemoryAdminStore());
-  const aiEngine = deps.aiEngine ?? createAIEngine(env, logger, adminStore);
+  const aiSpend: AISpendStore = fs ? new FirestoreAISpendStore(fs) : new InMemoryAISpendStore();
+  const aiEngine = deps.aiEngine ?? createAIEngine(env, logger, adminStore, aiSpend);
   const chapters = deps.chapters ?? (fs ? new FirestoreChapterStore(fs) : new InMemoryChapterStore());
   const currentAffairs = deps.currentAffairs ?? (fs ? new FirestoreCurrentAffairsStore(fs) : new InMemoryCurrentAffairsStore());
   const chatStore = deps.chatStore ?? (fs ? new FirestoreChatStore(fs) : new InMemoryChatStore());
@@ -199,6 +201,48 @@ export function buildApp(deps: AppDeps): Hono {
 
   const v1 = new Hono();
   v1.use('*', authMiddleware(firebaseAuth));
+
+  // ─── AI cost cap enforcement (lock §3.8) ────────────────────────────
+  // Runs before any AI-heavy route. Reads the user's running daily
+  // spend; if it has crossed the per-plan cap, returns 429 with a
+  // friendly message. Spend itself is recorded AFTER each call (in
+  // logAICallToStore) so the next request sees the updated total.
+  //
+  // Why pre-check rather than per-call: if the user is already over the
+  // cap, we don't even want to spin up the AI provider call (which
+  // costs us money we won't recoup). Pre-check is a single Firestore
+  // doc.get() per request -- cheap.
+  const AI_GATED_PREFIXES = ['/study/', '/chat/', '/mock-tests/', '/essay/', '/assessment/'];
+  v1.use('*', async (c, next) => {
+    const path = c.req.path; // e.g. /v1/study/...
+    const isAiGated = AI_GATED_PREFIXES.some(p => path.includes(p));
+    if (!isAiGated) return next();
+    // Skip GET reads -- the cap is about WRITES that trigger AI calls.
+    // GETs that read cached chapter content don't burn provider tokens.
+    // The actual AI generation routes are POSTs.
+    if (c.req.method === 'GET') return next();
+    try {
+      const principal = c.get('principal' as never) as { userId: string } | undefined;
+      if (!principal?.userId) return next();
+      const user = await users.get(principal.userId as never);
+      if (!user) return next();
+      const planCap = DEFAULT_DAILY_AI_CAP_USD[user.plan] ?? DEFAULT_DAILY_AI_CAP_USD['free']!;
+      const spent = await aiSpend.getTodaySpend(principal.userId as never);
+      if (spent >= planCap) {
+        logger.warn('ai.daily_cap_hit', { userId: principal.userId, plan: user.plan, spent, cap: planCap, path });
+        return c.json({
+          error: `You have reached today's AI usage limit on the ${user.plan} plan. Resets at midnight UTC. Upgrade your plan or wait for the reset.`,
+          spent: Math.round(spent * 100) / 100,
+          cap: planCap,
+        }, 429);
+      }
+    } catch (err) {
+      // Cap check failures are non-blocking — we'd rather serve the
+      // request than fail-closed on an internal error.
+      logger.warn('ai.cap_check_error', { error: err instanceof Error ? err.message : String(err), path });
+    }
+    return next();
+  });
   v1.route('/users', makeUsersRoutes({ users, logger, db: fs, ledger, config }));
   v1.route('/assessment', makeAssessmentRoutes({ users, aiEngine, logger, env, ledger }));
   v1.route('/study', makeStudyRoutes({ users, aiEngine, chapters, logger, db: fs, env, ledger, config }));
@@ -206,7 +250,7 @@ export function buildApp(deps: AppDeps): Hono {
   v1.route('/chat', makeChatRoutes({ users, aiEngine, chat: chatStore, logger, env }));
   v1.route('/credits', makeCreditsRoutes({ users, logger, db: fs, ledger, config }));
   v1.route('/billing', makeBillingRoutes({ users, env, logger, db: fs, coupons: couponStore, idempotency, config }));
-  v1.route('/admin', makeAdminRoutes({ users, adminStore, env, logger, coupons: couponStore, db: fs, config, firebaseAuth }));
+  v1.route('/admin', makeAdminRoutes({ users, adminStore, env, logger, coupons: couponStore, db: fs, config, aiSpend, firebaseAuth }));
   v1.route('/support', makeSupportRoutes({ users, db: fs, logger }));
   v1.route('/essay', makeEssayRoutes({ users, aiEngine, logger, db: fs }));
   v1.route('/mock-tests', makeMockTestRoutes({ users, aiEngine, mockTests, ledger, config, logger }));

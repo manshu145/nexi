@@ -10,6 +10,8 @@ import type { Auth } from 'firebase-admin/auth';
 
 import type { CouponStore } from '../lib/couponStore.js';
 import type { PlatformConfigStore } from '../lib/platformConfigStore.js';
+import type { AISpendStore } from '../lib/aiSpendStore.js';
+import { DEFAULT_DAILY_AI_CAP_USD } from '../lib/aiSpendStore.js';
 import type { CreditEarnSource, CreditSpendReason, PlanConfig, PlanId } from '@nexigrate/shared';
 
 export interface AdminRoutesDeps {
@@ -21,6 +23,8 @@ export interface AdminRoutesDeps {
   db?: import('firebase-admin/firestore').Firestore | null;
   /** Platform configuration store (plan matrix + credit rewards). */
   config: PlatformConfigStore;
+  /** Per-user daily AI spend tracking (lock §3.8). */
+  aiSpend: AISpendStore;
   /**
    * Firebase Admin Auth handle. Used by the password-reset endpoint to
    * generate a verified reset link via the Admin SDK (no client-side
@@ -304,6 +308,33 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
       ...aiCalls.logs.map(l => ({ id: l.id, type: 'ai_call' as const, action: `${l.model} (${l.tokens} tokens, $${l.cost.toFixed(4)})`, userId: l.userId, timestamp: l.timestamp, metadata: { model: l.model, tokens: l.tokens, cost: l.cost, latencyMs: l.latencyMs } })),
     ].sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, limit);
     return c.json({ logs: combined, total: errors.total + aiCalls.total });
+  });
+
+  // GET /v1/admin/ai-spend/top — top spenders today (lock §3.8).
+  // Founder-facing diagnostic for "who is burning my AI quota". Returns
+  // userId + USD spent today, descending, with cap context per row.
+  app.get('/ai-spend/top', async (c) => {
+    const limit = Math.min(50, Math.max(1, parseInt(c.req.query('limit') ?? '10', 10)));
+    const top = await deps.aiSpend.getTopSpendersToday(limit);
+    const enriched = await Promise.all(top.map(async row => {
+      try {
+        const u = await deps.users.get(row.userId as never);
+        const plan = u?.plan ?? 'free';
+        const cap = DEFAULT_DAILY_AI_CAP_USD[plan] ?? DEFAULT_DAILY_AI_CAP_USD['free']!;
+        return {
+          userId: row.userId,
+          email: u?.email ?? '',
+          name: u?.name ?? '',
+          plan,
+          totalToday: Math.round(row.totalToday * 10000) / 10000,
+          cap,
+          pctOfCap: cap > 0 ? Math.round((row.totalToday / cap) * 100) : 0,
+        };
+      } catch {
+        return { userId: row.userId, email: '', name: '', plan: 'unknown', totalToday: row.totalToday, cap: 0, pctOfCap: 0 };
+      }
+    }));
+    return c.json({ topSpenders: enriched, defaultCaps: DEFAULT_DAILY_AI_CAP_USD });
   });
 
   // GET /v1/admin/ai-usage (backward compatible)
