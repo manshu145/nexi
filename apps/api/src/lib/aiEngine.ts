@@ -80,6 +80,7 @@ function estimateCost(model: string, tokens: number): number {
     'gpt-image-1': 0.02,      // 1024x1024 medium quality (cheaper than DALL-E 3)
     'llama-3.3-70b-versatile': 0.0000008,
     'gemini-1.5-flash': 0.0000001,
+    'gemini-2.0-flash': 0.0000001,
     'gemini-2.0-flash-exp': 0.0000002,
   };
   return (rates[model] ?? 0.000001) * tokens;
@@ -156,6 +157,36 @@ export function createAIEngine(env: Env, logger: Logger, adminStore?: AdminStore
    *     glance instead of seeing "Failed: Groq: <error>; OpenAI: <error>;
    *     Gemini failed" with no structure.
    */
+  /**
+   * Per-call retry helper. Wraps an async provider call and retries ONCE
+   * on transient errors (network blip, 5xx, 429 rate limit, timeout).
+   * Hard errors (4xx other than 429, malformed key) bypass retry and go
+   * straight to the next provider in the fallback chain. PR-17 fix for
+   * the post-PR-196-deploy assessment 503s where a single transient
+   * Groq blip would burn through OpenAI + Gemini on the same wall.
+   */
+  async function withRetryOnTransient<T>(
+    provider: string,
+    op: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await op();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const isTransient =
+        /timeout|ETIMEDOUT|ECONNRESET|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|fetch failed/i.test(msg) ||
+        /\b(429|500|502|503|504)\b/.test(msg) ||
+        /rate.?limit|too many requests|service unavailable|gateway/i.test(msg);
+      if (!isTransient) throw err;
+      logger.warn('ai.provider_retry', { provider, reason: msg.slice(0, 120) });
+      // 800ms backoff is a sweet spot: long enough for a provider's
+      // burst rate-limit window to slide, short enough that the user
+      // hasn't hit our outer 60s Cloud Run request timeout yet.
+      await new Promise(resolve => setTimeout(resolve, 800));
+      return await op();
+    }
+  }
+
   async function _generateQuestions(prompt: string, endpoint: string, examSlug: string, language: string): Promise<GeneratedMCQ[]> {
     const errors: string[] = [];
     const MAX_TOKENS = 8192;
@@ -202,13 +233,15 @@ export function createAIEngine(env: Env, logger: Logger, adminStore?: AdminStore
     // ── Provider 1: Groq (fastest path) ──────────────────────────────
     if (groq) {
       try {
-        const completion = await groq.chat.completions.create({
-          model: 'llama-3.3-70b-versatile',
-          messages: [{ role: 'user', content: prompt }],
-          temperature: 0.7,
-          max_tokens: MAX_TOKENS,
-          response_format: { type: 'json_object' },
-        });
+        const completion = await withRetryOnTransient('groq', () =>
+          groq.chat.completions.create({
+            model: 'llama-3.3-70b-versatile',
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.7,
+            max_tokens: MAX_TOKENS,
+            response_format: { type: 'json_object' },
+          })
+        );
         const raw = completion.choices[0]?.message?.content ?? '';
         const finishReason = completion.choices[0]?.finish_reason ?? 'unknown';
         const recovered = recoverQuestions(raw);
@@ -218,7 +251,7 @@ export function createAIEngine(env: Env, logger: Logger, adminStore?: AdminStore
           logger.info('ai.questions_generated', { provider: 'groq', endpoint, examSlug, language, count: recovered.length, finishReason });
           return recovered;
         }
-        errors.push(`Groq returned ${raw.length} chars, no parseable questions (finish=${finishReason})`);
+        errors.push(`Groq returned ${raw.length} chars, no parseable questions (finish=${finishReason}, preview="${raw.slice(0, 120).replace(/\s+/g, ' ')}")`);
       } catch (err) {
         errors.push(`Groq: ${err instanceof Error ? err.message : String(err)}`);
       }
@@ -229,13 +262,15 @@ export function createAIEngine(env: Env, logger: Logger, adminStore?: AdminStore
     // ── Provider 2: OpenAI (slower, more reliable) ───────────────────
     if (openai) {
       try {
-        const completion = await openai.chat.completions.create({
-          model: 'gpt-4o',
-          messages: [{ role: 'user', content: prompt }],
-          temperature: 0.7,
-          max_tokens: MAX_TOKENS,
-          response_format: { type: 'json_object' },
-        });
+        const completion = await withRetryOnTransient('openai', () =>
+          openai.chat.completions.create({
+            model: 'gpt-4o',
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.7,
+            max_tokens: MAX_TOKENS,
+            response_format: { type: 'json_object' },
+          })
+        );
         const raw = completion.choices[0]?.message?.content ?? '';
         const finishReason = completion.choices[0]?.finish_reason ?? 'unknown';
         const recovered = recoverQuestions(raw);
@@ -243,7 +278,7 @@ export function createAIEngine(env: Env, logger: Logger, adminStore?: AdminStore
           logger.info('ai.questions_generated', { provider: 'openai', endpoint, examSlug, language, count: recovered.length, finishReason });
           return recovered;
         }
-        errors.push(`OpenAI returned ${raw.length} chars, no parseable questions (finish=${finishReason})`);
+        errors.push(`OpenAI returned ${raw.length} chars, no parseable questions (finish=${finishReason}, preview="${raw.slice(0, 120).replace(/\s+/g, ' ')}")`);
       } catch (err) {
         errors.push(`OpenAI: ${err instanceof Error ? err.message : String(err)}`);
       }
@@ -252,31 +287,40 @@ export function createAIEngine(env: Env, logger: Logger, adminStore?: AdminStore
     }
 
     // ── Provider 3: Gemini (final fallback) ──────────────────────────
+    // Migrated 1.5-flash → 2.0-flash (PR-17): 1.5 entered maintenance in
+    // late 2025; 2.0 is the current production-supported flash model
+    // and historically less prone to silent throttling for our quota
+    // tier. Same v1beta payload shape, drop-in.
     if (env.GEMINI_API_KEY && env.GEMINI_API_KEY.length > 5) {
       try {
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.7, maxOutputTokens: MAX_TOKENS },
-          }),
-        });
-        if (res.ok) {
-          const data = (await res.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> }; finishReason?: string }> };
-          const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-          const finishReason = data.candidates?.[0]?.finishReason ?? 'unknown';
-          // Gemini sometimes wraps JSON in ```json ... ``` fences.
-          const stripped = rawText.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '');
-          const recovered = recoverQuestions(stripped);
-          if (recovered) {
-            logger.info('ai.questions_generated', { provider: 'gemini', endpoint, examSlug, language, count: recovered.length, finishReason });
-            return recovered;
+        const res = await withRetryOnTransient('gemini', async () => {
+          const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: { temperature: 0.7, maxOutputTokens: MAX_TOKENS },
+            }),
+          });
+          // Surface non-2xx as a throwable string so withRetryOnTransient
+          // can decide to retry (5xx, 429) vs. bail (4xx).
+          if (!r.ok) {
+            const body = await r.text().catch(() => '');
+            throw new Error(`Gemini HTTP ${r.status}: ${body.slice(0, 200)}`);
           }
-          errors.push(`Gemini returned ${rawText.length} chars, no parseable questions (finish=${finishReason})`);
-        } else {
-          errors.push(`Gemini HTTP ${res.status}`);
+          return r;
+        });
+        const data = (await res.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> }; finishReason?: string }> };
+        const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+        const finishReason = data.candidates?.[0]?.finishReason ?? 'unknown';
+        // Gemini sometimes wraps JSON in ```json ... ``` fences.
+        const stripped = rawText.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '');
+        const recovered = recoverQuestions(stripped);
+        if (recovered) {
+          logger.info('ai.questions_generated', { provider: 'gemini', endpoint, examSlug, language, count: recovered.length, finishReason });
+          return recovered;
         }
+        errors.push(`Gemini returned ${rawText.length} chars, no parseable questions (finish=${finishReason}, preview="${rawText.slice(0, 120).replace(/\s+/g, ' ')}")`);
       } catch (err) {
         errors.push(`Gemini: ${err instanceof Error ? err.message : String(err)}`);
       }
@@ -614,7 +658,7 @@ End with: Important facts to remember for exam.`;
       } else { errors.push('OpenAI not configured'); }
       if (env.GEMINI_API_KEY && env.GEMINI_API_KEY.length > 5) {
         try {
-          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.7, maxOutputTokens: 4096 } }) });
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${env.GEMINI_API_KEY}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.7, maxOutputTokens: 4096 } }) });
           if (res.ok) { const data = await res.json() as any; const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''; const jsonMatch = rawText.match(/\{[\s\S]*\}/); if (jsonMatch) { const parsed = JSON.parse(jsonMatch[0]) as { questions: GeneratedMCQ[] }; if (parsed.questions?.length) { logger.info('ai.chapter_mcqs', { provider: 'gemini', chapter, count: parsed.questions.length }); return parsed.questions; } } }
           errors.push(`Gemini failed`);
         } catch (err) { errors.push(`Gemini: ${err instanceof Error ? err.message : String(err)}`); }
@@ -629,7 +673,7 @@ End with: Important facts to remember for exam.`;
       try {
         // Use Gemini Flash for visual/diagram tasks
         if (env.GEMINI_API_KEY) {
-          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.5, maxOutputTokens: 800 } }),
@@ -841,7 +885,7 @@ Generate ONLY the Mermaid code, nothing else.`;
       try {
         // Use Gemini Flash for mermaid generation (cheap + fast)
         if (env.GEMINI_API_KEY) {
-          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.5, maxOutputTokens: 1000 } }),
@@ -886,7 +930,7 @@ Generate ONLY the Mermaid code, nothing else.`;
       try {
         // Use Gemini Flash for visual tasks
         if (env.GEMINI_API_KEY) {
-          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.5, maxOutputTokens: 600 } }),
@@ -949,7 +993,7 @@ Generate ONLY the Mermaid code, nothing else.`;
       // Attempt 3: Gemini
       if (env.GEMINI_API_KEY) {
         try {
-          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.6, maxOutputTokens: 6000 } }),
@@ -1044,7 +1088,7 @@ Rules for your responses:
       // Try Gemini first (cheap + fast for translation)
       if (env.GEMINI_API_KEY) {
         try {
-          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.2, maxOutputTokens: 3000 } }),
