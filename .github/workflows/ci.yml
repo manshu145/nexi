@@ -1,5 +1,25 @@
 name: CI
 
+# Continuous integration for every PR + every push to main.
+#
+# Pre-PR-13 the CI shipped only the marketing typecheck + build, which
+# meant a TypeScript error in apps/api or apps/web could land on main
+# unnoticed (and the hotfix sequence in PR-03 + #186 was the cost). This
+# workflow now gates every workspace's typecheck/build and the unit
+# tests for the two pure-logic packages so a green CI badge actually
+# means "this PR will deploy without surprises".
+#
+# Required status checks (toggle in repo settings -> Branches -> protect
+# main once the founder is happy with the gating):
+#   - CI / marketing - typecheck + build
+#   - CI / build - typecheck + build (api, web, shared, credits, ai-pipeline)
+#   - CI / tests - credits + ai-pipeline
+#   - Cloudflare Pages
+# The "format check" job stays `continue-on-error` (warn-only) for
+# now -- the codebase has organic stylistic variation and the founder's
+# lock says "block on red" for the things that actually matter (typecheck,
+# build, tests), not for cosmetic formatting.
+
 on:
   pull_request:
     branches: [main]
@@ -15,6 +35,12 @@ env:
   PNPM_VERSION: '9.15.0'
 
 jobs:
+  # ------------------------------------------------------------------
+  # Marketing site (unchanged from pre-PR-13). Astro check + build.
+  # Kept as its own job so the deploy preview path matches exactly what
+  # ships to Cloudflare Pages, and so a red marketing build doesn't
+  # cascade into the api/web build status.
+  # ------------------------------------------------------------------
   marketing:
     name: marketing \u2014 typecheck + build
     runs-on: ubuntu-latest
@@ -54,6 +80,120 @@ jobs:
           path: apps/marketing/dist
           retention-days: 7
 
+  # ------------------------------------------------------------------
+  # API + Web + shared packages: typecheck + build.
+  #
+  # Order matters because of the workspace dependency tree:
+  #   shared -> credits, ai-pipeline -> api -> web
+  # The .d.ts emit from each package's `build` is what the next package
+  # consumes, so we run them serially in dependency order. (Trying to
+  # parallelise would force pnpm to resolve the workspace links, which
+  # is fragile in a fresh CI checkout.)
+  # ------------------------------------------------------------------
+  build:
+    name: build \u2014 api, web, shared, credits, ai-pipeline
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4.1.0
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        # We use --frozen-lockfile=false to mirror the deploy workflows
+        # (which auto-correct lockfile drift); a future PR can tighten
+        # this to true once the lockfile is stable across feature work.
+        run: pnpm install --frozen-lockfile=false
+
+      # Pure-logic packages first; their declarations feed everything
+      # downstream so a typecheck failure here means real breakage.
+      - name: Build @nexigrate/shared
+        run: pnpm --filter @nexigrate/shared run build
+
+      - name: Build @nexigrate/credits
+        run: pnpm --filter @nexigrate/credits run build
+
+      - name: Build @nexigrate/ai-pipeline
+        run: pnpm --filter @nexigrate/ai-pipeline run build
+
+      # apps/api: typecheck and tsc -p tsconfig.build.json.
+      - name: Typecheck @nexigrate/api
+        run: pnpm --filter @nexigrate/api run typecheck
+
+      - name: Build @nexigrate/api
+        run: pnpm --filter @nexigrate/api run build
+
+      # apps/web: Next.js typecheck + standalone build (dynamic + static
+      # routes both rendered to validate runtime imports).
+      - name: Typecheck @nexigrate/web
+        run: pnpm --filter @nexigrate/web run typecheck
+
+      - name: Build @nexigrate/web
+        run: pnpm --filter @nexigrate/web run build
+
+  # ------------------------------------------------------------------
+  # Unit tests for the two pure-logic workspace packages.
+  #
+  # Kept as a separate job so a test failure produces a clean signal in
+  # the GitHub PR status checks, and so the test job can run in parallel
+  # with the build job (both are pinned to the same pnpm/node versions
+  # so the install cache is shared via setup-node's cache: 'pnpm').
+  #
+  # Future work: add api integration tests + a vitest workspace at the
+  # repo root so this job can run a single `pnpm -r test` invocation.
+  # ------------------------------------------------------------------
+  tests:
+    name: tests \u2014 credits + ai-pipeline
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4.1.0
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile=false
+
+      # The credits + ai-pipeline test suites import from @nexigrate/shared,
+      # so we build it first to make the .d.ts available.
+      - name: Build @nexigrate/shared
+        run: pnpm --filter @nexigrate/shared run build
+
+      - name: Test @nexigrate/credits
+        run: pnpm --filter @nexigrate/credits run test
+
+      - name: Test @nexigrate/ai-pipeline
+        run: pnpm --filter @nexigrate/ai-pipeline run test
+
+  # ------------------------------------------------------------------
+  # Prettier check. Runs on every PR but does not block merge -- the
+  # codebase has organic stylistic variation and we don't want a missing
+  # newline to gate a security fix. Lock §3.1 says "block on red" for
+  # the things that matter (typecheck, build, tests); formatting is
+  # warn-only by deliberate choice.
+  # ------------------------------------------------------------------
   format:
     name: format check
     runs-on: ubuntu-latest
@@ -79,4 +219,4 @@ jobs:
 
       - name: Prettier check
         run: pnpm format:check
-        continue-on-error: true # do not block PRs on formatting in pre-launch
+        continue-on-error: true # warn-only; do not block merges
