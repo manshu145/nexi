@@ -68,16 +68,37 @@ export default function DashboardPage() {
             }, 2000);
           }
         }
-        // Phone verification mandatory — redirect if not verified
-        if (!res.user.phone && !user.phoneNumber) {
-          // Grace period: allow skip once for 24hrs
-          const skipTs = localStorage.getItem('phoneVerifySkipUntil');
-          if (!skipTs || Date.now() > Number(skipTs)) {
-            router.replace('/verify-phone');
-            return;
-          }
+        // Phone verification mandatory — anti-fake-user gate. Per founder
+        // lock §4.5 ("phone OTP forced for fake-user protection"), there is
+        // NO local-storage skip path: the bypass that used to live here is
+        // gone. The check is anchored on the server-side `phoneVerified`
+        // flag (set from the Firebase ID token's verified `phone_number`
+        // claim by /v1/users/me), which the client cannot lie about.
+        //
+        // Backwards compatibility: legacy users created before this flag
+        // existed have `phoneVerified === undefined`. We treat undefined
+        // as "verified" iff the user has a `phone` string on file, so they
+        // are not yanked back into onboarding mid-product. New users who
+        // genuinely haven't verified land on /verify-phone.
+        const isPhoneVerified =
+          res.user.phoneVerified === true ||
+          (res.user.phoneVerified === undefined && Boolean(res.user.phone));
+        if (!isPhoneVerified) {
+          router.replace('/verify-phone');
+          return;
         }
         if (!res.user.targetExam) { router.replace('/onboarding/language'); return; }
+        // Assessment is mandatory and cannot be skipped by closing the tab
+        // mid-quiz (lock §4.5: "assessment force rahega bhai!!"). If the
+        // user has picked an exam but never produced an `onboardingLevel`,
+        // we send them back to /onboarding/assessment until it completes.
+        // Grandfathered users with an exam set but no level on file are
+        // also bounced -- one-time cost; once they finish, the guard
+        // never fires again.
+        if (!res.user.onboardingLevel) {
+          router.replace('/onboarding/assessment');
+          return;
+        }
         // Plan-selection step (PR-05 lock §2.6) is mandatory for new users.
         // The flag is undefined for users grandfathered in before this PR
         // -- we treat undefined as "already chosen" so they aren't bounced

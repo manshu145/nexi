@@ -59,6 +59,40 @@ export function makeUsersRoutes(deps: UsersRoutesDeps): Hono {
     // effect (creating the row on first contact) is required.
     await deps.users.getOrCreate(principal.userId, { email, name, photoURL: photo, primaryProvider: provider });
 
+    // Phone-verification mirror: if the Firebase ID token carries a verified
+    // phone_number claim, sync it to the Firestore user doc. This is the
+    // ONLY trusted source of phone identity -- the legacy /verify-phone
+    // path also writes to user.phone via PATCH, but that field is
+    // client-controlled and could be spoofed. Reading from the token here
+    // means dashboard's "is this user phone-verified?" gate is anchored on
+    // a Firebase Auth fact, not a self-asserted claim.
+    //
+    // Idempotent: if Firestore already has the same phone + verified=true
+    // we skip the write. New users without a phone_number claim are left
+    // as-is, so the dashboard guard correctly bounces them to /verify-phone.
+    if (principal.phoneNumber) {
+      try {
+        const current = await deps.users.get(principal.userId);
+        const needsUpdate =
+          current && (current.phone !== principal.phoneNumber || current.phoneVerified !== true);
+        if (needsUpdate) {
+          await deps.users.update(principal.userId, {
+            phone: principal.phoneNumber,
+            phoneVerified: true,
+          } as Partial<typeof current>);
+          deps.logger.info('users.phone_verified_from_token', {
+            userId: principal.userId,
+            phoneSuffix: principal.phoneNumber.slice(-4),
+          });
+        }
+      } catch (err) {
+        deps.logger.error('users.phone_sync_error', {
+          userId: principal.userId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
     // Compute streak first (this also persists currentStreak/bestStreak/lastDailyAt)
     // and figure out which milestones to award. The bumpStreak method itself
     // never touches credits anymore -- it just tells us what crossed.

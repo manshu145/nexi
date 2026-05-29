@@ -80,12 +80,12 @@ export default function SignInPage() {
     }
 
     if (mode === 'signup') {
-      if (password.length < 6) {
-        setError('Password must be at least 6 characters');
+      if (password.length < 8) {
+        setError(tc('passwordTooShort'));
         return;
       }
       if (password !== confirmPassword) {
-        setError('Passwords do not match');
+        setError(tc('passwordsDoNotMatch'));
         return;
       }
     }
@@ -103,7 +103,7 @@ export default function SignInPage() {
       if (msg.includes('auth/email-already-in-use')) setError('This email is already registered. Please sign in instead.');
       else if (msg.includes('auth/invalid-credential') || msg.includes('auth/wrong-password')) setError('Invalid email or password.');
       else if (msg.includes('auth/user-not-found')) setError('No account found with this email. Please sign up.');
-      else if (msg.includes('auth/weak-password')) setError('Password is too weak. Use at least 6 characters.');
+      else if (msg.includes('auth/weak-password')) setError(tc('passwordTooShort'));
       else if (msg.includes('auth/invalid-email')) setError('Please enter a valid email address.');
       else if (msg.includes('auth/too-many-requests')) setError('Too many attempts. Please try again later.');
       else setError(msg);
@@ -194,7 +194,7 @@ export default function SignInPage() {
               </div>
               <div>
                 <label htmlFor="password" className="text-xs font-medium text-ink-700">Password</label>
-                <input id="password" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder={mode === 'signup' ? 'Min 6 characters' : 'Enter password'} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} className="input mt-1" />
+                <input id="password" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder={mode === 'signup' ? 'Min 8 characters' : 'Enter password'} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} className="input mt-1" />
               </div>
               {mode === 'signup' && (
                 <div>
