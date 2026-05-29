@@ -4,6 +4,7 @@ import { buildChapterVerifier, type VerificationVerdict, type VerifyChapterFn } 
 import type { Env } from '../env.js';
 import type { Logger } from '../logger.js';
 import type { AdminStore } from './adminStore.js';
+import type { AISpendStore } from './aiSpendStore.js';
 import type { UserContext } from './chapterStore.js';
 
 export interface MCQOption { key: 'A' | 'B' | 'C' | 'D'; text: string; }
@@ -40,6 +41,13 @@ export interface AIEngine {
   generateCurrentAffairsQuiz(headlines: string, count?: number, language?: 'en' | 'hi'): Promise<GeneratedMCQ[]>;
   translateToHindi(items: { headline: string; summary: string }[]): Promise<{ headline: string; summary: string }[]>;
   chat(messages: { role: 'user' | 'assistant'; content: string }[], userContext: { exam: string; level: string; language: 'en' | 'hi' }, preferredModel?: 'gpt4o' | 'groq' | 'gemini'): Promise<string>;
+  /**
+   * Record a user's USD cost contribution for cap enforcement (lock §3.8).
+   * Called by AI-using routes AFTER the engine returns, so the next
+   * request from the same user sees the updated daily total. No-op if
+   * the engine wasn't wired with an AISpendStore (in-memory dev mode).
+   */
+  recordAICost(userId: string, costUsd: number): Promise<void>;
 }
 
 /** Helper to log AI calls to adminStore for system logs visibility */
@@ -86,7 +94,7 @@ function estimateCost(model: string, tokens: number): number {
   return (rates[model] ?? 0.000001) * tokens;
 }
 
-export function createAIEngine(env: Env, logger: Logger, adminStore?: AdminStore | null): AIEngine {
+export function createAIEngine(env: Env, logger: Logger, adminStore?: AdminStore | null, aiSpend?: AISpendStore | null): AIEngine {
   // Log which AI providers are available at startup
   const hasGroq = !!(env.GROQ_API_KEY && env.GROQ_API_KEY.length > 5);
   const hasOpenai = !!(env.OPENAI_API_KEY && env.OPENAI_API_KEY.length > 5);
@@ -1260,6 +1268,16 @@ Rules for your responses:
 
       logger.warn('ai.translate_all_failed', { message: 'All providers failed, returning original items' });
       return items; // Return originals if all translation fails
+    },
+
+    async recordAICost(userId: string, costUsd: number): Promise<void> {
+      if (!aiSpend || !userId || !Number.isFinite(costUsd) || costUsd <= 0) return;
+      try {
+        await aiSpend.recordSpend(userId as unknown as import('@nexigrate/shared').UserId, costUsd);
+      } catch (err) {
+        // Spend tracking is non-critical -- never block a user response on it.
+        logger.warn('ai.record_cost_failed', { userId, costUsd, error: err instanceof Error ? err.message : String(err) });
+      }
     },
   };
 }

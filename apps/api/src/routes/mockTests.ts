@@ -123,6 +123,9 @@ export function makeMockTestRoutes(deps: MockTestRoutesDeps): Hono {
     let questions: GeneratedMCQ[];
     try {
       questions = await deps.aiEngine.generateAssessmentQuestions(examSlug, language, questionCount);
+      // Lock §3.8 PR-25: ~$0.05 for a 30q test (uses generateAssessmentQuestions
+      // which multi-batches internally via PR-18; cost stays bounded).
+      await deps.aiEngine.recordAICost(principal.userId, 0.05);
       if (!questions || questions.length === 0) {
         throw new Error('AI returned 0 questions');
       }
