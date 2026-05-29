@@ -97,9 +97,12 @@ export const prerender = true;
           from publicly available NCERT textbooks, previous-year question
           papers, and government-published syllabus materials, used under
           fair-use educational provisions with original publishers credited.
-          AI-generated drafts are reviewed by human subject-matter experts
-          before they are published in the daily MCQ stream. We do not
-          guarantee that any specific question will appear in any specific
+          AI-generated drafts pass through a 3-layer AI verification pipeline
+          (cross-checking outputs across OpenAI, Gemini, and Groq Llama models
+          from three different model families) before they are published in
+          the daily MCQ stream. Outputs that fall below our confidence
+          threshold are auto-regenerated rather than shown to students. We do
+          not guarantee that any specific question will appear in any specific
           exam.
         </p>
       </section>

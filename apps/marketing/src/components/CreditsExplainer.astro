@@ -1,20 +1,23 @@
 ---
 const earn = [
-  { label: 'Verified signup',       value: '+200', note: 'one-time, expires in 14 days' },
-  { label: 'Daily login',           value: '+10',  note: 'every day' },
-  { label: 'Pass daily MCQ (70%+)', value: '+50',  note: 'core loop' },
-  { label: 'Failed MCQ attempt',    value: '+5',   note: 'no one gets locked out' },
-  { label: '7-day streak bonus',    value: '+150', note: 'rewards consistency' },
-  { label: 'Refer a verified friend', value: '+100', note: 'on their signup' },
-  { label: 'Friend stays 7 days',   value: '+200', note: 'on their retention' },
+  { label: 'Verified signup',          value: '+100', note: 'one-time, on phone verify' },
+  { label: 'Daily login',              value: '+5',   note: 'every day' },
+  { label: 'Complete a chapter',       value: '+20',  note: 'finish reading + quiz' },
+  { label: 'Pass daily MCQ (70%+)',    value: '+10',  note: 'core loop' },
+  { label: 'Failed MCQ attempt',       value: '+5',   note: 'no one gets locked out' },
+  { label: '7-day streak bonus',       value: '+5',   note: 'rewards consistency' },
+  { label: '30-day streak bonus',      value: '+10',  note: 'rewards persistence' },
+  { label: 'Refer a friend (you)',     value: '+50',  note: 'on their signup' },
+  { label: 'Welcome bonus (friend)',   value: '+100', note: 'extra credits for joining via referral' },
 ] as const;
 
 const spend = [
   { label: 'Read a chapter',          value: '−5'  },
   { label: '1-hour focus session',    value: '−10' },
   { label: 'Mock test',               value: '−20' },
-  { label: 'Question to AI tutor',    value: '−5'  },
+  { label: 'Question to AI tutor',    value: '−2'  },
   { label: 'Concept video',           value: '−5'  },
+  { label: 'Long-answer grading',     value: '−30' },
 ] as const;
 ---
 
@@ -74,6 +77,11 @@ const spend = [
           </ul>
           <p class="mt-2 text-xs text-muted-500">Annual plans save ~30% vs monthly.</p>
         </div>
+
+        <p class="mt-4 text-xs text-muted-500">
+          Default earn and spend rates shown here. Final amounts may be tuned —
+          your in-app <a href="https://app.nexigrate.com/credits" class="underline">Credits</a> page always shows the live rates.
+        </p>
       </div>
     </div>
   </div>

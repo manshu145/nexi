@@ -9,10 +9,10 @@ const sources = [
 ] as const;
 
 const verifiers = [
-  { name: 'OpenAI',  note: 'GPT-4o-mini — generation' },
-  { name: 'Google',  note: 'Gemini 2.5 Flash — verifier 1' },
-  { name: 'Groq',    note: 'Llama 3.3 70B — verifier 2' },
-  { name: 'Human SME', note: 'final review on flagged content' },
+  { name: 'OpenAI',          note: 'GPT-4o — primary generation' },
+  { name: 'Google',          note: 'Gemini 2.5 Flash — verifier 1' },
+  { name: 'Groq',            note: 'Llama 3.3 70B — verifier 2' },
+  { name: 'Cross-validation', note: 'low-confidence outputs are auto-regenerated, not shipped' },
 ] as const;
 ---
 
