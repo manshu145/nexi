@@ -737,5 +737,139 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
     } catch { return c.json({ messages: [] }); }
   });
 
+  /**
+   * POST /v1/admin/test-users/seed
+   *
+   * Founder-only utility: spin up a fully-onboarded test account in one
+   * call so we can sanity-check end-to-end flows (study, chat, billing-
+   * gated features, current affairs, profile, refer, etc.) without
+   * manually clicking through phone OTP + 23 assessment questions + plan
+   * selection every time.
+   *
+   * The endpoint is INTENTIONALLY admin-gated (the `app.use('*')` admin
+   * middleware above already enforces that) but otherwise mints a real
+   * Firebase Auth user with a real password, so the founder can sign in
+   * via the normal /signin email+password path. After testing, delete
+   * the user from Firebase Console (Auth + Firestore) -- a future PR
+   * can wire a one-click "DELETE /v1/admin/test-users/:uid" if seeding
+   * becomes routine.
+   *
+   * Body: {
+   *   email:    student email (required, must be valid format)
+   *   password: at least 8 chars (required, used by Firebase Auth)
+   *   name?:    display name; defaults to email-prefix
+   *   examSlug: targetExam (e.g. "upsc-cse"); defaults to "upsc-cse"
+   *   planId?:  "free" | "scholar" | "aspirant" | "achiever"; default "scholar"
+   *   planDays?: how long the paid plan should be active; default 30
+   *   level?:   "beginner" | "intermediate" | "advanced"; default "intermediate"
+   *   language?: "en" | "hi"; default "en"
+   * }
+   *
+   * Behaviour:
+   *   - Creates the Firebase Auth user (or rotates password if email
+   *     already exists -- so re-seeding is idempotent).
+   *   - Creates the Firestore user doc with ALL onboarding gates pre-
+   *     satisfied: phoneVerified=true, targetExam set, onboardingLevel
+   *     set, onboardingScore set, onboardingPlanChosen=true.
+   *   - Sets plan + planExpiresAt so the user lands directly in
+   *     dashboard with paid features unlocked.
+   *   - Awards 100 starting credits (matches signup_verified bonus from
+   *     PR-03 locked numbers) directly on the user doc cache. Skips
+   *     ledger event creation because this is a synthetic test account
+   *     and we don't want it polluting the credit_events analytics.
+   *   - Returns the uid + sign-in URL for convenience.
+   */
+  app.post('/test-users/seed', async (c) => {
+    const body = await c.req.json().catch(() => null) as Record<string, unknown> | null;
+    if (!body || typeof body.email !== 'string' || typeof body.password !== 'string') {
+      throw new HTTPException(400, { message: 'email and password required' });
+    }
+    const email = body.email.trim().toLowerCase();
+    const password = body.password;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new HTTPException(400, { message: 'invalid email format' });
+    }
+    if (password.length < 8) {
+      throw new HTTPException(400, { message: 'password must be at least 8 characters' });
+    }
+
+    const name = typeof body.name === 'string' && body.name.trim() ? body.name.trim() : email.split('@')[0]!;
+    const examSlug = typeof body.examSlug === 'string' && body.examSlug ? body.examSlug : 'upsc-cse';
+    const planId = (typeof body.planId === 'string' && ['free', 'scholar', 'aspirant', 'achiever'].includes(body.planId))
+      ? body.planId as StoredUser['plan'] : 'scholar';
+    const planDays = typeof body.planDays === 'number' && body.planDays > 0 ? Math.floor(body.planDays) : 30;
+    const level = (typeof body.level === 'string' && ['beginner', 'intermediate', 'advanced'].includes(body.level))
+      ? body.level as 'beginner' | 'intermediate' | 'advanced' : 'intermediate';
+    const language = body.language === 'hi' ? 'hi' : 'en';
+
+    // Step 1: create-or-update the Firebase Auth user. We use try/catch
+    // to handle the "email already exists" case as an idempotent rotate.
+    let uid: string;
+    try {
+      const authUser = await deps.firebaseAuth.createUser({
+        email, password, displayName: name, emailVerified: true,
+      });
+      uid = authUser.uid;
+    } catch (err) {
+      const e = err as { code?: string };
+      if (e.code === 'auth/email-already-exists') {
+        const existing = await deps.firebaseAuth.getUserByEmail(email);
+        await deps.firebaseAuth.updateUser(existing.uid, { password, displayName: name, emailVerified: true });
+        uid = existing.uid;
+      } else {
+        deps.logger.error('admin.test_user_seed_auth_failed', { email, error: err instanceof Error ? err.message : String(err) });
+        throw new HTTPException(500, { message: `Firebase Auth error: ${err instanceof Error ? err.message : 'unknown'}` });
+      }
+    }
+
+    // Step 2: create-or-update the Firestore user doc with all onboarding
+    // gates pre-satisfied so the test user lands directly in dashboard.
+    const principalUid = asUserId(uid);
+    await deps.users.getOrCreate(principalUid, {
+      email, name, photoURL: null, primaryProvider: 'google',
+    });
+
+    const now = new Date().toISOString();
+    const planExpiresAt = planId === 'free'
+      ? null
+      : new Date(Date.now() + planDays * 86400_000).toISOString();
+
+    // Score that lands at the requested level: beginner ~30%, intermediate ~65%, advanced ~85%.
+    const scoreByLevel: Record<string, number> = { beginner: 30, intermediate: 65, advanced: 85 };
+
+    const updated = await deps.users.update(principalUid, {
+      email, name, phone: null, photoURL: null,
+      role: 'student', language,
+      targetExam: examSlug as StoredUser['targetExam'],
+      onboardingLevel: level,
+      onboardingScore: scoreByLevel[level] ?? 65,
+      onboardingPlanChosen: true,
+      phoneVerified: true,
+      isVerified: true,
+      plan: planId,
+      planExpiresAt: planExpiresAt as StoredUser['planExpiresAt'],
+      planCancelledAt: null,
+      credits: 100, // matches PR-03 signup_verified bonus; cache-only, no ledger event
+    });
+
+    deps.logger.info('admin.test_user_seeded', {
+      uid, email, planId, examSlug, level, language, planExpiresAt,
+    });
+
+    return c.json({
+      ok: true,
+      uid,
+      email: updated.email,
+      name: updated.name,
+      plan: updated.plan,
+      planExpiresAt: updated.planExpiresAt,
+      targetExam: updated.targetExam,
+      level: updated.onboardingLevel,
+      credits: updated.credits,
+      signInUrl: 'https://app.nexigrate.com/signin',
+      message: 'Test user ready. Sign in with email + password at the URL above. Delete from Firebase Console when done.',
+    });
+  });
+
   return app;
 }
