@@ -8,6 +8,7 @@ import type { UserStore } from '../lib/userStore.js';
 import type { Firestore } from 'firebase-admin/firestore';
 import type { CreditLedger } from '../lib/creditLedger.js';
 import type { PlatformConfigStore } from '../lib/platformConfigStore.js';
+import { exportUserData, eraseUserData } from '../lib/userData.js';
 
 export interface UsersRoutesDeps {
   users: UserStore;
@@ -186,30 +187,78 @@ export function makeUsersRoutes(deps: UsersRoutesDeps): Hono {
   app.delete('/me', async (c) => {
     const principal = requireAuth(c);
     try {
-      // Delete user data from Firestore
       if (deps.db) {
-        const batch = deps.db.batch();
-        // Delete user doc
-        batch.delete(deps.db.collection('users').doc(principal.userId));
-        // Delete study progress
-        const progressSnap = await deps.db.collection('studyProgress').where('userId', '==', principal.userId).get();
-        progressSnap.docs.forEach(doc => batch.delete(doc.ref));
-        // Delete chat sessions
-        const chatSnap = await deps.db.collection('chatSessions').where('userId', '==', principal.userId).get();
-        chatSnap.docs.forEach(doc => batch.delete(doc.ref));
-        // Delete referral records
-        const refSnap = await deps.db.collection('referrals').where('referrerId', '==', principal.userId).get();
-        refSnap.docs.forEach(doc => batch.delete(doc.ref));
-        await batch.commit();
-      } else {
-        // In-memory: mark as deleted (no delete method available)
-        await deps.users.update(principal.userId, { name: '[deleted]', email: '', phone: null, credits: 0, plan: 'free' } as any);
+        // DPDP §3.4 right-to-erasure: walk every user-scoped collection
+        // via the central USER_DATA_COLLECTIONS map. The user doc is
+        // deleted last, so a partial downstream failure doesn't leave
+        // the user signed in with phantom data — they can retry.
+        const result = await eraseUserData(deps.db, principal.userId, deps.logger);
+        deps.logger.info('users.account_deleted', {
+          userId: principal.userId,
+          collectionsDeleted: result.collectionsDeleted,
+          totalDocs: result.totalDocs,
+          failedCollections: result.failedCollections,
+        });
+        const success = result.failedCollections.length === 0;
+        return c.json({
+          success,
+          partial: !success,
+          collectionsDeleted: result.collectionsDeleted,
+          failedCollections: result.failedCollections,
+          totalDocs: result.totalDocs,
+          message: success
+            ? 'Account and all associated data deleted.'
+            : 'Account partially deleted. Some collections failed — please contact support to complete.',
+        });
       }
-      deps.logger.info('users.account_deleted', { userId: principal.userId });
-      return c.json({ success: true, message: 'Account deleted successfully' });
+      // In-memory: mark as deleted (no delete method available)
+      await deps.users.update(principal.userId, { name: '[deleted]', email: '', phone: null, credits: 0, plan: 'free' } as any);
+      deps.logger.info('users.account_deleted_inmemory', { userId: principal.userId });
+      return c.json({ success: true, partial: false, collectionsDeleted: ['users'], failedCollections: [], totalDocs: 1, message: 'Account deleted.' });
     } catch (err) {
       deps.logger.error('users.delete_error', { userId: principal.userId, error: err instanceof Error ? err.message : String(err) });
       throw new HTTPException(500, { message: 'Failed to delete account. Please contact support.' });
+    }
+  });
+
+  /**
+   * GET /v1/users/me/export-data — DPDP §3.4 right-to-access.
+   *
+   * Returns a JSON dump of every user-scoped document across the schema:
+   * the user doc itself plus all top-level collections + subcollections
+   * listed in USER_DATA_COLLECTIONS. Sent as a downloadable file with
+   * Content-Disposition so the browser triggers a save dialog rather
+   * than rendering a 5MB JSON in the tab.
+   *
+   * Errors per-collection are surfaced in `failedCollections` rather
+   * than failing the whole request — DPDP "right to access" should
+   * always return SOMETHING the user can download, even if a single
+   * Firestore index is briefly unavailable.
+   */
+  app.get('/me/export-data', async (c) => {
+    const principal = requireAuth(c);
+    if (!deps.db) {
+      throw new HTTPException(503, { message: 'Export is only available with Firestore persistence.' });
+    }
+    try {
+      const payload = await exportUserData(deps.db, principal.userId, deps.logger);
+      deps.logger.info('users.data_exported', {
+        userId: principal.userId,
+        collectionsIncluded: Object.keys(payload.data).length,
+        failedCollections: payload.failedCollections,
+      });
+      const filename = `nexigrate-data-${new Date().toISOString().slice(0, 10)}.json`;
+      return new Response(JSON.stringify(payload, null, 2), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Content-Disposition': `attachment; filename="${filename}"`,
+          'Cache-Control': 'no-store',
+        },
+      });
+    } catch (err) {
+      deps.logger.error('users.export_error', { userId: principal.userId, error: err instanceof Error ? err.message : String(err) });
+      throw new HTTPException(500, { message: 'Failed to export your data. Please try again or contact support.' });
     }
   });
 

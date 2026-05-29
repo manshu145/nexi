@@ -355,6 +355,37 @@ export default function ProfilePage() {
               Sign Out
             </button>
 
+            {/* Privacy — DPDP §3.4 right-to-access (download all my data) */}
+            <details className="mt-4">
+              <summary className="text-[11px] text-muted-400 cursor-pointer hover:text-ink-900 text-center">Privacy & My Data</summary>
+              <div className="mt-3 paper-card p-4">
+                <p className="text-xs text-muted-500 mb-3">Download a JSON file containing every record we hold for you — profile, study progress, chat history, billing, referrals, support tickets and more.</p>
+                <button
+                  onClick={async () => {
+                    const toastId = toast.loading('Preparing your data...');
+                    try {
+                      const { blob, filename } = await api.exportMyData();
+                      // Trigger browser download via a synthetic anchor click.
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = filename;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      URL.revokeObjectURL(url);
+                      toast.success('Data exported. Check your downloads folder.', { id: toastId });
+                    } catch (e) {
+                      toast.error(e instanceof Error ? e.message : 'Failed to export data. Please try again.', { id: toastId });
+                    }
+                  }}
+                  className="btn-ghost w-full text-sm"
+                >
+                  Download my data (JSON)
+                </button>
+              </div>
+            </details>
+
             {/* Danger Zone — hidden deeper */}
             <details className="mt-4">
               <summary className="text-[11px] text-muted-400 cursor-pointer hover:text-red-500 text-center">Danger Zone</summary>
@@ -366,19 +397,24 @@ export default function ProfilePage() {
                     if (!confirmed) return;
                     const typed = window.prompt('Type DELETE to confirm account deletion:');
                     if (typed !== 'DELETE') { toast.error('Deletion cancelled — you typed the wrong word.'); return; }
+                    const toastId = toast.loading('Deleting your account...');
                     try {
+                      // Server-side erasure walks every user-scoped collection
+                      // (USER_DATA_COLLECTIONS in apps/api/src/lib/userData.ts).
+                      const result = await api.deleteAccount();
+                      if (result.partial) {
+                        toast.error(`Partial deletion. ${result.failedCollections.length} collections failed — please contact support.`, { id: toastId, duration: 8000 });
+                      } else {
+                        toast.success(`Account deleted. ${result.totalDocs} records removed.`, { id: toastId });
+                      }
+                      // Now delete the Firebase Auth user from the client SDK so
+                      // the password is no longer valid + sign out + redirect.
                       const { getFirebaseAuthClient } = await import('~/lib/firebase');
                       const auth = getFirebaseAuthClient();
-                      const token = await auth.currentUser?.getIdToken();
-                      const res = await fetch(`${process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com'}/v1/users/me`, {
-                        method: 'DELETE',
-                        headers: { Authorization: `Bearer ${token}` },
-                      });
-                      if (!res.ok) { const err = await res.json().catch(() => ({})) as {error?:string}; throw new Error(err.error || 'Failed to delete'); }
-                      await auth.currentUser?.delete();
+                      try { await auth.currentUser?.delete(); } catch { /* token may have expired during long erase; ignore */ }
                       window.location.href = '/';
                     } catch (e) {
-                      toast.error(e instanceof Error ? e.message : 'Failed to delete account. Please contact support.');
+                      toast.error(e instanceof Error ? e.message : 'Failed to delete account. Please contact support.', { id: toastId });
                     }
                   }}
                   className="w-full rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/20 py-2.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-950/40 transition-colors"

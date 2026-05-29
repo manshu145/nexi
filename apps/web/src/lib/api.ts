@@ -151,6 +151,51 @@ export const api = {
     })).json() as Promise<{success:boolean; alreadyCancelled:boolean; plan:string; planExpiresAt:string|null; planCancelledAt:string}>;
   },
 
+  // ─── DPDP §3.4 — right to access + right to erasure ─────────────────────
+  /**
+   * Triggers a download of every user-scoped record we hold for the
+   * signed-in user (the user doc itself plus every collection in the
+   * server's USER_DATA_COLLECTIONS map). The browser receives a
+   * Content-Disposition: attachment response so it pops a save dialog
+   * with filename "nexigrate-data-YYYY-MM-DD.json".
+   *
+   * Returns the raw Blob + the suggested filename so the caller can
+   * choose whether to save it directly or transform it (e.g. show a
+   * preview before saving).
+   */
+  async exportMyData(): Promise<{ blob: Blob; filename: string }> {
+    const res = await authedFetch('/v1/users/me/export-data');
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`Failed to export data: ${res.status} ${body.slice(0, 200)}`);
+    }
+    const blob = await res.blob();
+    // Pull filename out of Content-Disposition or fall back to a
+    // sensible default keyed on today's IST date.
+    const cd = res.headers.get('Content-Disposition') ?? '';
+    const m = cd.match(/filename="([^"]+)"/);
+    const filename = m?.[1] ?? `nexigrate-data-${new Date().toISOString().slice(0, 10)}.json`;
+    return { blob, filename };
+  },
+
+  /**
+   * Permanently delete the signed-in user's account and every record we
+   * hold for them (right-to-erasure). Returns a partial-success summary
+   * if any collection failed -- in that case the user should contact
+   * support to complete the deletion. After a successful call, the
+   * caller MUST sign out + clear local storage; the next /me will 401.
+   */
+  async deleteAccount(): Promise<{
+    success: boolean;
+    partial: boolean;
+    collectionsDeleted: string[];
+    failedCollections: string[];
+    totalDocs: number;
+    message: string;
+  }> {
+    return (await authedFetch('/v1/users/me', { method: 'DELETE' })).json();
+  },
+
   // Session tracking
   async startSession() { return (await authedFetch('/v1/users/me/session/start', { method: 'POST' })).json() as Promise<{sessionId:string; startedAt:string}>; },
   async pingSession() { return (await authedFetch('/v1/users/me/session/ping', { method: 'POST' })).json() as Promise<{ok:boolean}>; },
