@@ -24,7 +24,7 @@ export function BottomNav() {
   };
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-[100] border-t border-stone-200 bg-white pb-[env(safe-area-inset-bottom)] dark:border-stone-800 dark:bg-stone-950 lg:hidden">
+    <nav className="fixed bottom-0 left-0 right-0 z-[100] border-t border-line bg-paper-50 pb-[env(safe-area-inset-bottom)] lg:hidden">
       <div className="flex h-14 items-center justify-around px-2">
         {NAV_ITEMS.map((item) => {
           const active = isActive(item.path);
@@ -32,12 +32,12 @@ export function BottomNav() {
             <button
               key={item.path}
               onClick={() => router.push(item.path)}
-              className={`flex flex-col items-center gap-0.5 rounded-lg px-3 py-1.5 transition-transform active:scale-90 ${active ? 'bg-amber-500/10' : ''}`}
+              className={`flex flex-col items-center gap-0.5 rounded-lg px-3 py-1.5 transition-transform active:scale-90 ${active ? 'bg-ember-500/10' : ''}`}
             >
-              <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" className={active ? 'text-amber-500' : 'text-stone-500'}>
+              <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" className={active ? 'text-ember-500' : 'text-muted-500'}>
                 <path d={item.icon} />
               </svg>
-              <span className={`text-[10px] font-medium ${active ? 'text-amber-500' : 'text-stone-500'}`}>{item.label}</span>
+              <span className={`text-[10px] font-medium ${active ? 'text-ember-500' : 'text-muted-500'}`}>{item.label}</span>
             </button>
           );
         })}

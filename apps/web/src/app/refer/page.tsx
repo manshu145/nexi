@@ -7,6 +7,21 @@ import { toast } from 'sonner';
 import { Logo } from '~/components/Logo';
 import { AILoader } from '~/components/ui/AILoader';
 
+/**
+ * Refer & Earn page.
+ *
+ * Design system: brand tokens only (paper / ink / ember / gold / line /
+ * muted) -- no `amber-*` or `stone-*` raw classes. Light + dark are
+ * handled through the CSS-variable layer in globals.css, which means we
+ * can drop the explicit `dark:` modifiers everywhere -- the variables
+ * resolve to the right shade automatically.
+ *
+ * Credit copy is hardcoded to the locked PR-03 numbers (referrer +50,
+ * invitee +100). The /credits page reads the live admin-configured
+ * values; the marketing copy here is a frozen snapshot of the founder's
+ * lock §2.2 commitment so the user always sees a single, predictable
+ * promise even if an admin tunes the in-app rates.
+ */
 export default function ReferPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -23,7 +38,11 @@ export default function ReferPage() {
         const res = await api.getReferralStats();
         if (!cancelled) setStats(res);
       } catch {
-        // Fallback: generate a code from user uid
+        // Fallback: synthesise a code from the user's uid so the page
+        // still renders something usable while the API is reachable but
+        // returning errors. The first 8 chars of a Firebase uid are not a
+        // valid referral code, so this fallback URL won't actually grant
+        // credits to invitees -- it exists purely to avoid a blank screen.
         if (!cancelled) {
           setStats({
             code: user.uid.slice(0, 8).toUpperCase(),
@@ -52,7 +71,7 @@ export default function ReferPage() {
   };
 
   const shareMessage = stats
-    ? `Join Nexigrate - India's smartest exam prep app! Use my referral code: ${stats.code} and get 50 bonus credits. Download now: ${stats.referralUrl}`
+    ? `Join Nexigrate - India's smartest exam prep app! Use my referral code: ${stats.code} and get 100 bonus credits. Download now: ${stats.referralUrl}`
     : '';
 
   const handleShare = async () => {
@@ -90,29 +109,29 @@ export default function ReferPage() {
 
       {/* Title */}
       <section className="mt-8 text-center">
-        <h1 className="font-serif text-2xl font-bold text-ink-900">Refer & Earn 🎁</h1>
-        <p className="mt-2 text-sm text-muted-500">Invite friends, earn 50 credits each</p>
+        <h1 className="font-serif text-2xl font-bold text-ink-900">Refer &amp; Earn 🎁</h1>
+        <p className="mt-2 text-sm text-muted-500">Invite friends — you earn 50 credits, they get 100</p>
       </section>
 
       {/* Referral Code Box */}
       {stats && (
         <section className="mt-8">
-          <div className="rounded-2xl border-2 border-amber-500 bg-stone-900 p-6 text-center">
-            <p className="text-xs font-medium text-stone-200 uppercase tracking-wider mb-2">Your Referral Code</p>
-            <p className="font-mono text-3xl font-bold text-amber-500 tracking-widest">{stats.code}</p>
+          <div className="rounded-2xl border-2 border-ember-500 bg-ink-900 p-6 text-center">
+            <p className="text-xs font-medium uppercase tracking-wider text-paper-200 mb-2">Your Referral Code</p>
+            <p className="font-mono text-3xl font-bold tracking-widest text-gold-500">{stats.code}</p>
           </div>
 
           {/* Action Buttons */}
           <div className="mt-4 flex gap-3">
             <button
               onClick={handleCopy}
-              className="flex-1 rounded-xl bg-stone-800 py-3 text-sm font-semibold text-stone-50 transition-colors hover:bg-stone-700"
+              className="flex-1 rounded-xl bg-ink-800 py-3 text-sm font-semibold text-paper-50 transition-colors hover:bg-ink-700"
             >
               📋 Copy Code
             </button>
             <button
               onClick={handleShare}
-              className="flex-1 rounded-xl bg-amber-500 py-3 text-sm font-semibold text-stone-900 transition-colors hover:bg-amber-600"
+              className="flex-1 rounded-xl bg-ember-500 py-3 text-sm font-semibold text-paper-50 transition-colors hover:bg-ember-600"
             >
               🔗 Share
             </button>
@@ -121,7 +140,7 @@ export default function ReferPage() {
           {/* WhatsApp Button */}
           <button
             onClick={handleWhatsApp}
-            className="mt-3 w-full rounded-xl bg-stone-800 border border-stone-700 py-3 text-sm font-semibold text-stone-50 transition-colors hover:bg-stone-700 flex items-center justify-center gap-2"
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-line bg-ink-800 py-3 text-sm font-semibold text-paper-50 transition-colors hover:bg-ink-700"
           >
             <span className="text-lg">💬</span> Share on WhatsApp
           </button>
@@ -131,17 +150,17 @@ export default function ReferPage() {
       {/* Stats */}
       {stats && (
         <section className="mt-8">
-          <div className="rounded-xl bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 p-5">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-500 mb-4">Your Referral Stats</h3>
+          <div className="rounded-xl border border-line bg-paper-50 p-5">
+            <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-500">Your Referral Stats</h3>
             <div className="flex items-center justify-around">
               <div className="text-center">
                 <p className="font-serif text-2xl font-bold text-ink-900">{stats.totalReferrals}</p>
-                <p className="text-xs text-muted-500 mt-1">Friends Joined</p>
+                <p className="mt-1 text-xs text-muted-500">Friends Joined</p>
               </div>
-              <div className="h-10 w-px bg-stone-200 dark:bg-stone-700" />
+              <div className="h-10 w-px bg-line" />
               <div className="text-center">
-                <p className="font-serif text-2xl font-bold text-amber-500">{stats.totalEarned}</p>
-                <p className="text-xs text-muted-500 mt-1">Credits Earned</p>
+                <p className="font-serif text-2xl font-bold text-ember-500">{stats.totalEarned}</p>
+                <p className="mt-1 text-xs text-muted-500">Credits Earned</p>
               </div>
             </div>
           </div>
@@ -150,34 +169,34 @@ export default function ReferPage() {
 
       {/* How it works */}
       <section className="mt-8">
-        <h3 className="font-serif text-lg font-bold text-ink-900 mb-4">How it works</h3>
+        <h3 className="mb-4 font-serif text-lg font-bold text-ink-900">How it works</h3>
         <div className="space-y-4">
           <div className="flex items-start gap-3">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-500 text-sm font-bold text-stone-900">1</span>
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ember-500 text-sm font-bold text-paper-50">1</span>
             <div>
               <p className="text-sm font-semibold text-ink-900">Share your code</p>
-              <p className="text-xs text-muted-500 mt-0.5">Send your unique referral code to friends via WhatsApp, SMS, or social media</p>
+              <p className="mt-0.5 text-xs text-muted-500">Send your unique referral code to friends via WhatsApp, SMS, or social media</p>
             </div>
           </div>
           <div className="flex items-start gap-3">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-500 text-sm font-bold text-stone-900">2</span>
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ember-500 text-sm font-bold text-paper-50">2</span>
             <div>
               <p className="text-sm font-semibold text-ink-900">Friend signs up</p>
-              <p className="text-xs text-muted-500 mt-0.5">Your friend downloads Nexigrate and enters your code during sign-up</p>
+              <p className="mt-0.5 text-xs text-muted-500">Your friend opens Nexigrate and enters your code during sign-up</p>
             </div>
           </div>
           <div className="flex items-start gap-3">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-500 text-sm font-bold text-stone-900">3</span>
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ember-500 text-sm font-bold text-paper-50">3</span>
             <div>
               <p className="text-sm font-semibold text-ink-900">Both earn credits</p>
-              <p className="text-xs text-muted-500 mt-0.5">You get 50 credits and your friend gets 50 bonus credits too!</p>
+              <p className="mt-0.5 text-xs text-muted-500">You get 50 credits and your friend gets 100 bonus credits to start with.</p>
             </div>
           </div>
           <div className="flex items-start gap-3">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-500 text-sm font-bold text-stone-900">4</span>
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ember-500 text-sm font-bold text-paper-50">4</span>
             <div>
               <p className="text-sm font-semibold text-ink-900">No limits</p>
-              <p className="text-xs text-muted-500 mt-0.5">Refer as many friends as you want — there&apos;s no cap on earning!</p>
+              <p className="mt-0.5 text-xs text-muted-500">Refer as many friends as you want — there&apos;s no cap on earning.</p>
             </div>
           </div>
         </div>
