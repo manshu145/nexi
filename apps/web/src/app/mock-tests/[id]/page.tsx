@@ -55,6 +55,15 @@ export default function MockTestAttemptPage() {
   const [submitting, setSubmitting] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const submittedRef = useRef(false); // guard auto-submit from firing twice
+  // PR-34a: lift the timer interval ref so the tick callback can clear
+  // it the moment `remaining === 0`. Pre-PR-34a, if handleSubmit threw
+  // (network blip / 5xx) it reset submittedRef to false to allow retry,
+  // but the interval was still running and immediately re-fired
+  // handleSubmit because remaining stays at 0 forever. Result: an
+  // exponential cascade of submit attempts. Now the interval is killed
+  // before handleSubmit, so on a server failure the user falls back to
+  // pressing the manual Submit button.
+  const tickIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Load the attempt.
   useEffect(() => {
@@ -86,14 +95,27 @@ export default function MockTestAttemptPage() {
       setSecondsLeft(remaining);
       if (remaining === 0 && !submittedRef.current) {
         submittedRef.current = true;
+        // PR-34a: stop the timer BEFORE handleSubmit. If handleSubmit
+        // throws and resets submittedRef to false to allow retry, we
+        // don't want the next tick to re-fire handleSubmit immediately;
+        // the user falls back to clicking the manual Submit button.
+        if (tickIntervalRef.current) {
+          clearInterval(tickIntervalRef.current);
+          tickIntervalRef.current = null;
+        }
         // Auto-submit when time hits zero. Don't toast a loading state -- it's
         // jarring; just submit silently and the result UI will appear.
         void handleSubmit(true);
       }
     };
     tick();
-    const interval = setInterval(tick, 1000);
-    return () => clearInterval(interval);
+    tickIntervalRef.current = setInterval(tick, 1000);
+    return () => {
+      if (tickIntervalRef.current) {
+        clearInterval(tickIntervalRef.current);
+        tickIntervalRef.current = null;
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attempt?.id, attempt?.status]);
 

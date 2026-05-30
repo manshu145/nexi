@@ -38,6 +38,11 @@ export default function ProfilePage() {
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [cancelling, setCancelling] = useState(false);
+  // PR-34a: in-app replacement for window.confirm + window.prompt('DELETE')
+  // for account deletion. Modal stays at z-[110] above the BottomNav.
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
 
@@ -102,6 +107,39 @@ export default function ProfilePage() {
       toast.error(e instanceof Error ? e.message : 'Failed to cancel. Please try again.');
     } finally {
       setCancelling(false);
+    }
+  };
+
+  /**
+   * PR-34a: in-app modal-driven account deletion.
+   * Pre-PR-34a this used window.confirm + window.prompt('DELETE'). The
+   * native dialogs are awkward on mobile and disabled inside iframes /
+   * PWAs in some browsers. The modal renders at z-[110] above BottomNav
+   * and only enables the Delete button when the typed text is exactly
+   * 'DELETE'. Server-side erasure walks every user-scoped collection
+   * (USER_DATA_COLLECTIONS in apps/api/src/lib/userData.ts).
+   */
+  const handleDeleteAccount = async () => {
+    if (deletingAccount) return;
+    if (deleteConfirmText !== 'DELETE') return;
+    setDeletingAccount(true);
+    const toastId = toast.loading('Deleting your account...');
+    try {
+      const result = await api.deleteAccount();
+      if (result.partial) {
+        toast.error(`Partial deletion. ${result.failedCollections.length} collections failed — please contact support.`, { id: toastId, duration: 8000 });
+      } else {
+        toast.success(`Account deleted. ${result.totalDocs} records removed.`, { id: toastId });
+      }
+      // Now delete the Firebase Auth user from the client SDK so the
+      // password is no longer valid + sign out + redirect.
+      const { getFirebaseAuthClient } = await import('~/lib/firebase');
+      const auth = getFirebaseAuthClient();
+      try { await auth.currentUser?.delete(); } catch { /* token may have expired during long erase; ignore */ }
+      window.location.href = '/';
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to delete account. Please contact support.', { id: toastId });
+      setDeletingAccount(false);
     }
   };
 
@@ -259,7 +297,7 @@ export default function ProfilePage() {
           role="dialog"
           aria-modal="true"
           aria-labelledby="cancel-plan-title"
-          className="fixed inset-0 z-50 flex items-end justify-center sm:items-center bg-black/50 backdrop-blur-sm"
+          className="fixed inset-0 z-[110] flex items-end justify-center sm:items-center bg-black/50 backdrop-blur-sm"
           onClick={(e) => { if (e.target === e.currentTarget) setCancelOpen(false); }}
         >
           <div className="paper-card w-full max-w-md p-5 sm:p-6 m-3 animate-in fade-in zoom-in-95">
@@ -427,31 +465,7 @@ export default function ProfilePage() {
               <div className="mt-3 paper-card p-4 border-red-200 dark:border-red-900/30">
                 <p className="text-xs text-muted-500 mb-3">Permanently delete your account, all study progress, credits, and data. This cannot be undone.</p>
                 <button
-                  onClick={async () => {
-                    const confirmed = window.confirm('Are you sure you want to delete your account? This cannot be undone. All your data, credits, and progress will be permanently lost.');
-                    if (!confirmed) return;
-                    const typed = window.prompt('Type DELETE to confirm account deletion:');
-                    if (typed !== 'DELETE') { toast.error('Deletion cancelled — you typed the wrong word.'); return; }
-                    const toastId = toast.loading('Deleting your account...');
-                    try {
-                      // Server-side erasure walks every user-scoped collection
-                      // (USER_DATA_COLLECTIONS in apps/api/src/lib/userData.ts).
-                      const result = await api.deleteAccount();
-                      if (result.partial) {
-                        toast.error(`Partial deletion. ${result.failedCollections.length} collections failed — please contact support.`, { id: toastId, duration: 8000 });
-                      } else {
-                        toast.success(`Account deleted. ${result.totalDocs} records removed.`, { id: toastId });
-                      }
-                      // Now delete the Firebase Auth user from the client SDK so
-                      // the password is no longer valid + sign out + redirect.
-                      const { getFirebaseAuthClient } = await import('~/lib/firebase');
-                      const auth = getFirebaseAuthClient();
-                      try { await auth.currentUser?.delete(); } catch { /* token may have expired during long erase; ignore */ }
-                      window.location.href = '/';
-                    } catch (e) {
-                      toast.error(e instanceof Error ? e.message : 'Failed to delete account. Please contact support.', { id: toastId });
-                    }
-                  }}
+                  onClick={() => { setDeleteConfirmText(''); setDeleteModalOpen(true); }}
                   className="w-full rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/20 py-2.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-950/40 transition-colors"
                 >
                   Permanently Delete My Account
@@ -461,6 +475,63 @@ export default function ProfilePage() {
           </div>
         </details>
       </section>
+
+      {/* Delete-account modal — PR-34a in-app replacement for
+          window.confirm + window.prompt('DELETE'). z-[110] keeps it above
+          the BottomNav (z-[100]) on mobile. */}
+      {deleteModalOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-account-title"
+          className="fixed inset-0 z-[110] flex items-end justify-center sm:items-center bg-black/50 backdrop-blur-sm p-3"
+          onClick={(e) => { if (e.target === e.currentTarget && !deletingAccount) setDeleteModalOpen(false); }}
+        >
+          <div className="paper-card w-full max-w-md p-5 sm:p-6 animate-in fade-in zoom-in-95">
+            <h3 id="delete-account-title" className="font-serif text-xl font-semibold text-ink-900">
+              Delete your account?
+            </h3>
+            <p className="mt-2 text-sm leading-relaxed text-muted-600 dark:text-muted-400">
+              This permanently removes your profile, study progress, credits, chats, and every other record we hold for you. <strong className="text-ink-900">This cannot be undone.</strong>
+            </p>
+
+            <div className="mt-4">
+              <label className="mb-1 block text-xs font-medium text-muted-500">
+                Type <span className="font-mono font-semibold text-ink-900">DELETE</span> to confirm
+              </label>
+              <input
+                type="text"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                placeholder="DELETE"
+                className="input w-full text-sm"
+                autoFocus
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </div>
+
+            <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row">
+              <button
+                type="button"
+                onClick={() => { setDeleteModalOpen(false); setDeleteConfirmText(''); }}
+                disabled={deletingAccount}
+                className="btn-primary flex-1 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteAccount}
+                disabled={deletingAccount || deleteConfirmText !== 'DELETE'}
+                className="rounded-xl border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/20 px-4 py-3 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-950/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {deletingAccount ? 'Deleting…' : 'Delete Forever'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

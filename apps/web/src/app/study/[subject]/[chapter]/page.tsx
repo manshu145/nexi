@@ -569,7 +569,7 @@ export default function KindleReaderPage() {
 
       {/* Visualization Modal — Tabbed */}
       {showViz && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/70 p-4 backdrop-blur-sm" onClick={() => setShowViz(false)}>
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-ink-950/70 p-4 backdrop-blur-sm" onClick={() => setShowViz(false)}>
           <div className="viz-modal max-w-2xl w-full max-h-[85vh] overflow-auto bg-paper-50 rounded-xl shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="sticky top-0 z-10 flex flex-col border-b border-line bg-paper-50 rounded-t-xl">
               <div className="flex items-center justify-between px-5 py-3">

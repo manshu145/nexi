@@ -26,7 +26,11 @@ export default function AdminSupportPage() {
   const [error, setError] = useState<string | null>(null);
   const [fetching, setFetching] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [replyText, setReplyText] = useState('');
+  // PR-34a: per-ticket reply state. Pre-PR-34a a single `replyText` was
+  // shared across every expanded row, which meant typing in one ticket
+  // mirrored the same text into every other open row. Keying by ticket
+  // id keeps each thread independent.
+  const [replyTexts, setReplyTexts] = useState<Record<string, string>>({});
   const [replying, setReplying] = useState(false);
 
   useEffect(() => {
@@ -54,7 +58,8 @@ export default function AdminSupportPage() {
   }, [user]);
 
   const handleReply = async (ticketId: string) => {
-    if (!replyText.trim() || replying) return;
+    const text = (replyTexts[ticketId] ?? '').trim();
+    if (!text || replying) return;
     setReplying(true);
     try {
       const auth = getFirebaseAuthClient();
@@ -62,10 +67,15 @@ export default function AdminSupportPage() {
       const res = await fetch(`${API}/v1/admin/support/${ticketId}/reply`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ message: replyText.trim() }),
+        body: JSON.stringify({ message: text }),
       });
       if (!res.ok) throw new Error(`Failed: ${res.status}`);
-      setReplyText('');
+      // Clear only this ticket's draft so other expanded rows keep theirs.
+      setReplyTexts(prev => {
+        const next = { ...prev };
+        delete next[ticketId];
+        return next;
+      });
       await fetchTickets();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to send reply');
@@ -141,15 +151,15 @@ export default function AdminSupportPage() {
                     <div className="mt-3 flex gap-2">
                       <input
                         type="text"
-                        value={expandedId === ticket.id ? replyText : ''}
-                        onChange={e => setReplyText(e.target.value)}
+                        value={replyTexts[ticket.id] ?? ''}
+                        onChange={e => setReplyTexts(prev => ({ ...prev, [ticket.id]: e.target.value }))}
                         placeholder="Type admin reply..."
                         className="input flex-1"
                         onKeyDown={e => { if (e.key === 'Enter') handleReply(ticket.id); }}
                       />
                       <button
                         onClick={() => handleReply(ticket.id)}
-                        disabled={!replyText.trim() || replying}
+                        disabled={!(replyTexts[ticket.id] ?? '').trim() || replying}
                         className="btn-primary px-4 text-sm"
                       >
                         {replying ? '...' : 'Reply'}

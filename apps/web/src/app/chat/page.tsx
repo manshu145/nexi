@@ -670,7 +670,7 @@ function ChatPage() {
 
       {/* Visualize modal */}
       {vizContent && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fadeIn" onClick={() => setVizContent(null)}>
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fadeIn" onClick={() => setVizContent(null)}>
           <div className="paper-card max-w-lg w-full max-h-[80vh] overflow-auto p-6 animate-scaleIn" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-serif text-lg font-bold text-ink-900">Visualization</h3>
@@ -685,7 +685,7 @@ function ChatPage() {
 
       {/* Generated Image modal */}
       {generatedImage && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fadeIn" onClick={() => setGeneratedImage(null)}>
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fadeIn" onClick={() => setGeneratedImage(null)}>
           <div className="paper-card max-w-lg w-full max-h-[80vh] overflow-auto p-6 animate-scaleIn" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-serif text-lg font-bold text-ink-900">Generated Image</h3>

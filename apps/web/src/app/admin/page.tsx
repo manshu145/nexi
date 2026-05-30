@@ -130,7 +130,13 @@ export default function AdminStatsPage() {
   useEffect(() => {
     if (!user || !isAdmin(user.email)) return;
     void fetchHealth();
-    const interval = setInterval(() => { void fetchHealth(); }, 60_000);
+    // PR-34a: gate polling on document.visibilityState so a backgrounded
+    // admin dashboard tab doesn't keep hitting /v1/admin/api-health every
+    // minute. The first call still fires on mount via the void fetchHealth
+    // above so the dashboard isn't blank when the tab regains focus.
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') void fetchHealth();
+    }, 60_000);
     return () => clearInterval(interval);
   }, [user, fetchHealth]);
 

@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 
 interface Announcement {
   id: string;
@@ -8,22 +8,52 @@ interface Announcement {
   date?: string;
 }
 
-export function AnnouncementPopup({ announcements }: { announcements: Announcement[] }) {
+/**
+ * Modal-style announcement popup.
+ *
+ * PR-34a:
+ *   - The dismissal storage key was unified to `dismissedAnnouncements`
+ *     (camelCase plural) so a dismiss here propagates to the banner UI
+ *     and vice-versa. The previous `'dismissed-announcements'`
+ *     (kebab-singular) key was retired.
+ *   - Dismissal is now driven by `onDismiss` from the parent so the parent
+ *     (AnnouncementBanner) can also recompute its banner-only filter and
+ *     keep the two views in sync without a re-fetch.
+ *   - z-[110] keeps the popup above the BottomNav (z-[100]) per the new
+ *     modal-stacking convention.
+ */
+export function AnnouncementPopup({
+  announcements,
+  onDismiss,
+}: {
+  announcements: Announcement[];
+  onDismiss: (id: string) => void;
+}) {
   const [visible, setVisible] = useState(false);
   const [current, setCurrent] = useState<Announcement | null>(null);
   const [countdown, setCountdown] = useState(10);
 
   useEffect(() => {
-    if (!announcements.length) return;
-    // Find first undismissed announcement
-    const dismissed = JSON.parse(localStorage.getItem('dismissed-announcements') ?? '[]') as string[];
-    const active = announcements.find(a => !dismissed.includes(a.id));
-    if (!active) return;
+    if (!announcements.length) {
+      setCurrent(null);
+      setVisible(false);
+      return;
+    }
+    // First entry is the next-to-show; the parent already filters out
+    // dismissed announcements before passing them in.
+    const active = announcements[0]!;
     setCurrent(active);
+    // Reset countdown each time a new announcement arrives.
+    setCountdown(10);
     // Show after 2s delay
     const timer = setTimeout(() => setVisible(true), 2000);
     return () => clearTimeout(timer);
   }, [announcements]);
+
+  const handleClose = useCallback(() => {
+    setVisible(false);
+    if (current) onDismiss(current.id);
+  }, [current, onDismiss]);
 
   useEffect(() => {
     if (!visible) return;
@@ -34,21 +64,12 @@ export function AnnouncementPopup({ announcements }: { announcements: Announceme
       });
     }, 1000);
     return () => clearInterval(interval);
-  }, [visible]);
-
-  const handleClose = () => {
-    setVisible(false);
-    if (current) {
-      const dismissed = JSON.parse(localStorage.getItem('dismissed-announcements') ?? '[]') as string[];
-      dismissed.push(current.id);
-      localStorage.setItem('dismissed-announcements', JSON.stringify(dismissed));
-    }
-  };
+  }, [visible, handleClose]);
 
   if (!visible || !current) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4" onClick={handleClose}>
+    <div className="fixed inset-0 z-[110] flex items-center justify-center px-4" onClick={handleClose}>
       <div className="absolute inset-0 bg-ink-950/60 backdrop-blur-sm" />
       <div className="relative w-full max-w-[380px] rounded-2xl border border-ember-500/50 bg-paper-50 p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
         {/* Close button */}

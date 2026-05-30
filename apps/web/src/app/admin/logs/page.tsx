@@ -149,7 +149,11 @@ export default function AdminLogsPage() {
   // Auto-refresh for AI Debug tab
   useEffect(() => {
     if (tab !== 'ai-debug' || !autoRefresh || !user) return;
+    // PR-34a: skip the fetch when the tab isn't visible. A backgrounded
+    // admin tab used to fire /v1/admin/ai-debug-logs every 10s indefinitely,
+    // which is wasteful both for the API and for the admin's quota.
     intervalRef.current = setInterval(async () => {
+      if (document.visibilityState !== 'visible') return;
       try {
         const auth = getFirebaseAuthClient();
         const token = await auth.currentUser?.getIdToken();
