@@ -52,6 +52,12 @@ export default function AdminUsersPage() {
   const [loadingChats, setLoadingChats] = useState(false);
   const [expandedChat, setExpandedChat] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<{role:string;content:string;timestamp?:string}[]>([]);
+  // PR-34a: replace window.prompt() with an in-app modal so the ban flow
+  // is brand-consistent and works inside iframes / PWAs that disable
+  // native prompts.
+  const [banModalOpen, setBanModalOpen] = useState(false);
+  const [banReason, setBanReason] = useState('');
+  const [banSubmitting, setBanSubmitting] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) router.replace('/signin');
@@ -179,29 +185,46 @@ export default function AdminUsersPage() {
   // (banned users hit 403 on study/chat) lands in a follow-up so this
   // PR can ship the working button without dragging the whole route
   // tree along.
+  //
+  // PR-34a: instead of window.prompt(), banning now opens an in-app modal
+  // with a textarea for the reason. Unbanning still goes through directly
+  // (no reason needed). The modal is rendered at z-[110] so it clears the
+  // BottomNav (z-[100]) on the rare case the admin shell ever surfaces it.
   const handleBanToggle = async (uid: string, currentlyBanned: boolean) => {
     if (!selectedUser) return;
-    const action = currentlyBanned ? 'Unban' : 'Ban';
-    const reason = currentlyBanned
-      ? null
-      : (typeof window !== 'undefined' ? window.prompt(`Reason for banning ${selectedUser.name}?`) : null);
-    if (!currentlyBanned && reason === null) return; // admin cancelled the prompt
+    if (currentlyBanned) {
+      // Unban path: no reason prompt, just submit.
+      await submitBan(uid, false, undefined);
+      return;
+    }
+    // Ban path: open the modal and let the admin type a reason.
+    setBanReason('');
+    setBanModalOpen(true);
+  };
+
+  const submitBan = async (uid: string, ban: boolean, reason: string | undefined) => {
+    if (!selectedUser) return;
+    const action = ban ? 'Ban' : 'Unban';
+    setBanSubmitting(true);
     try {
       const auth = getFirebaseAuthClient();
       const token = await auth.currentUser?.getIdToken();
       const res = await fetch(`${API}/v1/admin/users/${uid}/ban`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ banned: !currentlyBanned, reason: reason ?? undefined }),
+        body: JSON.stringify({ banned: ban, reason }),
       });
       if (!res.ok) throw new Error('ban toggle failed');
       const data = (await res.json()) as { user?: { banned?: boolean; bannedAt?: string | null; banReason?: string | null } };
       // Reflect the new state locally so the badge + button label flip
       // without a refresh.
-      setSelectedUser(prev => prev ? { ...prev, banned: data.user?.banned ?? !currentlyBanned } : prev);
-      setUsers(prev => prev.map(u => u.id === uid ? { ...u, banned: data.user?.banned ?? !currentlyBanned } : u));
+      setSelectedUser(prev => prev ? { ...prev, banned: data.user?.banned ?? ban } : prev);
+      setUsers(prev => prev.map(u => u.id === uid ? { ...u, banned: data.user?.banned ?? ban } : u));
       toast.success(`${action}ned ${selectedUser.name}`);
+      setBanModalOpen(false);
+      setBanReason('');
     } catch { toast.error(`Failed to ${action.toLowerCase()} user`); }
+    finally { setBanSubmitting(false); }
   };
 
   if (loading || !user) return <div className="flex items-center justify-center py-20"><AILoader context="general" /></div>;
@@ -439,6 +462,61 @@ export default function AdminUsersPage() {
           animation: slideInRight 0.2s ease-out;
         }
       `}</style>
+
+      {/* Ban-user modal — PR-34a in-app replacement for window.prompt().
+          z-[110] sits above the BottomNav (z-[100]) per the new convention. */}
+      {banModalOpen && selectedUser && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="ban-user-title"
+          className="fixed inset-0 z-[110] flex items-end justify-center sm:items-center bg-black/50 backdrop-blur-sm p-3"
+          onClick={(e) => { if (e.target === e.currentTarget && !banSubmitting) setBanModalOpen(false); }}
+        >
+          <div className="paper-card w-full max-w-md p-5 sm:p-6 animate-in fade-in zoom-in-95">
+            <h3 id="ban-user-title" className="font-serif text-lg font-semibold text-ink-900">
+              Ban {selectedUser.name}?
+            </h3>
+            <p className="mt-2 text-sm text-muted-500">
+              They will be blocked from study, chat, and other authenticated surfaces. The reason is logged for audit.
+            </p>
+
+            <div className="mt-4">
+              <label className="mb-1 block text-xs font-medium text-muted-500">
+                Reason for banning <span className="text-muted-400">(optional but recommended)</span>
+              </label>
+              <textarea
+                value={banReason}
+                onChange={(e) => setBanReason(e.target.value.slice(0, 500))}
+                rows={3}
+                placeholder="Spam, abusive behaviour, payment fraud, ..."
+                className="input w-full resize-none text-sm"
+                autoFocus
+              />
+              <p className="mt-1 text-right text-[10px] text-muted-400">{banReason.length}/500</p>
+            </div>
+
+            <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setBanModalOpen(false)}
+                disabled={banSubmitting}
+                className="btn-ghost flex-1 sm:flex-initial"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => submitBan(selectedUser.id, true, banReason.trim() || undefined)}
+                disabled={banSubmitting}
+                className="rounded-xl border border-ember-500 bg-ember-500/10 px-4 py-3 text-sm font-medium text-ember-600 hover:bg-ember-500/20 transition-colors disabled:opacity-60"
+              >
+                {banSubmitting ? 'Banning…' : 'Ban User'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

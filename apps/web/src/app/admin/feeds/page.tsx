@@ -32,6 +32,10 @@ export default function AdminFeedsPage() {
   const [ingestResult, setIngestResult] = useState<string | null>(null);
   const [testingUrl, setTestingUrl] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
+  // PR-34a: inline confirm-row state, mirrors the pattern from
+  // admin/announcements/page.tsx so the admin doesn't get a native
+  // confirm() dialog when deleting a feed.
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
   useEffect(() => { if (!loading && !user) router.replace('/admin/login'); }, [user, loading, router]);
 
@@ -107,7 +111,6 @@ export default function AdminFeedsPage() {
   };
 
   const handleDeleteFeed = async (id: string) => {
-    if (!confirm('Delete this feed?')) return;
     try {
       const token = await getToken();
       await fetch(`${API}/v1/admin/feeds/${id}`, {
@@ -115,6 +118,7 @@ export default function AdminFeedsPage() {
         headers: { Authorization: `Bearer ${token}` },
       });
       setFeeds(prev => prev.filter(f => f.id !== id));
+      setDeleteConfirm(null);
     } catch { /* ignore */ }
   };
 
@@ -295,13 +299,30 @@ export default function AdminFeedsPage() {
                       </button>
                     </td>
                     <td className="py-3 text-right">
-                      <button
-                        onClick={() => handleDeleteFeed(feed.id)}
-                        className="rounded p-1 text-stone-500 hover:bg-stone-800 hover:text-red-600 transition-colors"
-                        title="Delete"
-                      >
-                        🗑️
-                      </button>
+                      {deleteConfirm === feed.id ? (
+                        <div className="inline-flex items-center gap-1">
+                          <button
+                            onClick={() => handleDeleteFeed(feed.id)}
+                            className="rounded px-2 py-1 text-xs font-medium bg-ember-100 text-ember-700"
+                          >
+                            Confirm
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirm(null)}
+                            className="rounded px-2 py-1 text-xs font-medium bg-stone-800 text-stone-300"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setDeleteConfirm(feed.id)}
+                          className="rounded p-1 text-stone-500 hover:bg-stone-800 hover:text-red-600 transition-colors"
+                          title="Delete"
+                        >
+                          🗑️
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

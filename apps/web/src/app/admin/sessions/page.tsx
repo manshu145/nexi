@@ -60,7 +60,13 @@ export default function AdminSessionsPage() {
   useEffect(() => {
     if (!user) return;
     void fetchSessions();
-    const interval = setInterval(() => { void fetchSessions(); }, 30_000);
+    // PR-34a: only poll while the tab is visible. A backgrounded admin
+    // page used to keep firing /v1/admin/sessions every 30s and burn
+    // API quota for nothing; the visibility gate makes the interval a
+    // no-op until the admin returns to the tab.
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') void fetchSessions();
+    }, 30_000);
     return () => clearInterval(interval);
   }, [user, fetchSessions]);
 

@@ -4,7 +4,6 @@ import { getLocale, getMessages } from 'next-intl/server';
 import { Providers } from '~/components/providers';
 import { Toaster } from '~/components/toaster';
 import { BottomNav } from '~/components/BottomNav';
-import { AnnouncementWrapper } from '~/components/AnnouncementWrapper';
 import './globals.css';
 
 export const dynamic = 'force-dynamic';
@@ -36,9 +35,16 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body>
         <NextIntlClientProvider messages={messages}>
           <Providers>
-            <div className="pb-16 lg:pb-0">{children}</div>
+            {/*
+             * PR-34a: pb is the BottomNav (h-14 ≈ 3.5rem) plus the iOS
+             * home-indicator safe area (~34px on notched iPhones). Without
+             * the env() addition, the bottom 34px of every page sits
+             * directly under the nav's safe-area inset and is unreachable.
+             * lg: drops the padding because the nav itself only renders on
+             * mobile (lg:hidden inside BottomNav).
+             */}
+            <div className="pb-[calc(theme(spacing.16)+env(safe-area-inset-bottom))] lg:pb-0">{children}</div>
             <BottomNav />
-            <AnnouncementWrapper />
             <Toaster />
           </Providers>
         </NextIntlClientProvider>

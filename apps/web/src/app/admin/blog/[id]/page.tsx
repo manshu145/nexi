@@ -32,6 +32,12 @@ export default function BlogEditPage() {
   const [showHi, setShowHi] = useState(false);
   const [showSeo, setShowSeo] = useState(false);
   const [tab, setTab] = useState<'edit' | 'preview'>('edit');
+  // PR-34a: in-app delete confirmation. Pre-PR-34a this used confirm().
+  // The button reveals an inline "Type DELETE to confirm" input + Cancel
+  // + final Delete-forever button. Keeps the admin shell free of the
+  // native dialog and is brand-consistent.
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteText, setDeleteText] = useState('');
 
   useEffect(() => {
     if (loading) return;
@@ -124,7 +130,7 @@ export default function BlogEditPage() {
 
   async function remove() {
     if (!id) return;
-    if (!confirm('Delete this post permanently? This cannot be undone.')) return;
+    if (deleteText !== 'DELETE') return;
     setBusy(true);
     try {
       await api.deleteBlogPost(id);
@@ -183,13 +189,43 @@ export default function BlogEditPage() {
               Publish
             </button>
           )}
-          <button
-            onClick={remove}
-            disabled={busy}
-            className="rounded-lg border border-red-300 bg-paper-50 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
-          >
-            Delete
-          </button>
+          {deleteOpen ? (
+            <div className="flex items-center gap-2 rounded-lg border border-red-300 bg-red-50 p-2 text-xs sm:flex-row">
+              <span className="text-red-700">Type</span>
+              <input
+                type="text"
+                value={deleteText}
+                onChange={e => setDeleteText(e.target.value)}
+                placeholder="DELETE"
+                autoFocus
+                spellCheck={false}
+                autoComplete="off"
+                className="rounded border border-red-300 bg-paper-50 px-2 py-1 font-mono text-xs text-ink-900 focus:border-red-500 focus:outline-none"
+              />
+              <button
+                onClick={() => { setDeleteOpen(false); setDeleteText(''); }}
+                disabled={busy}
+                className="rounded px-2 py-1 text-xs font-medium text-muted-foreground hover:text-ink-900 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={remove}
+                disabled={busy || deleteText !== 'DELETE'}
+                className="rounded bg-red-600 px-2 py-1 text-xs font-medium text-paper-50 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {busy ? 'Deleting…' : 'Delete forever'}
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => { setDeleteText(''); setDeleteOpen(true); }}
+              disabled={busy}
+              className="rounded-lg border border-red-300 bg-paper-50 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+            >
+              Delete
+            </button>
+          )}
         </div>
       </header>
 

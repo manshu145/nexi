@@ -346,7 +346,7 @@ export default function MockTestsPage() {
 
       {/* Confirm modal */}
       {confirmOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/50 p-4" onClick={() => setConfirmOpen(false)}>
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-ink-900/50 p-4" onClick={() => setConfirmOpen(false)}>
           <div className="w-full max-w-sm rounded-xl bg-paper-50 p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-serif text-lg font-semibold text-ink-900">Start mock test?</h3>
             <p className="mt-2 text-sm text-muted-500">

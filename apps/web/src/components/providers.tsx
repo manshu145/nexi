@@ -3,7 +3,6 @@ import { ThemeProvider } from 'next-themes';
 import { type ReactNode } from 'react';
 import { AuthProvider } from '~/lib/auth-context';
 import { UserProvider } from '~/lib/userStore';
-import { ToastProvider } from './Toast';
 import { SessionPing } from './SessionPing';
 import { AnnouncementBanner } from './AnnouncementBanner';
 import { DynamicFavicon } from './DynamicFavicon';
@@ -21,18 +20,21 @@ import { DynamicFavicon } from './DynamicFavicon';
  * payload — every authenticated page now reads from useUser() instead
  * of fanning out to its own api.me() roundtrip on each navigation.
  * That eliminates the 4-5 sec navigation pain.
+ *
+ * PR-34a: removed the legacy `<ToastProvider>` shell. Toasts are now
+ * exclusively driven by sonner's `<Toaster />` (mounted in the root
+ * layout). The legacy toast root had no consumers and was double-mounting
+ * the toast surface alongside sonner.
  */
 export function Providers({ children }: { children: ReactNode }) {
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
       <AuthProvider>
         <UserProvider>
-          <ToastProvider>
-            <SessionPing />
-            <AnnouncementBanner />
-            <DynamicFavicon />
-            {children}
-          </ToastProvider>
+          <SessionPing />
+          <AnnouncementBanner />
+          <DynamicFavicon />
+          {children}
         </UserProvider>
       </AuthProvider>
     </ThemeProvider>
