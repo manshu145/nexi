@@ -16,6 +16,7 @@ import type { CreditEarnSource, CreditSpendReason, PlanConfig, PlanId } from '@n
 import type { BlogStore, BlogPostInput, BlogPostStatus, BlogPostUpdate } from '../lib/blogStore.js';
 import { validateSlug } from '../lib/blogStore.js';
 import type { AIEngine } from '../lib/aiEngine.js';
+import { isHardcodedSuperAdmin } from '../lib/adminEmails.js';
 
 export interface AdminRoutesDeps {
   users: UserStore;
@@ -51,11 +52,30 @@ export interface AdminRoutesDeps {
 export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
   const app = new Hono();
 
-  // Admin check middleware on all routes
+  // Admin check middleware on all routes.
+  //
+  // Three independent paths grant admin access (any one is sufficient):
+  //   1. Hardcoded super-admin list in lib/adminEmails.ts -- bedrock
+  //      founder access that survives ANY env-var override / Firestore
+  //      reset / admin UI mishap. Compile-time guarantee.
+  //   2. env.SUPER_ADMIN_EMAIL -- legacy single-admin override. Kept
+  //      for backward compatibility so existing deploys don't break.
+  //   3. user.role === 'admin' in Firestore -- regular promotion path
+  //      for future admins (PR-11 added Ban + reset-password flows
+  //      against this).
+  //
+  // The principal.email comes from the verified Firebase ID token
+  // claim (PR-14 fix). A caller can't impersonate the hardcoded list
+  // without controlling that Firebase Auth identity AND the
+  // email_verified claim that auth.ts enforces.
   app.use('*', async (c, next) => {
     const principal = requireAuth(c);
     const user = await deps.users.get(principal.userId);
-    if (!user || (user.role !== 'admin' && user.email !== deps.env.SUPER_ADMIN_EMAIL)) {
+    const principalEmail = principal.email ?? user?.email ?? '';
+    const isHardcoded = isHardcodedSuperAdmin(principalEmail);
+    const isEnvAdmin = principalEmail.toLowerCase() === deps.env.SUPER_ADMIN_EMAIL.toLowerCase();
+    const isRoleAdmin = user?.role === 'admin';
+    if (!user || (!isHardcoded && !isEnvAdmin && !isRoleAdmin)) {
       throw new HTTPException(403, { message: 'Admin access required' });
     }
     await next();
