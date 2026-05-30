@@ -10,6 +10,15 @@ const APP_UPGRADE_URL = 'https://app.nexigrate.com/upgrade';
 // Plan data is inlined here (rather than imported from @nexigrate/shared) so
 // the marketing site stays statically buildable without the workspace
 // type graph. Keep these in sync with packages/shared/src/constants/subscriptions.ts.
+//
+// PR-34b note (audit #40): marketing pricing is currently STATIC. Admin
+// can edit prices live via /admin/plans (PR-04), but the marketing site
+// doesn't refetch yet. Risk of stale display is bounded — /upgrade always
+// shows live prices via api.getPlans() (PR-34b), so the actual checkout
+// amount is always correct. Marketing dynamic-price fetch is tracked as
+// a follow-up (PR-34c). When we wire it, the Astro adapter is already
+// `output: 'server'` (Cloudflare), so we can fetch /v1/billing/plans at
+// request time and template the values below — no static build break.
 interface PlanConfig {
   slug: 'scholar' | 'aspirant' | 'achiever';
   label: string;

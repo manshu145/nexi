@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Script from 'next/script';
 import { useAuth } from '~/lib/auth-context';
-import { api, newIdempotencyKey } from '~/lib/api';
+import { api, newIdempotencyKey, type Plan } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 
 declare global { interface Window { Razorpay: new (options: Record<string, unknown>) => { open(): void }; } }
@@ -38,17 +38,18 @@ const ACHIEVER_FEATURES = [
   'Dedicated study coach',
 ];
 
-// Locked at 30% off monthly × 12 — keep in sync with packages/shared/constants/subscriptions.ts
-const PRICING = {
+// Hardcoded fallback used only when the live admin matrix is unreachable
+// (network down, API outage). The /upgrade page would otherwise render
+// ₹0 / NaN for half a beat which is worse than slightly-stale numbers.
+// The live values come from `api.getPlans()` and override these on mount —
+// see PR-34b (audit #41).
+const PRICING_FALLBACK = {
   scholar:  { monthly: 99,  yearly: 830  },
   aspirant: { monthly: 299, yearly: 2510 },
   achiever: { monthly: 599, yearly: 5030 },
 } as const;
 
-function yearlyEquivMonthly(p: BillingPeriod, planKey: keyof typeof PRICING): number {
-  if (p === 'yearly') return Math.round(PRICING[planKey].yearly / 12);
-  return PRICING[planKey].monthly;
-}
+type PlanKey = keyof typeof PRICING_FALLBACK;
 
 export default function UpgradePage() {
   const { user, loading } = useAuth();
@@ -63,7 +64,44 @@ export default function UpgradePage() {
   const [couponApplied, setCouponApplied] = useState<{ valid: boolean; discount: number; finalAmount: number; error?: string } | null>(null);
   const [validatingCoupon, setValidatingCoupon] = useState(false);
 
+  // Live admin-edited plan matrix. PR-34b (audit #41) — the page used to
+  // hardcode prices, which silently drifted from whatever the admin set in
+  // /admin/plans (PR-04). The backend `GET /v1/billing/plans` already
+  // returns the live merged matrix; we just consume it. `null` means the
+  // initial fetch is still in flight (skeleton renders); empty array means
+  // it failed and we'll fall back to PRICING_FALLBACK so checkout never
+  // shows ₹0 / NaN.
+  const [livePlans, setLivePlans] = useState<Plan[] | null>(null);
+
+  /** Lookup helper. Returns the live monthly + yearly numbers if the
+   *  admin matrix has the plan, otherwise falls back to PRICING_FALLBACK
+   *  so /upgrade keeps working even when the API is down. */
+  const pricingFor = (planId: PlanKey): { monthly: number; yearly: number } => {
+    const live = livePlans?.find((p) => p.id === planId);
+    if (live && Number.isFinite(live.price) && Number.isFinite(live.yearlyPrice)) {
+      return { monthly: live.price, yearly: live.yearlyPrice };
+    }
+    return PRICING_FALLBACK[planId];
+  };
+
+  function yearlyEquivMonthly(p: BillingPeriod, planKey: PlanKey): number {
+    const px = pricingFor(planKey);
+    if (p === 'yearly') return Math.round(px.yearly / 12);
+    return px.monthly;
+  }
+
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
+
+  // PR-34b (audit #41): fetch the live admin-edited price matrix on mount
+  // so the page never shows hardcoded prices that drifted from /admin/plans.
+  // Failure is non-fatal — pricingFor() falls back to PRICING_FALLBACK.
+  useEffect(() => {
+    let cancelled = false;
+    api.getPlans()
+      .then((r) => { if (!cancelled) setLivePlans(r.plans); })
+      .catch(() => { if (!cancelled) setLivePlans([]); /* empty array → fallback used */ });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -79,7 +117,7 @@ export default function UpgradePage() {
     setCouponApplied(null);
   }, [period]);
 
-  const scholarBasePaise = PRICING.scholar[period] * 100;
+  const scholarBasePaise = pricingFor('scholar')[period] * 100;
   const scholarFinalPaise = couponApplied?.valid ? couponApplied.finalAmount : scholarBasePaise;
 
   const handleApplyCoupon = async () => {
@@ -90,6 +128,10 @@ export default function UpgradePage() {
       const res = await fetch(`${process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com'}/v1/billing/validate-coupon`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
+        // TODO(audit #34): when aspirant/achiever launch, thread the
+        // selected planId through here. Currently /upgrade only sells
+        // scholar so 'scholar' is correct, but coupons configured for
+        // aspirant/achiever cannot be validated against this page.
         body: JSON.stringify({ couponCode: couponCode.trim(), planId: 'scholar', period }),
       });
       const data = await res.json() as { valid: boolean; discount: number; finalAmount: number; error?: string };
@@ -159,11 +201,12 @@ export default function UpgradePage() {
   };
 
   const yearlySavings = useMemo(() => {
-    const monthly12 = PRICING.scholar.monthly * 12;
-    const saved = monthly12 - PRICING.scholar.yearly;
-    const pct = Math.round((saved / monthly12) * 100);
+    const px = pricingFor('scholar');
+    const monthly12 = px.monthly * 12;
+    const saved = monthly12 - px.yearly;
+    const pct = monthly12 > 0 ? Math.round((saved / monthly12) * 100) : 0;
     return { saved, pct };
-  }, []);
+  }, [livePlans]);
 
   if (loading || !user) return (
     <main className="flex min-h-dvh items-center justify-center">
@@ -175,7 +218,7 @@ export default function UpgradePage() {
   );
 
   const scholarDisplayPrice = scholarFinalPaise / 100;
-  const scholarStrikethrough = couponApplied?.valid ? PRICING.scholar[period] : null;
+  const scholarStrikethrough = couponApplied?.valid ? pricingFor('scholar')[period] : null;
   const isCurrentScholar = currentPlan === 'scholar';
 
   return (
@@ -214,7 +257,29 @@ export default function UpgradePage() {
       {success && <div className="mt-6 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-4 text-center text-sm font-medium text-amber-700 dark:text-amber-300">{success}</div>}
       {error && <div className="banner banner-error mt-6">{error}</div>}
 
-      {/* Plan cards */}
+      {/* Plan cards.
+         PR-34b (audit #41): while the live admin matrix is loading
+         (`livePlans === null`) we render a paper-card skeleton instead of
+         the cards so the page never flashes hardcoded prices for half a
+         beat on slow networks. Once the fetch resolves (or fails — empty
+         array also lifts the skeleton), the real cards render with the
+         live numbers (or fallback constants). */}
+      {livePlans === null ? (
+        <div className="mt-8 grid gap-5 grid-cols-1 md:grid-cols-2 lg:grid-cols-4" aria-hidden>
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="paper-card relative flex flex-col p-5">
+              <div className="h-5 w-20 rounded bg-paper-200 animate-pulse" />
+              <div className="mt-4 h-8 w-24 rounded bg-paper-200 animate-pulse" />
+              <ul className="mt-4 flex-1 space-y-2">
+                {[0, 1, 2, 3].map((j) => (
+                  <li key={j} className="h-3 w-3/4 rounded bg-paper-200 animate-pulse" />
+                ))}
+              </ul>
+              <div className="mt-5 h-10 rounded-xl bg-paper-200 animate-pulse" />
+            </div>
+          ))}
+        </div>
+      ) : (
       <div className="mt-8 grid gap-5 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
         {/* FREE */}
         <div className={`paper-card relative flex flex-col p-5 ${currentPlan === 'free' ? 'border-2 border-amber-400 dark:border-amber-600' : ''}`}>
@@ -301,7 +366,7 @@ export default function UpgradePage() {
           <span className="absolute -top-2.5 right-3 rounded-full bg-stone-500 px-3 py-0.5 text-xs font-semibold text-paper-50">Coming Soon</span>
           <h3 className="font-serif text-lg font-bold text-ink-900">Aspirant</h3>
           <p className="mt-2">
-            <span className="font-serif text-3xl font-bold text-muted-400">₹{PRICING.aspirant[period]}</span>
+            <span className="font-serif text-3xl font-bold text-muted-400">₹{pricingFor('aspirant')[period]}</span>
             <span className="text-sm text-muted-400">/{period === 'yearly' ? 'yr' : 'mo'}</span>
           </p>
           <ul className="mt-4 flex-1 space-y-2">
@@ -321,7 +386,7 @@ export default function UpgradePage() {
           <span className="absolute -top-2.5 right-3 rounded-full bg-stone-500 px-3 py-0.5 text-xs font-semibold text-paper-50">Coming Soon</span>
           <h3 className="font-serif text-lg font-bold text-ink-900">Achiever</h3>
           <p className="mt-2">
-            <span className="font-serif text-3xl font-bold text-muted-400">₹{PRICING.achiever[period]}</span>
+            <span className="font-serif text-3xl font-bold text-muted-400">₹{pricingFor('achiever')[period]}</span>
             <span className="text-sm text-muted-400">/{period === 'yearly' ? 'yr' : 'mo'}</span>
           </p>
           <ul className="mt-4 flex-1 space-y-2">
@@ -336,6 +401,7 @@ export default function UpgradePage() {
           </button>
         </div>
       </div>
+      )}
 
       {/* Credits info */}
       <div className="mt-8 paper-card p-4 text-center">
