@@ -16,6 +16,9 @@ import type { CreditEarnSource, CreditSpendReason, PlanConfig, PlanId } from '@n
 import type { AIProviderStore, ProviderConfig } from '../lib/aiProviderStore.js';
 import type { AIModelResolver } from '../lib/aiModelResolver.js';
 import { AI_PROVIDERS, getProviderMetadata, validateProviderKey, type ProviderId } from '../lib/aiProviderRegistry.js';
+import type { BlogStore, BlogPostInput, BlogPostStatus, BlogPostUpdate } from '../lib/blogStore.js';
+import { validateSlug } from '../lib/blogStore.js';
+import type { AIEngine } from '../lib/aiEngine.js';
 
 export interface AdminRoutesDeps {
   users: UserStore;
@@ -44,6 +47,16 @@ export interface AdminRoutesDeps {
   /** Auto-resolver (PR-29). Used by the validate endpoint to surface
    *  exactly which model fired during the test. */
   modelResolver: AIModelResolver;
+  /**
+   * Blog post store (lock §5.3). Optional so older test fixtures that
+   * predate the blog system don't fail to construct admin routes.
+   */
+  blog?: BlogStore;
+  /**
+   * AI engine. Used here to generate blog drafts (admin "Generate with AI"
+   * button calls /admin/blog/draft which thunks through aiEngine.generateBlogDraft).
+   */
+  aiEngine?: AIEngine;
 }
 
 export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
@@ -975,6 +988,143 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
     const cfg = await deps.aiProviderStore.get(id);
     return c.json({ provider: serializeProvider(id, cfg) });
   });
+  // ━━━ BLOG (lock §5.3) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Admin-only CRUD for blog posts. Drafts are visible to admin only;
+  // public marketing surface only sees `status: 'published'`. The AI
+  // draft endpoint is the "AI assistance" the founder asked for in the
+  // lock — admin types a topic + optional outline, gets back markdown,
+  // then iterates in the editor.
+  if (deps.blog) {
+    const blog = deps.blog;
+
+    // GET /v1/admin/blog/posts -- all posts (including drafts).
+    // Optional ?status=draft|published|archived to filter.
+    app.get('/blog/posts', async (c) => {
+      const status = (c.req.query('status') ?? '') as BlogPostStatus | '';
+      const limit = Math.min(parseInt(c.req.query('limit') ?? '50', 10) || 50, 200);
+      const opts: { status?: BlogPostStatus; limit?: number } = { limit };
+      if (status === 'draft' || status === 'published' || status === 'archived') {
+        opts.status = status;
+      }
+      const rows = await blog.listAll(opts);
+      // Strip body in list -- editor fetches body on click.
+      const lite = rows.map(p => ({
+        id: p.id, slug: p.slug, title: p.title, status: p.status,
+        excerpt: p.excerpt, tags: p.tags, authorName: p.authorName,
+        createdAt: p.createdAt, updatedAt: p.updatedAt, publishedAt: p.publishedAt,
+      }));
+      return c.json({ posts: lite });
+    });
+
+    // GET /v1/admin/blog/posts/:id -- full post incl. body.
+    app.get('/blog/posts/:id', async (c) => {
+      const post = await blog.getById(c.req.param('id'));
+      if (!post) throw new HTTPException(404, { message: 'post_not_found' });
+      return c.json({ post });
+    });
+
+    // POST /v1/admin/blog/posts -- create a draft.
+    app.post('/blog/posts', async (c) => {
+      const body = await c.req.json().catch(() => null) as Partial<BlogPostInput> | null;
+      if (!body || !body.slug || !body.title || !body.body) {
+        throw new HTTPException(400, { message: 'slug, title, and body are required' });
+      }
+      const slugErr = validateSlug(body.slug);
+      if (slugErr) throw new HTTPException(400, { message: slugErr });
+      try {
+        const post = await blog.create({
+          slug: body.slug,
+          title: body.title,
+          titleHi: body.titleHi,
+          excerpt: body.excerpt ?? body.title,
+          excerptHi: body.excerptHi,
+          body: body.body,
+          bodyHi: body.bodyHi,
+          seoTitle: body.seoTitle,
+          seoDescription: body.seoDescription,
+          ogImage: body.ogImage,
+          tags: body.tags ?? [],
+          authorName: body.authorName,
+        });
+        deps.logger.info('admin.blog.created', { id: post.id, slug: post.slug });
+        return c.json({ post });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'create_failed';
+        throw new HTTPException(409, { message: msg });
+      }
+    });
+
+    // PATCH /v1/admin/blog/posts/:id -- partial update.
+    app.patch('/blog/posts/:id', async (c) => {
+      const id = c.req.param('id');
+      const body = await c.req.json().catch(() => null) as BlogPostUpdate | null;
+      if (!body) throw new HTTPException(400, { message: 'body required' });
+      try {
+        const post = await blog.update(id, body);
+        if (!post) throw new HTTPException(404, { message: 'post_not_found' });
+        return c.json({ post });
+      } catch (err) {
+        if (err instanceof HTTPException) throw err;
+        const msg = err instanceof Error ? err.message : 'update_failed';
+        throw new HTTPException(400, { message: msg });
+      }
+    });
+
+    // POST /v1/admin/blog/posts/:id/publish -- flip to published.
+    app.post('/blog/posts/:id/publish', async (c) => {
+      const post = await blog.publish(c.req.param('id'));
+      if (!post) throw new HTTPException(404, { message: 'post_not_found' });
+      deps.logger.info('admin.blog.published', { id: post.id, slug: post.slug });
+      return c.json({ post });
+    });
+
+    // POST /v1/admin/blog/posts/:id/unpublish -- flip back to draft.
+    app.post('/blog/posts/:id/unpublish', async (c) => {
+      const post = await blog.unpublish(c.req.param('id'));
+      if (!post) throw new HTTPException(404, { message: 'post_not_found' });
+      deps.logger.info('admin.blog.unpublished', { id: post.id, slug: post.slug });
+      return c.json({ post });
+    });
+
+    // DELETE /v1/admin/blog/posts/:id -- hard delete.
+    app.delete('/blog/posts/:id', async (c) => {
+      const ok = await blog.remove(c.req.param('id'));
+      if (!ok) throw new HTTPException(404, { message: 'post_not_found' });
+      deps.logger.info('admin.blog.deleted', { id: c.req.param('id') });
+      return c.json({ success: true });
+    });
+
+    // POST /v1/admin/blog/draft -- AI draft generator.
+    // Body: { topic, outline?, language: 'en'|'hi', targetExam? }
+    // Returns markdown body. Caller copies into the editor + edits.
+    app.post('/blog/draft', async (c) => {
+      if (!deps.aiEngine) {
+        throw new HTTPException(503, { message: 'AI engine not configured' });
+      }
+      const body = await c.req.json().catch(() => null) as
+        | { topic?: string; outline?: string; language?: 'en' | 'hi'; targetExam?: string }
+        | null;
+      const topic = body?.topic?.trim();
+      if (!topic || topic.length < 10) {
+        throw new HTTPException(400, { message: 'topic must be at least 10 characters' });
+      }
+      const language = body?.language === 'hi' ? 'hi' : 'en';
+      try {
+        const draftBody = await deps.aiEngine.generateBlogDraft({
+          topic,
+          outline: body?.outline,
+          language,
+          targetExam: body?.targetExam,
+        });
+        deps.logger.info('admin.blog.draft_generated', { topic: topic.slice(0, 80), language, length: draftBody.length });
+        return c.json({ body: draftBody });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'draft_failed';
+        deps.logger.warn('admin.blog.draft_failed', { error: msg });
+        throw new HTTPException(503, { message: msg });
+      }
+    });
+  }
 
   return app;
 }

@@ -1,0 +1,118 @@
+---
+import Layout from '~/layouts/Layout.astro';
+import Nav from '~/components/Nav.astro';
+import Footer from '~/components/Footer.astro';
+
+// SSR (not prerendered) so newly published posts appear without a redeploy.
+// Cloudflare cache layer + the API's Cache-Control: public, max-age=300
+// header give us effective edge caching anyway.
+export const prerender = false;
+
+const API_URL = 'https://api.nexigrate.com';
+
+interface BlogListItem {
+  id: string; slug: string;
+  title: string; titleHi?: string;
+  excerpt: string; excerptHi?: string;
+  ogImage?: string; tags: string[];
+  authorName: string; publishedAt?: string;
+}
+
+let posts: BlogListItem[] = [];
+let fetchError = false;
+
+try {
+  const res = await fetch(`${API_URL}/v1/blog/posts?limit=50`, {
+    // 5-min cache to match the API's Cache-Control header.
+    headers: { Accept: 'application/json' },
+  });
+  if (res.ok) {
+    const data = await res.json() as { posts: BlogListItem[] };
+    posts = data.posts ?? [];
+  } else {
+    fetchError = true;
+  }
+} catch {
+  fetchError = true;
+}
+
+const title = 'Nexigrate Blog — Strategy, study tips, and exam updates';
+const description = 'Real exam strategy, study tips, and current-affairs guides for Indian competitive-exam students. Class 5 to UPSC.';
+---
+<Layout title={title} description={description} pathname="/blog">
+  <Nav />
+  <main id="main" class="mx-auto max-w-5xl px-4 py-12 sm:py-16">
+    <header class="mb-10 text-center sm:mb-14">
+      <p class="text-sm uppercase tracking-wider text-ember-700">Nexigrate Blog</p>
+      <h1 class="mt-2 text-3xl font-bold text-ink-900 sm:text-4xl">
+        Study strategy, exam updates, and current-affairs deep-dives.
+      </h1>
+      <p class="mx-auto mt-3 max-w-2xl text-ink-700">
+        Long-form notes from our team — written and reviewed against the actual syllabus.
+      </p>
+    </header>
+
+    {fetchError && (
+      <div class="rounded-lg border border-line bg-paper-100 p-6 text-center text-muted-foreground">
+        We're having trouble loading posts right now. Please try again in a moment.
+      </div>
+    )}
+
+    {!fetchError && posts.length === 0 && (
+      <div class="rounded-lg border border-dashed border-line bg-paper-50 p-10 text-center text-muted-foreground">
+        Posts coming soon. In the meantime, try the
+        <a href="/" class="ml-1 text-ember-700 hover:underline">free study app</a>.
+      </div>
+    )}
+
+    {posts.length > 0 && (
+      <ul class="grid gap-6 sm:grid-cols-2">
+        {posts.map((post) => (
+          <li class="group rounded-xl border border-line bg-paper-50 p-5 transition hover:border-ember-500/40 hover:bg-paper-100">
+            <a href={`/blog/${post.slug}`} class="block">
+              {post.ogImage && (
+                <img
+                  src={post.ogImage}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  class="mb-3 h-40 w-full rounded-lg object-cover"
+                />
+              )}
+              <h2 class="text-xl font-semibold text-ink-900 group-hover:text-ember-700">
+                {post.title}
+              </h2>
+              {post.excerpt && (
+                <p class="mt-2 line-clamp-3 text-sm text-ink-700">{post.excerpt}</p>
+              )}
+              <div class="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <span>{post.authorName}</span>
+                {post.publishedAt && (
+                  <>
+                    <span>·</span>
+                    <time datetime={post.publishedAt}>
+                      {new Date(post.publishedAt).toLocaleDateString('en-IN', {
+                        month: 'short', day: 'numeric', year: 'numeric',
+                      })}
+                    </time>
+                  </>
+                )}
+                {post.tags.length > 0 && (
+                  <>
+                    <span>·</span>
+                    {post.tags.slice(0, 3).map((tag) => (
+                      <span class="rounded-full bg-ember-500/10 px-2 py-0.5 text-ember-700">
+                        {tag}
+                      </span>
+                    ))}
+                  </>
+                )}
+              </div>
+            </a>
+          </li>
+        ))}
+      </ul>
+    )}
+  </main>
+  <Footer />
+</Layout>

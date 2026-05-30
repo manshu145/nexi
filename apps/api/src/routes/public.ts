@@ -30,11 +30,13 @@ import { z } from 'zod';
 import type { Logger } from '../logger.js';
 import type { AdminStore } from '../lib/adminStore.js';
 import type { PlatformConfigStore } from '../lib/platformConfigStore.js';
+import type { BlogStore } from '../lib/blogStore.js';
 
 export interface PublicRoutesDeps {
   adminStore: AdminStore;
   config: PlatformConfigStore;
   logger: Logger;
+  blog?: BlogStore;
 }
 
 const errorReportSchema = z.object({
@@ -156,6 +158,57 @@ export function makePublicRoutes(deps: PublicRoutesDeps): Hono {
       currency: 'INR',
     });
   });
+
+  // ─── Blog (lock §5.3) — read-only, only published posts ────────────
+  // Marketing /blog and /blog/[slug] hit these endpoints. Admin-only
+  // mutation routes live under /v1/admin/blog (auth-gated). Public
+  // surface returns content already vetted + published by the admin --
+  // drafts are never visible here.
+  if (deps.blog) {
+    const blog = deps.blog;
+
+    // GET /v1/blog/posts -- list of published posts (newest first).
+    // Cache 5 min: blog content doesn't move minute-to-minute, and the
+    // marketing site's SEO benefits from a stable list across crawls.
+    app.get('/blog/posts', async (c) => {
+      const limitRaw = c.req.query('limit');
+      const limit = Math.min(Math.max(parseInt(limitRaw ?? '20', 10) || 20, 1), 50);
+      const tag = c.req.query('tag') ?? undefined;
+      try {
+        const rows = await blog.listPublished({ limit, tag });
+        // Strip body from list payload -- list view only needs metadata,
+        // and the body is the heaviest field. Saves bandwidth on the
+        // marketing /blog index page.
+        const lite = rows.map(p => ({
+          id: p.id, slug: p.slug, title: p.title, titleHi: p.titleHi,
+          excerpt: p.excerpt, excerptHi: p.excerptHi, ogImage: p.ogImage,
+          tags: p.tags, authorName: p.authorName, publishedAt: p.publishedAt,
+        }));
+        c.header('Cache-Control', 'public, max-age=300');
+        return c.json({ posts: lite });
+      } catch (err) {
+        deps.logger.warn('blog.list_failed', { error: err instanceof Error ? err.message : String(err) });
+        return c.json({ posts: [] });
+      }
+    });
+
+    // GET /v1/blog/posts/:slug -- single published post.
+    // 404s if the slug doesn't exist OR the post is still in draft.
+    app.get('/blog/posts/:slug', async (c) => {
+      const slug = c.req.param('slug');
+      try {
+        const post = await blog.getBySlug(slug);
+        if (!post || post.status !== 'published') {
+          return c.json({ error: 'not_found' }, 404);
+        }
+        c.header('Cache-Control', 'public, max-age=300');
+        return c.json({ post });
+      } catch (err) {
+        deps.logger.warn('blog.get_failed', { slug, error: err instanceof Error ? err.message : String(err) });
+        return c.json({ error: 'not_found' }, 404);
+      }
+    });
+  }
 
   return app;
 }
