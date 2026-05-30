@@ -6,6 +6,9 @@ import type { Logger } from '../logger.js';
 import type { AdminStore } from './adminStore.js';
 import type { AISpendStore } from './aiSpendStore.js';
 import type { UserContext } from './chapterStore.js';
+import type { AIModelResolver, ResolvedModel } from './aiModelResolver.js';
+import { isModelDeprecationError } from './aiModelResolver.js';
+import { getCostPer1k } from './aiProviderRegistry.js';
 
 export interface MCQOption { key: 'A' | 'B' | 'C' | 'D'; text: string; }
 export interface GeneratedMCQ { id: string; question: string; options: MCQOption[]; correctOption: 'A' | 'B' | 'C' | 'D'; explanation: string; difficulty: 'easy' | 'medium' | 'hard'; subject?: string; topic?: string; }
@@ -90,24 +93,25 @@ function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
-/** Estimate cost based on model and tokens */
+/** Estimate cost based on model and tokens. Pulls per-1k rates from the
+ *  registry so the rate map lives in one place rather than being
+ *  duplicated here. Falls back to a microcent if the model id isn't in
+ *  the registry (which can happen when an AI call site drifts ahead of
+ *  the registry; better to bill ~zero than to crash on undefined). */
 function estimateCost(model: string, tokens: number): number {
-  const rates: Record<string, number> = {
-    'gpt-4o': 0.000005,
-    // dall-e-3 + gpt-image-1 are billed per-image, not per-token. The
-    // call sites pass `tokens=1` and use the rate as the per-image
-    // unit price so the existing per-call cost log line stays valid.
-    'dall-e-3': 0.04,         // 1024x1024 standard quality
-    'gpt-image-1': 0.02,      // 1024x1024 medium quality (cheaper than DALL-E 3)
-    'llama-3.3-70b-versatile': 0.0000008,
-    'gemini-1.5-flash': 0.0000001,
-    'gemini-2.0-flash': 0.0000001,
-    'gemini-2.0-flash-exp': 0.0000002,
-  };
-  return (rates[model] ?? 0.000001) * tokens;
+  // Try every provider's model list — the registry already does this
+  // scan when called with a non-matching providerId, so we just pass
+  // an empty string and let `getCostPer1k` walk all providers.
+  return getCostPer1k('', model) * tokens;
 }
 
-export function createAIEngine(env: Env, logger: Logger, adminStore?: AdminStore | null, aiSpend?: AISpendStore | null): AIEngine {
+export function createAIEngine(
+  env: Env,
+  logger: Logger,
+  adminStore?: AdminStore | null,
+  aiSpend?: AISpendStore | null,
+  resolver?: AIModelResolver | null,
+): AIEngine {
   // Log which AI providers are available at startup
   const hasGroq = !!(env.GROQ_API_KEY && env.GROQ_API_KEY.length > 5);
   const hasOpenai = !!(env.OPENAI_API_KEY && env.OPENAI_API_KEY.length > 5);
@@ -121,6 +125,205 @@ export function createAIEngine(env: Env, logger: Logger, adminStore?: AdminStore
   const groq = hasGroq ? new Groq({ apiKey: env.GROQ_API_KEY }) : null;
   const openai = hasOpenai ? new OpenAI({ apiKey: env.OPENAI_API_KEY }) : null;
   const store = adminStore ?? null;
+
+  /**
+   * Auto-switch helper for direct Gemini REST calls.
+   *
+   * Replaces the 9 hardcoded `gemini-2.0-flash` URL constructions that
+   * used to live throughout this file. Each call site previously read:
+   *
+   *   const res = await fetch(`https://...models/gemini-2.0-flash:generateContent?key=${env.GEMINI_API_KEY}`, { body: JSON.stringify({ contents: [...], generationConfig: {...} }) });
+   *
+   * Now reads:
+   *
+   *   const res = await callGemini({ promptText, generationConfig, tier });
+   *
+   * Behaviour:
+   *   1. Resolve the (apiKey, model) for gemini at the requested tier.
+   *      No resolver / no key configured => returns { ok: false, ... }
+   *      so the caller's outer fallback chain proceeds untouched.
+   *   2. POST to `models/{model}:generateContent`.
+   *   3. On 4xx with a deprecation pattern (model not available, 404
+   *      with /models/, etc), the resolver blacklists the model for
+   *      5 minutes and we re-resolve + retry ONCE with the next chain
+   *      entry. Subsequent calls in the same minute hit the new
+   *      model directly without probing the dead one.
+   *   4. On 5xx / network errors, NO blacklist -- those are flaky-
+   *      provider, not dead-model. Returns the failure to the caller
+   *      so its outer chain runs.
+   *
+   * @returns { ok: true, text, model } on success, { ok: false, error,
+   *   model? } on failure (model present iff a resolve happened).
+   */
+  type GeminiCallOpts = {
+    prompt: string;
+    /** Pass through to the Gemini API generationConfig. */
+    generationConfig?: Record<string, unknown>;
+    /** Defaults to flash. Use 'pro' for grounded research / search. */
+    tier?: 'flash' | 'pro' | 'image';
+    /** Pass-through tools for Gemini (e.g. googleSearch grounding). */
+    tools?: unknown[];
+    /** Optional contents override (multimodal). Otherwise we wrap
+     *  `prompt` in a single text part. */
+    contents?: unknown[];
+  };
+  type GeminiCallResult =
+    | { ok: true; text: string; model: string; raw: any; latencyMs: number }
+    | { ok: false; error: string; model?: string; latencyMs: number };
+
+  async function callGeminiOnce(resolved: ResolvedModel, opts: GeminiCallOpts): Promise<GeminiCallResult> {
+    const t0 = Date.now();
+    const body: Record<string, unknown> = {
+      contents: opts.contents ?? [{ parts: [{ text: opts.prompt }] }],
+    };
+    if (opts.generationConfig) body['generationConfig'] = opts.generationConfig;
+    if (opts.tools) body['tools'] = opts.tools;
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${resolved.model}:generateContent?key=${resolved.apiKey}`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+    );
+    const latencyMs = Date.now() - t0;
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      // Throw so callWithModelFallback's catch can pattern-match on
+      // "HTTP 404 ... /models/..." and decide to blacklist + retry.
+      // (Returning false here would skip the auto-switch.)
+      throw new Error(`Gemini HTTP ${res.status}: ${errText.slice(0, 200)}`);
+    }
+    const raw = (await res.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+    const text = raw.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    return { ok: true, text, model: resolved.model, raw, latencyMs };
+  }
+
+  async function callGemini(opts: GeminiCallOpts): Promise<GeminiCallResult> {
+    if (!resolver) {
+      // No resolver wired (legacy path): the engine still works on the
+      // env-only setup, but cannot auto-switch. Use whatever the env
+      // var has and the FIRST flash model in the registry chain.
+      // This is the path test setups + ad-hoc dev hits.
+      if (!env.GEMINI_API_KEY || env.GEMINI_API_KEY.length < 6) {
+        return { ok: false, error: 'gemini_not_configured', latencyMs: 0 };
+      }
+      const { pickPreferredModel } = await import('./aiProviderRegistry.js');
+      const tier = opts.tier ?? 'flash';
+      const model = pickPreferredModel('gemini', tier);
+      if (!model) return { ok: false, error: 'no_gemini_model_in_registry', latencyMs: 0 };
+      try {
+        return await callGeminiOnce({ provider: 'gemini', model, apiKey: env.GEMINI_API_KEY }, opts);
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err), model, latencyMs: 0 };
+      }
+    }
+    const tier = opts.tier ?? 'flash';
+    try {
+      return await resolver.callWithModelFallback('gemini', (resolved) => callGeminiOnce(resolved, opts), { tier });
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      return { ok: false, error, latencyMs: 0 };
+    }
+  }
+
+  /**
+   * Resolve the runtime OpenAI client, preferring the admin-saved key
+   * over the env var. Returns the eager-init env client if no admin
+   * key was saved (or no resolver wired). Re-builds a fresh client
+   * each call when the admin key is in play because admin can rotate
+   * keys live; the env-init client is reused for free.
+   */
+  async function getOpenAIClient(): Promise<{ client: OpenAI; model: string } | null> {
+    if (resolver) {
+      const r = await resolver.resolve('openai', { tier: 'pro' });
+      if (r) {
+        // env path hits this too via resolver.getKey(env-fallback).
+        if (r.apiKey === env.OPENAI_API_KEY && openai) {
+          return { client: openai, model: r.model };
+        }
+        return { client: new OpenAI({ apiKey: r.apiKey }), model: r.model };
+      }
+    }
+    // No resolver, fall back to the eager-init env client + a chain pick.
+    if (!openai) return null;
+    const { pickPreferredModel } = await import('./aiProviderRegistry.js');
+    const m = pickPreferredModel('openai', 'pro') ?? pickPreferredModel('openai', 'flash');
+    if (!m) return null;
+    return { client: openai, model: m };
+  }
+
+  async function getOpenAIClientFlash(): Promise<{ client: OpenAI; model: string } | null> {
+    if (resolver) {
+      const r = await resolver.resolve('openai', { tier: 'flash' });
+      if (r) {
+        if (r.apiKey === env.OPENAI_API_KEY && openai) return { client: openai, model: r.model };
+        return { client: new OpenAI({ apiKey: r.apiKey }), model: r.model };
+      }
+    }
+    if (!openai) return null;
+    const { pickPreferredModel } = await import('./aiProviderRegistry.js');
+    const m = pickPreferredModel('openai', 'flash') ?? pickPreferredModel('openai', 'pro');
+    if (!m) return null;
+    return { client: openai, model: m };
+  }
+
+  /**
+   * Resolve the Groq client + currently-preferred model. Same
+   * lazy-rebuild-on-admin-key logic as OpenAI above.
+   */
+  async function getGroqClient(): Promise<{ client: Groq; model: string } | null> {
+    if (resolver) {
+      const r = await resolver.resolve('groq', { tier: 'flash' });
+      if (r) {
+        if (r.apiKey === env.GROQ_API_KEY && groq) return { client: groq, model: r.model };
+        return { client: new Groq({ apiKey: r.apiKey }), model: r.model };
+      }
+    }
+    if (!groq) return null;
+    const { pickPreferredModel } = await import('./aiProviderRegistry.js');
+    const m = pickPreferredModel('groq', 'flash');
+    if (!m) return null;
+    return { client: groq, model: m };
+  }
+
+  /**
+   * Generic per-call fallback wrapper for the SDK-based providers.
+   * If the call throws a deprecation-flavoured error, blacklist the
+   * model and retry once with the next chain entry. Transient errors
+   * are re-thrown immediately (the engine's outer provider chain
+   * handles flaky-provider fallback).
+   *
+   * Reserved for future SDK call sites that want auto-switching for
+   * Groq / OpenAI model deprecations. The current engine call sites
+   * still pass static model ids ('llama-3.3-70b-versatile', 'gpt-4o')
+   * because those have not yet been deprecated; when they are, lifting
+   * the call into this helper is a one-line change.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async function withSdkModelFallback<T>(
+    provider: 'openai' | 'groq',
+    primary: { model: string },
+    callFn: (model: string) => Promise<T>,
+  ): Promise<T> {
+    try {
+      const result = await callFn(primary.model);
+      if (resolver) void resolver.reportModelSuccess(provider, primary.model);
+      return result;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (resolver) await resolver.reportModelFailure(provider, primary.model, msg);
+      if (!isModelDeprecationError(msg) || !resolver) throw err;
+      // Re-resolve and retry once.
+      const next = provider === 'openai' ? await getOpenAIClient() : await getGroqClient();
+      if (!next || next.model === primary.model) throw err;
+      logger.info('ai.engine_sdk_fallback_retry', { provider, from: primary.model, to: next.model });
+      try {
+        const result = await callFn(next.model);
+        if (resolver) void resolver.reportModelSuccess(provider, next.model);
+        return result;
+      } catch (err2) {
+        if (resolver) await resolver.reportModelFailure(provider, next.model, err2 instanceof Error ? err2.message : String(err2));
+        throw err2;
+      }
+    }
+  }
 
   /**
    * 3-Layer AI verifier (lock §5.2 + marketing §2.4 claim).
@@ -143,6 +346,35 @@ export function createAIEngine(env: Env, logger: Logger, adminStore?: AdminStore
     ? buildChapterVerifier({
         geminiApiKey: env.GEMINI_API_KEY ?? '',
         openaiApiKey: hasOpenai ? env.OPENAI_API_KEY : undefined,
+        // Resolver-aware key+model lookup. When wired (PR-29 onward),
+        // the verifier resolves a fresh non-blacklisted Gemini flash
+        // model on every call so a deprecation in the chain doesn't
+        // brick chapter cross-checking. Falls back to the static
+        // geminiApiKey above if no resolver.
+        getGeminiKeyAndModel: resolver
+          ? async () => {
+              const r = await resolver.resolve('gemini', { tier: 'flash' });
+              return r ? { apiKey: r.apiKey, model: r.model } : null;
+            }
+          : undefined,
+        reportGeminiResult: resolver
+          ? async (model, ok, error) => {
+              if (ok) await resolver.reportModelSuccess('gemini', model);
+              else await resolver.reportModelFailure('gemini', model, error ?? 'verifier_failed');
+            }
+          : undefined,
+        getOpenAIKeyAndModel: resolver && hasOpenai
+          ? async () => {
+              const r = await resolver.resolve('openai', { tier: 'flash' });
+              return r ? { apiKey: r.apiKey, model: r.model } : null;
+            }
+          : undefined,
+        reportOpenAIResult: resolver
+          ? async (model, ok, error) => {
+              if (ok) await resolver.reportModelSuccess('openai', model);
+              else await resolver.reportModelFailure('openai', model, error ?? 'verifier_failed');
+            }
+          : undefined,
       })
     : null;
   if (!chapterVerifier) {
@@ -315,40 +547,31 @@ export function createAIEngine(env: Env, logger: Logger, adminStore?: AdminStore
     }
 
     // ── Provider 3: Gemini (final fallback) ──────────────────────────
-    // Migrated 1.5-flash → 2.0-flash (PR-17): 1.5 entered maintenance in
-    // late 2025; 2.0 is the current production-supported flash model
-    // and historically less prone to silent throttling for our quota
-    // tier. Same v1beta payload shape, drop-in.
+    // Auto-resolver wired (PR-29): no hardcoded model name. The
+    // resolver picks the topmost non-blacklisted entry from the
+    // gemini flash chain on each call; on a deprecation 404 it
+    // blacklists + retries the next entry within the same call.
     if (env.GEMINI_API_KEY && env.GEMINI_API_KEY.length > 5) {
       try {
-        const res = await withRetryOnTransient('gemini', async () => {
-          const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: prompt }] }],
-              generationConfig: { temperature: 0.7, maxOutputTokens: MAX_TOKENS },
-            }),
+        const result = await withRetryOnTransient('gemini', async () => {
+          const r = await callGemini({
+            prompt,
+            generationConfig: { temperature: 0.7, maxOutputTokens: MAX_TOKENS },
+            tier: 'flash',
           });
-          // Surface non-2xx as a throwable string so withRetryOnTransient
-          // can decide to retry (5xx, 429) vs. bail (4xx).
-          if (!r.ok) {
-            const body = await r.text().catch(() => '');
-            throw new Error(`Gemini HTTP ${r.status}: ${body.slice(0, 200)}`);
-          }
+          if (!r.ok) throw new Error(r.error);
           return r;
         });
-        const data = (await res.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> }; finishReason?: string }> };
-        const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-        const finishReason = data.candidates?.[0]?.finishReason ?? 'unknown';
+        const rawText = result.text;
+        const finishReason = (result.raw?.candidates?.[0]?.finishReason as string | undefined) ?? 'unknown';
         // Gemini sometimes wraps JSON in ```json ... ``` fences.
         const stripped = rawText.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '');
         const recovered = recoverQuestions(stripped);
         if (recovered) {
-          logger.info('ai.questions_generated', { provider: 'gemini', endpoint, examSlug, language, count: recovered.length, finishReason });
+          logger.info('ai.questions_generated', { provider: 'gemini', endpoint, examSlug, language, count: recovered.length, finishReason, model: result.model });
           return recovered;
         }
-        errors.push(`Gemini returned ${rawText.length} chars, no parseable questions (finish=${finishReason}, preview="${rawText.slice(0, 120).replace(/\s+/g, ' ')}")`);
+        errors.push(`Gemini returned ${rawText.length} chars, no parseable questions (model=${result.model}, finish=${finishReason}, preview="${rawText.slice(0, 120).replace(/\s+/g, ' ')}")`);
       } catch (err) {
         errors.push(`Gemini: ${err instanceof Error ? err.message : String(err)}`);
       }
@@ -805,9 +1028,16 @@ End with: Important facts to remember for exam.`;
       } else { errors.push('OpenAI not configured'); }
       if (env.GEMINI_API_KEY && env.GEMINI_API_KEY.length > 5) {
         try {
-          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${env.GEMINI_API_KEY}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.7, maxOutputTokens: 4096 } }) });
-          if (res.ok) { const data = await res.json() as any; const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''; const jsonMatch = rawText.match(/\{[\s\S]*\}/); if (jsonMatch) { const parsed = JSON.parse(jsonMatch[0]) as { questions: GeneratedMCQ[] }; if (parsed.questions?.length) { logger.info('ai.chapter_mcqs', { provider: 'gemini', chapter, count: parsed.questions.length }); return parsed.questions; } } }
-          errors.push(`Gemini failed`);
+          const r = await callGemini({ prompt, generationConfig: { temperature: 0.7, maxOutputTokens: 4096 }, tier: 'flash' });
+          if (r.ok) {
+            const rawText = r.text;
+            const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              const parsed = JSON.parse(jsonMatch[0]) as { questions: GeneratedMCQ[] };
+              if (parsed.questions?.length) { logger.info('ai.chapter_mcqs', { provider: 'gemini', chapter, count: parsed.questions.length, model: r.model }); return parsed.questions; }
+            }
+          }
+          errors.push(`Gemini failed${('error' in r) ? ': ' + r.error : ''}`);
         } catch (err) { errors.push(`Gemini: ${err instanceof Error ? err.message : String(err)}`); }
       } else { errors.push('Gemini not configured'); }
       logger.error('ai.chapter_mcqs_all_failed', { errors, chapter, subject, exam });
@@ -818,18 +1048,12 @@ End with: Important facts to remember for exam.`;
     async generateMermaidDiagram(chapter, subject, exam) {
       const prompt = `Create a Mermaid.js flowchart (graph TD) that visually explains key concepts of "${chapter}" (${subject}, ${exam}).\n\nRequirements:\n- Max 12 nodes with clear, concise labels\n- Use meaningful connections with labels on arrows where helpful\n- Group related concepts visually\n- Valid Mermaid syntax only, no markdown fences\n- Use subgraphs if the topic has distinct sub-areas\n\nExample:\ngraph TD\n    A[Main Concept] --> B[Sub-concept 1]\n    A --> C[Sub-concept 2]\n    B --> D[Detail]\n    C --> E[Detail]`;
       try {
-        // Use Gemini Flash for visual/diagram tasks
+        // Use Gemini Flash for visual/diagram tasks (auto-resolved chain)
         if (env.GEMINI_API_KEY) {
-          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.5, maxOutputTokens: 800 } }),
-          });
-          if (res.ok) {
-            const data = await res.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
-            const raw = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-            const cleaned = raw.replace(/```mermaid\n?/g, '').replace(/```\n?/g, '').trim();
-            if (cleaned) { logger.info('ai.mermaid_gemini', { chapter, subject, exam }); return cleaned; }
+          const r = await callGemini({ prompt, generationConfig: { temperature: 0.5, maxOutputTokens: 800 }, tier: 'flash' });
+          if (r.ok) {
+            const cleaned = r.text.replace(/```mermaid\n?/g, '').replace(/```\n?/g, '').trim();
+            if (cleaned) { logger.info('ai.mermaid_gemini', { chapter, subject, exam, model: r.model }); return cleaned; }
           }
         }
         // Fallback to OpenAI if Gemini fails
@@ -937,55 +1161,34 @@ End with: Important facts to remember for exam.`;
           }
         }
 
-        // ─── Attempt 3 + 4: Gemini image generation ────────────────────
+        // ─── Attempt 3 + 4: Gemini image generation (auto-resolved) ───
         //
-        // The model that was wired in originally
-        // (`gemini-2.0-flash-preview-image-generation`) was retired by
-        // Google in late 2025 in favour of the production preview at
-        // `gemini-2.5-flash-image-preview`. We try the new name first
-        // and fall back to the old one if the API still has it routed
-        // through aliases for some accounts.
+        // The image-tier chain in the registry handles model swapping
+        // for us: `gemini-2.5-flash-image-preview` (new) is tried
+        // first; if Google routes a 404 because the project hasn't
+        // been migrated, the resolver blacklists it and falls through
+        // to `gemini-2.0-flash-preview-image-generation` automatically.
+        // No need for the manual loop below — it's encoded in the
+        // chain order in aiProviderRegistry.ts.
         if (env.GEMINI_API_KEY) {
           const geminiImagePrompt = `Generate an educational black-and-white textbook-style diagram explaining "${topic}" for Indian ${exam} students. Clean labels, simple layout, no text watermarks.`;
-          const geminiModelsToTry = [
-            'gemini-2.5-flash-image-preview',
-            'gemini-2.0-flash-preview-image-generation',
-          ];
-          for (const modelName of geminiModelsToTry) {
-            try {
-              const res = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${env.GEMINI_API_KEY}`,
-                {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    contents: [{ parts: [{ text: geminiImagePrompt }] }],
-                    generationConfig: { temperature: 0.4, maxOutputTokens: 4096, responseModalities: ['TEXT', 'IMAGE'] },
-                  }),
-                },
-              );
-              if (res.ok) {
-                const data = await res.json() as { candidates?: { content?: { parts?: { text?: string; inlineData?: { mimeType: string; data: string } }[] } }[] };
-                const parts = data.candidates?.[0]?.content?.parts ?? [];
-                for (const part of parts) {
-                  if (part.inlineData?.data) {
-                    const dataUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-                    logger.info('ai.visualization_image', { topic, subject, exam, provider: 'gemini-imagen', model: modelName });
-                    return { type: 'image', content: dataUrl };
-                  }
-                }
-                logger.warn('ai.visualization_gemini_no_image_data', { topic, model: modelName, partsCount: parts.length });
-              } else {
-                const errText = await res.text().catch(() => '');
-                logger.warn('ai.visualization_gemini_http_error', { status: res.status, model: modelName, body: errText.slice(0, 200) });
+          const r = await callGemini({
+            prompt: geminiImagePrompt,
+            generationConfig: { temperature: 0.4, maxOutputTokens: 4096, responseModalities: ['TEXT', 'IMAGE'] },
+            tier: 'image',
+          });
+          if (r.ok) {
+            const parts = (r.raw?.candidates?.[0]?.content?.parts ?? []) as Array<{ text?: string; inlineData?: { mimeType: string; data: string } }>;
+            for (const part of parts) {
+              if (part.inlineData?.data) {
+                const dataUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                logger.info('ai.visualization_image', { topic, subject, exam, provider: 'gemini-imagen', model: r.model });
+                return { type: 'image', content: dataUrl };
               }
-            } catch (err) {
-              logger.warn('ai.visualization_gemini_image_failed', {
-                error: err instanceof Error ? err.message : String(err),
-                model: modelName,
-                topic,
-              });
             }
+            logger.warn('ai.visualization_gemini_no_image_data', { topic, model: r.model, partsCount: parts.length });
+          } else {
+            logger.warn('ai.visualization_gemini_failed', { error: r.error, topic });
           }
         }
 
@@ -1030,19 +1233,13 @@ ${mermaidExample}
 Generate ONLY the Mermaid code, nothing else.`;
 
       try {
-        // Use Gemini Flash for mermaid generation (cheap + fast)
+        // Use Gemini Flash for mermaid generation (cheap + fast, auto-resolved)
         if (env.GEMINI_API_KEY) {
-          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.5, maxOutputTokens: 1000 } }),
-          });
-          if (res.ok) {
-            const data = await res.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
-            const raw = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-            const cleaned = raw.replace(/```mermaid\n?/g, '').replace(/```\n?/g, '').trim();
+          const r = await callGemini({ prompt, generationConfig: { temperature: 0.5, maxOutputTokens: 1000 }, tier: 'flash' });
+          if (r.ok) {
+            const cleaned = r.text.replace(/```mermaid\n?/g, '').replace(/```\n?/g, '').trim();
             if (cleaned) {
-              logger.info('ai.visualization_mermaid', { type, topic, subject, exam, provider: 'gemini' });
+              logger.info('ai.visualization_mermaid', { type, topic, subject, exam, provider: 'gemini', model: r.model });
               return { type: 'mermaid', content: cleaned };
             }
           }
@@ -1075,18 +1272,12 @@ Generate ONLY the Mermaid code, nothing else.`;
       const langInstr = language === 'hi' ? 'Use Hindi labels in the diagram nodes.' : 'Use English labels.';
       const prompt = `Create a Mermaid.js diagram (graph TD or graph LR) that visually explains this concept from ${subject}:\n\n"${selectedText.slice(0, 500)}"\n\n${langInstr}\nRequirements:\n- Max 10 nodes with concise, clear labels\n- Show relationships/flow clearly\n- Valid Mermaid syntax only, no markdown fences\n- Use appropriate diagram type (flowchart for processes, graph for relationships)`;
       try {
-        // Use Gemini Flash for visual tasks
+        // Use Gemini Flash for visual tasks (auto-resolved chain)
         if (env.GEMINI_API_KEY) {
-          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.5, maxOutputTokens: 600 } }),
-          });
-          if (res.ok) {
-            const data = await res.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
-            const raw = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-            const cleaned = raw.replace(/```mermaid\n?/g, '').replace(/```\n?/g, '').trim();
-            if (cleaned) { logger.info('ai.selection_diagram_gemini', { subject, language }); return cleaned; }
+          const r = await callGemini({ prompt, generationConfig: { temperature: 0.5, maxOutputTokens: 600 }, tier: 'flash' });
+          if (r.ok) {
+            const cleaned = r.text.replace(/```mermaid\n?/g, '').replace(/```\n?/g, '').trim();
+            if (cleaned) { logger.info('ai.selection_diagram_gemini', { subject, language, model: r.model }); return cleaned; }
           }
         }
         // Fallback to OpenAI
@@ -1137,27 +1328,22 @@ Generate ONLY the Mermaid code, nothing else.`;
         }
       } else { errors.push('OPENAI_API_KEY not configured'); }
 
-      // Attempt 3: Gemini
+      // Attempt 3: Gemini (auto-resolved chain)
       if (env.GEMINI_API_KEY) {
         try {
-          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.6, maxOutputTokens: 6000 } }),
-          });
-          if (res.ok) {
-            const data = await res.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
-            const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+          const r = await callGemini({ prompt, generationConfig: { temperature: 0.6, maxOutputTokens: 6000 }, tier: 'flash' });
+          if (r.ok) {
+            const rawText = r.text;
             const jsonMatch = rawText.match(/\{[\s\S]*\}/);
             if (jsonMatch) {
               const parsed = JSON.parse(jsonMatch[0]) as { questions: GeneratedMCQ[] };
               if (parsed.questions?.length) {
-                logger.info('ai.ca_quiz_generated', { provider: 'gemini', count: parsed.questions.length });
+                logger.info('ai.ca_quiz_generated', { provider: 'gemini', count: parsed.questions.length, model: r.model });
                 return parsed.questions;
               }
             }
             errors.push('Gemini returned no parseable questions');
-          } else { errors.push(`Gemini HTTP ${res.status}`); }
+          } else { errors.push(`Gemini: ${r.error}`); }
         } catch (err) {
           errors.push(`Gemini: ${err instanceof Error ? err.message : String(err)}`);
           logger.warn('ai.ca_quiz_gemini_failed', { error: errors[errors.length - 1] });
@@ -1212,15 +1398,10 @@ Rules for your responses:
         if (provider === 'gemini' && env.GEMINI_API_KEY && env.GEMINI_API_KEY.length > 5) {
           try {
             const geminiMessages = chatMessages.map(m => m.content).join('\n\n');
-            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ contents: [{ parts: [{ text: geminiMessages }] }], generationConfig: { temperature: 0.7, maxOutputTokens: 1500 } }),
-            });
-            if (res.ok) {
-              const data = await res.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
-              const reply = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-              if (reply) { logger.info('ai.chat', { provider: 'gemini', length: reply.length, preferredModel }); return reply; }
+            const r = await callGemini({ prompt: geminiMessages, generationConfig: { temperature: 0.7, maxOutputTokens: 1500 }, tier: 'flash' });
+            if (r.ok) {
+              const reply = r.text;
+              if (reply) { logger.info('ai.chat', { provider: 'gemini', length: reply.length, preferredModel, model: r.model }); return reply; }
             }
           } catch (err) { logger.warn('ai.chat_gemini_failed', { error: err instanceof Error ? err.message : String(err) }); }
         }
@@ -1232,22 +1413,17 @@ Rules for your responses:
       if (items.length === 0) return [];
       const prompt = `Translate the following news items to Hindi (Devanagari script). Keep them concise and factual.\n\nItems:\n${items.map((it, i) => `${i + 1}. Headline: ${it.headline}\n   Summary: ${it.summary}`).join('\n')}\n\nRespond ONLY with valid JSON:\n{"items":[{"headline":"हिंदी headline","summary":"हिंदी summary"}]}`;
 
-      // Try Gemini first (cheap + fast for translation)
+      // Try Gemini first (cheap + fast for translation, auto-resolved)
       if (env.GEMINI_API_KEY) {
         try {
-          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.2, maxOutputTokens: 3000 } }),
-          });
-          if (res.ok) {
-            const data = await res.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
-            const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+          const r = await callGemini({ prompt, generationConfig: { temperature: 0.2, maxOutputTokens: 3000 }, tier: 'flash' });
+          if (r.ok) {
+            const rawText = r.text;
             const jsonMatch = rawText.match(/\{[\s\S]*\}/);
             if (jsonMatch) {
               const parsed = JSON.parse(jsonMatch[0]) as { items: { headline: string; summary: string }[] };
               if (parsed.items?.length) {
-                logger.info('ai.translate_hindi', { provider: 'gemini', count: parsed.items.length });
+                logger.info('ai.translate_hindi', { provider: 'gemini', count: parsed.items.length, model: r.model });
                 return parsed.items;
               }
             }

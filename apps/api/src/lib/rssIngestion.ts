@@ -133,10 +133,35 @@ function cleanHtml(text: string): string {
  * Layer 2: Summarize with comprehensive detail
  * Layer 3: Generate exam-relevant bullet points (minimum 3)
  */
-async function summarizeItems(items: RawNewsItem[], env: Env, logger: Logger): Promise<CurrentAffairsStoreItem[]> {
+async function summarizeItems(
+  items: RawNewsItem[],
+  env: Env,
+  logger: Logger,
+  resolver?: import('./aiModelResolver.js').AIModelResolver | null,
+): Promise<CurrentAffairsStoreItem[]> {
   if (!env.GEMINI_API_KEY) {
     logger.warn('rss.no_gemini_key', { message: 'GEMINI_API_KEY not set, skipping summarization' });
     return [];
+  }
+
+  // Resolve a (key, model) pair once per ingestion run. The resolver
+  // path picks the topmost non-blacklisted Gemini flash model; the
+  // fallback path uses env-key + the registry's preferred entry. We
+  // do the resolve ONCE rather than per-batch so a single run uses
+  // a single model end-to-end (clearer attribution in admin logs)
+  // and a mid-run blacklist event only changes the model on the next
+  // ingestion run, not in the middle of one.
+  let geminiKey = env.GEMINI_API_KEY;
+  let geminiModel = 'gemini-2.5-flash'; // PR-29 preferred default
+  if (resolver) {
+    const r = await resolver.resolve('gemini', { tier: 'flash' });
+    if (r) { geminiKey = r.apiKey; geminiModel = r.model; }
+  } else {
+    // No resolver: pick from registry chain so we still pick a
+    // current model even if env-only deployment.
+    const { pickPreferredModel } = await import('./aiProviderRegistry.js');
+    const m = pickPreferredModel('gemini', 'flash');
+    if (m) geminiModel = m;
   }
 
   // Batch items into groups of 10 for efficient AI calls
@@ -181,7 +206,7 @@ ${batch.map((item, i) => `${i + 1}. [${item.source}] ${item.title} — ${item.de
 Respond ONLY with valid JSON:
 {"items":[{"id":"ca-1","headline":"...","summary":"...","bullets":["fact 1","fact 2","fact 3"],"category":"national","sources":["Source Name"],"factChecked":true}]}`;
 
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -192,7 +217,9 @@ Respond ONLY with valid JSON:
 
       if (!res.ok) {
         const errText = await res.text().catch(() => '');
-        logger.warn('rss.gemini_error', { status: res.status, body: errText.slice(0, 200) });
+        logger.warn('rss.gemini_error', { status: res.status, model: geminiModel, body: errText.slice(0, 200) });
+        // Report so the resolver can blacklist a deprecated model.
+        if (resolver) await resolver.reportModelFailure('gemini', geminiModel, `HTTP ${res.status}: ${errText.slice(0, 200)}`);
         continue;
       }
 
@@ -234,7 +261,11 @@ Respond ONLY with valid JSON:
     }
   }
 
-  logger.info('rss.summarized', { total: allSummarized.length });
+  // Report success so resolver caches the known-good model for 1h.
+  if (resolver && allSummarized.length > 0) {
+    await resolver.reportModelSuccess('gemini', geminiModel);
+  }
+  logger.info('rss.summarized', { total: allSummarized.length, model: geminiModel });
   return allSummarized;
 }
 
@@ -250,6 +281,7 @@ export async function ingestCurrentAffairs(
   env: Env,
   logger: Logger,
   aiEngine?: AIEngine,
+  resolver?: import('./aiModelResolver.js').AIModelResolver | null,
 ): Promise<{ fetched: number; saved: number }> {
   logger.info('rss.ingestion_start', { sources: NEWS_SOURCES.length });
 
@@ -270,7 +302,7 @@ export async function ingestCurrentAffairs(
 
   // 3. AI summarize (or fallback to raw items if AI fails)
   let itemsToSave: CurrentAffairsStoreItem[];
-  const summarized = await summarizeItems(recentItems, env, logger);
+  const summarized = await summarizeItems(recentItems, env, logger, resolver);
   
   if (summarized.length > 0) {
     itemsToSave = summarized;
