@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
+import { useUser } from '~/lib/userStore';
 import { api, type Plan, type StoredUser } from '~/lib/api';
 import { AILoader } from '~/components/ui/AILoader';
 
@@ -59,35 +60,29 @@ function recommendPlan(level: StoredUser['onboardingLevel']): PlanId {
 export default function PlanSelectionPage() {
   const ts = useTranslations('onboarding');
   const router = useRouter();
-  const [me, setMe] = useState<StoredUser | null>(null);
+  // PR-32: read the assessment level + onboarding state from the shared
+  // user store so the recommendation is computed without firing /me again.
+  const { user: me, loading: meLoading } = useUser();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [signupBonus, setSignupBonus] = useState(100);
   const [selected, setSelected] = useState<PlanId>('scholar');
   const [loadingPage, setLoadingPage] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
-  // Load three things in parallel:
-  //   1. The user (for assessment level → recommendation)
-  //   2. The live plan matrix (so admin edits in PR-04 are honoured)
-  //   3. The earn-rate table (so the "200 credits welcome" copy from the
-  //      old page is replaced with whatever the admin currently configures
-  //      for signup_verified)
+  // Load the two pieces of data unique to this page (the live plan matrix
+  // and the earn-rate table). The user record itself comes from the
+  // shared store and was already fetched on dashboard mount.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const [meRes, plansRes, balRes] = await Promise.all([
-          api.me(),
+        const [plansRes, balRes] = await Promise.all([
           api.getPlans(),
           api.getCreditsBalance(),
         ]);
         if (cancelled) return;
-        setMe(meRes.user);
         setPlans(plansRes.plans);
         setSignupBonus(balRes.earnRates?.signup_verified ?? 100);
-        // Recommendation drives the initial selection so the page lands on
-        // the path we want users to take, not on Free.
-        setSelected(recommendPlan(meRes.user.onboardingLevel));
       } catch (e) {
         toast.error(e instanceof Error ? e.message : 'Failed to load plans');
         // On total failure we still allow the user through with a sensible
@@ -99,6 +94,14 @@ export default function PlanSelectionPage() {
     })();
     return () => { cancelled = true; };
   }, []);
+
+  // Recommendation drives the initial selection so the page lands on
+  // the path we want users to take, not on Free. Re-runs as soon as the
+  // shared store delivers the user.
+  useEffect(() => {
+    if (!me) return;
+    setSelected(recommendPlan(me.onboardingLevel));
+  }, [me]);
 
   const lang = typeof window !== 'undefined' ? (() => {
     const m = document.cookie.match(/nexigrate-language=(en|hi)/);
@@ -152,7 +155,7 @@ export default function PlanSelectionPage() {
     }
   };
 
-  if (loadingPage) {
+  if (loadingPage || meLoading) {
     return (
       <div className="flex flex-col items-center py-16">
         <AILoader context="general" />

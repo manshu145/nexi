@@ -2,6 +2,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '~/lib/auth-context';
+import { useUser } from '~/lib/userStore';
 import { api } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 import { AILoader } from '~/components/ui/AILoader';
@@ -40,6 +41,10 @@ interface EssayFeedback {
 
 export default function EssayPage() {
   const { user, loading } = useAuth();
+  // PR-32: read the stored user from the shared store so the usage check
+  // (free vs paid plan) doesn't trigger its own /me round-trip when the
+  // dashboard already loaded one moments ago.
+  const { user: me } = useUser();
   const router = useRouter();
   const [step, setStep] = useState<'generate' | 'write' | 'grading' | 'result'>('generate');
   const [question, setQuestion] = useState<EssayQuestion | null>(null);
@@ -55,13 +60,13 @@ export default function EssayPage() {
 
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
 
-  // Fetch usage info
+  // Fetch usage info (only the /v1/essay/usage call is unique to this
+  // page — the user record itself comes from the shared store).
   useEffect(() => {
-    if (!user) return;
+    if (!user || !me) return;
     (async () => {
       try {
-        const meRes = await api.me();
-        const plan = meRes.user.plan;
+        const plan = me.plan;
         const token = await user.getIdToken();
         const res = await fetch(`${API}/v1/essay/usage`, { headers: { Authorization: `Bearer ${token}` } });
         if (res.ok) {
@@ -75,7 +80,7 @@ export default function EssayPage() {
         setUsageInfo({ used: 0, limit: 2, plan: 'free' });
       }
     })();
-  }, [user]);
+  }, [user, me]);
 
   // Timer
   useEffect(() => {
@@ -112,9 +117,9 @@ export default function EssayPage() {
         body: JSON.stringify({ language: lang }),
       });
       if (!res.ok) {
-        // Fallback: generate locally if endpoint doesn't exist
-        const meRes = await api.me();
-        const exam = meRes.user.targetExam ?? 'upsc-cse';
+        // Fallback: generate locally if endpoint doesn't exist. The exam
+        // slug comes from the shared user store — no extra /me round-trip.
+        const exam = me?.targetExam ?? 'upsc-cse';
         setQuestion({
           topic: `Discuss the role of technology in transforming Indian agriculture. Highlight key government initiatives and their impact. (${exam.toUpperCase()} context)`,
           wordLimit: 250,

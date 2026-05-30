@@ -2,6 +2,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '~/lib/auth-context';
+import { useUser } from '~/lib/userStore';
 import { api, type GeneratedMCQ } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 import { AILoader } from '~/components/ui/AILoader';
@@ -23,6 +24,12 @@ function getLanguageFromCookie(): 'en' | 'hi' {
 
 export default function ChapterQuizPage() {
   const { user, loading } = useAuth();
+  // PR-32: read the user's exam slug from the shared store. The quiz
+  // page used to call api.me() on mount AND again on submit — both
+  // collapse to a single store read. After a chapter completes, we also
+  // call refresh() so the dashboard's credit / streak counters pick up
+  // the awarded credits without their own /me round-trip.
+  const { user: me, refresh } = useUser();
   const router = useRouter();
   const params = useParams();
   const subject = params.subject as string;
@@ -40,11 +47,10 @@ export default function ChapterQuizPage() {
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !me) return;
     (async () => {
       try {
-        const meRes = await api.me();
-        const exam = meRes.user.targetExam ?? 'jee-main';
+        const exam = me.targetExam ?? 'jee-main';
         const lang = getLanguageFromCookie();
         const res = await api.getChapterQuiz(exam, subject, chapter, lang);
         setQuestions(res.questions);
@@ -52,14 +58,13 @@ export default function ChapterQuizPage() {
         setTimer(45);
       } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load quiz'); }
     })();
-  }, [user, subject, chapter]);
+  }, [user, me, subject, chapter]);
 
   const submitQuiz = useCallback(async () => {
     if (timerRef.current) clearInterval(timerRef.current);
     setPhase('submitting');
     try {
-      const meRes = await api.me();
-      const exam = meRes.user.targetExam ?? 'jee-main';
+      const exam = me?.targetExam ?? 'jee-main';
       // Calculate score locally
       let correct = 0;
       for (const q of questions) {
@@ -67,10 +72,14 @@ export default function ChapterQuizPage() {
       }
       const score = Math.round((correct / questions.length) * 100);
       const res = await api.completeChapter(exam, subject, chapter, score);
+      // Pull the updated credit balance / streak into the shared store so
+      // dashboard / level / leaderboard pages see the awarded credits
+      // without each running their own /me fetch (Pattern C from PR-32).
+      void refresh();
       setResult({ score, total: questions.length, passed: res.passed, creditsAwarded: res.creditsAwarded, nextChapter: res.nextChapter });
       setPhase('result');
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed to submit'); setPhase('quiz'); }
-  }, [questions, answers, subject, chapter]);
+  }, [questions, answers, subject, chapter, me, refresh]);
 
   const handleNext = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
