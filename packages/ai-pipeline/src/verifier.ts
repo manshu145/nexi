@@ -18,6 +18,12 @@ interface BuildVerifierOptions {
    * the chapter-content workload (~5KB inputs, hundreds per day) it is
    * 10-20x cheaper than GPT-4o-mini for similar fact-checking quality
    * on structured Indian-syllabus content.
+   *
+   * If `getGeminiKeyAndModel` is supplied, it overrides this and the
+   * verifier resolves a fresh (apiKey, model) per call -- needed so
+   * the auto-resolver (PR-29) can self-heal when the configured Gemini
+   * model gets deprecated mid-day. The static `geminiApiKey` remains
+   * the no-resolver fallback path for tests + ad-hoc usage.
    */
   geminiApiKey: string;
   /**
@@ -26,6 +32,29 @@ interface BuildVerifierOptions {
    * verdict that says "could not verify, ship cautiously".
    */
   openaiApiKey?: string;
+  /**
+   * Optional callback that returns a fresh (apiKey, model) pair for
+   * Gemini at call time. Wires into the api layer's auto-resolver:
+   * the engine passes a closure that calls
+   * `resolver.resolve('gemini', { tier: 'flash' })`. The verifier then
+   * always uses the topmost non-blacklisted model in the chain rather
+   * than the historical hardcoded `gemini-2.0-flash`.
+   *
+   * Returning null means "no Gemini available right now"; the verifier
+   * skips Gemini and goes straight to the OpenAI fallback. After a
+   * successful or failed call the verifier MAY call
+   * `reportGeminiResult` (next field) so the resolver can update the
+   * blacklist / known-good cache.
+   */
+  getGeminiKeyAndModel?: () => Promise<{ apiKey: string; model: string } | null>;
+  /** Notify the resolver after each call so it can update its state. */
+  reportGeminiResult?: (model: string, ok: boolean, error?: string) => Promise<void>;
+  /**
+   * Same callback shape for OpenAI -- lets the verifier self-heal on
+   * gpt-4o-mini deprecation. Optional; absent => static-key path.
+   */
+  getOpenAIKeyAndModel?: () => Promise<{ apiKey: string; model: string } | null>;
+  reportOpenAIResult?: (model: string, ok: boolean, error?: string) => Promise<void>;
   /** Optional override of the trip threshold. */
   confidenceThreshold?: number;
   /** Tag passed to console.* logs for traceability across services. */
@@ -140,11 +169,12 @@ Return your JSON verdict now.`;
 
 async function callGemini(
   apiKey: string,
+  model: string,
   prompt: string,
 ): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
   try {
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -175,6 +205,7 @@ async function callGemini(
 
 async function callOpenAI(
   apiKey: string,
+  model: string,
   prompt: string,
 ): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
   try {
@@ -185,7 +216,7 @@ async function callOpenAI(
         authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model,
         temperature: 0.2,
         max_tokens: 2048,
         response_format: { type: 'json_object' },
@@ -244,26 +275,58 @@ export function buildChapterVerifier(opts: BuildVerifierOptions): VerifyChapterF
 
     const userPrompt = buildUserPrompt(content, context);
 
-    // Primary: Gemini Flash.
-    const gemini = await callGemini(opts.geminiApiKey, userPrompt);
-    if (gemini.ok) {
-      const parsed = parseVerifierResponse(gemini.text);
-      if (parsed) {
-        return {
-          verified: parsed.confidence >= threshold,
-          confidence: parsed.confidence,
-          issues: parsed.issues,
-          latencyMs: Date.now() - start,
-          verifier: 'gemini-flash',
-          rawResponse: gemini.text.slice(0, 2000),
-        };
+    // Primary: Gemini Flash. Resolver-callback path picks the topmost
+    // non-blacklisted Gemini flash model; fallback path uses static
+    // key + the registry's preferred entry.
+    let geminiKey: string | null = null;
+    let geminiModel: string | null = null;
+    if (opts.getGeminiKeyAndModel) {
+      const r = await opts.getGeminiKeyAndModel();
+      if (r) { geminiKey = r.apiKey; geminiModel = r.model; }
+    } else if (opts.geminiApiKey) {
+      geminiKey = opts.geminiApiKey;
+      // Static path: pick a sensible default. We use 'gemini-2.5-flash'
+      // (current preferred) but the static path is no longer the
+      // production path; the engine wires getGeminiKeyAndModel.
+      geminiModel = 'gemini-2.5-flash';
+    }
+
+    if (geminiKey && geminiModel) {
+      const gemini = await callGemini(geminiKey, geminiModel, userPrompt);
+      if (gemini.ok) {
+        if (opts.reportGeminiResult) await opts.reportGeminiResult(geminiModel, true);
+        const parsed = parseVerifierResponse(gemini.text);
+        if (parsed) {
+          return {
+            verified: parsed.confidence >= threshold,
+            confidence: parsed.confidence,
+            issues: parsed.issues,
+            latencyMs: Date.now() - start,
+            verifier: 'gemini-flash',
+            rawResponse: gemini.text.slice(0, 2000),
+          };
+        }
+      } else if (opts.reportGeminiResult) {
+        await opts.reportGeminiResult(geminiModel, false, gemini.error);
       }
     }
 
-    // Fallback: GPT-4o-mini, if configured.
-    if (opts.openaiApiKey) {
-      const openai = await callOpenAI(opts.openaiApiKey, userPrompt);
+    // Fallback: GPT-4o-mini, if configured. Same resolver-or-static
+    // shape so the OpenAI side also self-heals model deprecations.
+    let openaiKey: string | null = null;
+    let openaiModel: string | null = null;
+    if (opts.getOpenAIKeyAndModel) {
+      const r = await opts.getOpenAIKeyAndModel();
+      if (r) { openaiKey = r.apiKey; openaiModel = r.model; }
+    } else if (opts.openaiApiKey) {
+      openaiKey = opts.openaiApiKey;
+      openaiModel = 'gpt-4o-mini';
+    }
+
+    if (openaiKey && openaiModel) {
+      const openai = await callOpenAI(openaiKey, openaiModel, userPrompt);
       if (openai.ok) {
+        if (opts.reportOpenAIResult) await opts.reportOpenAIResult(openaiModel, true);
         const parsed = parseVerifierResponse(openai.text);
         if (parsed) {
           return {
@@ -275,6 +338,8 @@ export function buildChapterVerifier(opts: BuildVerifierOptions): VerifyChapterF
             rawResponse: openai.text.slice(0, 2000),
           };
         }
+      } else if (opts.reportOpenAIResult) {
+        await opts.reportOpenAIResult(openaiModel, false, openai.error);
       }
     }
 

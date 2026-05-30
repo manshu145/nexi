@@ -795,6 +795,16 @@ export interface SyllabusFallbackDeps {
   env: Env;
   db: Firestore | null;
   logger: Logger;
+  /**
+   * Optional auto-resolver (PR-29). When supplied, the gemini-pro
+   * Search-grounded call uses the resolver to pick the topmost
+   * non-blacklisted model from the gemini PRO chain (defaults to
+   * `gemini-2.5-pro`, falls back to `gemini-1.5-pro` automatically
+   * if Google deprecates the new one for new projects). When not
+   * supplied (tests, ad-hoc paths) the function falls back to the
+   * legacy hardcoded `gemini-1.5-pro` to keep behaviour identical.
+   */
+  resolver?: import('./aiModelResolver.js').AIModelResolver | null;
 }
 
 /**
@@ -824,21 +834,38 @@ export async function getSyllabusWithFallback(
   }
 
   // ─── TIER 2: Gemini Pro + Google Search grounding ─────────────────────
+  // Auto-resolver path (PR-29): when wired, the resolver picks the
+  // topmost-currently-working model in the gemini PRO chain. Falls
+  // back to env-key + hardcoded gemini-1.5-pro if no resolver, so
+  // legacy deployments (PR-29 backport, tests) keep working.
   const geminiKey = deps.env.GEMINI_PRO_API_KEY || deps.env.GEMINI_API_KEY;
-  if (geminiKey && geminiKey.length > 5) {
+  let resolvedModel: string | null = null;
+  let resolvedKey: string | null = null;
+  if (deps.resolver) {
+    const r = await deps.resolver.resolve('gemini', { tier: 'pro' });
+    if (r) { resolvedKey = r.apiKey; resolvedModel = r.model; }
+  }
+  if (!resolvedKey && geminiKey && geminiKey.length > 5) {
+    resolvedKey = geminiKey;
+    resolvedModel = 'gemini-2.5-pro'; // PR-29: prefer 2.5; fallback handles legacy.
+  }
+  if (resolvedKey && resolvedModel) {
     try {
-      deps.logger.info('syllabus.gemini_search_attempt', { examSlug, examName });
-      const result = await callGeminiWithSearch(geminiKey, examSlug, examName);
+      deps.logger.info('syllabus.gemini_search_attempt', { examSlug, examName, model: resolvedModel });
+      const result = await callGeminiWithSearch(resolvedKey, resolvedModel, examSlug, examName);
       if (result && !('error' in result)) {
         const tree = geminiResultToSyllabusTree(examSlug, result);
         // Cache with 30-day TTL
         if (deps.db) await saveToCache(deps.db, examSlug, tree, 'gemini_search', 30);
         logAdminFallback(deps, examSlug, 'gemini_search', true);
+        if (deps.resolver) await deps.resolver.reportModelSuccess('gemini', resolvedModel);
         return tree;
       }
       deps.logger.warn('syllabus.gemini_search_not_found', { examSlug });
     } catch (err) {
-      deps.logger.error('syllabus.gemini_search_failed', { examSlug, error: err instanceof Error ? err.message : String(err) });
+      const errMsg = err instanceof Error ? err.message : String(err);
+      deps.logger.error('syllabus.gemini_search_failed', { examSlug, error: errMsg });
+      if (deps.resolver) await deps.resolver.reportModelFailure('gemini', resolvedModel, errMsg);
     }
   }
 
@@ -899,6 +926,7 @@ interface GeminiSyllabusResult {
 
 async function callGeminiWithSearch(
   apiKey: string,
+  model: string,
   examSlug: string,
   examName: string,
 ): Promise<GeminiSyllabusResult | { error: string } | null> {
@@ -909,7 +937,7 @@ ${SYLLABUS_JSON_FORMAT}
 If syllabus not found, return { "error": "not_found" }`;
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
