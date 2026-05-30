@@ -19,6 +19,7 @@ import { AI_PROVIDERS, getProviderMetadata, validateProviderKey, type ProviderId
 import type { BlogStore, BlogPostInput, BlogPostStatus, BlogPostUpdate } from '../lib/blogStore.js';
 import { validateSlug } from '../lib/blogStore.js';
 import type { AIEngine } from '../lib/aiEngine.js';
+import type { CurrentAffairsStore } from '../lib/currentAffairsStore.js';
 import { isHardcodedSuperAdmin } from '../lib/adminEmails.js';
 
 export interface AdminRoutesDeps {
@@ -58,6 +59,14 @@ export interface AdminRoutesDeps {
    * button calls /admin/blog/draft which thunks through aiEngine.generateBlogDraft).
    */
   aiEngine?: AIEngine;
+  /**
+   * Current-affairs store (PR-33). Wired so the admin "Ingest now" button
+   * on /admin/feeds can actually fire the RSS pipeline -- pre-PR-33 the
+   * endpoint was a stub that logged success but did nothing, which the
+   * founder reported as "feeds Admin ke through krne ka baat hua tha vo
+   * abhi tak nhi hua".
+   */
+  currentAffairs?: CurrentAffairsStore;
 }
 
 export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
@@ -772,9 +781,52 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
   });
 
   app.post('/feeds/ingest-now', async (c) => {
+    // PR-33 fix: pre-PR-33 this endpoint logged a success message and
+    // returned without actually running ingestion. The admin's "Ingest
+    // now" button was therefore decorative -- the only path that ever
+    // populated the news collection was the 4-hour Cloud Scheduler
+    // cron at POST /v1/current-affairs/ingest. The founder reported
+    // this as "feeds Admin ke through krne ka baat hua tha vo abhi tak
+    // nhi hua".
+    //
+    // We now thread the same dependencies the cron uses (currentAffairs
+    // store, aiEngine, modelResolver) into the admin route bag and call
+    // the real ingestion function in-process. The call is awaited (not
+    // fire-and-forget) so the admin sees a real result -- "ingested 17
+    // items" or an error message -- instead of an immediate green tick
+    // followed by silence.
+    if (!deps.currentAffairs || !deps.aiEngine) {
+      throw new HTTPException(503, {
+        message: 'Ingestion subsystem is not wired into this build (currentAffairs store or AI engine missing).',
+      });
+    }
     deps.logger.info('admin.manual_ingest_triggered');
-    // Trigger ingestion (fire and forget)
-    return c.json({ success: true, message: 'Ingestion triggered' });
+    try {
+      const { ingestCurrentAffairs } = await import('../lib/rssIngestion.js');
+      // modelResolver is part of the resolver pipeline (PR-29). Pass it
+      // through so the ingestion uses the auto-resolver chain rather
+      // than hardcoded model names.
+      const result = await ingestCurrentAffairs(
+        deps.currentAffairs,
+        deps.env,
+        deps.logger,
+        deps.aiEngine,
+        deps.modelResolver,
+      );
+      await deps.currentAffairs.setLastIngestedAt(new Date().toISOString());
+      deps.logger.info('admin.manual_ingest_done', { result });
+      return c.json({
+        success: true,
+        message: `Ingestion complete — ${result.saved} items saved (out of ${result.fetched} fetched)`,
+        ...result,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      deps.logger.error('admin.manual_ingest_failed', { error: msg });
+      throw new HTTPException(500, {
+        message: `Ingestion failed: ${msg}`,
+      });
+    }
   });
 
   // ━━━ EMAIL LOGS ━━━

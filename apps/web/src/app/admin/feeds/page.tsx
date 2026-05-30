@@ -127,12 +127,40 @@ export default function AdminFeedsPage() {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });
+      const data = (await res.json().catch(() => ({}))) as {
+        success?: boolean;
+        message?: string;
+        error?: string;
+        fetched?: number;
+        saved?: number;
+      };
       if (res.ok) {
-        const data = (await res.json()) as { message?: string };
-        setIngestResult(data.message ?? 'Ingestion triggered!');
+        // PR-33: pre-PR-33 the backend was a stub that always returned
+        // {success:true,message:'Ingestion triggered'} without doing
+        // anything, so the UI showed a green message even when nothing
+        // happened. Now the backend returns the real fetched/saved
+        // counts -- surface them so the admin sees actual numbers.
+        const counts =
+          typeof data.saved === 'number' && typeof data.fetched === 'number'
+            ? ` (${data.saved} saved out of ${data.fetched} fetched)`
+            : '';
+        setIngestResult((data.message ?? 'Ingestion complete') + counts);
+        // Refresh the feed list after a successful ingestion so the
+        // "lastFetched" + "itemsFetched" counters update without a
+        // manual page reload.
+        await fetchFeeds();
+      } else {
+        setIngestResult(data.error ?? data.message ?? `Ingestion failed (HTTP ${res.status})`);
       }
-    } catch { setIngestResult('Failed to trigger ingestion'); }
-    finally { setIngesting(false); }
+    } catch (err) {
+      setIngestResult(
+        err instanceof Error
+          ? `Failed to trigger ingestion: ${err.message}`
+          : 'Failed to trigger ingestion',
+      );
+    } finally {
+      setIngesting(false);
+    }
   };
 
   if (loading || !user || pageLoading) {

@@ -76,7 +76,10 @@ export default function CurrentAffairsShortsPage() {
     if (currentIdx < filtered.length - 1) {
       isTransitioning.current = true;
       setCurrentIdx(i => i + 1);
-      setTimeout(() => { isTransitioning.current = false; }, 400);
+      // PR-33: lock matches the 300ms CSS transition + 50ms safety. Pre-PR-33
+      // the lock was 400ms, which caused dropped touch events on rapid swipes
+      // (the next swipe arrived during the unlock window and was discarded).
+      setTimeout(() => { isTransitioning.current = false; }, 350);
     }
   }, [currentIdx, filtered.length]);
 
@@ -85,7 +88,7 @@ export default function CurrentAffairsShortsPage() {
     if (currentIdx > 0) {
       isTransitioning.current = true;
       setCurrentIdx(i => i - 1);
-      setTimeout(() => { isTransitioning.current = false; }, 400);
+      setTimeout(() => { isTransitioning.current = false; }, 350);
     }
   }, [currentIdx]);
 
@@ -227,27 +230,49 @@ export default function CurrentAffairsShortsPage() {
         >
           {/* Desktop layout: centered card + sidebar */}
           <div className="absolute inset-0 flex items-stretch justify-center">
-            {/* Card column */}
+            {/* Card column.
+                PR-33: render ONLY the visible card +/- 1 sibling rather
+                than every filtered item. Pre-PR-33 a 50-item feed
+                mounted 50 fully-styled cards (each with image, gradient,
+                action buttons, etc.) which is what made the slider
+                stutter on mobile -- mid-tier Android devices struggle
+                with 50 layout-heavy DOM nodes inside a transformed
+                ancestor. Window rendering keeps DOM size constant. */}
             <div className="relative w-full max-w-[480px] lg:max-w-[420px] h-full overflow-hidden">
               <div
-                className="absolute inset-0 transition-transform duration-300 ease-out"
-                style={{ transform: `translateY(-${currentIdx * 100}%)` }}
+                className="absolute inset-0 transition-transform duration-300 ease-out will-change-transform"
+                style={{
+                  // PR-33: translate3d(0, ..., 0) instead of translateY()
+                  // forces GPU compositing on iOS Safari + Chromium
+                  // mobile, which removes the "stuck" feeling on the
+                  // first swipe after a long idle.
+                  transform: `translate3d(0, -${currentIdx * 100}%, 0)`,
+                }}
               >
-                {filtered.map((item, idx) => (
-                  <ShortCard
-                    key={item.id}
-                    item={item}
-                    isActive={idx === currentIdx}
-                    liked={userLikes.has(item.id)}
-                    bookmarked={userBookmarks.has(item.id)}
-                    likeCount={likeCounts[item.id] ?? 0}
-                    onLike={() => handleLike(item.id)}
-                    onBookmark={() => handleBookmark(item.id)}
-                    onShare={() => handleShare(item)}
-                    onTap={() => router.push(`/current-affairs/${item.id}`)}
-                    onAskNexi={() => router.push(`/chat?topic=${encodeURIComponent(item.headline)}`)}
-                  />
-                ))}
+                {filtered.map((item, idx) => {
+                  // Render-window: keep current and immediate neighbours
+                  // in the DOM. Items further away render a lightweight
+                  // placeholder so the absolute positioning stays
+                  // correct (each slot still occupies 100% height).
+                  const inWindow = Math.abs(idx - currentIdx) <= 1;
+                  return inWindow ? (
+                    <ShortCard
+                      key={item.id}
+                      item={item}
+                      isActive={idx === currentIdx}
+                      liked={userLikes.has(item.id)}
+                      bookmarked={userBookmarks.has(item.id)}
+                      likeCount={likeCounts[item.id] ?? 0}
+                      onLike={() => handleLike(item.id)}
+                      onBookmark={() => handleBookmark(item.id)}
+                      onShare={() => handleShare(item)}
+                      onTap={() => router.push(`/current-affairs/${item.id}`)}
+                      onAskNexi={() => router.push(`/chat?topic=${encodeURIComponent(item.headline)}`)}
+                    />
+                  ) : (
+                    <div key={item.id} className="h-full w-full" aria-hidden />
+                  );
+                })}
               </div>
             </div>
 
@@ -384,8 +409,17 @@ function ShortCard({ item, isActive, liked, bookmarked, likeCount, onLike, onBoo
           </div>
         </div>
 
-        {/* Mobile action buttons */}
-        <div className="absolute right-2.5 bottom-20 flex flex-col items-center gap-2.5 z-10 lg:hidden">
+        {/* Mobile action buttons.
+            PR-33: moved from `bottom-20` (80px) to `bottom-28` (112px)
+            because the fixed quiz bar (`fixed bottom-16` + ~52px tall)
+            occupies the 64-116px band of the viewport. Pre-PR-33 the
+            action buttons sat at 80-230px, overlapping the quiz bar's
+            top 36px and disappearing into its gradient fade.
+            bottom-28 puts the bottom edge of the action stack 4px
+            above the quiz bar's solid area -- visually clear.
+            Also bumped z-index from z-10 to z-20 so a translucent
+            quiz bar gradient (z-30) does not cover them on overscroll. */}
+        <div className="absolute right-2.5 bottom-28 flex flex-col items-center gap-2.5 z-20 lg:hidden">
           <button onClick={(e) => { e.stopPropagation(); onLike(); }} className={`flex flex-col items-center gap-0.5 rounded-full p-2.5 border transition-all duration-150 active:scale-90 ${liked ? 'bg-paper-50/90 border-ember-500/30 shadow-md' : 'bg-paper-50/70 backdrop-blur-sm border-line/50'}`}>
             <span className={`text-lg transition-transform duration-200 ${liked ? 'scale-110' : ''}`}>{liked ? '❤️' : '🤍'}</span>
             {likeCount > 0 && <span className="text-[9px] text-ink-800 font-semibold">{likeCount}</span>}
