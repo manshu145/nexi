@@ -24,6 +24,12 @@ export interface StudyRoutesDeps {
   ledger: CreditLedger;
   /** Live earn amounts read from platformConfig (admin-editable). */
   config: PlatformConfigStore;
+  /**
+   * Auto-resolver (PR-29). Threaded through to syllabusStore so the
+   * Search-grounded gemini-pro call self-heals on model deprecations.
+   * Optional for tests; production wiring in app.ts always supplies it.
+   */
+  modelResolver?: import('../lib/aiModelResolver.js').AIModelResolver | null;
 }
 
 export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
@@ -39,7 +45,7 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
     const examInfo = EXAM_BY_SLUG.get(examSlug as any);
     const examName = examInfo?.name ?? examSlug.replace(/-/g, ' ').replace(/\b\w/g, (ch: string) => ch.toUpperCase());
 
-    const fallbackDeps: SyllabusFallbackDeps = { env: deps.env, db: deps.db, logger: deps.logger };
+    const fallbackDeps: SyllabusFallbackDeps = { env: deps.env, db: deps.db, logger: deps.logger, resolver: deps.modelResolver };
     const syllabus = await getSyllabusWithFallback(examSlug, examName, fallbackDeps);
 
     return c.json({ syllabus });

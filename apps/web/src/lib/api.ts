@@ -314,6 +314,44 @@ export const api = {
       spend: Record<string, number>;
     }>;
   },
+
+  // ─── Admin: AI Providers (PR-29) ─────────────────────────────────────
+  // Replaces the old fake "API Config" page. Each provider in the
+  // registry has its own per-doc Firestore config; the admin can save
+  // a key, optionally pin a model, validate against the live API, and
+  // clear an auto-resolver blacklist after fixing a key. Responses
+  // never include the raw key — only `maskedKey` (last 4 + dots).
+  async listAIProviders() {
+    return (await authedFetch('/v1/admin/ai-providers')).json() as Promise<{ providers: ProviderConfigResponse[] }>;
+  },
+  async getAIProvider(id: string) {
+    return (await authedFetch(`/v1/admin/ai-providers/${encodeURIComponent(id)}`)).json() as Promise<{ provider: ProviderConfigResponse }>;
+  },
+  async updateAIProvider(id: string, patch: { apiKey?: string; enabled?: boolean; pinnedModel?: string | null }) {
+    return (await authedFetch(`/v1/admin/ai-providers/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    })).json() as Promise<{ provider: ProviderConfigResponse }>;
+  },
+  async validateAIProvider(id: string, opts?: { apiKey?: string; model?: string }) {
+    return (await authedFetch(`/v1/admin/ai-providers/${encodeURIComponent(id)}/validate`, {
+      method: 'POST',
+      body: JSON.stringify(opts ?? {}),
+    })).json() as Promise<{
+      result: {
+        ok: boolean;
+        latencyMs: number;
+        model?: string;
+        sample?: string;
+        error?: string;
+      };
+    }>;
+  },
+  async clearProviderBlacklist(id: string) {
+    return (await authedFetch(`/v1/admin/ai-providers/${encodeURIComponent(id)}/clear-blacklist`, {
+      method: 'POST',
+    })).json() as Promise<{ provider: ProviderConfigResponse }>;
+  },
 };
 
 export interface CurrentAffairsItem { id: string; headline: string; body: string; category: string; sources: string[]; summary: string; factChecked: boolean; date: string; publishedAt: string; }
@@ -428,3 +466,53 @@ export interface CreditEvent {
 }
 
 export { ApiError };
+
+
+
+/**
+ * Provider config row as returned by /v1/admin/ai-providers (PR-29).
+ *
+ * Mirrors `serializeProvider()` in apps/api/src/routes/admin.ts. The
+ * `maskedKey` is the only key material ever sent over the wire — the
+ * raw key is never serialised. The runtime auto-resolver writes
+ * `blacklist` entries when it sees deprecation errors mid-call; admin
+ * can clear them via `clearProviderBlacklist` after fixing a key.
+ */
+export interface ProviderModelOption {
+  id: string;
+  label: string;
+  tier: 'flash' | 'pro' | 'image';
+  recommended: boolean;
+  costPer1kUsd: number | null;
+}
+
+export interface ProviderBlacklistEntry {
+  model: string;
+  until: string;
+  reason?: string;
+}
+
+export interface ProviderConfigResponse {
+  id: string;
+  label: string;
+  description: string;
+  tier: 1 | 2;
+  enabled: boolean;
+  hasKey: boolean;
+  /** Empty string when no key configured. */
+  maskedKey: string;
+  pinnedModel: string | null;
+  pinnedModelFailureCount: number;
+  lastValidatedAt: string | null;
+  lastValidationLatencyMs: number | null;
+  lastValidationError: string | null;
+  /** Currently-active (unexpired) blacklist entries from the resolver. */
+  blacklist: ProviderBlacklistEntry[];
+  /** Last successfully-used model id (1-hour cache hint). */
+  knownGoodModel: string | null;
+  knownGoodAt: string | null;
+  models: ProviderModelOption[];
+  signupUrl: string;
+  billingUrl: string;
+  keyExamplePrefix: string;
+}

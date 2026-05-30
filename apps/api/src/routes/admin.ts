@@ -13,6 +13,9 @@ import type { PlatformConfigStore } from '../lib/platformConfigStore.js';
 import type { AISpendStore } from '../lib/aiSpendStore.js';
 import { DEFAULT_DAILY_AI_CAP_USD } from '../lib/aiSpendStore.js';
 import type { CreditEarnSource, CreditSpendReason, PlanConfig, PlanId } from '@nexigrate/shared';
+import type { AIProviderStore, ProviderConfig } from '../lib/aiProviderStore.js';
+import type { AIModelResolver } from '../lib/aiModelResolver.js';
+import { AI_PROVIDERS, getProviderMetadata, validateProviderKey, type ProviderId } from '../lib/aiProviderRegistry.js';
 
 export interface AdminRoutesDeps {
   users: UserStore;
@@ -33,6 +36,14 @@ export interface AdminRoutesDeps {
    * flag.
    */
   firebaseAuth: Auth;
+  /**
+   * AI provider configuration store (PR-29). Admin saves keys + pinned
+   * models here; the runtime auto-resolver reads + writes blacklists.
+   */
+  aiProviderStore: AIProviderStore;
+  /** Auto-resolver (PR-29). Used by the validate endpoint to surface
+   *  exactly which model fired during the test. */
+  modelResolver: AIModelResolver;
 }
 
 export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
@@ -766,6 +777,203 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
       const data = snap.data() as { messages?: { role: string; content: string; timestamp?: string }[]; title?: string; createdAt?: string };
       return c.json({ sessionId, title: data.title ?? '', messages: data.messages ?? [], createdAt: data.createdAt });
     } catch { return c.json({ messages: [] }); }
+  });
+
+  // ━━━ AI PROVIDERS (PR-29 — auto-resolver + admin key management) ━━━
+  //
+  // Replaces the old API_CONFIG fake UI. Each provider in
+  // aiProviderRegistry.ts gets a real per-doc config in Firestore at
+  // `aiProviders/{id}` carrying { apiKey, enabled, pinnedModel,
+  // blacklist[], lastValidatedAt, ... }. The auto-resolver reads from
+  // the same store so admin actions take effect within the in-process
+  // 60s cache window without a deploy.
+  //
+  // SECURITY: `apiKey` is stored in raw form (Firestore IAM is the
+  // trust boundary today; KMS wraps it in a follow-up). NO endpoint
+  // ever returns the raw key -- responses always carry `maskedKey`
+  // (last 4 + dots). The validate endpoint accepts a candidate key in
+  // the request body so admin can test BEFORE saving.
+
+  /** Mask a key for display: last 4 chars + 8 dots, or empty string. */
+  function maskKey(value?: string): string {
+    if (!value || value.length < 4) return '';
+    return '••••••••' + value.slice(-4);
+  }
+
+  /** Build the public-safe response shape for one provider config. */
+  function serializeProvider(id: ProviderId, cfg: ProviderConfig | null) {
+    const meta = getProviderMetadata(id);
+    if (!meta) return null;
+    const now = Date.now();
+    const blacklist: Array<{ model: string; until: string; reason?: string }> = [];
+    for (const [model, entry] of Object.entries(cfg?.blacklist ?? {})) {
+      if (Date.parse(entry.until) > now) {
+        blacklist.push({ model, until: entry.until, reason: entry.reason });
+      }
+    }
+    return {
+      id,
+      label: meta.label,
+      description: meta.description,
+      tier: meta.tier,
+      enabled: cfg?.enabled ?? true,
+      hasKey: !!(cfg?.apiKey && cfg.apiKey.length > 5),
+      maskedKey: cfg ? maskKey(cfg.apiKey) : '',
+      pinnedModel: cfg?.pinnedModel ?? null,
+      pinnedModelFailureCount: cfg?.pinnedModelFailureCount ?? 0,
+      lastValidatedAt: cfg?.lastValidatedAt ?? null,
+      lastValidationLatencyMs: cfg?.lastValidationLatencyMs ?? null,
+      lastValidationError: cfg?.lastValidationError ?? null,
+      blacklist,
+      knownGoodModel: cfg?.knownGoodModel ?? null,
+      knownGoodAt: cfg?.knownGoodAt ?? null,
+      models: meta.models.map(m => ({
+        id: m.id,
+        label: m.label,
+        tier: m.tier ?? 'flash',
+        recommended: m.recommended ?? false,
+        costPer1kUsd: m.costPer1kUsd ?? null,
+      })),
+      signupUrl: meta.signupUrl,
+      billingUrl: meta.billingUrl,
+      keyExamplePrefix: meta.keyExamplePrefix,
+    };
+  }
+
+  /** Type-guard helper for the :id param. */
+  function asProviderId(raw: string): ProviderId | null {
+    return AI_PROVIDERS.some(p => p.id === raw) ? (raw as ProviderId) : null;
+  }
+
+  // GET /v1/admin/ai-providers — list with masked keys + status
+  app.get('/ai-providers', async (c) => {
+    const all = await deps.aiProviderStore.getAll();
+    const byId = new Map(all.map(p => [p.id, p]));
+    const providers = AI_PROVIDERS.map(meta => serializeProvider(meta.id, byId.get(meta.id) ?? null)).filter(p => p !== null);
+    return c.json({ providers });
+  });
+
+  // GET /v1/admin/ai-providers/:id — single provider detail
+  app.get('/ai-providers/:id', async (c) => {
+    const id = asProviderId(c.req.param('id'));
+    if (!id) throw new HTTPException(404, { message: 'Unknown provider id' });
+    const cfg = await deps.aiProviderStore.get(id);
+    const provider = serializeProvider(id, cfg);
+    return c.json({ provider });
+  });
+
+  // PATCH /v1/admin/ai-providers/:id — update apiKey/enabled/pinnedModel
+  // Body: { apiKey?: string; enabled?: boolean; pinnedModel?: string|null }
+  // Empty-string apiKey is interpreted as "leave alone"; pass `null` for
+  // pinnedModel to clear an existing pin.
+  app.patch('/ai-providers/:id', async (c) => {
+    const id = asProviderId(c.req.param('id'));
+    if (!id) throw new HTTPException(404, { message: 'Unknown provider id' });
+    const body = (await c.req.json().catch(() => null)) as {
+      apiKey?: string;
+      enabled?: boolean;
+      pinnedModel?: string | null;
+    } | null;
+    if (!body) throw new HTTPException(400, { message: 'Body required' });
+
+    const meta = getProviderMetadata(id);
+    if (!meta) throw new HTTPException(404, { message: 'Unknown provider id' });
+
+    const patch: Partial<ProviderConfig> = {};
+    if (body.apiKey !== undefined && body.apiKey.length > 0) {
+      if (body.apiKey.length < meta.keyMinLength) {
+        throw new HTTPException(400, { message: `Key too short — expected at least ${meta.keyMinLength} characters` });
+      }
+      patch.apiKey = body.apiKey;
+      // Saving a new key clears stale validation state so the admin
+      // sees "Not validated" until they hit Test Connection.
+      patch.lastValidatedAt = undefined;
+      patch.lastValidationError = undefined;
+      patch.pinnedModelFailureCount = 0;
+    }
+    if (body.enabled !== undefined) patch.enabled = body.enabled;
+    if (body.pinnedModel !== undefined) {
+      if (body.pinnedModel === null) {
+        patch.pinnedModel = undefined;
+      } else if (body.pinnedModel.length > 0) {
+        // Validate the pinned model is one we know about.
+        const known = meta.models.some(m => m.id === body.pinnedModel);
+        if (!known) throw new HTTPException(400, { message: `Unknown model id "${body.pinnedModel}" for provider "${id}"` });
+        patch.pinnedModel = body.pinnedModel;
+        patch.pinnedModelFailureCount = 0;
+      }
+    }
+    const next = await deps.aiProviderStore.upsert(id, patch);
+    deps.logger.info('admin.ai_provider_updated', {
+      provider: id,
+      keyChanged: body.apiKey !== undefined && body.apiKey.length > 0,
+      enabledChanged: body.enabled !== undefined,
+      pinnedModelChanged: body.pinnedModel !== undefined,
+    });
+    return c.json({ provider: serializeProvider(id, next) });
+  });
+
+  // POST /v1/admin/ai-providers/:id/validate — run validateProviderKey
+  // and persist the result. Body MAY include { apiKey?: string,
+  // model?: string } to test a candidate key before save (admin pastes
+  // a fresh key, hits Test, sees ok before clicking Save). When body
+  // is empty, validates the currently-stored key.
+  app.post('/ai-providers/:id/validate', async (c) => {
+    const id = asProviderId(c.req.param('id'));
+    if (!id) throw new HTTPException(404, { message: 'Unknown provider id' });
+    const body = (await c.req.json().catch(() => ({}))) as {
+      apiKey?: string;
+      model?: string;
+    };
+    const cfg = await deps.aiProviderStore.get(id);
+    const candidateKey = body.apiKey && body.apiKey.length > 0 ? body.apiKey
+      : cfg?.apiKey && cfg.apiKey.length > 5 ? cfg.apiKey
+      : (id === 'gemini' ? deps.env.GEMINI_API_KEY
+        : id === 'openai' ? deps.env.OPENAI_API_KEY
+        : id === 'groq' ? deps.env.GROQ_API_KEY
+        : '');
+    if (!candidateKey || candidateKey.length < 5) {
+      return c.json({ ok: false, error: 'no_key_to_validate' }, 400);
+    }
+    // Use the active blacklist when picking the probe model so we
+    // don't waste a probe on a known-dead model.
+    const blacklist = new Set(Object.keys(cfg?.blacklist ?? {}).filter(m => Date.parse(cfg!.blacklist[m]!.until) > Date.now()));
+    const result = await validateProviderKey(id, candidateKey, body.model, blacklist);
+
+    // Persist outcome (only if we're validating the SAVED key, not a candidate).
+    // A candidate validation just returns the result without writing.
+    if (!body.apiKey || body.apiKey === candidateKey && cfg?.apiKey === candidateKey) {
+      await deps.aiProviderStore.upsert(id, {
+        lastValidatedAt: result.ok ? new Date().toISOString() : cfg?.lastValidatedAt,
+        lastValidationLatencyMs: result.latencyMs,
+        lastValidationError: result.ok ? undefined : result.error,
+      });
+      // If the validate succeeded with a non-pinned model, mark it
+      // known-good so subsequent calls converge on it.
+      if (result.ok && result.model) {
+        await deps.aiProviderStore.markKnownGood(id, result.model);
+      }
+    }
+    deps.logger.info('admin.ai_provider_validated', {
+      provider: id,
+      ok: result.ok,
+      model: result.model,
+      latencyMs: result.latencyMs,
+      error: result.error?.slice(0, 120),
+    });
+    return c.json({ result });
+  });
+
+  // POST /v1/admin/ai-providers/:id/clear-blacklist — admin override
+  // to wipe an active blacklist (useful after rotating a key that the
+  // resolver had already marked as failing).
+  app.post('/ai-providers/:id/clear-blacklist', async (c) => {
+    const id = asProviderId(c.req.param('id'));
+    if (!id) throw new HTTPException(404, { message: 'Unknown provider id' });
+    await deps.aiProviderStore.clearBlacklist(id);
+    deps.logger.info('admin.ai_provider_blacklist_cleared', { provider: id });
+    const cfg = await deps.aiProviderStore.get(id);
+    return c.json({ provider: serializeProvider(id, cfg) });
   });
 
   return app;

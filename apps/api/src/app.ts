@@ -8,6 +8,8 @@ import { createAIEngine, type AIEngine } from './lib/aiEngine.js';
 import { InMemoryChapterStore, FirestoreChapterStore, type ChapterStore } from './lib/chapterStore.js';
 import { InMemoryCurrentAffairsStore, FirestoreCurrentAffairsStore, type CurrentAffairsStore } from './lib/currentAffairsStore.js';
 import { InMemoryAdminStore, FirestoreAdminStore, type AdminStore } from './lib/adminStore.js';
+import { FirestoreAIProviderStore, InMemoryAIProviderStore, type AIProviderStore } from './lib/aiProviderStore.js';
+import { DefaultAIModelResolver, type AIModelResolver } from './lib/aiModelResolver.js';
 import { authMiddleware } from './auth.js';
 import type { Logger } from './logger.js';
 import { makeHealthRoutes, makeDiagRoutes } from './routes/health.js';
@@ -31,7 +33,7 @@ import { FirestoreAISpendStore, InMemoryAISpendStore, type AISpendStore, DEFAULT
 import { makePublicRoutes } from './routes/public.js';
 import { makeMockTestRoutes } from './routes/mockTests.js';
 
-export interface AppDeps { env: Env; logger: Logger; users?: UserStore; aiEngine?: AIEngine; chapters?: ChapterStore; currentAffairs?: CurrentAffairsStore; chatStore?: ChatStore; adminStore?: AdminStore; couponStore?: CouponStore; idempotency?: IdempotencyStore; ledger?: CreditLedger; config?: PlatformConfigStore; mockTests?: MockTestStore; }
+export interface AppDeps { env: Env; logger: Logger; users?: UserStore; aiEngine?: AIEngine; chapters?: ChapterStore; currentAffairs?: CurrentAffairsStore; chatStore?: ChatStore; adminStore?: AdminStore; couponStore?: CouponStore; idempotency?: IdempotencyStore; ledger?: CreditLedger; config?: PlatformConfigStore; mockTests?: MockTestStore; aiProviderStore?: AIProviderStore; modelResolver?: AIModelResolver; }
 
 export function buildApp(deps: AppDeps): Hono {
   const { env, logger } = deps;
@@ -40,7 +42,13 @@ export function buildApp(deps: AppDeps): Hono {
   const users = deps.users ?? (fs ? new FirestoreUserStore(fs) : new InMemoryUserStore());
   const adminStore = deps.adminStore ?? (fs ? new FirestoreAdminStore(fs) : new InMemoryAdminStore());
   const aiSpend: AISpendStore = fs ? new FirestoreAISpendStore(fs) : new InMemoryAISpendStore();
-  const aiEngine = deps.aiEngine ?? createAIEngine(env, logger, adminStore, aiSpend);
+  // PR-29: provider config + resolver. Wired BEFORE the engine so the
+  // engine's verifier callbacks resolve the topmost-currently-working
+  // model on each call. Falls back to env-only behaviour if no
+  // Firestore (in-memory dev / test path).
+  const aiProviderStore = deps.aiProviderStore ?? (fs ? new FirestoreAIProviderStore(fs) : new InMemoryAIProviderStore());
+  const modelResolver = deps.modelResolver ?? new DefaultAIModelResolver(aiProviderStore, env, logger);
+  const aiEngine = deps.aiEngine ?? createAIEngine(env, logger, adminStore, aiSpend, modelResolver);
   const chapters = deps.chapters ?? (fs ? new FirestoreChapterStore(fs) : new InMemoryChapterStore());
   const currentAffairs = deps.currentAffairs ?? (fs ? new FirestoreCurrentAffairsStore(fs) : new InMemoryCurrentAffairsStore());
   const chatStore = deps.chatStore ?? (fs ? new FirestoreChatStore(fs) : new InMemoryChatStore());
@@ -115,7 +123,7 @@ export function buildApp(deps: AppDeps): Hono {
   });
 
   app.route('/', makeHealthRoutes());
-  app.route('/', makeDiagRoutes(env));
+  app.route('/', makeDiagRoutes(env, modelResolver));
   app.get('/', (c) => c.json({ service: 'nexigrate-api', version: '1.0.0' }));
 
   // Razorpay webhook — MUST be mounted BEFORE the auth-gated /v1 router so
@@ -145,7 +153,7 @@ export function buildApp(deps: AppDeps): Hono {
       return c.json({ error: 'unauthorized' }, 401);
     }
     const { ingestCurrentAffairs } = await import('./lib/rssIngestion.js');
-    const result = await ingestCurrentAffairs(currentAffairs, env, logger, aiEngine);
+    const result = await ingestCurrentAffairs(currentAffairs, env, logger, aiEngine, modelResolver);
     await currentAffairs.setLastIngestedAt(new Date().toISOString());
     return c.json({ success: true, ...result });
   });
@@ -245,12 +253,12 @@ export function buildApp(deps: AppDeps): Hono {
   });
   v1.route('/users', makeUsersRoutes({ users, logger, db: fs, ledger, config }));
   v1.route('/assessment', makeAssessmentRoutes({ users, aiEngine, logger, env, ledger }));
-  v1.route('/study', makeStudyRoutes({ users, aiEngine, chapters, logger, db: fs, env, ledger, config }));
+  v1.route('/study', makeStudyRoutes({ users, aiEngine, chapters, logger, db: fs, env, ledger, config, modelResolver }));
   v1.route('/current-affairs', cronRoutes);
   v1.route('/chat', makeChatRoutes({ users, aiEngine, chat: chatStore, logger, env }));
   v1.route('/credits', makeCreditsRoutes({ users, logger, db: fs, ledger, config }));
   v1.route('/billing', makeBillingRoutes({ users, env, logger, db: fs, coupons: couponStore, idempotency, config }));
-  v1.route('/admin', makeAdminRoutes({ users, adminStore, env, logger, coupons: couponStore, db: fs, config, aiSpend, firebaseAuth }));
+  v1.route('/admin', makeAdminRoutes({ users, adminStore, env, logger, coupons: couponStore, db: fs, config, aiSpend, firebaseAuth, aiProviderStore, modelResolver }));
   v1.route('/support', makeSupportRoutes({ users, db: fs, logger }));
   v1.route('/essay', makeEssayRoutes({ users, aiEngine, logger, db: fs }));
   v1.route('/mock-tests', makeMockTestRoutes({ users, aiEngine, mockTests, ledger, config, logger }));

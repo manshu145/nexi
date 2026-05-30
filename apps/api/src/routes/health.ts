@@ -1,4 +1,6 @@
 import { Hono } from 'hono';
+import type { AIModelResolver } from '../lib/aiModelResolver.js';
+import { pickProbeModel } from '../lib/aiProviderRegistry.js';
 
 export function makeHealthRoutes(): Hono {
   const app = new Hono();
@@ -20,8 +22,19 @@ export function makeHealthRoutes(): Hono {
  * within seconds when a key has been rotated, throttled, or revoked --
  * without that endpoint, the only signal was a 503 cascade in /assessment
  * and a generic "AI service may be busy" toast at the user.
+ *
+ * PR-29 (auto-resolver): the Gemini probe is no longer hardcoded to
+ * `gemini-2.0-flash`. It asks the resolver (or, when no resolver is
+ * wired, the registry's `pickProbeModel`) which model is currently
+ * topmost-currently-working in the chain, probes that, and reports
+ * which model actually fired. This is how the founder can confirm
+ * "the auto-switch picked 2.5-flash because 2.0-flash was 404'd" by
+ * eyeballing this endpoint after a fresh GCP key.
  */
-export function makeDiagRoutes(env: { GROQ_API_KEY?: string; OPENAI_API_KEY?: string; GEMINI_API_KEY?: string; PERSISTENCE?: string }): Hono {
+export function makeDiagRoutes(
+  env: { GROQ_API_KEY?: string; OPENAI_API_KEY?: string; GEMINI_API_KEY?: string; PERSISTENCE?: string },
+  resolver?: AIModelResolver | null,
+): Hono {
   const app = new Hono();
   const isConfigured = (v?: string) => !!(v && v.length > 5);
   app.get('/diag/ai', (c) => {
@@ -37,12 +50,12 @@ export function makeDiagRoutes(env: { GROQ_API_KEY?: string; OPENAI_API_KEY?: st
   });
 
   /**
-   * Live reachability probe. Tiny prompt to each configured provider with
-   * a 10s timeout per call -- responds with up/down + latency + error
-   * snippet per provider. NOT auth-gated (public diag like /diag/ai),
-   * intentionally low-cost (~$0.0001 per probe) so admin can curl this
-   * from anywhere without managing tokens. Output is sanitised: never
-   * echoes the key, only the failure mode / first 200 chars of error.
+   * Live reachability probe. Tiny prompt to each configured provider
+   * with a 10s timeout per call. Output is sanitised and never echoes
+   * the key. Each provider's "model" field reports which entry in the
+   * chain the resolver chose -- the founder uses this to confirm
+   * auto-switch fired ("ok=true model=gemini-2.5-flash" after a fresh
+   * key signals the chain stepped past the deprecated 2.0-flash).
    */
   app.get('/diag/ai/test', async (c) => {
     const startedAt = Date.now();
@@ -58,15 +71,35 @@ export function makeDiagRoutes(env: { GROQ_API_KEY?: string; OPENAI_API_KEY?: st
       ]);
     }
 
+    /**
+     * Resolve (apiKey, model) for the probe. Prefers the auto-resolver
+     * if wired (admin-saved key + chain-aware model pick), falls back
+     * to env-var + registry probe model otherwise.
+     */
+    async function resolve(provider: 'groq' | 'openai' | 'gemini'): Promise<{ apiKey: string; model: string } | null> {
+      if (resolver) {
+        const r = await resolver.resolve(provider, { tier: 'flash' });
+        if (r) return { apiKey: r.apiKey, model: r.model };
+      }
+      const envKey = provider === 'groq' ? env.GROQ_API_KEY
+        : provider === 'openai' ? env.OPENAI_API_KEY
+        : env.GEMINI_API_KEY;
+      if (!isConfigured(envKey)) return null;
+      const m = pickProbeModel(provider);
+      if (!m) return null;
+      return { apiKey: envKey!, model: m };
+    }
+
     async function probeGroq(): Promise<ProbeResult> {
-      if (!isConfigured(env.GROQ_API_KEY)) return { ok: false, latencyMs: 0, error: 'not_configured' };
+      const r = await resolve('groq');
+      if (!r) return { ok: false, latencyMs: 0, error: 'not_configured' };
       const t0 = Date.now();
       try {
         const res = await withTimeout(fetch('https://api.groq.com/openai/v1/chat/completions', {
           method: 'POST',
-          headers: { 'Authorization': `Bearer ${env.GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+          headers: { 'Authorization': `Bearer ${r.apiKey}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            model: 'llama-3.3-70b-versatile',
+            model: r.model,
             messages: [{ role: 'user', content: PROBE_PROMPT }],
             max_tokens: 10,
           }),
@@ -74,25 +107,28 @@ export function makeDiagRoutes(env: { GROQ_API_KEY?: string; OPENAI_API_KEY?: st
         const latencyMs = Date.now() - t0;
         if (!res.ok) {
           const body = await res.text().catch(() => '');
-          return { ok: false, latencyMs, error: `HTTP ${res.status}: ${body.slice(0, 200)}` };
+          if (resolver) await resolver.reportModelFailure('groq', r.model, `HTTP ${res.status}: ${body.slice(0, 200)}`);
+          return { ok: false, latencyMs, model: r.model, error: `HTTP ${res.status}: ${body.slice(0, 200)}` };
         }
         const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
         const sample = data.choices?.[0]?.message?.content?.trim().slice(0, 50) ?? '';
-        return { ok: true, latencyMs, model: 'llama-3.3-70b-versatile', sample };
+        if (resolver) await resolver.reportModelSuccess('groq', r.model);
+        return { ok: true, latencyMs, model: r.model, sample };
       } catch (err) {
-        return { ok: false, latencyMs: Date.now() - t0, error: err instanceof Error ? err.message.slice(0, 200) : String(err).slice(0, 200) };
+        return { ok: false, latencyMs: Date.now() - t0, model: r.model, error: err instanceof Error ? err.message.slice(0, 200) : String(err).slice(0, 200) };
       }
     }
 
     async function probeOpenAI(): Promise<ProbeResult> {
-      if (!isConfigured(env.OPENAI_API_KEY)) return { ok: false, latencyMs: 0, error: 'not_configured' };
+      const r = await resolve('openai');
+      if (!r) return { ok: false, latencyMs: 0, error: 'not_configured' };
       const t0 = Date.now();
       try {
         const res = await withTimeout(fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
-          headers: { 'Authorization': `Bearer ${env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+          headers: { 'Authorization': `Bearer ${r.apiKey}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            model: 'gpt-4o-mini',
+            model: r.model,
             messages: [{ role: 'user', content: PROBE_PROMPT }],
             max_tokens: 10,
           }),
@@ -100,22 +136,25 @@ export function makeDiagRoutes(env: { GROQ_API_KEY?: string; OPENAI_API_KEY?: st
         const latencyMs = Date.now() - t0;
         if (!res.ok) {
           const body = await res.text().catch(() => '');
-          return { ok: false, latencyMs, error: `HTTP ${res.status}: ${body.slice(0, 200)}` };
+          if (resolver) await resolver.reportModelFailure('openai', r.model, `HTTP ${res.status}: ${body.slice(0, 200)}`);
+          return { ok: false, latencyMs, model: r.model, error: `HTTP ${res.status}: ${body.slice(0, 200)}` };
         }
         const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
         const sample = data.choices?.[0]?.message?.content?.trim().slice(0, 50) ?? '';
-        return { ok: true, latencyMs, model: 'gpt-4o-mini', sample };
+        if (resolver) await resolver.reportModelSuccess('openai', r.model);
+        return { ok: true, latencyMs, model: r.model, sample };
       } catch (err) {
-        return { ok: false, latencyMs: Date.now() - t0, error: err instanceof Error ? err.message.slice(0, 200) : String(err).slice(0, 200) };
+        return { ok: false, latencyMs: Date.now() - t0, model: r.model, error: err instanceof Error ? err.message.slice(0, 200) : String(err).slice(0, 200) };
       }
     }
 
     async function probeGemini(): Promise<ProbeResult> {
-      if (!isConfigured(env.GEMINI_API_KEY)) return { ok: false, latencyMs: 0, error: 'not_configured' };
+      const r = await resolve('gemini');
+      if (!r) return { ok: false, latencyMs: 0, error: 'not_configured' };
       const t0 = Date.now();
       try {
         const res = await withTimeout(fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${env.GEMINI_API_KEY}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/${r.model}:generateContent?key=${r.apiKey}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -128,13 +167,20 @@ export function makeDiagRoutes(env: { GROQ_API_KEY?: string; OPENAI_API_KEY?: st
         const latencyMs = Date.now() - t0;
         if (!res.ok) {
           const body = await res.text().catch(() => '');
-          return { ok: false, latencyMs, error: `HTTP ${res.status}: ${body.slice(0, 200)}` };
+          // Auto-blacklist on deprecation: this is exactly the founder's
+          // pain point — fresh GCP key returning 404 on 2.0-flash. The
+          // resolver pattern-matches the error and blacklists for 5 min;
+          // the next probe (or the next AI call from any user) will
+          // pick the next entry in the chain.
+          if (resolver) await resolver.reportModelFailure('gemini', r.model, `HTTP ${res.status}: ${body.slice(0, 200)}`);
+          return { ok: false, latencyMs, model: r.model, error: `HTTP ${res.status}: ${body.slice(0, 200)}` };
         }
         const data = (await res.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
         const sample = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim().slice(0, 50) ?? '';
-        return { ok: true, latencyMs, model: 'gemini-2.0-flash', sample };
+        if (resolver) await resolver.reportModelSuccess('gemini', r.model);
+        return { ok: true, latencyMs, model: r.model, sample };
       } catch (err) {
-        return { ok: false, latencyMs: Date.now() - t0, error: err instanceof Error ? err.message.slice(0, 200) : String(err).slice(0, 200) };
+        return { ok: false, latencyMs: Date.now() - t0, model: r.model, error: err instanceof Error ? err.message.slice(0, 200) : String(err).slice(0, 200) };
       }
     }
 

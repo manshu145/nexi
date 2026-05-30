@@ -39,7 +39,7 @@ const NAV_ITEMS = [
   { label: 'Credit Rewards', href: '/admin/credit-rewards', icon: '💎' },
   { label: 'Observability', href: '/admin/observability', icon: '📊' },
   { label: 'Revenue', href: '/admin/revenue', icon: '💰' },
-  { label: 'API Config', href: '/admin/api-config', icon: '🔑' },
+  { label: 'AI Providers', href: '/admin/api-config', icon: '🔑' },
   { label: 'News Feeds', href: '/admin/feeds', icon: '📡' },
   { label: 'AI & Logs', href: '/admin/logs', icon: '🤖' },
   { label: 'SEO & Branding', href: '/admin/seo', icon: '🔍' },
