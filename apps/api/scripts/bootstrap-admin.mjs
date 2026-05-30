@@ -70,7 +70,15 @@ const DEFAULT_PASSWORD = 'JwR!RmM7ebhgsC%RUU';
 
 // ─── Implementation ────────────────────────────────────────────────────
 
-const passwordArg = process.argv[2];
+// process.argv[2] is the first user arg, BUT when invoked via
+// `pnpm run script -- value`, pnpm passes `--` as that first arg and
+// the actual value lands in argv[3]. Filter the bare `--` out so both
+// invocation styles work:
+//   node scripts/bootstrap-admin.mjs MyPass123
+//   pnpm --filter @nexigrate/api run bootstrap-admin -- MyPass123
+//   pnpm --filter @nexigrate/api exec node scripts/bootstrap-admin.mjs MyPass123
+const cliArgs = process.argv.slice(2).filter((a) => a !== '--');
+const passwordArg = cliArgs[0];
 const password = passwordArg && passwordArg.length >= 8 ? passwordArg : DEFAULT_PASSWORD;
 
 if (passwordArg && passwordArg.length < 8) {
