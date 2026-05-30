@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '~/lib/auth-context';
+import { useUser } from '~/lib/userStore';
 import { api, type SyllabusTree, type StudyProgress } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 import { Skeleton, ListSkeleton } from '~/components/Skeleton';
@@ -9,6 +10,10 @@ import { AILoader } from '~/components/ui/AILoader';
 
 export default function StudyPage() {
   const { user, loading } = useAuth();
+  // PR-32: pull the user from the shared store. Both the syllabus
+  // bootstrap AND the post-generate-chapters refresh used to call
+  // api.me() just to read targetExam — replaced with a single store read.
+  const { user: me, loading: meLoading } = useUser();
   const router = useRouter();
   const [syllabus, setSyllabus] = useState<SyllabusTree | null>(null);
   const [progress, setProgress] = useState<StudyProgress | null>(null);
@@ -18,22 +23,20 @@ export default function StudyPage() {
   const [lang, setLang] = useState<'en' | 'hi'>('en');
   const [generating, setGenerating] = useState<string | null>(null);
   const [genSuccess, setGenSuccess] = useState<string | null>(null);
-  const [currentPlan, setCurrentPlan] = useState<string>('free');
+  const currentPlan = me?.plan ?? 'free';
 
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !me) return;
     // Detect language
     const m = document.cookie.match(/nexigrate-language=(en|hi)/);
     const detected = m ? m[1] as 'en' | 'hi' : (localStorage.getItem('nexigrate-language') as 'en' | 'hi') || 'en';
     setLang(detected);
     (async () => {
       try {
-        const meRes = await api.me();
-        const exam = meRes.user.targetExam;
+        const exam = me.targetExam;
         if (!exam) { router.replace('/onboarding/language'); return; }
-        setCurrentPlan(meRes.user.plan ?? 'free');
         const [syllRes, progRes] = await Promise.all([
           api.getSyllabus(exam),
           api.getStudyProgress(exam),
@@ -47,9 +50,9 @@ export default function StudyPage() {
       } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load syllabus'); }
       finally { setPageLoading(false); }
     })();
-  }, [user, router]);
+  }, [user, me, router]);
 
-  if (loading || !user || pageLoading) return (
+  if (loading || !user || meLoading || pageLoading) return (
     <main className="mx-auto flex min-h-dvh max-w-2xl flex-col items-center justify-center px-5">
       <AILoader context="chapter" />
     </main>
@@ -257,11 +260,13 @@ export default function StudyPage() {
                               if (!res.ok) throw new Error('Failed');
                               const data = await res.json() as { newChapters: any[]; message: string };
                               setGenSuccess(data.message);
-                              // Refresh syllabus
-                              const meRes = await api.me();
-                              const exam = meRes.user.targetExam!;
-                              const syllRes = await api.getSyllabus(exam);
-                              setSyllabus(syllRes.syllabus);
+                              // Refresh syllabus. Exam slug comes from the
+                              // shared user store — no second /me call.
+                              const exam = me?.targetExam;
+                              if (exam) {
+                                const syllRes = await api.getSyllabus(exam);
+                                setSyllabus(syllRes.syllabus);
+                              }
                             } catch { setGenSuccess('Failed to generate. Try again.'); }
                             finally { setGenerating(null); }
                           }}

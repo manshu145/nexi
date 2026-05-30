@@ -6,7 +6,8 @@ import { toast } from 'sonner';
 import { EXAM_BY_SLUG } from '@nexigrate/shared';
 import { Logo } from '~/components/Logo';
 import { useAuth } from '~/lib/auth-context';
-import { api, type StoredUser, type ReferralStats } from '~/lib/api';
+import { useUser } from '~/lib/userStore';
+import { api, type ReferralStats } from '~/lib/api';
 import { AILoader } from '~/components/ui/AILoader';
 
 function Row({ label, value }: { label: string; value?: string | null }) {
@@ -20,11 +21,13 @@ export default function ProfilePage() {
   const t = useTranslations('profile');
   const tc = useTranslations('common');
   const { user, loading, signOut } = useAuth();
+  // PR-32: read the stored user from the shared store, mutate via the
+  // hook's `mutate()` after a save so the dashboard sees the new name
+  // without a follow-up /me round-trip.
+  const { user: me, loading: meLoading, mutate } = useUser();
   const router = useRouter();
-  const [me, setMe] = useState<StoredUser | null>(null);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [pageLoading, setPageLoading] = useState(true);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [dob, setDob] = useState('');
@@ -37,7 +40,18 @@ export default function ProfilePage() {
   const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
-  useEffect(() => { if (!user) return; (async () => { try { const r = await api.me(); setMe(r.user); setName(r.user.name); setPhone(r.user.phone ?? ''); setDob(r.user.dob ?? ''); setSchool(r.user.school ?? ''); setAim(r.user.aim ?? ''); } catch { toast.error('Failed to load'); } finally { setPageLoading(false); } })(); }, [user]);
+
+  // Hydrate editable fields when the stored user lands. Re-runs only when
+  // the hook hands us a fresh record (e.g. after a background revalidation),
+  // never triggers a redundant network request.
+  useEffect(() => {
+    if (!me) return;
+    setName(me.name);
+    setPhone(me.phone ?? '');
+    setDob(me.dob ?? '');
+    setSchool(me.school ?? '');
+    setAim(me.aim ?? '');
+  }, [me]);
 
   // Fetch referral stats
   useEffect(() => {
@@ -48,16 +62,37 @@ export default function ProfilePage() {
     });
   }, [user]);
 
-  const handleSave = async () => { setSaving(true); try { const r = await api.updateProfile({ name: name.trim(), phone: phone.trim()||undefined, dob: dob||undefined, school: school.trim()||undefined, aim: aim.trim()||undefined }); setMe(r.user); setEditing(false); toast.success(t('saved')); } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed'); } finally { setSaving(false); } };
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const r = await api.updateProfile({
+        name: name.trim(),
+        phone: phone.trim() || undefined,
+        dob: dob || undefined,
+        school: school.trim() || undefined,
+        aim: aim.trim() || undefined,
+      });
+      // Patch the shared store with the server's authoritative response so
+      // every subscriber (dashboard greeting, header avatar, etc.) sees the
+      // new name immediately without another /me fetch.
+      mutate(() => r.user);
+      setEditing(false);
+      toast.success(t('saved'));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleCancelPlan = async () => {
     if (cancelling) return;
     setCancelling(true);
     try {
       const res = await api.cancelSubscription(cancelReason);
-      // Mirror the server response into local state so the UI flips
+      // Mirror the server response into the shared store so the UI flips
       // immediately to the cancelled banner without a round-trip refetch.
-      setMe((prev) => prev ? { ...prev, planCancelledAt: res.planCancelledAt } : prev);
+      mutate((prev) => prev ? { ...prev, planCancelledAt: res.planCancelledAt } : prev);
       setCancelOpen(false);
       setCancelReason('');
       toast.success(res.alreadyCancelled
@@ -70,7 +105,7 @@ export default function ProfilePage() {
     }
   };
 
-  if (loading || !user || pageLoading) return <main className="flex min-h-dvh items-center justify-center"><AILoader context="general" /></main>;
+  if (loading || !user || meLoading || !me) return <main className="flex min-h-dvh items-center justify-center"><AILoader context="general" /></main>;
   const examName = me?.targetExam ? EXAM_BY_SLUG.get(me.targetExam)?.name ?? me.targetExam : '—';
 
   return (

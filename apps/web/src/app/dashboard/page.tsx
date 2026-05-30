@@ -6,7 +6,8 @@ import { useTheme } from 'next-themes';
 import { EXAM_BY_SLUG } from '@nexigrate/shared';
 import { Logo } from '~/components/Logo';
 import { useAuth } from '~/lib/auth-context';
-import { api, type StoredUser } from '~/lib/api';
+import { useUser } from '~/lib/userStore';
+import { api } from '~/lib/api';
 import { AILoader } from '~/components/ui/AILoader';
 
 export default function DashboardPage() {
@@ -15,11 +16,17 @@ export default function DashboardPage() {
   const { user, loading, signOut } = useAuth();
   const { theme, setTheme } = useTheme();
   const router = useRouter();
-  const [me, setMe] = useState<StoredUser | null>(null);
+  // PR-32: read the persisted user from the shared store. The store
+  // hydrates from sessionStorage on first paint and revalidates in the
+  // background, so navigation between authenticated pages no longer
+  // triggers a fresh /me round-trip per page (~600ms warm, 2-3s cold).
+  const { user: me, loading: meLoading, refresh } = useUser();
   const [error, setError] = useState<string | null>(null);
-  const [pageLoading, setPageLoading] = useState(true);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [appInstalled, setAppInstalled] = useState(false);
+  // Tracks whether we've already kicked off the one-shot credit-retry
+  // for brand-new users whose signup bonus hasn't credited yet.
+  const creditRetryFiredRef = useRef(false);
   const deferredPromptRef = useRef<any>(null);
 
   // PWA install prompt
@@ -49,72 +56,78 @@ export default function DashboardPage() {
   };
 
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
+
+  // Onboarding gates + brand-new-user credit retry. Runs whenever the
+  // shared store delivers a fresh `me` record. No /me fetch happens
+  // here — the store has already resolved it once for the whole app.
   useEffect(() => {
-    if (!user) return; let c = false;
-    (async () => {
-      try {
-        const res = await api.me();
-        if (c) return;
-        setMe(res.user);
-        // If credits appear 0 for a very new user, retry once after a delay
-        if ((res.user.credits === 0 || !res.user.credits) && res.user.createdAt) {
-          const createdMs = new Date(res.user.createdAt).getTime();
-          if (Date.now() - createdMs < 5 * 60 * 1000) {
-            setTimeout(async () => {
-              try {
-                const retry = await api.me();
-                if (retry.user.credits > 0) setMe(retry.user);
-              } catch {}
-            }, 2000);
-          }
-        }
-        // Phone verification mandatory — anti-fake-user gate. Per founder
-        // lock §4.5 ("phone OTP forced for fake-user protection"), there is
-        // NO local-storage skip path: the bypass that used to live here is
-        // gone. The check is anchored on the server-side `phoneVerified`
-        // flag (set from the Firebase ID token's verified `phone_number`
-        // claim by /v1/users/me), which the client cannot lie about.
-        //
-        // Backwards compatibility: legacy users created before this flag
-        // existed have `phoneVerified === undefined`. We treat undefined
-        // as "verified" iff the user has a `phone` string on file, so they
-        // are not yanked back into onboarding mid-product. New users who
-        // genuinely haven't verified land on /verify-phone.
-        const isPhoneVerified =
-          res.user.phoneVerified === true ||
-          (res.user.phoneVerified === undefined && Boolean(res.user.phone));
-        if (!isPhoneVerified) {
-          router.replace('/verify-phone');
-          return;
-        }
-        if (!res.user.targetExam) { router.replace('/onboarding/language'); return; }
-        // Assessment is mandatory and cannot be skipped by closing the tab
-        // mid-quiz (lock §4.5: "assessment force rahega bhai!!"). If the
-        // user has picked an exam but never produced an `onboardingLevel`,
-        // we send them back to /onboarding/assessment until it completes.
-        // Grandfathered users with an exam set but no level on file are
-        // also bounced -- one-time cost; once they finish, the guard
-        // never fires again.
-        if (!res.user.onboardingLevel) {
-          router.replace('/onboarding/assessment');
-          return;
-        }
-        // Plan-selection step (PR-05 lock §2.6) is mandatory for new users.
-        // The flag is undefined for users grandfathered in before this PR
-        // -- we treat undefined as "already chosen" so they aren't bounced
-        // back into onboarding mid-product. For new users, false sends
-        // them to /onboarding/plan; the page flips it to true on Continue.
-        if (res.user.onboardingPlanChosen === false) {
-          router.replace('/onboarding/plan');
-          return;
+    if (!user || !me) return;
+    let cancelled = false;
+    setError(null);
+    try {
+      // If credits appear 0 for a very new user, retry once via the
+      // store's refresh() so every subscriber sees the new balance.
+      // Single-shot guard prevents a refresh() loop if the bonus is
+      // genuinely zero (admin override, etc).
+      if (
+        !creditRetryFiredRef.current &&
+        (me.credits === 0 || !me.credits) &&
+        me.createdAt
+      ) {
+        const createdMs = new Date(me.createdAt).getTime();
+        if (Date.now() - createdMs < 5 * 60 * 1000) {
+          creditRetryFiredRef.current = true;
+          setTimeout(() => { if (!cancelled) void refresh(); }, 2000);
         }
       }
-      catch (e) { if (c) return; setError(e instanceof Error ? e.message : 'Failed to load'); }
-      finally { if (!c) setPageLoading(false); }
-    })(); return () => { c = true; };
-  }, [user, router]);
 
-  if (loading || !user || pageLoading) return (<main className="flex min-h-dvh items-center justify-center"><AILoader context="dashboard" /></main>);
+      // Phone verification mandatory — anti-fake-user gate. Per founder
+      // lock §4.5 ("phone OTP forced for fake-user protection"), there is
+      // NO local-storage skip path: the bypass that used to live here is
+      // gone. The check is anchored on the server-side `phoneVerified`
+      // flag (set from the Firebase ID token's verified `phone_number`
+      // claim by /v1/users/me), which the client cannot lie about.
+      //
+      // Backwards compatibility: legacy users created before this flag
+      // existed have `phoneVerified === undefined`. We treat undefined
+      // as "verified" iff the user has a `phone` string on file, so they
+      // are not yanked back into onboarding mid-product. New users who
+      // genuinely haven't verified land on /verify-phone.
+      const isPhoneVerified =
+        me.phoneVerified === true ||
+        (me.phoneVerified === undefined && Boolean(me.phone));
+      if (!isPhoneVerified) {
+        router.replace('/verify-phone');
+        return;
+      }
+      if (!me.targetExam) { router.replace('/onboarding/language'); return; }
+      // Assessment is mandatory and cannot be skipped by closing the tab
+      // mid-quiz (lock §4.5: "assessment force rahega bhai!!"). If the
+      // user has picked an exam but never produced an `onboardingLevel`,
+      // we send them back to /onboarding/assessment until it completes.
+      // Grandfathered users with an exam set but no level on file are
+      // also bounced -- one-time cost; once they finish, the guard
+      // never fires again.
+      if (!me.onboardingLevel) {
+        router.replace('/onboarding/assessment');
+        return;
+      }
+      // Plan-selection step (PR-05 lock §2.6) is mandatory for new users.
+      // The flag is undefined for users grandfathered in before this PR
+      // -- we treat undefined as "already chosen" so they aren't bounced
+      // back into onboarding mid-product. For new users, false sends
+      // them to /onboarding/plan; the page flips it to true on Continue.
+      if (me.onboardingPlanChosen === false) {
+        router.replace('/onboarding/plan');
+        return;
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load');
+    }
+    return () => { cancelled = true; };
+  }, [user, me, router, refresh]);
+
+  if (loading || !user || meLoading || !me) return (<main className="flex min-h-dvh items-center justify-center"><AILoader context="dashboard" /></main>);
 
   const examName = me?.targetExam ? EXAM_BY_SLUG.get(me.targetExam)?.name ?? '' : '';
   const h = (new Date().getUTCHours() + 5.5) % 24;

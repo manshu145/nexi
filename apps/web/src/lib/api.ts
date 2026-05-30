@@ -212,9 +212,22 @@ export const api = {
   },
 
   // ─── Mock tests (lock §5.5) ─────────────────────────────────────────────
-  async startMockTest(input: { examSlug: string; language?: 'en' | 'hi'; questionCount?: number; durationMinutes?: number }) {
+  /**
+   * Kick off mock-test generation. Server can take 30-90s when Groq is the
+   * only working provider (PR-18 batches 30 questions into 6×5 calls). The
+   * caller passes an AbortController.signal so the page can enforce a
+   * 90-second client-side ceiling and surface a clean "took too long"
+   * error instead of an indefinite spinner. `authedFetch` already accepts
+   * `init.signal` because RequestInit's signal field is forwarded as-is to
+   * the underlying fetch — see PR-32.
+   */
+  async startMockTest(
+    input: { examSlug: string; language?: 'en' | 'hi'; questionCount?: number; durationMinutes?: number },
+    opts?: { signal?: AbortSignal },
+  ) {
     return (await authedFetch('/v1/mock-tests/start', {
       method: 'POST', body: JSON.stringify(input),
+      ...(opts?.signal ? { signal: opts.signal } : {}),
     })).json() as Promise<{
       attemptId: string; examSlug: string; language: 'en' | 'hi';
       durationMinutes: number; total: number; startedAt: string; creditCost: number;
