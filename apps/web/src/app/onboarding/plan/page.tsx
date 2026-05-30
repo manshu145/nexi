@@ -43,18 +43,50 @@ const RECOMMENDED_BADGE = {
 
 /**
  * Smart recommendation based on the assessment level the server returned
- * for this user. Beginner / intermediate students benefit most from
- * Scholar (entry-level paid tier with no credit deduction); advanced
- * students who pass the assessment with flying colours have outgrown the
- * basic features and a paid tier with deeper analytics is a better fit.
+ * for this user.
  *
- * If we can't read a level (e.g. user skipped assessment for some reason),
- * we still recommend Scholar -- the founder's stated target plan -- so
- * the default selection nudges users toward the ₹99 path.
+ * PR-34b (audit #43): the previous version returned `'aspirant'` for
+ * advanced users, but Aspirant is gated as "Coming Soon" on /upgrade and
+ * the upgrade page only handles scholar — routing advanced users to
+ * `/upgrade?plan=aspirant` ended in a dead end. Until Aspirant launches,
+ * recommend Scholar for ALL non-free tiers as a safe fallback. Once the
+ * Aspirant gate flips, swap the line below to bring back the level-based
+ * branch.
  */
-function recommendPlan(level: StoredUser['onboardingLevel']): PlanId {
-  if (level === 'advanced') return 'aspirant';
+function recommendPlan(_level: StoredUser['onboardingLevel']): PlanId {
+  // TODO(audit #43): when Aspirant becomes purchasable, restore:
+  //   if (_level === 'advanced') return 'aspirant';
   return 'scholar';
+}
+
+/**
+ * PR-34b (audit #42): merge the admin's live feature numbers (mockTests,
+ * dailyMcq, etc.) into the static highlight bullets so the bullets reflect
+ * what /admin/plans actually configured. Hindi/English copy stays
+ * authored — the admin only edits the matrix.
+ *
+ * Don't over-engineer: only inject numbers where the bullet clearly
+ * references that field (the "MCQ" line for dailyMcq, the "mock" line
+ * for mockTests). "Unlimited" stays as-is so we don't flip an admin
+ * change of -1 into a misleading literal. */
+function highlightsFor(planId: PlanId, plan: Plan | undefined, lang: 'en' | 'hi'): string[] {
+  const base = PLAN_HIGHLIGHTS[planId][lang];
+  if (!plan) return base;
+  return base.map((line) => {
+    // -1 / 0 → keep the static "Unlimited" copy intact
+    const isUnlimited = (n: number) => !Number.isFinite(n) || n <= 0;
+
+    if (line.toLowerCase().includes('unlimited') || line.includes('असीमित')) {
+      return line;
+    }
+    // MCQ count override — only when the live count is finite + positive.
+    if ((line.includes('MCQ') || line.includes('MCQ')) && !isUnlimited(plan.dailyMcq)) {
+      return lang === 'hi'
+        ? `${plan.dailyMcq} दैनिक MCQ`
+        : `${plan.dailyMcq} daily MCQs`;
+    }
+    return line;
+  });
 }
 
 export default function PlanSelectionPage() {
@@ -198,7 +230,10 @@ export default function PlanSelectionPage() {
           const planId = plan.id as PlanId;
           const isSelected = selected === planId;
           const isRecommended = planId === recommended;
-          const highlights = PLAN_HIGHLIGHTS[planId][lang === 'hi' ? 'hi' : 'en'];
+          // PR-34b (audit #42): inject admin-edited matrix counts (e.g.
+          // dailyMcq) into the bullets so the displayed copy matches
+          // whatever was configured in /admin/plans.
+          const highlights = highlightsFor(planId, plan, lang === 'hi' ? 'hi' : 'en');
 
           return (
             <button

@@ -21,14 +21,34 @@ import { AILoader } from '~/components/ui/AILoader';
  * values; the marketing copy here is a frozen snapshot of the founder's
  * lock §2.2 commitment so the user always sees a single, predictable
  * promise even if an admin tunes the in-app rates.
+ *
+ * PR-34b (audit #44) addendum: the *share message* (which goes out via
+ * navigator.share / WhatsApp deep links) DOES read the live signup-bonus
+ * preview so the number a friend sees in the invite matches what they
+ * actually receive. The on-page subtitle / steps stay frozen.
  */
 export default function ReferPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const [stats, setStats] = useState<ReferralStats | null>(null);
   const [pageLoading, setPageLoading] = useState(true);
+  // PR-34b (audit #44): the share message used to hardcode "100 bonus
+  // credits", which silently drifted whenever an admin retuned the
+  // signup_verified earn rate via /admin/credit-rewards. We pull the
+  // live amount from the public branding endpoint (cheap, unauthenticated,
+  // already used by splash). Falls back to 100 if the call fails so the
+  // share button never blocks on network.
+  const [signupBonus, setSignupBonus] = useState<number>(100);
 
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.getBranding()
+      .then((b) => { if (!cancelled && Number.isFinite(b.signupBonusPreview) && b.signupBonusPreview > 0) setSignupBonus(b.signupBonusPreview); })
+      .catch(() => { /* silently keep the 100-default */ });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -71,7 +91,7 @@ export default function ReferPage() {
   };
 
   const shareMessage = stats
-    ? `Join Nexigrate - India's smartest exam prep app! Use my referral code: ${stats.code} and get 100 bonus credits. Download now: ${stats.referralUrl}`
+    ? `Join Nexigrate - India's smartest exam prep app! Use my referral code: ${stats.code} and get ${signupBonus} bonus credits. Download now: ${stats.referralUrl}`
     : '';
 
   const handleShare = async () => {

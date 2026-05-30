@@ -7,37 +7,27 @@ import { api, type ChatMessage } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 import { AILoader } from '~/components/ui/AILoader';
 
-export default function SupportPage() {
-  const { user, loading } = useAuth();
-  const router = useRouter();
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: 'assistant', content: "Hi! I'm Nexi Support. I can help you with:\n\n- **Account & billing** issues\n- **Credits & chapter unlock** problems\n- **Plan upgrades** & payment queries\n- **Technical bugs** on the platform\n\nHow can I help you today?", timestamp: new Date().toISOString() },
-  ]);
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [input, setInput] = useState('');
-  const [sending, setSending] = useState(false);
-  const [showContact, setShowContact] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
-
-  const sendMessage = async () => {
-    const text = input.trim();
-    if (!text || sending) return;
-    setInput('');
-    setSending(true);
-    const userMsg: ChatMessage = { role: 'user', content: text, timestamp: new Date().toISOString() };
-    setMessages(prev => [...prev, userMsg]);
-    try {
-      // Build support context so AI knows it's a support agent
-      const supportPrefix = sessionId ? '' : `[SYSTEM CONTEXT: You are the official support assistant for Nexigrate (nexigrate.com), an AI-powered study platform for Indian competitive exams (UPSC, JEE, NEET, SSC, Banking). 
+/**
+ * PR-34b (audit #45): the support assistant's system prompt previously
+ * hardcoded plan prices (and an OUTDATED Aspirant ₹199 instead of ₹299),
+ * which meant the AI happily told users incorrect info on every change to
+ * /admin/plans. The page now fetches the live admin-edited plans on mount
+ * and rebuilds the system prompt with the correct prices. If the fetch
+ * fails the DEFAULT_SUPPORT_PREFIX is used so the page keeps working —
+ * we've also corrected the typo there so even the offline path is right.
+ *
+ * The support session attaches the prefix to the FIRST message of a
+ * session only (`!sessionId`), so we don't pay for the prompt repeatedly
+ * within the same conversation.
+ */
+function buildSupportPrefix(priceLine: string): string {
+  return `[SYSTEM CONTEXT: You are the official support assistant for Nexigrate (nexigrate.com), an AI-powered study platform for Indian competitive exams (UPSC, JEE, NEET, SSC, Banking). 
 
 Your role: Help users with platform-related issues ONLY.
 
 Platform info you MUST know:
 - Nexigrate provides: AI-generated chapters, chapter quizzes, current affairs, AI chat (Nexi), practice sets (essay writing), streak rewards, credit system
-- Plans: Free (limited chapters, 2 essays/week), Scholar (₹99/mo), Aspirant (₹199/mo), Achiever (₹499/mo)
+- Plans: ${priceLine}
 - Credits: Earned by completing chapters (5-50 per chapter), daily streak bonus (10/day), referrals (100 credits each)
 - New users start with 200 credits
 - Passing chapter quiz (80%+) earns 50 credits, attempting earns 5
@@ -55,8 +45,64 @@ Rules:
 - Never make up features or policies that don't exist
 - Be friendly, concise, and helpful
 - Reply in the user's language (Hindi/English based on their message)]\n\n`;
+}
 
-      const messageToSend = supportPrefix + text;
+const DEFAULT_PRICE_LINE = 'Free (limited chapters, 2 essays/week), Scholar (₹99/mo), Aspirant (₹299/mo), Achiever (₹599/mo)';
+const DEFAULT_SUPPORT_PREFIX = buildSupportPrefix(DEFAULT_PRICE_LINE);
+
+export default function SupportPage() {
+  const { user, loading } = useAuth();
+  const router = useRouter();
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    { role: 'assistant', content: "Hi! I'm Nexi Support. I can help you with:\n\n- **Account & billing** issues\n- **Credits & chapter unlock** problems\n- **Plan upgrades** & payment queries\n- **Technical bugs** on the platform\n\nHow can I help you today?", timestamp: new Date().toISOString() },
+  ]);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [input, setInput] = useState('');
+  const [sending, setSending] = useState(false);
+  const [showContact, setShowContact] = useState(false);
+  // PR-34b (audit #45): live plan-aware system prefix. Defaults to the
+  // hand-written one (with corrected ₹299 / ₹599) so the page keeps
+  // working when /v1/billing/plans is unreachable.
+  const [supportPrefix, setSupportPrefix] = useState<string>(DEFAULT_SUPPORT_PREFIX);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+
+  // Fetch the live plan matrix and rebuild the prompt with the real
+  // prices. Failure is silent — DEFAULT_SUPPORT_PREFIX continues to apply.
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await api.getPlans();
+        if (cancelled) return;
+        // Skip free-plan in the price line — it's described separately.
+        const paid = r.plans.filter((p) => p.price > 0);
+        if (paid.length === 0) return;
+        const priceLine = `Free (limited chapters, 2 essays/week), ${paid.map((p) => `${p.name} (₹${p.price}/mo)`).join(', ')}`;
+        setSupportPrefix(buildSupportPrefix(priceLine));
+      } catch {
+        // keep DEFAULT_SUPPORT_PREFIX
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user]);
+
+  const sendMessage = async () => {
+    const text = input.trim();
+    if (!text || sending) return;
+    setInput('');
+    setSending(true);
+    const userMsg: ChatMessage = { role: 'user', content: text, timestamp: new Date().toISOString() };
+    setMessages(prev => [...prev, userMsg]);
+    try {
+      // Prefix is attached only on the FIRST message of a session — once
+      // the assistant has it in context, repeating it on every follow-up
+      // would just burn tokens.
+      const prefix = sessionId ? '' : supportPrefix;
+      const messageToSend = prefix + text;
       const res = await api.sendChat(messageToSend, sessionId ?? undefined);
       setSessionId(res.sessionId);
       const aiMsg: ChatMessage = { role: 'assistant', content: res.response, timestamp: new Date().toISOString() };

@@ -51,6 +51,18 @@ export default function AssessmentPage() {
   const [error, setError] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lang = useRef<'en' | 'hi'>('en');
+  // PR-34b (audit #66): 90-second client-side ceiling on the stage
+  // generation calls. Same pattern PR-32 used for mock-tests:
+  //   - AbortController scoped per stage call
+  //   - window.setTimeout fires .abort() after 90 s
+  //   - on abort the error phase shows a "took longer than 90 s" copy
+  //     with a Retry button that re-fires the same load.
+  // We track the current controller in a ref so an unmount mid-call
+  // cleans up correctly (page navigation must NOT leave a fetch hanging).
+  const abortRef = useRef<AbortController | null>(null);
+  // Remembers which load to re-fire from the error-phase Retry button.
+  // null = retry intro (start), 1/2/3 = retry that stage's load.
+  const lastFailedRef = useRef<null | 'start' | 2 | 3>(null);
 
   // Get language on mount
   useEffect(() => {
@@ -73,11 +85,34 @@ export default function AssessmentPage() {
   const globalProgress = questionsAnsweredBefore + idx;
   const progressPct = Math.round((globalProgress / TOTAL_QUESTIONS) * 100);
 
+  /**
+   * Spin up an AbortController + 90s timeout pair for one stage call.
+   * Returns the signal to thread into the api method and a `done()`
+   * cleanup closure to call from finally so we don't leak the timer.
+   */
+  function makeStageTimeout(): { signal: AbortSignal; done: () => void } {
+    abortRef.current?.abort(); // cancel any in-flight stage if reload re-triggers
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const timeoutId = window.setTimeout(() => controller.abort(), 90_000);
+    return {
+      signal: controller.signal,
+      done: () => { window.clearTimeout(timeoutId); if (abortRef.current === controller) abortRef.current = null; },
+    };
+  }
+
+  /** Cleanup any in-flight stage call on unmount so page-navigation
+   *  doesn't leave a fetch dangling. */
+  useEffect(() => () => { abortRef.current?.abort(); }, []);
+
   const startAssessment = async () => {
     setLoading(true); setError(null); setPhase('intro');
+    lastFailedRef.current = 'start';
+    const { signal, done } = makeStageTimeout();
     try {
       const exam = me?.targetExam ?? 'jee-main';
-      const res = await api.getStage1Questions(exam, lang.current);
+      const res = await api.getStage1Questions(exam, lang.current, { signal });
+      done();
       if (!res.questions || res.questions.length === 0) {
         throw new Error('No questions received from AI. Service may be busy.');
       }
@@ -86,8 +121,13 @@ export default function AssessmentPage() {
       setIdx(0);
       setTimer(45);
       setPhase('quiz');
+      lastFailedRef.current = null;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to generate questions';
+      done();
+      const aborted = err instanceof DOMException && err.name === 'AbortError';
+      const msg = aborted
+        ? 'Generation took longer than 90 seconds. Tap Retry to try again.'
+        : (err instanceof Error ? err.message : 'Failed to generate questions');
       setError(msg);
       setPhase('error');
       toast.error(msg);
@@ -96,21 +136,29 @@ export default function AssessmentPage() {
 
   const loadStage2 = async () => {
     setPhase('stage-transition');
+    lastFailedRef.current = 2;
+    const { signal, done } = makeStageTimeout();
     try {
       const exam = me?.targetExam ?? 'jee-main';
       const stage1Results = {
         questions: stageData[1].questions,
         answers: Array.from(stageData[1].answers.entries()).map(([qId, chosen]) => ({ questionId: qId, chosen })),
       };
-      const res = await api.getStage2Questions(exam, lang.current, stage1Results);
+      const res = await api.getStage2Questions(exam, lang.current, stage1Results, { signal });
+      done();
       if (!res.questions || res.questions.length === 0) throw new Error('No Stage 2 questions received.');
       setStageData(prev => ({ ...prev, 2: { questions: res.questions, answers: new Map() } }));
       setCurrentStage(2);
       setIdx(0);
       setTimer(45);
       setPhase('quiz');
+      lastFailedRef.current = null;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to generate Stage 2 questions';
+      done();
+      const aborted = err instanceof DOMException && err.name === 'AbortError';
+      const msg = aborted
+        ? 'Generation took longer than 90 seconds. Tap Retry to try again.'
+        : (err instanceof Error ? err.message : 'Failed to generate Stage 2 questions');
       setError(msg);
       setPhase('error');
       toast.error(msg);
@@ -119,6 +167,8 @@ export default function AssessmentPage() {
 
   const loadStage3 = async () => {
     setPhase('stage-transition');
+    lastFailedRef.current = 3;
+    const { signal, done } = makeStageTimeout();
     try {
       const exam = me?.targetExam ?? 'jee-main';
       const stage1Results = {
@@ -129,19 +179,34 @@ export default function AssessmentPage() {
         questions: stageData[2].questions,
         answers: Array.from(stageData[2].answers.entries()).map(([qId, chosen]) => ({ questionId: qId, chosen })),
       };
-      const res = await api.getStage3Questions(exam, lang.current, stage1Results, stage2Results);
+      const res = await api.getStage3Questions(exam, lang.current, stage1Results, stage2Results, { signal });
+      done();
       if (!res.questions || res.questions.length === 0) throw new Error('No Stage 3 questions received.');
       setStageData(prev => ({ ...prev, 3: { questions: res.questions, answers: new Map() } }));
       setCurrentStage(3);
       setIdx(0);
       setTimer(45);
       setPhase('quiz');
+      lastFailedRef.current = null;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to generate Stage 3 questions';
+      done();
+      const aborted = err instanceof DOMException && err.name === 'AbortError';
+      const msg = aborted
+        ? 'Generation took longer than 90 seconds. Tap Retry to try again.'
+        : (err instanceof Error ? err.message : 'Failed to generate Stage 3 questions');
       setError(msg);
       setPhase('error');
       toast.error(msg);
     }
+  };
+
+  /** Re-fire whichever load just failed so the Retry button does the
+   *  right thing without forcing the user back to the intro screen. */
+  const handleRetry = () => {
+    const stage = lastFailedRef.current;
+    if (stage === 2) { void loadStage2(); return; }
+    if (stage === 3) { void loadStage3(); return; }
+    void startAssessment();
   };
 
   const submitAssessment = useCallback(async () => {
@@ -243,7 +308,7 @@ export default function AssessmentPage() {
         <p className="mt-3 text-xs text-muted-500">AI service may be busy. Try again in a moment.</p>
       </div>
       <div className="mt-8 flex w-full flex-col gap-3">
-        <button type="button" onClick={startAssessment} className="btn-primary w-full">Retry Assessment</button>
+        <button type="button" onClick={handleRetry} className="btn-primary w-full">Retry Assessment</button>
       </div>
     </div>
   );

@@ -261,7 +261,20 @@ export default function AdminUsersPage() {
                   {u.name?.[0]?.toUpperCase() || '?'}
                 </div>
                 <div className="min-w-0">
-                  <p className="font-medium text-sm text-ink-900 truncate">{u.name || 'Unnamed'}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium text-sm text-ink-900 truncate">{u.name || 'Unnamed'}</p>
+                    {/* PR-34b (audit #38): surface a "Banned" badge on
+                         the row so admin can spot banned users without
+                         opening the drawer. The drawer already had the
+                         ban button; this just makes the state visible
+                         in the list. ember-500 is already in the file's
+                         existing palette so no new colour is introduced. */}
+                    {u.banned && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-ember-500/10 px-2 py-0.5 text-[10px] font-semibold text-ember-600 flex-shrink-0">
+                        🚫 Banned
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-muted-500 truncate">{u.email}</p>
                 </div>
               </div>

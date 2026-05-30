@@ -63,7 +63,9 @@ export default function CurrentAffairsShortsPage() {
         if (res.userLikes) setUserLikes(new Set(res.userLikes));
         if (res.userBookmarks) setUserBookmarks(new Set(res.userBookmarks));
         if (res.likeCounts) setLikeCounts(res.likeCounts);
-        if ((res as any).isFromYesterday) setIsFromYesterday(true);
+        // PR-34b (audit #36): drop the `as any` cast — the field is now
+        // typed on CurrentAffairsResponse so the optional read is safe.
+        if (res.isFromYesterday) setIsFromYesterday(true);
       } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load'); }
       finally { setPageLoading(false); }
     })();

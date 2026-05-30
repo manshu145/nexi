@@ -22,11 +22,15 @@ const API = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com';
 /**
  * Editable copy of a plan kept in component state. We track the SUBSET of
  * fields the admin can change (price, yearlyPrice, isActive, comingSoon,
- * features). The id, subscriber count, and Hindi name stay read-only here
+ * features, name, nameHi). The id and subscriber count stay read-only here
  * to keep the editor table compact.
+ *
+ * PR-34b (audit #37): nameHi is now editable in the row form. Backend
+ * already accepted it via adminUpdatePlan; the table just didn't surface
+ * it. Hindi label sits as a small input under the English one.
  */
 type PlanDraft = Pick<AdminPlan,
-  'id' | 'name' | 'price' | 'yearlyPrice' | 'isActive' | 'comingSoon' | 'features' | 'subscribers'
+  'id' | 'name' | 'nameHi' | 'price' | 'yearlyPrice' | 'isActive' | 'comingSoon' | 'features' | 'subscribers'
 >;
 
 export default function AdminPlansPage() {
@@ -61,6 +65,7 @@ export default function AdminPlansPage() {
       const planDrafts: PlanDraft[] = plansRes.plans.map((p) => ({
         id: p.id,
         name: p.name,
+        nameHi: p.nameHi,
         price: p.price,
         yearlyPrice: p.yearlyPrice,
         isActive: p.isActive,
@@ -106,6 +111,7 @@ export default function AdminPlansPage() {
     try {
       const patch: Partial<AdminPlanPatch> = {
         name: draft.name,
+        nameHi: draft.nameHi,
         price: draft.price,
         yearlyPrice: draft.yearlyPrice,
         isActive: draft.isActive,
@@ -116,6 +122,7 @@ export default function AdminPlansPage() {
       // Sync back: server may have sanitised values (e.g. floor numbers).
       patchDraft(id, {
         name: res.plan.name,
+        nameHi: res.plan.nameHi,
         price: res.plan.price,
         yearlyPrice: res.plan.yearlyPrice,
         isActive: res.plan.isActive,
@@ -239,7 +246,21 @@ export default function AdminPlansPage() {
                           value={p.name}
                           onChange={(e) => patchDraft(p.id, { name: e.target.value })}
                           className="input w-32 text-sm"
+                          placeholder="Name (English)"
                         />
+                        {/* PR-34b (audit #37): admin can now edit the
+                             Hindi label in-place. Backend already accepted
+                             nameHi via adminUpdatePlan; surfacing the field
+                             stops it from drifting from the locked default. */}
+                        {p.id !== 'free' && (
+                          <input
+                            value={p.nameHi}
+                            onChange={(e) => patchDraft(p.id, { nameHi: e.target.value })}
+                            className="input mt-1 w-32 text-xs"
+                            placeholder="Hindi label"
+                            lang="hi"
+                          />
+                        )}
                         <p className="mt-0.5 text-[10px] text-muted-400">id: {p.id}</p>
                       </td>
                       <td className="px-4 py-3">
@@ -440,6 +461,7 @@ export default function AdminPlansPage() {
               <tr className="border-b border-line text-left">
                 <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-500">Code</th>
                 <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-500">Discount</th>
+                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-500">Applicable Plans</th>
                 <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-500">Used/Max</th>
                 <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-500">Status</th>
                 <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-500">Actions</th>
@@ -451,6 +473,17 @@ export default function AdminPlansPage() {
                   <td className="px-4 py-3 font-mono font-medium text-ink-900">{c.code}</td>
                   <td className="px-4 py-3 text-muted-600 dark:text-muted-400">
                     {c.discountType === 'percent' ? `${c.discountValue}%` : `₹${c.discountValue}`}
+                  </td>
+                  {/* PR-34b (audit #34): show which plans the coupon
+                       is configured for. Coupons configured for
+                       aspirant/achiever-only would otherwise be
+                       invisible from the admin table even though they
+                       took effect server-side. "all" indicates the
+                       backend treats an empty list as universal. */}
+                  <td className="px-4 py-3 text-muted-600 dark:text-muted-400">
+                    {c.applicablePlans && c.applicablePlans.length > 0
+                      ? c.applicablePlans.join(', ')
+                      : 'all'}
                   </td>
                   <td className="px-4 py-3 text-muted-600 dark:text-muted-400">
                     {c.usedCount}/{c.maxUses === 0 ? '∞' : c.maxUses}

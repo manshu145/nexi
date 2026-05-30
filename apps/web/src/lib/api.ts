@@ -91,9 +91,38 @@ export const api = {
   },
   async getAssessmentQuestions(examSlug: string, language: 'en'|'hi') { return (await authedFetch('/v1/assessment/questions', { method: 'POST', body: JSON.stringify({ examSlug, language }) })).json() as Promise<{questions:GeneratedMCQ[]}>; },
   async submitAssessment(questions: GeneratedMCQ[], answers: {questionId:string;chosen:string|null}[]) { return (await authedFetch('/v1/assessment/submit', { method: 'POST', body: JSON.stringify({ questions, answers }) })).json() as Promise<AssessmentResult>; },
-  async getStage1Questions(examSlug: string, language: 'en'|'hi') { return (await authedFetch('/v1/assessment/questions', { method: 'POST', body: JSON.stringify({ examSlug, language }) })).json() as Promise<{questions:GeneratedMCQ[]}>; },
-  async getStage2Questions(examSlug: string, language: 'en'|'hi', stage1Results: {questions:GeneratedMCQ[]; answers:{questionId:string;chosen:string|null}[]}) { return (await authedFetch('/v1/assessment/stage2', { method: 'POST', body: JSON.stringify({ examSlug, language, stage1Results }) })).json() as Promise<{questions:GeneratedMCQ[]}>; },
-  async getStage3Questions(examSlug: string, language: 'en'|'hi', stage1Results: {questions:GeneratedMCQ[]; answers:{questionId:string;chosen:string|null}[]}, stage2Results: {questions:GeneratedMCQ[]; answers:{questionId:string;chosen:string|null}[]}) { return (await authedFetch('/v1/assessment/stage3', { method: 'POST', body: JSON.stringify({ examSlug, language, stage1Results, stage2Results }) })).json() as Promise<{questions:GeneratedMCQ[]}>; },
+  async getStage1Questions(examSlug: string, language: 'en'|'hi', opts?: { signal?: AbortSignal }) {
+    return (await authedFetch('/v1/assessment/questions', {
+      method: 'POST',
+      body: JSON.stringify({ examSlug, language }),
+      ...(opts?.signal ? { signal: opts.signal } : {}),
+    })).json() as Promise<{questions:GeneratedMCQ[]}>;
+  },
+  async getStage2Questions(
+    examSlug: string,
+    language: 'en'|'hi',
+    stage1Results: {questions:GeneratedMCQ[]; answers:{questionId:string;chosen:string|null}[]},
+    opts?: { signal?: AbortSignal },
+  ) {
+    return (await authedFetch('/v1/assessment/stage2', {
+      method: 'POST',
+      body: JSON.stringify({ examSlug, language, stage1Results }),
+      ...(opts?.signal ? { signal: opts.signal } : {}),
+    })).json() as Promise<{questions:GeneratedMCQ[]}>;
+  },
+  async getStage3Questions(
+    examSlug: string,
+    language: 'en'|'hi',
+    stage1Results: {questions:GeneratedMCQ[]; answers:{questionId:string;chosen:string|null}[]},
+    stage2Results: {questions:GeneratedMCQ[]; answers:{questionId:string;chosen:string|null}[]},
+    opts?: { signal?: AbortSignal },
+  ) {
+    return (await authedFetch('/v1/assessment/stage3', {
+      method: 'POST',
+      body: JSON.stringify({ examSlug, language, stage1Results, stage2Results }),
+      ...(opts?.signal ? { signal: opts.signal } : {}),
+    })).json() as Promise<{questions:GeneratedMCQ[]}>;
+  },
   async submitMultiStageAssessment(stage1: {questions:GeneratedMCQ[]; answers:{questionId:string;chosen:string|null}[]}, stage2: {questions:GeneratedMCQ[]; answers:{questionId:string;chosen:string|null}[]}, stage3: {questions:GeneratedMCQ[]; answers:{questionId:string;chosen:string|null}[]}) { return (await authedFetch('/v1/assessment/submit', { method: 'POST', body: JSON.stringify({ multiStage: true, stage1, stage2, stage3 }) })).json() as Promise<AssessmentResult>; },
 
   // Study
@@ -433,7 +462,7 @@ export const api = {
 
 export interface CurrentAffairsItem { id: string; headline: string; body: string; category: string; sources: string[]; summary: string; factChecked: boolean; date: string; publishedAt: string; }
 export interface LeaderboardEntry { userId: string; userName: string; score: number; timeTaken: number; date: string; }
-export interface CurrentAffairsResponse { date: string; items: CurrentAffairsItem[]; yesterdayWinner: LeaderboardEntry | null; userLikes?: string[]; userBookmarks?: string[]; likeCounts?: Record<string, number>; }
+export interface CurrentAffairsResponse { date: string; items: CurrentAffairsItem[]; yesterdayWinner: LeaderboardEntry | null; userLikes?: string[]; userBookmarks?: string[]; likeCounts?: Record<string, number>; isFromYesterday?: boolean; }
 export interface QuizSubmitResult { score: number; correct: number; total: number; timeTaken: number; rank: number; }
 export interface LeaderboardResponse { date: string; leaderboard: LeaderboardEntry[]; yesterdayWinner: LeaderboardEntry | null; }
 
