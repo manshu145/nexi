@@ -285,6 +285,20 @@ export default function ProfilePage() {
                   </button>
                 )}
               </div>
+
+              {/* PR-34c (audit #26): link to the new payment-history page.
+                  The backend has stored every completed payment since the
+                  Razorpay integration shipped, but until now the only way
+                  to see them was the admin user-detail panel. */}
+              <div className="border-t border-line pt-3">
+                <button
+                  type="button"
+                  onClick={() => router.push('/profile/payments')}
+                  className="text-xs font-medium text-ember-600 hover:underline"
+                >
+                  View payment history →
+                </button>
+              </div>
             </div>
           );
         })()}
@@ -426,6 +440,17 @@ export default function ProfilePage() {
             {/* Sign Out */}
             <button onClick={() => signOut()} className="btn-ghost w-full text-sm text-muted-500 hover:text-ink-900">
               Sign Out
+            </button>
+
+            {/* PR-34c (audit #28): student-side view of support tickets.
+                Pre-PR-34c the only way to talk to admin was via the AI
+                chat (which doesn't reach a human) — now there's a real
+                ticket system with admin replies. */}
+            <button
+              onClick={() => router.push('/profile/tickets')}
+              className="btn-ghost w-full text-sm text-muted-500 hover:text-ink-900"
+            >
+              My support tickets
             </button>
 
             {/* Privacy — DPDP §3.4 right-to-access (download all my data) */}

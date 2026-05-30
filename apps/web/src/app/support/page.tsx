@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
 import { useAuth } from '~/lib/auth-context';
 import { api, type ChatMessage } from '~/lib/api';
@@ -60,6 +61,13 @@ export default function SupportPage() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [showContact, setShowContact] = useState(false);
+  // PR-34c (audit #27 + #28): real ticket creation. Pre-PR-34c the only
+  // support surface was AI chat — students could not actually reach a
+  // human, so /admin/support was forever empty. Backend already had
+  // POST /v1/support/ticket; we just had no UI for it.
+  const [ticketSubject, setTicketSubject] = useState('');
+  const [ticketMessage, setTicketMessage] = useState('');
+  const [submittingTicket, setSubmittingTicket] = useState(false);
   // PR-34b (audit #45): live plan-aware system prefix. Defaults to the
   // hand-written one (with corrected ₹299 / ₹599) so the page keeps
   // working when /v1/billing/plans is unreachable.
@@ -117,6 +125,34 @@ export default function SupportPage() {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   };
 
+  /**
+   * PR-34c (audit #27): submit a real support ticket. The server
+   * persists into `supportTickets` so admin can reply via the existing
+   * /admin/support panel. Client validates: subject + message required,
+   * message capped at 1000 chars (the textarea's maxLength enforces it
+   * but we also slice in onSubmit defensively).
+   */
+  const submitTicket = async () => {
+    const subject = ticketSubject.trim();
+    const message = ticketMessage.trim().slice(0, 1000);
+    if (!subject || !message) {
+      toast.error('Both subject and description are required');
+      return;
+    }
+    if (submittingTicket) return;
+    setSubmittingTicket(true);
+    try {
+      await api.createSupportTicket(subject, message);
+      toast.success('Ticket created — admin will reply soon');
+      setTicketSubject('');
+      setTicketMessage('');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to create ticket');
+    } finally {
+      setSubmittingTicket(false);
+    }
+  };
+
   if (loading || !user) return <main className="flex min-h-dvh items-center justify-center"><AILoader context="general" /></main>;
 
   return (
@@ -172,6 +208,56 @@ export default function SupportPage() {
         <textarea value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyDown} placeholder="Describe your issue..." rows={2} className="input w-full resize-none pr-12 min-h-[44px]" />
         <button onClick={sendMessage} disabled={!input.trim() || sending} className="absolute right-3 bottom-3 btn-primary h-8 w-8 rounded-lg p-0 flex items-center justify-center disabled:opacity-50 text-sm" aria-label="Send message">➤</button>
       </div>
+
+      {/* PR-34c (audit #27): Real human ticket form. Sits below the AI
+          chat so AI is the first port of call (free, instant), but
+          students always have an escape hatch to a tracked ticket the
+          admin actually receives. */}
+      <section className="mt-8 border-t border-line pt-6">
+        <h2 className="font-serif text-lg font-semibold text-ink-900">Need human help? Create a ticket</h2>
+        <p className="mt-1 text-xs text-muted-500">Admin will reply on /profile/tickets — typically within 24 hours.</p>
+
+        <div className="mt-4 space-y-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-muted-500">Subject</label>
+            <input
+              type="text"
+              value={ticketSubject}
+              onChange={(e) => setTicketSubject(e.target.value.slice(0, 120))}
+              placeholder="Brief summary (e.g. Payment didn't unlock plan)"
+              className="input w-full text-sm"
+              maxLength={120}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-muted-500">Describe your issue</label>
+            <textarea
+              value={ticketMessage}
+              onChange={(e) => setTicketMessage(e.target.value.slice(0, 1000))}
+              rows={4}
+              placeholder="What were you trying to do? What happened? What did you expect?"
+              className="input w-full resize-none text-sm"
+              maxLength={1000}
+            />
+            <p className="mt-1 text-right text-[10px] text-muted-400">{ticketMessage.length}/1000</p>
+          </div>
+          <button
+            type="button"
+            onClick={submitTicket}
+            disabled={submittingTicket || !ticketSubject.trim() || !ticketMessage.trim()}
+            className="btn-primary w-full text-sm disabled:opacity-50"
+          >
+            {submittingTicket ? 'Submitting…' : 'Create ticket'}
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push('/profile/tickets')}
+            className="btn-ghost w-full text-xs"
+          >
+            View my tickets →
+          </button>
+        </div>
+      </section>
 
       {/* Contact Admin */}
       <div className="mt-6 border-t border-line pt-4">
