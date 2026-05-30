@@ -42,6 +42,19 @@ export interface AIEngine {
   translateToHindi(items: { headline: string; summary: string }[]): Promise<{ headline: string; summary: string }[]>;
   chat(messages: { role: 'user' | 'assistant'; content: string }[], userContext: { exam: string; level: string; language: 'en' | 'hi' }, preferredModel?: 'gpt4o' | 'groq' | 'gemini'): Promise<string>;
   /**
+   * Generate an SEO-friendly blog draft (lock §5.3).
+   *
+   * Returns markdown-formatted body. The admin then reviews + edits in
+   * /admin/blog before publishing -- AI assists, human ships. The prompt
+   * asks for canonical structure (H2 sections, intro + body + takeaway,
+   * 800-1500 words) so drafts are consistent across topics.
+   *
+   * Hindi drafts are generated in Devanagari, English in plain prose.
+   * Both stay under the per-call AI budget by capping max_tokens at
+   * ~3500 (a 1500-word post fits comfortably under that).
+   */
+  generateBlogDraft(input: { topic: string; outline?: string; language: 'en' | 'hi'; targetExam?: string }): Promise<string>;
+  /**
    * Record a user's USD cost contribution for cap enforcement (lock §3.8).
    * Called by AI-using routes AFTER the engine returns, so the next
    * request from the same user sees the updated daily total. No-op if
@@ -1268,6 +1281,117 @@ Rules for your responses:
 
       logger.warn('ai.translate_all_failed', { message: 'All providers failed, returning original items' });
       return items; // Return originals if all translation fails
+    },
+
+    async generateBlogDraft(input) {
+      const { topic, outline, language, targetExam } = input;
+      const audience = targetExam
+        ? `Indian competitive-exam students preparing for ${targetExam}`
+        : 'Indian competitive-exam students';
+      const langInstr = language === 'hi'
+        ? 'Write entirely in Hindi (Devanagari script). Use natural, accessible Hindi. Do NOT mix in English transliteration except for proper nouns.'
+        : 'Write in clear, accessible English suitable for a 16-22 year old student.';
+
+      const userPrompt = `Write a blog post for the Nexigrate study platform.
+
+TOPIC: ${topic}
+
+${outline ? `OUTLINE / KEY POINTS THE ADMIN WANTS COVERED:\n${outline}\n` : ''}TARGET AUDIENCE: ${audience}.
+
+REQUIREMENTS:
+- 800 to 1500 words.
+- Begin with a 2-3 line hook that frames the question / pain.
+- Use ## H2 headings for each major section (3 to 6 sections).
+- Inside each section, use short paragraphs (2-4 lines), occasional bullet lists, and at least one practical example or tip.
+- End with a "Key Takeaways" section as a bulleted list (3 to 5 items).
+- Maintain a calm, expert, exam-focused tone -- never preachy or salesy.
+- Do NOT mention or link to competing platforms.
+- Do NOT include a title at the top -- the admin sets that separately. Start directly with the hook paragraph.
+- Output PURE markdown. No code fences. No commentary before or after.
+
+${langInstr}`;
+
+      // Same fallback chain order as chat() -- Groq first because the user-
+      // reported 29 May incident showed it was the only reachable provider
+      // when OpenAI/Gemini quotas were exhausted. We want the blog draft to
+      // succeed on the cheap+fast path without burning the more expensive
+      // GPT-4o budget on a draft the admin will edit anyway.
+      const tries: Array<() => Promise<string | null>> = [];
+
+      if (groq) {
+        tries.push(async () => {
+          try {
+            const t0 = performance.now();
+            const c = await groq.chat.completions.create({
+              model: 'llama-3.3-70b-versatile',
+              messages: [{ role: 'user', content: userPrompt }],
+              temperature: 0.7,
+              max_tokens: 3500,
+            });
+            const reply = c.choices[0]?.message?.content?.trim() ?? '';
+            if (reply) {
+              const tokens = estimateTokens(reply);
+              logAICallToStore(store, 'llama-3.3-70b-versatile', tokens, estimateCost('llama-3.3-70b-versatile', tokens), Math.round(performance.now() - t0), undefined, { status: 'success', endpoint: 'blog_draft', provider: 'groq', requestPreview: topic.slice(0, 200), responsePreview: reply.slice(0, 300) });
+              return reply;
+            }
+          } catch (err) {
+            logger.warn('ai.blog_draft_groq_failed', { error: err instanceof Error ? err.message : String(err) });
+          }
+          return null;
+        });
+      }
+
+      if (openai) {
+        tries.push(async () => {
+          try {
+            const t0 = performance.now();
+            const c = await openai.chat.completions.create({
+              model: 'gpt-4o',
+              messages: [{ role: 'user', content: userPrompt }],
+              temperature: 0.7,
+              max_tokens: 3500,
+            });
+            const reply = c.choices[0]?.message?.content?.trim() ?? '';
+            if (reply) {
+              const tokens = estimateTokens(reply);
+              logAICallToStore(store, 'gpt-4o', tokens, estimateCost('gpt-4o', tokens), Math.round(performance.now() - t0), undefined, { status: 'success', endpoint: 'blog_draft', provider: 'openai', requestPreview: topic.slice(0, 200), responsePreview: reply.slice(0, 300) });
+              return reply;
+            }
+          } catch (err) {
+            logger.warn('ai.blog_draft_openai_failed', { error: err instanceof Error ? err.message : String(err) });
+          }
+          return null;
+        });
+      }
+
+      if (env.GEMINI_API_KEY && env.GEMINI_API_KEY.length > 5) {
+        tries.push(async () => {
+          try {
+            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ contents: [{ parts: [{ text: userPrompt }] }], generationConfig: { temperature: 0.7, maxOutputTokens: 3500 } }),
+            });
+            if (res.ok) {
+              const data = await res.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+              const reply = (data.candidates?.[0]?.content?.parts?.[0]?.text ?? '').trim();
+              if (reply) {
+                logger.info('ai.blog_draft', { provider: 'gemini', length: reply.length });
+                return reply;
+              }
+            }
+          } catch (err) {
+            logger.warn('ai.blog_draft_gemini_failed', { error: err instanceof Error ? err.message : String(err) });
+          }
+          return null;
+        });
+      }
+
+      for (const tryFn of tries) {
+        const out = await tryFn();
+        if (out && out.length > 200) return out;
+      }
+      throw new Error('Blog draft AI unavailable. Please try again.');
     },
 
     async recordAICost(userId: string, costUsd: number): Promise<void> {

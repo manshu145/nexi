@@ -52,6 +52,30 @@ export interface SyllabusSubject { slug: string; name: string; nameHi: string; i
 export interface SyllabusTree { exam: string; examName: string; subjects: SyllabusSubject[]; }
 export interface StudyProgress { userId: string; exam: string; completedChapters: string[]; chapterScores: Record<string, number>; currentChapter: string | null; overallPercent: number; }
 export interface ChapterContent { exam: string; subject: string; chapter: string; language: string; content: string; generatedAt: string; generatedBy: string; userLevel?: 'beginner' | 'intermediate' | 'advanced'; contentPersonalizedFor?: 'beginner' | 'intermediate' | 'advanced'; }
+
+// Blog (lock §5.3)
+export interface BlogPost {
+  id: string; slug: string;
+  title: string; titleHi?: string;
+  excerpt: string; excerptHi?: string;
+  body: string; bodyHi?: string;
+  status: 'draft' | 'published' | 'archived';
+  seoTitle?: string; seoDescription?: string; ogImage?: string;
+  tags: string[]; authorName: string;
+  createdAt: string; updatedAt: string; publishedAt?: string;
+}
+export interface BlogPostListItem {
+  id: string; slug: string; title: string; status: 'draft' | 'published' | 'archived';
+  excerpt: string; tags: string[]; authorName: string;
+  createdAt: string; updatedAt: string; publishedAt?: string;
+}
+export interface BlogPostInput {
+  slug: string; title: string; titleHi?: string;
+  excerpt: string; excerptHi?: string;
+  body: string; bodyHi?: string;
+  seoTitle?: string; seoDescription?: string; ogImage?: string;
+  tags?: string[]; authorName?: string;
+}
 export interface CompleteResult { progress: StudyProgress; nextChapter: string | null; unlocked: boolean; creditsAwarded: number; passed: boolean; }
 
 export const api = {
@@ -242,6 +266,46 @@ export const api = {
         currentStreak: number; bestStreak: number; targetExam: string | null;
       }>;
     }>;
+  },
+
+  // ─── Blog (lock §5.3) — admin-only mutations ─────────────────────────
+  async listBlogPosts(opts?: { status?: 'draft' | 'published' | 'archived'; limit?: number }) {
+    const qs = new URLSearchParams();
+    if (opts?.status) qs.set('status', opts.status);
+    if (opts?.limit) qs.set('limit', String(opts.limit));
+    const url = `/v1/admin/blog/posts${qs.toString() ? `?${qs}` : ''}`;
+    return (await authedFetch(url)).json() as Promise<{ posts: BlogPostListItem[] }>;
+  },
+  async getBlogPost(id: string) {
+    return (await authedFetch(`/v1/admin/blog/posts/${id}`)).json() as Promise<{ post: BlogPost }>;
+  },
+  async createBlogPost(input: BlogPostInput) {
+    return (await authedFetch(`/v1/admin/blog/posts`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input),
+    })).json() as Promise<{ post: BlogPost }>;
+  },
+  async updateBlogPost(id: string, patch: Partial<BlogPostInput>) {
+    return (await authedFetch(`/v1/admin/blog/posts/${id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch),
+    })).json() as Promise<{ post: BlogPost }>;
+  },
+  async publishBlogPost(id: string) {
+    return (await authedFetch(`/v1/admin/blog/posts/${id}/publish`, { method: 'POST' })).json() as Promise<{ post: BlogPost }>;
+  },
+  async unpublishBlogPost(id: string) {
+    return (await authedFetch(`/v1/admin/blog/posts/${id}/unpublish`, { method: 'POST' })).json() as Promise<{ post: BlogPost }>;
+  },
+  async deleteBlogPost(id: string) {
+    return (await authedFetch(`/v1/admin/blog/posts/${id}`, { method: 'DELETE' })).json() as Promise<{ success: boolean }>;
+  },
+  /**
+   * Generate a markdown blog draft via AI. Admin types topic + outline,
+   * gets back markdown to paste into the editor.
+   */
+  async generateBlogDraft(input: { topic: string; outline?: string; language?: 'en' | 'hi'; targetExam?: string }) {
+    return (await authedFetch(`/v1/admin/blog/draft`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input),
+    })).json() as Promise<{ body: string }>;
   },
 
   // ─── Public boot data (no auth required) ───────────────────────────────
