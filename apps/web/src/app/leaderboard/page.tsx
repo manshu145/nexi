@@ -15,6 +15,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '~/lib/auth-context';
+import { useUser } from '~/lib/userStore';
 import { api } from '~/lib/api';
 import { AILoader } from '~/components/ui/AILoader';
 
@@ -30,18 +31,20 @@ interface LeaderboardRow {
 export default function LeaderboardPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
+  const { user: me } = useUser();
   const [rows, setRows] = useState<LeaderboardRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [myStreak, setMyStreak] = useState<number | null>(null);
 
   useEffect(() => {
     if (authLoading) return;
     if (!user) { router.replace('/signin'); return; }
+    // Only fetch the leaderboard here — the user's own streak comes from
+    // the shared useUser() store (PR-32) so we don't fan out a second
+    // /me round-trip on every leaderboard visit.
     (async () => {
       try {
-        const [lb, me] = await Promise.all([api.getStreakLeaderboard(50), api.me()]);
+        const lb = await api.getStreakLeaderboard(50);
         setRows(lb.leaderboard);
-        setMyStreak(me.user.currentStreak ?? 0);
       } catch {
         setRows([]);
       } finally {
@@ -56,6 +59,7 @@ export default function LeaderboardPage() {
 
   const myUid = user?.uid ?? '';
   const myRank = rows.findIndex(r => r.userId === myUid);
+  const myStreak = me?.currentStreak ?? 0;
 
   return (
     <main className="min-h-screen bg-paper-100 px-4 py-6 pb-24">
@@ -66,7 +70,7 @@ export default function LeaderboardPage() {
       </header>
 
       {/* You card */}
-      {myStreak !== null && (
+      {me && (
         <section className="mx-auto mb-6 max-w-2xl">
           <div className="paper-card p-4">
             <div className="flex items-center justify-between">

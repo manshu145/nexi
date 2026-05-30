@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '~/lib/auth-context';
-import { api } from '~/lib/api';
+import { useUser } from '~/lib/userStore';
 import { Logo } from '~/components/Logo';
 import { AILoader } from '~/components/ui/AILoader';
 
@@ -14,20 +14,18 @@ const API = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com';
 
 export default function LevelPage() {
   const { user, loading } = useAuth();
+  const { user: userInfo, loading: meLoading } = useUser();
   const router = useRouter();
   const [analysis, setAnalysis] = useState<AnalysisData | null>(null);
-  const [userInfo, setUserInfo] = useState<any>(null);
   const [pageLoading, setPageLoading] = useState(true);
 
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !userInfo) return;
     (async () => {
       try {
-        const meRes = await api.me();
-        setUserInfo(meRes.user);
-        const exam = meRes.user.targetExam;
+        const exam = userInfo.targetExam;
         if (!exam) { router.replace('/onboarding/language'); return; }
         const token = await user.getIdToken();
         const res = await fetch(`${API}/v1/study/analysis/${exam}`, { headers: { Authorization: `Bearer ${token}` } });
@@ -35,9 +33,9 @@ export default function LevelPage() {
       } catch { /* ignore */ }
       finally { setPageLoading(false); }
     })();
-  }, [user, router]);
+  }, [user, userInfo, router]);
 
-  if (loading || !user || pageLoading) return (
+  if (loading || !user || meLoading || pageLoading) return (
     <main className="mx-auto flex min-h-dvh max-w-2xl flex-col items-center justify-center px-5">
       <AILoader context="general" />
     </main>

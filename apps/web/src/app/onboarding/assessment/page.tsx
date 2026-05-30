@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
+import { useUser } from '~/lib/userStore';
 import { api, type GeneratedMCQ } from '~/lib/api';
 import { AILoader } from '~/components/ui/AILoader';
 
@@ -33,6 +34,10 @@ export default function AssessmentPage() {
   const ts = useTranslations('onboarding');
   const tc = useTranslations('common');
   const router = useRouter();
+  // PR-32: read the exam slug from the shared user store. The page used
+  // to fire api.me() three separate times (once per stage) — replaced
+  // with a single source of truth that's already in memory.
+  const { user: me } = useUser();
   const [phase, setPhase] = useState<Phase>('intro');
   const [currentStage, setCurrentStage] = useState<Stage>(1);
   const [stageData, setStageData] = useState<Record<Stage, StageData>>({
@@ -71,8 +76,7 @@ export default function AssessmentPage() {
   const startAssessment = async () => {
     setLoading(true); setError(null); setPhase('intro');
     try {
-      const meRes = await api.me();
-      const exam = meRes.user.targetExam ?? 'jee-main';
+      const exam = me?.targetExam ?? 'jee-main';
       const res = await api.getStage1Questions(exam, lang.current);
       if (!res.questions || res.questions.length === 0) {
         throw new Error('No questions received from AI. Service may be busy.');
@@ -93,8 +97,7 @@ export default function AssessmentPage() {
   const loadStage2 = async () => {
     setPhase('stage-transition');
     try {
-      const meRes = await api.me();
-      const exam = meRes.user.targetExam ?? 'jee-main';
+      const exam = me?.targetExam ?? 'jee-main';
       const stage1Results = {
         questions: stageData[1].questions,
         answers: Array.from(stageData[1].answers.entries()).map(([qId, chosen]) => ({ questionId: qId, chosen })),
@@ -117,8 +120,7 @@ export default function AssessmentPage() {
   const loadStage3 = async () => {
     setPhase('stage-transition');
     try {
-      const meRes = await api.me();
-      const exam = meRes.user.targetExam ?? 'jee-main';
+      const exam = me?.targetExam ?? 'jee-main';
       const stage1Results = {
         questions: stageData[1].questions,
         answers: Array.from(stageData[1].answers.entries()).map(([qId, chosen]) => ({ questionId: qId, chosen })),

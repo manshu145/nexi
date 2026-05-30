@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '~/lib/auth-context';
+import { useUser } from '~/lib/userStore';
 import { api, type ChapterContent } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 import { PlanGate } from '~/components/PlanGate';
@@ -9,6 +10,11 @@ import { AILoader } from '~/components/ui/AILoader';
 
 export default function KindleReaderPage() {
   const { user, loading } = useAuth();
+  // PR-32: read the user from the shared store. The reader used to fire
+  // api.me() on initial load, after handleUseCredits, AND on every viz
+  // tab switch — three /me round-trips for one chapter view. All three
+  // collapse to a single store read now.
+  const { user: me } = useUser();
   const router = useRouter();
   const params = useParams();
   const subject = params.subject as string;
@@ -47,13 +53,12 @@ export default function KindleReaderPage() {
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !me) return;
     (async () => {
       try {
-        const meRes = await api.me();
-        const exam = meRes.user.targetExam ?? 'jee-main';
-        const userPlan = meRes.user.plan ?? 'free';
-        const credits = meRes.user.credits ?? 0;
+        const exam = me.targetExam ?? 'jee-main';
+        const userPlan = me.plan ?? 'free';
+        const credits = me.credits ?? 0;
         setUserCredits(credits);
 
         // PlanGate: Free plan users, chapter index >= 2, insufficient credits
@@ -90,7 +95,7 @@ export default function KindleReaderPage() {
       } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load chapter'); }
       finally { setPageLoading(false); }
     })();
-  }, [user, subject, chapter]);
+  }, [user, me, subject, chapter]);
 
   const handleUseCredits = async () => {
     setUnlocking(true);
@@ -99,8 +104,7 @@ export default function KindleReaderPage() {
       // For now, just reload the page which will pass since credits check happens server-side too
       setShowPlanGate(false);
       setPageLoading(true);
-      const meRes = await api.me();
-      const exam = meRes.user.targetExam ?? 'jee-main';
+      const exam = me?.targetExam ?? 'jee-main';
       const lang = getLanguage();
       const res = await api.getChapterContent(exam, subject, chapter, lang);
       setContent(res.chapter);
@@ -300,8 +304,7 @@ export default function KindleReaderPage() {
 
     setVizLoading(true);
     try {
-      const meRes = await api.me();
-      const exam = meRes.user.targetExam ?? 'jee-main';
+      const exam = me?.targetExam ?? 'jee-main';
       const vizType = tab === 'image' ? 'image' : tab === 'mindmap' ? 'mindmap' : 'diagram';
       const res = await api.visualizeChapter(exam, subject, chapter, vizType);
       const result = res.visualization;

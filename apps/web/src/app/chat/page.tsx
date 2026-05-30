@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import 'highlight.js/styles/github-dark.css';
 import { useAuth } from '~/lib/auth-context';
+import { useUser } from '~/lib/userStore';
 import { api, type ChatSessionSummary, type ChatMessage } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 import { AILoader } from '~/components/ui/AILoader';
@@ -264,35 +265,38 @@ function ChatPage() {
     } finally { setGeneratingImage(false); }
   };
 
-  // Personalized greeting & prompts based on user profile
-  const [userName, setUserName] = useState<string>('');
-  const [userExam, setUserExam] = useState<string>('');
+  // Personalized greeting & prompts based on user profile.
+  // PR-32: pull name + exam from the shared store; only call /study/progress
+  // for the recent-chapter suggestion. No more /me round-trip on every
+  // chat-page mount.
+  const { user: me } = useUser();
   const [userLang, setUserLang] = useState<'en' | 'hi'>('en');
   const [recentChapter, setRecentChapter] = useState<string>('');
+  const userName = me?.name?.split(' ')[0] || '';
+  const userExam = me?.targetExam || '';
 
   useEffect(() => {
     if (!user) return;
     const lang = (localStorage.getItem('nexigrate-language') as 'en' | 'hi') || 'en';
     setUserLang(lang);
+  }, [user]);
+
+  useEffect(() => {
+    if (!me?.targetExam) return;
+    let cancelled = false;
     (async () => {
       try {
-        const res = await api.me();
-        setUserName(res.user.name?.split(' ')[0] || '');
-        setUserExam(res.user.targetExam || '');
-        // Get recent progress to suggest relevant topics
-        if (res.user.targetExam) {
-          try {
-            const prog = await api.getStudyProgress(res.user.targetExam);
-            const chapters = prog.progress?.completedChapters ?? [];
-            if (chapters.length > 0) {
-              const last = chapters[chapters.length - 1]!;
-              setRecentChapter(last.split('/').pop()?.replace(/-/g, ' ') ?? '');
-            }
-          } catch { /* ignore */ }
+        const prog = await api.getStudyProgress(me.targetExam!);
+        if (cancelled) return;
+        const chapters = prog.progress?.completedChapters ?? [];
+        if (chapters.length > 0) {
+          const last = chapters[chapters.length - 1]!;
+          setRecentChapter(last.split('/').pop()?.replace(/-/g, ' ') ?? '');
         }
       } catch { /* ignore */ }
     })();
-  }, [user]);
+    return () => { cancelled = true; };
+  }, [me?.targetExam]);
 
   const prompts = (() => {
     const examLabel = userExam?.replace(/-/g, ' ').toUpperCase() || 'exam';
