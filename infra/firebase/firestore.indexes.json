@@ -39,6 +39,14 @@
         { "fieldPath": "userId", "order": "ASCENDING" },
         { "fieldPath": "occurredAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "aiDailySpend",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "day", "order": "ASCENDING" },
+        { "fieldPath": "totalUsd", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

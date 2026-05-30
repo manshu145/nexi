@@ -90,15 +90,25 @@ export class FirestoreAISpendStore implements AISpendStore {
 
   async getTopSpendersToday(limit = 10): Promise<Array<{ userId: string; totalToday: number }>> {
     const day = todayKey();
+    // PR-35 hotfix: original query used .where('day','==').orderBy('totalUsd','desc')
+    // which requires a composite index (day ASC, totalUsd DESC). Production hit
+    // FAILED_PRECONDITION at 16:45 + 20:36 IST on 30 May 2026. Same root cause
+    // as the credit-ledger index incident (hotfix #182).
+    //
+    // Strategy: drop orderBy; sort in JS. Per-day spender count is bounded
+    // (active users per day, well under a few thousand), so a single-shot
+    // fetch + JS sort is fine. The composite index is also added to
+    // infra/firebase/firestore.indexes.json so future deploys can opt back
+    // into the optimized server-side sort once the index is built.
     const snap = await this.db.collection(COLLECTION)
       .where('day', '==', day)
-      .orderBy('totalUsd', 'desc')
-      .limit(limit)
       .get();
-    return snap.docs.map(d => {
+    const rows = snap.docs.map(d => {
       const data = d.data() as { userId?: string; totalUsd?: number };
       return { userId: String(data.userId ?? ''), totalToday: Number(data.totalUsd ?? 0) };
     });
+    rows.sort((a, b) => b.totalToday - a.totalToday);
+    return rows.slice(0, limit);
   }
 }
 
