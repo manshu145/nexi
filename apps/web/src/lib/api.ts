@@ -203,6 +203,52 @@ export const api = {
       body: JSON.stringify({ reason: reason ?? '' }),
     })).json() as Promise<{success:boolean; alreadyCancelled:boolean; plan:string; planExpiresAt:string|null; planCancelledAt:string}>;
   },
+  /**
+   * PR-34c (audit #26): the backend has stored every completed payment in
+   * `billingOrders` since the Razorpay integration shipped, but the web
+   * app never had a page to read them. Returns the most-recent 10
+   * completed payments for the signed-in user. Amount is in paise — the
+   * UI divides by 100 before rendering ₹ symbols.
+   */
+  async getBillingHistory() {
+    return (await authedFetch('/v1/billing/history')).json() as Promise<{
+      payments: Array<{
+        orderId: string;
+        amount: number; currency: string;
+        planId: string; period: 'monthly' | 'yearly';
+        status: string;
+        completedAt?: string;
+        couponCode?: string;
+        paymentId?: string;
+      }>;
+    }>;
+  },
+  /**
+   * PR-34c (audit #27): create a tracked support ticket. Pre-PR-34c the
+   * /support page only had AI chat — students could not actually reach a
+   * human, so /admin/support was forever empty. Server stores in
+   * `supportTickets` collection, admin replies via /v1/admin/support.
+   */
+  async createSupportTicket(subject: string, message: string) {
+    return (await authedFetch('/v1/support/ticket', {
+      method: 'POST',
+      body: JSON.stringify({ subject, message }),
+    })).json() as Promise<{ ticket: { id: string; subject: string; status: string; createdAt: string } }>;
+  },
+  /**
+   * PR-34c (audit #28): list the signed-in user's own tickets so they
+   * can read admin replies and the full message thread. Read-only on
+   * student side — replying is admin-only for now.
+   */
+  async listMyTickets() {
+    return (await authedFetch('/v1/support/tickets')).json() as Promise<{
+      tickets: Array<{
+        id: string; userId: string; subject: string; status: string;
+        messages: Array<{ role: 'user' | 'admin'; content: string; timestamp: string }>;
+        createdAt: string;
+      }>;
+    }>;
+  },
 
   // ─── DPDP §3.4 — right to access + right to erasure ─────────────────────
   /**
