@@ -119,7 +119,8 @@ export default function CurrentAffairsQuizPage() {
         Time: {Math.floor(result.timeTaken / 60)}:{String(result.timeTaken % 60).padStart(2, '0')} · Rank: #{result.rank}
       </p>
       <div className="mt-8 flex w-full flex-col gap-3">
-        <button onClick={() => router.push('/current-affairs')} className="btn-primary w-full">← Back to Current Affairs</button>
+        <button onClick={() => router.push('/current-affairs/quiz/leaderboard')} className="btn-primary w-full">🏆 View Leaderboard</button>
+        <button onClick={() => router.push('/current-affairs')} className="btn-ghost w-full">← Back to Current Affairs</button>
         <button onClick={() => router.push('/dashboard')} className="btn-ghost w-full">Dashboard</button>
       </div>
 

@@ -6,11 +6,7 @@ import { api, type CurrentAffairsItem } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 import { Skeleton } from '~/components/Skeleton';
 import { AILoader } from '~/components/ui/AILoader';
-
-const CATEGORY_EMOJIS: Record<string, string> = {
-  national: '\u{1F1EE}\u{1F1F3}', international: '\u{1F30D}', economy: '\u{1F4B0}', 'science-tech': '\u{1F52C}',
-  sports: '\u{1F3CF}', environment: '\u{1F331}', politics: '\u{1F3DB}\u{FE0F}', defence: '\u{1F6E1}\u{FE0F}', all: '\u{1F4F0}',
-};
+import { CATEGORY_EMOJIS, CATEGORY_IMAGES } from './_shared';
 
 const CATEGORIES = [
   { key: 'all', label: 'All', emoji: '\u{1F4F0}' },
@@ -21,17 +17,6 @@ const CATEGORIES = [
   { key: 'sports', label: 'Sports', emoji: '\u{1F3CF}' },
   { key: 'environment', label: 'Environment', emoji: '\u{1F331}' },
 ];
-
-const CATEGORY_IMAGES: Record<string, string> = {
-  national: 'https://images.unsplash.com/photo-1532375810709-75b1da00537c?w=600&h=300&fit=crop&q=80',
-  international: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=600&h=300&fit=crop&q=80',
-  economy: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=600&h=300&fit=crop&q=80',
-  'science-tech': 'https://images.unsplash.com/photo-1507413245164-6160d8298b31?w=600&h=300&fit=crop&q=80',
-  sports: 'https://images.unsplash.com/photo-1461896836934-bd45ea8f5a65?w=600&h=300&fit=crop&q=80',
-  environment: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=600&h=300&fit=crop&q=80',
-  politics: 'https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?w=600&h=300&fit=crop&q=80',
-  defence: 'https://images.unsplash.com/photo-1579912437766-7896df6d3cd3?w=600&h=300&fit=crop&q=80',
-};
 
 export default function CurrentAffairsShortsPage() {
   const { user, loading } = useAuth();
@@ -195,6 +180,26 @@ export default function CurrentAffairsShortsPage() {
           Quiz
         </button>
       </header>
+
+      {/* PR-34c (audit #29 + #30): secondary nav row exposing the CA quiz
+          leaderboard and saved-bookmarks pages. The top bar above is
+          space-constrained on mobile (Back · Today's News · Quiz fills
+          it), so we put these two as a slim pill row right under it. */}
+      <div className="relative z-20 -mt-1 px-4 pb-1 flex items-center justify-end gap-2">
+        <button
+          onClick={() => router.push('/current-affairs/quiz/leaderboard')}
+          className="inline-flex items-center gap-1 rounded-full border border-line bg-paper-50 px-3 py-1 text-[11px] font-medium text-ink-700 hover:border-ember-500/40 hover:bg-ember-500/5 transition-colors active:scale-95"
+        >
+          🏆 Leaderboard
+        </button>
+        <button
+          onClick={() => router.push('/current-affairs/bookmarks')}
+          className="inline-flex items-center gap-1 rounded-full border border-line bg-paper-50 px-3 py-1 text-[11px] font-medium text-ink-700 hover:border-ember-500/40 hover:bg-ember-500/5 transition-colors active:scale-95"
+          aria-label="Saved news"
+        >
+          🔖 Saved
+        </button>
+      </div>
 
       {/* Category pills */}
       <div className="relative z-20 px-3 pb-3 flex gap-2 overflow-x-auto scrollbar-hide">

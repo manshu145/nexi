@@ -46,9 +46,6 @@ export default function AdminSeoPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [logoPreview, setLogoPreview] = useState<string | null>(null);
-  const [faviconPreview, setFaviconPreview] = useState<string | null>(null);
-  const [ogPreview, setOgPreview] = useState<string | null>(null);
 
   useEffect(() => { if (!loading && !user) router.replace('/admin/login'); }, [user, loading, router]);
 
@@ -147,70 +144,40 @@ export default function AdminSeoPage() {
       <section className="paper-card mt-4 p-5">
         <h2 className="font-serif text-lg font-semibold text-ink-900">Branding</h2>
         <p className="text-xs text-muted-500 mt-1">Logo, favicon, and taglines</p>
+        {/* PR-34c (audit #46): the three "📁 Upload" buttons that used
+            to live here created an object-URL preview but the save
+            handler only PUT the URL string -- the blob was never
+            uploaded anywhere. UI was decorative theatre. Removed; the
+            URL inputs stay. Real Storage upload is a separate PR
+            (needs bucket setup + CORS + admin SDK upload route). */}
+        <p className="text-[11px] text-muted-400 mt-1">
+          Paste a hosted image URL (Firebase Storage, Cloudinary, GCS, etc.). Direct file upload is coming in a future update.
+        </p>
         <div className="mt-4 space-y-4">
           <div>
             <label className="text-xs font-medium text-ink-700">Logo</label>
-            <div className="mt-1 flex items-center gap-3">
-              <input value={settings.logoUrl} onChange={e => updateField('logoUrl', e.target.value)} className="input flex-1" placeholder="https://nexigrate.com/logo.svg" />
-              <label className="cursor-pointer rounded-lg border border-stone-300 px-3 py-2 text-xs font-medium text-stone-600 hover:bg-stone-100 transition-colors">
-                📁 Upload
-                <input type="file" accept="image/*" className="hidden" onChange={e => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    const url = URL.createObjectURL(file);
-                    setLogoPreview(url);
-                  }
-                }} />
-              </label>
-            </div>
-            {(logoPreview || settings.logoUrl) && (
-              <div className="mt-2 p-3 bg-paper-200 rounded-lg inline-block">
-                <img src={logoPreview || settings.logoUrl} alt="Logo preview" className="h-8 max-w-[200px] object-contain" />
-                {logoPreview && <p className="text-[10px] text-amber-600 mt-1">Upload to Firebase Storage on save</p>}
+            <input value={settings.logoUrl} onChange={e => updateField('logoUrl', e.target.value)} className="input mt-1" placeholder="https://nexigrate.com/logo.svg" />
+            {settings.logoUrl && (
+              <div className="mt-2 inline-block rounded-lg bg-paper-200 p-3">
+                <img src={settings.logoUrl} alt="Logo preview" className="h-8 max-w-[200px] object-contain" />
               </div>
             )}
           </div>
           <div>
             <label className="text-xs font-medium text-ink-700">Favicon</label>
-            <div className="mt-1 flex items-center gap-3">
-              <input value={settings.favicon} onChange={e => updateField('favicon', e.target.value)} className="input flex-1" placeholder="https://nexigrate.com/favicon.ico" />
-              <label className="cursor-pointer rounded-lg border border-stone-300 px-3 py-2 text-xs font-medium text-stone-600 hover:bg-stone-100 transition-colors">
-                📁 Upload
-                <input type="file" accept="image/*" className="hidden" onChange={e => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    const url = URL.createObjectURL(file);
-                    setFaviconPreview(url);
-                  }
-                }} />
-              </label>
-            </div>
-            {(faviconPreview || settings.favicon) && (
-              <div className="mt-2 p-3 bg-paper-200 rounded-lg inline-block">
-                <img src={faviconPreview || settings.favicon} alt="Favicon preview" className="h-6 w-6 object-contain" />
-                {faviconPreview && <p className="text-[10px] text-amber-600 mt-1">Upload to Firebase Storage on save</p>}
+            <input value={settings.favicon} onChange={e => updateField('favicon', e.target.value)} className="input mt-1" placeholder="https://nexigrate.com/favicon.ico" />
+            {settings.favicon && (
+              <div className="mt-2 inline-block rounded-lg bg-paper-200 p-3">
+                <img src={settings.favicon} alt="Favicon preview" className="h-6 w-6 object-contain" />
               </div>
             )}
           </div>
           <div>
             <label className="text-xs font-medium text-ink-700">OG Image (Social sharing preview)</label>
-            <div className="mt-1 flex items-center gap-3">
-              <input value={settings.ogImage} onChange={e => updateField('ogImage', e.target.value)} className="input flex-1" placeholder="https://nexigrate.com/og-image.png" />
-              <label className="cursor-pointer rounded-lg border border-stone-300 px-3 py-2 text-xs font-medium text-stone-600 hover:bg-stone-100 transition-colors">
-                📁 Upload
-                <input type="file" accept="image/*" className="hidden" onChange={e => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    const url = URL.createObjectURL(file);
-                    setOgPreview(url);
-                  }
-                }} />
-              </label>
-            </div>
-            {(ogPreview || settings.ogImage) && (
-              <div className="mt-2 p-3 bg-paper-200 rounded-lg inline-block">
-                <img src={ogPreview || settings.ogImage} alt="OG Image preview" className="h-24 max-w-[300px] object-contain" />
-                {ogPreview && <p className="text-[10px] text-amber-600 mt-1">Upload to Firebase Storage on save</p>}
+            <input value={settings.ogImage} onChange={e => updateField('ogImage', e.target.value)} className="input mt-1" placeholder="https://nexigrate.com/og-image.png" />
+            {settings.ogImage && (
+              <div className="mt-2 inline-block rounded-lg bg-paper-200 p-3">
+                <img src={settings.ogImage} alt="OG Image preview" className="h-24 max-w-[300px] object-contain" />
               </div>
             )}
           </div>
