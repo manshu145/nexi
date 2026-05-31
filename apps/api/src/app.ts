@@ -34,6 +34,7 @@ import { FirestoreBlogStore, InMemoryBlogStore, type BlogStore } from './lib/blo
 import { FirestoreServiceKeyStore, InMemoryServiceKeyStore, type ServiceKeyStore } from './lib/serviceKeyStore.js';
 import { createPushService, type PushService } from './lib/pushService.js';
 import { FirestoreTeamInviteStore, InMemoryTeamInviteStore, type TeamInviteStore } from './lib/teamInviteStore.js';
+import { FirestoreEmailMarketingStore, InMemoryEmailMarketingStore, type EmailMarketingStore } from './lib/emailMarketingStore.js';
 import { makePublicRoutes } from './routes/public.js';
 import { makeMockTestRoutes } from './routes/mockTests.js';
 
@@ -73,6 +74,8 @@ export function buildApp(deps: AppDeps): Hono {
   const push = deps.push ?? createPushService(env, logger, serviceKeys);
   // PR-40: team invite store for RBAC
   const teamInvites = deps.teamInvites ?? (fs ? new FirestoreTeamInviteStore(fs) : new InMemoryTeamInviteStore());
+  // Email Marketing: config, logs, templates for admin panel
+  const emailMarketing: EmailMarketingStore = fs ? new FirestoreEmailMarketingStore(fs, logger) : new InMemoryEmailMarketingStore();
   const firebaseAuth = getFirebaseAuth(env);
 
   const app = new Hono();
@@ -185,7 +188,7 @@ export function buildApp(deps: AppDeps): Hono {
     let skipped = 0;
     try {
       const { createEmailService } = await import('./lib/emailService.js');
-      const emailService = createEmailService(env, logger, serviceKeys);
+      const emailService = createEmailService(env, logger, serviceKeys, emailMarketing);
 
       // Query users who haven't been active today (streak at risk)
       if (fs) {
@@ -274,7 +277,7 @@ export function buildApp(deps: AppDeps): Hono {
   v1.route('/chat', makeChatRoutes({ users, aiEngine, chat: chatStore, logger, env }));
   v1.route('/credits', makeCreditsRoutes({ users, logger, db: fs, ledger, config }));
   v1.route('/billing', makeBillingRoutes({ users, env, logger, db: fs, coupons: couponStore, idempotency, config, serviceKeys }));
-  v1.route('/admin', makeAdminRoutes({ users, adminStore, env, logger, coupons: couponStore, db: fs, config, aiSpend, firebaseAuth, blog, aiEngine, aiProviderStore, modelResolver, currentAffairs, serviceKeys, push, teamInvites }));
+  v1.route('/admin', makeAdminRoutes({ users, adminStore, env, logger, coupons: couponStore, db: fs, config, aiSpend, firebaseAuth, blog, aiEngine, aiProviderStore, modelResolver, currentAffairs, serviceKeys, push, teamInvites, emailMarketing }));
   v1.route('/support', makeSupportRoutes({ users, db: fs, logger }));
   v1.route('/essay', makeEssayRoutes({ users, aiEngine, logger, db: fs }));
   v1.route('/mock-tests', makeMockTestRoutes({ users, aiEngine, mockTests, ledger, config, logger }));
