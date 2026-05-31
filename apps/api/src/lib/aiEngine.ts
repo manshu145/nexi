@@ -1010,36 +1010,60 @@ End with: Important facts to remember for exam.`;
 
       const prompt = `Generate exactly ${count} UNIQUE multiple choice questions for chapter "${chapter}" (${subject}, ${exam}).\n${langInstr}${seedInstr}${contentContext}\n\nRules:\n- Questions MUST be based on the chapter content provided above\n- Do NOT ask about topics not covered in the chapter\n- Each question must have exactly 4 options (A/B/C/D), one correct answer, and a brief explanation\n- Mix: ${difficultyMix}\n- ${difficultyStyle}\n- Include explanation referencing the chapter content\n\nJSON only:\n{"questions":[{"id":"q1","question":"...","options":[{"key":"A","text":"..."},{"key":"B","text":"..."},{"key":"C","text":"..."},{"key":"D","text":"..."}],"correctOption":"A","explanation":"...","difficulty":"easy","subject":"${subject}","topic":"${chapter}"}]}`;
       const errors: string[] = [];
-      if (groq) {
+
+      // PR-44: Try Groq — use resolver to get fresh key from admin panel
+      // if available, fall back to env-based instance.
+      const groqInstance = groq ?? await (async () => {
+        if (!resolver) return null;
         try {
-          const c = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 4096, response_format: { type: 'json_object' } });
+          const resolved = await resolver.resolve('groq');
+          if (resolved?.apiKey) return new Groq({ apiKey: resolved.apiKey });
+        } catch { /* resolver unavailable */ }
+        return null;
+      })();
+
+      if (groqInstance) {
+        try {
+          const c = await groqInstance.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 4096, response_format: { type: 'json_object' } });
           const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
           if (parsed.questions?.length) { logger.info('ai.chapter_mcqs', { provider: 'groq', chapter, count: parsed.questions.length }); return parsed.questions; }
           errors.push('Groq returned empty');
         } catch (err) { errors.push(`Groq: ${err instanceof Error ? err.message : String(err)}`); }
       } else { errors.push('Groq not configured'); }
-      if (openai) {
+
+      // PR-44: Try OpenAI — same pattern: resolver first, env fallback.
+      const openaiInstance = openai ?? await (async () => {
+        if (!resolver) return null;
         try {
-          const c = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 4096, response_format: { type: 'json_object' } });
+          const resolved = await resolver.resolve('openai');
+          if (resolved?.apiKey) return new OpenAI({ apiKey: resolved.apiKey });
+        } catch { /* resolver unavailable */ }
+        return null;
+      })();
+
+      if (openaiInstance) {
+        try {
+          const c = await openaiInstance.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 4096, response_format: { type: 'json_object' } });
           const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
           if (parsed.questions?.length) { logger.info('ai.chapter_mcqs', { provider: 'openai', chapter, count: parsed.questions.length }); return parsed.questions; }
           errors.push('OpenAI returned empty');
         } catch (err) { errors.push(`OpenAI: ${err instanceof Error ? err.message : String(err)}`); }
       } else { errors.push('OpenAI not configured'); }
-      if (env.GEMINI_API_KEY && env.GEMINI_API_KEY.length > 5) {
-        try {
-          const r = await callGemini({ prompt, generationConfig: { temperature: 0.7, maxOutputTokens: 4096 }, tier: 'flash' });
-          if (r.ok) {
-            const rawText = r.text;
-            const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-            if (jsonMatch) {
-              const parsed = JSON.parse(jsonMatch[0]) as { questions: GeneratedMCQ[] };
-              if (parsed.questions?.length) { logger.info('ai.chapter_mcqs', { provider: 'gemini', chapter, count: parsed.questions.length, model: r.model }); return parsed.questions; }
-            }
+
+      // Gemini — already uses callGemini which reads from resolver
+      try {
+        const r = await callGemini({ prompt, generationConfig: { temperature: 0.7, maxOutputTokens: 4096 }, tier: 'flash' });
+        if (r.ok) {
+          const rawText = r.text;
+          const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]) as { questions: GeneratedMCQ[] };
+            if (parsed.questions?.length) { logger.info('ai.chapter_mcqs', { provider: 'gemini', chapter, count: parsed.questions.length, model: r.model }); return parsed.questions; }
           }
-          errors.push(`Gemini failed${('error' in r) ? ': ' + r.error : ''}`);
-        } catch (err) { errors.push(`Gemini: ${err instanceof Error ? err.message : String(err)}`); }
-      } else { errors.push('Gemini not configured'); }
+        }
+        errors.push(`Gemini failed${('error' in r) ? ': ' + r.error : ''}`);
+      } catch (err) { errors.push(`Gemini: ${err instanceof Error ? err.message : String(err)}`); }
+
       logger.error('ai.chapter_mcqs_all_failed', { errors, chapter, subject, exam });
       logAICallToStore(store, 'all-providers', 0, 0, 0, undefined, { status: 'error', endpoint: 'generateChapterMCQs', error: errors.join('; '), requestPreview: `Chapter: ${chapter}, Subject: ${subject}` });
       throw new Error(`Failed to generate chapter MCQs: ${errors.join('; ')}`);
