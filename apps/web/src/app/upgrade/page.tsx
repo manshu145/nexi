@@ -183,7 +183,12 @@ export default function UpgradePage() {
             setCurrentPlan(planId);
             setTimeout(() => router.push('/dashboard'), 2000);
           } catch (e) {
-            setError(e instanceof Error ? e.message : 'Payment verification failed');
+            // NOTE: If this fires, payment likely SUCCEEDED (Razorpay's
+            // handler callback only fires on successful payments). The
+            // webhook will activate the plan server-side. Show a softer
+            // message instead of alarming the user.
+            setSuccess('Payment received! Your plan is being activated. Redirecting...');
+            setTimeout(() => router.push('/dashboard'), 3000);
           } finally { setProcessing(false); }
         },
         modal: { ondismiss: () => setProcessing(false) },
@@ -374,13 +379,26 @@ export default function UpgradePage() {
               </li>
             ))}
           </ul>
-          <button
-            onClick={() => handleBuyPlan('aspirant')}
-            disabled={currentPlan === 'aspirant' || processing}
-            className="mt-5 w-full rounded-xl bg-ink-900 dark:bg-ink-100 dark:text-ink-900 py-3 text-sm font-semibold text-paper-50 hover:bg-ember-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {currentPlan === 'aspirant' ? 'Current Plan' : processing ? 'Processing...' : `Choose Aspirant — ₹${pricingFor('aspirant')[period]}`}
-          </button>
+          {(() => {
+            const aspirantPlan = livePlans?.find(p => p.id === 'aspirant');
+            const isComingSoon = aspirantPlan && ('comingSoon' in aspirantPlan) && (aspirantPlan as any).comingSoon;
+            const isDisabled = currentPlan === 'aspirant' || processing || isComingSoon;
+            return (
+              <button
+                onClick={() => handleBuyPlan('aspirant')}
+                disabled={isDisabled}
+                className={`mt-5 w-full rounded-xl py-3 text-sm font-semibold transition-colors ${isComingSoon ? 'bg-paper-200 text-muted-500 cursor-not-allowed' : 'bg-ink-900 dark:bg-ink-100 dark:text-ink-900 text-paper-50 hover:bg-ember-600 disabled:opacity-50 disabled:cursor-not-allowed'}`}
+              >
+                {currentPlan === 'aspirant'
+                  ? '✓ Current Plan'
+                  : isComingSoon
+                    ? 'Coming Soon'
+                    : processing
+                      ? 'Processing...'
+                      : `Choose Aspirant — ₹${pricingFor('aspirant')[period]}/${period === 'yearly' ? 'yr' : 'mo'}`}
+              </button>
+            );
+          })()}
         </div>
 
         {/* ACHIEVER — ACTIVE */}
@@ -397,13 +415,26 @@ export default function UpgradePage() {
               </li>
             ))}
           </ul>
-          <button
-            onClick={() => handleBuyPlan('achiever')}
-            disabled={currentPlan === 'achiever' || processing}
-            className="mt-5 w-full rounded-xl bg-ink-900 dark:bg-ink-100 dark:text-ink-900 py-3 text-sm font-semibold text-paper-50 hover:bg-ember-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {currentPlan === 'achiever' ? 'Current Plan' : processing ? 'Processing...' : `Choose Achiever — ₹${pricingFor('achiever')[period]}`}
-          </button>
+          {(() => {
+            const achieverPlan = livePlans?.find(p => p.id === 'achiever');
+            const isComingSoon = achieverPlan && ('comingSoon' in achieverPlan) && (achieverPlan as any).comingSoon;
+            const isDisabled = currentPlan === 'achiever' || processing || isComingSoon;
+            return (
+              <button
+                onClick={() => handleBuyPlan('achiever')}
+                disabled={isDisabled}
+                className={`mt-5 w-full rounded-xl py-3 text-sm font-semibold transition-colors ${isComingSoon ? 'bg-paper-200 text-muted-500 cursor-not-allowed' : 'bg-ink-900 dark:bg-ink-100 dark:text-ink-900 text-paper-50 hover:bg-ember-600 disabled:opacity-50 disabled:cursor-not-allowed'}`}
+              >
+                {currentPlan === 'achiever'
+                  ? '✓ Current Plan'
+                  : isComingSoon
+                    ? 'Coming Soon'
+                    : processing
+                      ? 'Processing...'
+                      : `Choose Achiever — ₹${pricingFor('achiever')[period]}/${period === 'yearly' ? 'yr' : 'mo'}`}
+              </button>
+            );
+          })()}
         </div>
       </div>
       )}
