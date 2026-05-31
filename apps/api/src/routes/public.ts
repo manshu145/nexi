@@ -159,6 +159,16 @@ export function makePublicRoutes(deps: PublicRoutesDeps): Hono {
       plans = Object.values(planMap).filter(p => p.id !== 'free').map(p => ({ id: p.id, name: p.name, price: p.price, yearlyPrice: p.yearlyPrice, isActive: p.isActive, comingSoon: p.comingSoon }));
     } catch { /* fall through with empty */ }
 
+    // PR-48: include FCM VAPID key for web push registration at runtime
+    // so it doesn't need to be baked in at Docker build time.
+    let vapidKey = '';
+    try {
+      if (deps.serviceKeys) {
+        const fcmVapid = await deps.serviceKeys.getField('fcm', 'vapidKey');
+        if (fcmVapid) vapidKey = fcmVapid;
+      }
+    } catch { /* non-fatal */ }
+
     // Browser revalidates ~every minute; the server only does work if it
     // has actually changed.
     c.header('Cache-Control', 'public, max-age=60');
@@ -174,6 +184,7 @@ export function makePublicRoutes(deps: PublicRoutesDeps): Hono {
       signupBonusPreview,
       plans,
       currency: 'INR',
+      vapidKey,
     });
   });
 

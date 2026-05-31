@@ -134,14 +134,15 @@ export const SERVICE_DEFINITIONS: ServiceDefinition[] = [
   {
     id: 'fcm',
     label: 'Firebase Cloud Messaging (Push)',
-    description: 'Push notifications for current-affairs digests, streak reminders. Server-side service-account JSON.',
+    description: 'Push notifications for current-affairs digests, streak reminders. VAPID key is required for web push token registration.',
     consoleUrl: 'https://console.firebase.google.com/project/nexigrate-prod/settings/cloudmessaging',
     signupUrl: 'https://firebase.google.com/docs/cloud-messaging/server',
     fields: [
+      { id: 'vapidKey', label: 'Web Push VAPID Key', placeholder: 'BN4x… (from Cloud Messaging → Web Push certificates → Key pair)', secret: false, minLength: 30, helpText: 'Firebase Console → Project Settings → Cloud Messaging → Web Push certificates → Generate key pair → Copy the key.' },
       { id: 'projectId', label: 'Project ID', placeholder: 'nexigrate-prod', secret: false },
       { id: 'serviceAccountJson', label: 'Service Account JSON', placeholder: 'Paste the full JSON from Firebase console → Service accounts', secret: true, minLength: 100, helpText: 'The full JSON blob — yes, the whole thing. Used to mint FCM access tokens server-side.' },
     ],
-    tierLabel: 'Future-ready',
+    tierLabel: 'Active',
   },
 ];
 
