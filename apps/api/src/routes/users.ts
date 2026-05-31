@@ -25,6 +25,12 @@ export interface UsersRoutesDeps {
    * as a "ghost" entry in admin/users.
    */
   firebaseAuth?: Auth;
+  /**
+   * PR-40: team-invite store. /me handler reads it on every call and
+   * auto-elevates the user to admin if a pending invite for their
+   * email exists. Optional in test fixtures.
+   */
+  teamInvites?: import('../lib/teamInviteStore.js').TeamInviteStore;
 }
 
 const patchSchema = z.object({ name: z.string().min(1).optional(), phone: z.string().optional(), dob: z.string().optional(), classLevel: z.string().optional(), board: z.string().optional(), school: z.string().optional(), aim: z.string().optional() });
@@ -82,6 +88,41 @@ export function makeUsersRoutes(deps: UsersRoutesDeps): Hono {
     // re-read at the bottom after ledger writes, but the call's side
     // effect (creating the row on first contact) is required.
     await deps.users.getOrCreate(principal.userId, { email, name, photoURL: photo, primaryProvider: provider });
+
+    // PR-40: pending team-invite auto-elevation.
+    // If a super_admin has pre-invited this email via /admin/team/invite,
+    // this is the moment we promote the user to admin + apply the role.
+    // Idempotent: a previously-accepted invite is recognised by status
+    // and skipped. Fully gated on email match (case-insensitive).
+    if (deps.teamInvites && email) {
+      try {
+        const invite = await deps.teamInvites.getByEmail(email);
+        if (invite && invite.status === 'pending') {
+          // Sanity check expiry — invites past their TTL are ignored
+          // (admin can re-issue from /admin/team).
+          const stillValid = !invite.expiresAt || new Date(invite.expiresAt) > new Date();
+          if (stillValid) {
+            await deps.users.update(principal.userId, {
+              role: 'admin',
+              adminRole: invite.adminRole,
+            } as never);
+            await deps.teamInvites.markAccepted(email, principal.userId);
+            deps.logger.info('users.team_invite_accepted', {
+              userId: principal.userId,
+              email,
+              adminRole: invite.adminRole,
+            });
+          }
+        }
+      } catch (err) {
+        // Non-fatal: just log. Invite acceptance is a nice-to-have on /me;
+        // a failure here doesn't block the rest of the response.
+        deps.logger.warn('users.team_invite_check_failed', {
+          userId: principal.userId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
 
     // Phone-verification mirror: if the Firebase ID token carries a verified
     // phone_number claim, sync it to the Firestore user doc. This is the
