@@ -31,10 +31,11 @@ import { FirestorePlatformConfigStore, InMemoryPlatformConfigStore, type Platfor
 import { FirestoreMockTestStore, InMemoryMockTestStore, type MockTestStore } from './lib/mockTestStore.js';
 import { FirestoreAISpendStore, InMemoryAISpendStore, type AISpendStore, DEFAULT_DAILY_AI_CAP_USD } from './lib/aiSpendStore.js';
 import { FirestoreBlogStore, InMemoryBlogStore, type BlogStore } from './lib/blogStore.js';
+import { FirestoreServiceKeyStore, InMemoryServiceKeyStore, type ServiceKeyStore } from './lib/serviceKeyStore.js';
 import { makePublicRoutes } from './routes/public.js';
 import { makeMockTestRoutes } from './routes/mockTests.js';
 
-export interface AppDeps { env: Env; logger: Logger; users?: UserStore; aiEngine?: AIEngine; chapters?: ChapterStore; currentAffairs?: CurrentAffairsStore; chatStore?: ChatStore; adminStore?: AdminStore; couponStore?: CouponStore; idempotency?: IdempotencyStore; ledger?: CreditLedger; config?: PlatformConfigStore; mockTests?: MockTestStore; blog?: BlogStore; aiProviderStore?: AIProviderStore; modelResolver?: AIModelResolver; }
+export interface AppDeps { env: Env; logger: Logger; users?: UserStore; aiEngine?: AIEngine; chapters?: ChapterStore; currentAffairs?: CurrentAffairsStore; chatStore?: ChatStore; adminStore?: AdminStore; couponStore?: CouponStore; idempotency?: IdempotencyStore; ledger?: CreditLedger; config?: PlatformConfigStore; mockTests?: MockTestStore; blog?: BlogStore; aiProviderStore?: AIProviderStore; modelResolver?: AIModelResolver; serviceKeys?: ServiceKeyStore; }
 
 export function buildApp(deps: AppDeps): Hono {
   const { env, logger } = deps;
@@ -59,6 +60,11 @@ export function buildApp(deps: AppDeps): Hono {
   const config = deps.config ?? (fs ? new FirestorePlatformConfigStore(fs, logger) : new InMemoryPlatformConfigStore());
   const mockTests = deps.mockTests ?? (fs ? new FirestoreMockTestStore(fs) : new InMemoryMockTestStore());
   const blog = deps.blog ?? (fs ? new FirestoreBlogStore(fs) : new InMemoryBlogStore());
+  // PR-37: Razorpay / Resend / WhatsApp / FCM keys come from this store
+  // first, env vars second. Mirrors the AI Providers pattern (PR-29) but
+  // for non-AI third-party services so the founder can rotate them from
+  // the admin panel without redeploys.
+  const serviceKeys = deps.serviceKeys ?? (fs ? new FirestoreServiceKeyStore(fs) : new InMemoryServiceKeyStore());
   const firebaseAuth = getFirebaseAuth(env);
 
   const app = new Hono();
@@ -134,7 +140,7 @@ export function buildApp(deps: AppDeps): Hono {
   // verifying the x-razorpay-signature header against the raw request body
   // inside makeBillingWebhookRoute.
   app.route('/v1/billing', makeBillingWebhookRoute({
-    users, env, logger, db: fs, coupons: couponStore, idempotency,
+    users, env, logger, db: fs, coupons: couponStore, idempotency, serviceKeys,
   }));
 
   // Public endpoints (no Firebase ID token required) -- mounted BEFORE the
@@ -171,7 +177,7 @@ export function buildApp(deps: AppDeps): Hono {
     let skipped = 0;
     try {
       const { createEmailService } = await import('./lib/emailService.js');
-      const emailService = createEmailService(env, logger);
+      const emailService = createEmailService(env, logger, serviceKeys);
 
       // Query users who haven't been active today (streak at risk)
       if (fs) {
@@ -254,13 +260,13 @@ export function buildApp(deps: AppDeps): Hono {
     return next();
   });
   v1.route('/users', makeUsersRoutes({ users, logger, db: fs, ledger, config }));
-  v1.route('/assessment', makeAssessmentRoutes({ users, aiEngine, logger, env, ledger }));
+  v1.route('/assessment', makeAssessmentRoutes({ users, aiEngine, logger, env, ledger, serviceKeys }));
   v1.route('/study', makeStudyRoutes({ users, aiEngine, chapters, logger, db: fs, env, ledger, config, modelResolver }));
   v1.route('/current-affairs', cronRoutes);
   v1.route('/chat', makeChatRoutes({ users, aiEngine, chat: chatStore, logger, env }));
   v1.route('/credits', makeCreditsRoutes({ users, logger, db: fs, ledger, config }));
-  v1.route('/billing', makeBillingRoutes({ users, env, logger, db: fs, coupons: couponStore, idempotency, config }));
-  v1.route('/admin', makeAdminRoutes({ users, adminStore, env, logger, coupons: couponStore, db: fs, config, aiSpend, firebaseAuth, blog, aiEngine, aiProviderStore, modelResolver, currentAffairs }));
+  v1.route('/billing', makeBillingRoutes({ users, env, logger, db: fs, coupons: couponStore, idempotency, config, serviceKeys }));
+  v1.route('/admin', makeAdminRoutes({ users, adminStore, env, logger, coupons: couponStore, db: fs, config, aiSpend, firebaseAuth, blog, aiEngine, aiProviderStore, modelResolver, currentAffairs, serviceKeys }));
   v1.route('/support', makeSupportRoutes({ users, db: fs, logger }));
   v1.route('/essay', makeEssayRoutes({ users, aiEngine, logger, db: fs }));
   v1.route('/mock-tests', makeMockTestRoutes({ users, aiEngine, mockTests, ledger, config, logger }));

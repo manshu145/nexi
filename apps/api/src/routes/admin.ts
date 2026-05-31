@@ -21,6 +21,7 @@ import { validateSlug } from '../lib/blogStore.js';
 import type { AIEngine } from '../lib/aiEngine.js';
 import type { CurrentAffairsStore } from '../lib/currentAffairsStore.js';
 import { isHardcodedSuperAdmin } from '../lib/adminEmails.js';
+import { SERVICE_DEFINITIONS, getServiceDefinition, maskSecret, type ServiceId, type ServiceKeyStore } from '../lib/serviceKeyStore.js';
 
 export interface AdminRoutesDeps {
   users: UserStore;
@@ -67,6 +68,12 @@ export interface AdminRoutesDeps {
    * abhi tak nhi hua".
    */
   currentAffairs?: CurrentAffairsStore;
+  /**
+   * PR-37: Razorpay / Resend / WhatsApp / FCM key store. Admin can
+   * rotate these keys from /admin/service-keys without touching env
+   * vars. Email + WhatsApp helper services read from this store first.
+   */
+  serviceKeys: ServiceKeyStore;
 }
 
 export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
@@ -498,7 +505,7 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
     const body = await c.req.json().catch(() => null) as { to?: string; emails?: string[]; subject?: string; body?: string } | null;
     if (!body?.subject || !body?.body) throw new HTTPException(400, { message: 'subject and body required' });
     const { createEmailService } = await import('../lib/emailService.js');
-    const emailService = createEmailService(deps.env, deps.logger);
+    const emailService = createEmailService(deps.env, deps.logger, deps.serviceKeys);
     if (body.to) {
       const result = await emailService.sendEmail(body.to, body.subject, body.body);
       return c.json(result);
@@ -517,8 +524,14 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
   });
 
   // GET /v1/admin/email/status — check if email is configured
-  app.get('/email/status', (c) => {
-    const configured = !!(deps.env.RESEND_API_KEY && deps.env.RESEND_API_KEY.length > 5);
+  app.get('/email/status', async (c) => {
+    // PR-37: emailService now resolves keys asynchronously from
+    // serviceKeyStore (admin) → env vars (fallback). The status check
+    // mirrors that path so the admin sees `configured: true` only when
+    // the helper actually has a key to use.
+    const { createEmailService } = await import('../lib/emailService.js');
+    const emailService = createEmailService(deps.env, deps.logger, deps.serviceKeys);
+    const configured = await emailService.isConfigured();
     return c.json({ configured, provider: 'resend' });
   });
 
@@ -526,8 +539,8 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
   // GET /v1/admin/whatsapp/status — check if WhatsApp is configured
   app.get('/whatsapp/status', async (c) => {
     const { createWhatsAppService } = await import('../lib/whatsappService.js');
-    const wa = createWhatsAppService(deps.env, deps.logger);
-    return c.json({ configured: wa.isConfigured(), provider: 'meta-cloud-api' });
+    const wa = createWhatsAppService(deps.env, deps.logger, deps.serviceKeys);
+    return c.json({ configured: await wa.isConfigured(), provider: 'meta-cloud-api' });
   });
 
   // POST /v1/admin/whatsapp/send — send WhatsApp message
@@ -535,8 +548,8 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
     const body = await c.req.json().catch(() => null) as { to?: string; message?: string } | null;
     if (!body?.to || !body?.message) throw new HTTPException(400, { message: 'to and message required' });
     const { createWhatsAppService } = await import('../lib/whatsappService.js');
-    const wa = createWhatsAppService(deps.env, deps.logger);
-    if (!wa.isConfigured()) throw new HTTPException(503, { message: 'WhatsApp not configured. Set WHATSAPP_TOKEN and WHATSAPP_PHONE_NUMBER_ID.' });
+    const wa = createWhatsAppService(deps.env, deps.logger, deps.serviceKeys);
+    if (!(await wa.isConfigured())) throw new HTTPException(503, { message: 'WhatsApp not configured. Open Admin → Service Keys → WhatsApp and save Token + Phone Number ID.' });
     const result = await wa.sendMessage(body.to, body.message);
     return c.json(result);
   });
@@ -1220,6 +1233,234 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
       }
     });
   }
+
+  // ━━━ SERVICE KEYS (PR-37) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Razorpay / Resend / WhatsApp / FCM keys live in `serviceKeys/{id}` and
+  // are read at runtime by the billing routes, email service, and WhatsApp
+  // service. Admin can rotate without redeploying.
+  //
+  // Endpoints mirror the AI Providers shape so the admin UI can reuse the
+  // same per-card pattern:
+  //   GET    /service-keys                 list with masked secrets
+  //   GET    /service-keys/:id             single service detail (masked)
+  //   PATCH  /service-keys/:id             update fields / enabled flag
+  //   POST   /service-keys/:id/test        run a quick reachability probe
+
+  /**
+   * Build the response shape for one service. Secrets are masked
+   * (last 4 + dots) so the full key never leaves Firestore. Public
+   * fields like Razorpay `keyId` and Resend `fromEmail` are returned
+   * unmasked because they're explicitly identifiers, not secrets.
+   *
+   * Also exposes which fields come from env-fallback so the UI can show
+   * a "Using env fallback" pill when the admin hasn't filled in a key
+   * yet but the legacy env var is configured.
+   */
+  async function serializeServiceKey(id: ServiceId) {
+    const def = getServiceDefinition(id);
+    if (!def) return null;
+    const cfg = await deps.serviceKeys.get(id);
+    const merged = await deps.serviceKeys.getMergedFields(id, {
+      // Expose env fallbacks the same way the runtime helpers do.
+      keyId: deps.env.RAZORPAY_KEY_ID,
+      keySecret: deps.env.RAZORPAY_KEY_SECRET,
+      webhookSecret: deps.env.RAZORPAY_WEBHOOK_SECRET,
+      apiKey: deps.env.RESEND_API_KEY,
+      token: deps.env.WHATSAPP_TOKEN,
+      phoneNumberId: deps.env.WHATSAPP_PHONE_NUMBER_ID,
+    });
+    const fieldsResponse: Record<string, { value: string | undefined; source: 'admin' | 'env' | 'unset'; hasValue: boolean }> = {};
+    for (const f of def.fields) {
+      const adminVal = cfg?.fields[f.id];
+      const finalVal = merged[f.id];
+      let source: 'admin' | 'env' | 'unset' = 'unset';
+      if (adminVal && adminVal.length > 0) source = 'admin';
+      else if (finalVal && finalVal.length > 0) source = 'env';
+      const display = f.secret ? maskSecret(adminVal) : adminVal;
+      fieldsResponse[f.id] = {
+        value: display,
+        source,
+        hasValue: !!finalVal && finalVal.length > 0,
+      };
+    }
+    return {
+      id,
+      label: def.label,
+      description: def.description,
+      tier: def.tierLabel ?? 'Active',
+      consoleUrl: def.consoleUrl,
+      signupUrl: def.signupUrl,
+      enabled: cfg?.enabled ?? true,
+      fields: fieldsResponse,
+      fieldDefinitions: def.fields,
+      lastValidatedAt: cfg?.lastValidatedAt ?? null,
+      lastValidationError: cfg?.lastValidationError ?? null,
+      updatedAt: cfg?.updatedAt ?? null,
+    };
+  }
+
+  function asServiceId(raw: string): ServiceId | null {
+    return SERVICE_DEFINITIONS.some(d => d.id === raw) ? (raw as ServiceId) : null;
+  }
+
+  app.get('/service-keys', async (c) => {
+    const services = await Promise.all(SERVICE_DEFINITIONS.map(d => serializeServiceKey(d.id)));
+    return c.json({ services: services.filter(s => s !== null) });
+  });
+
+  app.get('/service-keys/:id', async (c) => {
+    const id = asServiceId(c.req.param('id'));
+    if (!id) throw new HTTPException(404, { message: 'Unknown service id' });
+    const service = await serializeServiceKey(id);
+    return c.json({ service });
+  });
+
+  app.patch('/service-keys/:id', async (c) => {
+    const id = asServiceId(c.req.param('id'));
+    if (!id) throw new HTTPException(404, { message: 'Unknown service id' });
+    const def = getServiceDefinition(id)!;
+    const body = await c.req.json().catch(() => null) as {
+      fields?: Record<string, string>;
+      enabled?: boolean;
+    } | null;
+    if (!body) throw new HTTPException(400, { message: 'Body required' });
+
+    // Validate per-field minLengths so admin doesn't accidentally save a
+    // partial paste. Empty strings are allowed (and treated as "clear
+    // this field" by the upsert).
+    const cleanFields: Record<string, string> = {};
+    if (body.fields) {
+      for (const f of def.fields) {
+        const val = body.fields[f.id];
+        if (typeof val !== 'string') continue;
+        const trimmed = val.trim();
+        if (trimmed.length === 0) {
+          cleanFields[f.id] = '';
+          continue;
+        }
+        if (f.minLength && trimmed.length < f.minLength) {
+          throw new HTTPException(400, {
+            message: `${f.label} must be at least ${f.minLength} characters`,
+          });
+        }
+        cleanFields[f.id] = trimmed;
+      }
+    }
+
+    const patch: Parameters<typeof deps.serviceKeys.upsert>[1] = {
+      fields: cleanFields,
+    };
+    if (body.enabled !== undefined) patch.enabled = !!body.enabled;
+    // Saving new keys clears stale validation state so admin sees
+    // "Not validated" until they hit Test.
+    if (Object.keys(cleanFields).length > 0) {
+      patch.lastValidatedAt = undefined;
+      patch.lastValidationError = undefined;
+    }
+
+    await deps.serviceKeys.upsert(id, patch);
+    deps.logger.info('admin.service_key_updated', {
+      service: id,
+      fieldsChanged: Object.keys(cleanFields),
+      enabledChanged: body.enabled !== undefined,
+    });
+    const service = await serializeServiceKey(id);
+    return c.json({ service });
+  });
+
+  /**
+   * POST /v1/admin/service-keys/:id/test
+   *
+   * Light-weight reachability probe per service. The result is
+   * persisted to lastValidatedAt / lastValidationError so the admin
+   * card shows the status without re-running every time the page loads.
+   *
+   * Probes are intentionally cheap:
+   *   - Razorpay: GET /v1/orders?count=1 with Basic auth (returns 200
+   *     on valid credentials, 401 on bad).
+   *   - Resend: POST to /domains via the API key (lightweight, doesn't
+   *     send anything; returns 200 on valid key).
+   *   - WhatsApp: GET on the phone number metadata endpoint.
+   *   - FCM: light decode of the service-account JSON to confirm shape.
+   */
+  app.post('/service-keys/:id/test', async (c) => {
+    const id = asServiceId(c.req.param('id'));
+    if (!id) throw new HTTPException(404, { message: 'Unknown service id' });
+    const result: { ok: boolean; latencyMs: number; error?: string } = { ok: false, latencyMs: 0 };
+    const started = Date.now();
+    try {
+      if (id === 'razorpay') {
+        const merged = await deps.serviceKeys.getMergedFields('razorpay', {
+          keyId: deps.env.RAZORPAY_KEY_ID, keySecret: deps.env.RAZORPAY_KEY_SECRET,
+        });
+        if (!merged['keyId'] || !merged['keySecret']) {
+          result.error = 'no_credentials_to_test';
+        } else {
+          const res = await fetch('https://api.razorpay.com/v1/orders?count=1', {
+            headers: { Authorization: `Basic ${Buffer.from(`${merged['keyId']}:${merged['keySecret']}`).toString('base64')}` },
+          });
+          result.ok = res.ok;
+          if (!res.ok) result.error = `HTTP ${res.status}: ${(await res.text()).slice(0, 160)}`;
+        }
+      } else if (id === 'resend') {
+        const merged = await deps.serviceKeys.getMergedFields('resend', { apiKey: deps.env.RESEND_API_KEY });
+        if (!merged['apiKey']) {
+          result.error = 'no_api_key_to_test';
+        } else {
+          const res = await fetch('https://api.resend.com/domains', {
+            headers: { Authorization: `Bearer ${merged['apiKey']}` },
+          });
+          result.ok = res.ok;
+          if (!res.ok) result.error = `HTTP ${res.status}: ${(await res.text()).slice(0, 160)}`;
+        }
+      } else if (id === 'whatsapp') {
+        const merged = await deps.serviceKeys.getMergedFields('whatsapp', {
+          token: deps.env.WHATSAPP_TOKEN, phoneNumberId: deps.env.WHATSAPP_PHONE_NUMBER_ID,
+        });
+        if (!merged['token'] || !merged['phoneNumberId']) {
+          result.error = 'no_credentials_to_test';
+        } else {
+          const res = await fetch(`https://graph.facebook.com/v18.0/${merged['phoneNumberId']}`, {
+            headers: { Authorization: `Bearer ${merged['token']}` },
+          });
+          result.ok = res.ok;
+          if (!res.ok) result.error = `HTTP ${res.status}: ${(await res.text()).slice(0, 160)}`;
+        }
+      } else if (id === 'fcm') {
+        const merged = await deps.serviceKeys.getMergedFields('fcm', {});
+        if (!merged['serviceAccountJson'] || !merged['projectId']) {
+          result.error = 'no_service_account_to_test';
+        } else {
+          // Just validate the JSON shape — full FCM token mint is too
+          // heavy for a click-to-test path.
+          try {
+            const parsed = JSON.parse(merged['serviceAccountJson']) as Record<string, unknown>;
+            if (!parsed['client_email'] || !parsed['private_key']) {
+              result.error = 'service_account_json_missing_fields';
+            } else {
+              result.ok = true;
+            }
+          } catch {
+            result.error = 'service_account_json_invalid';
+          }
+        }
+      }
+    } catch (err) {
+      result.error = err instanceof Error ? err.message : String(err);
+    } finally {
+      result.latencyMs = Date.now() - started;
+    }
+
+    // Persist outcome.
+    await deps.serviceKeys.upsert(id, {
+      lastValidatedAt: result.ok ? new Date().toISOString() : undefined,
+      lastValidationError: result.ok ? undefined : (result.error ?? 'unknown_error'),
+    });
+    deps.logger.info('admin.service_key_validated', {
+      service: id, ok: result.ok, latencyMs: result.latencyMs, error: result.error?.slice(0, 120),
+    });
+    return c.json({ result });
+  });
 
   return app;
 }

@@ -6,6 +6,7 @@ import type { Logger } from '../logger.js';
 import type { UserStore } from '../lib/userStore.js';
 import type { AIEngine, GeneratedMCQ, StageResults } from '../lib/aiEngine.js';
 import type { CreditLedger } from '../lib/creditLedger.js';
+import type { ServiceKeyStore } from '../lib/serviceKeyStore.js';
 
 export interface AssessmentRoutesDeps {
   users: UserStore;
@@ -17,6 +18,8 @@ export interface AssessmentRoutesDeps {
   // (e.g. "first assessment finished"). Accepting the dep at the boundary
   // means PR-04 onwards can wire those grants without changing call sites.
   ledger?: CreditLedger;
+  /** PR-37: optional — used by createEmailService for the welcome email. */
+  serviceKeys?: ServiceKeyStore;
 }
 
 const questionsSchema = z.object({ examSlug: z.string().min(1), language: z.enum(['en', 'hi']).default('en') });
@@ -160,7 +163,7 @@ export function makeAssessmentRoutes(deps: AssessmentRoutesDeps): Hono {
       try {
         const { createEmailService } = await import('../lib/emailService.js');
         if (deps.env) {
-          const emailService = createEmailService(deps.env, deps.logger);
+          const emailService = createEmailService(deps.env, deps.logger, deps.serviceKeys);
           const updatedUser = await deps.users.get(principal.userId);
           if (updatedUser?.email) {
             await emailService.sendWelcome(updatedUser.email, updatedUser.name ?? 'Student', result.level, updatedUser.credits ?? 100, updatedUser.language ?? 'en');
