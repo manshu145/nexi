@@ -28,8 +28,8 @@ export function Logo({
     variant === 'icon'
       ? '/brand/nexigrate-favicon.svg'
       : isDark
-      ? '/brand/nexigrate-logo-dark.svg'
-      : '/brand/nexigrate-logo-light.svg';
+      ? '/brand/nexigrate-logo-light.svg'
+      : '/brand/nexigrate-logo-dark.svg';
 
   // Aspect ratios: full logo viewBox 480x120 = 4:1, icon viewBox 64x64 = 1:1
   const width = variant === 'icon' ? height : height * 4;

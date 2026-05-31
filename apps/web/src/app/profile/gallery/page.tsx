@@ -30,13 +30,22 @@ export default function ImageGalleryPage() {
   useEffect(() => {
     if (loading) return;
     if (!me) { router.replace('/signin'); return; }
-    (async () => {
+    let retries = 0;
+    const fetchImages = async () => {
       try {
         const res = await api.getMyImages();
         setImages(res.images);
-      } catch { /* silent */ }
+      } catch {
+        // Retry once after a short delay (handles transient network issues)
+        if (retries < 1) {
+          retries++;
+          setTimeout(fetchImages, 1500);
+          return;
+        }
+      }
       finally { setFetching(false); }
-    })();
+    };
+    fetchImages();
   }, [me, loading, router]);
 
   const handleDelete = async (id: string) => {
