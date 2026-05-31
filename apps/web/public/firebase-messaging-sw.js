@@ -7,10 +7,12 @@ importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js
 importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js');
 
 firebase.initializeApp({
-  apiKey: 'AIzaSyBNexigrate', // public browser key — not a secret
+  apiKey: 'AIzaSyBQuLPo3N9PMWov9sUrp7czVzBix4lPj8M',
+  authDomain: 'nexigrate-prod.firebaseapp.com',
   projectId: 'nexigrate-prod',
-  messagingSenderId: '748359012345',
-  appId: '1:748359012345:web:abc123',
+  storageBucket: 'nexigrate-prod.firebasestorage.app',
+  messagingSenderId: '505978726927',
+  appId: '1:505978726927:web:066fb77f927442d1e3117a',
 });
 
 const messaging = firebase.messaging();
