@@ -3,22 +3,23 @@ import Layout from '~/layouts/Layout.astro';
 import Nav from '~/components/Nav.astro';
 import Footer from '~/components/Footer.astro';
 
-export const prerender = true;
+export const prerender = false; // PR-43: SSR — fetch live prices from API
 
 const APP_UPGRADE_URL = 'https://app.nexigrate.com/upgrade';
+const API_URL = 'https://api.nexigrate.com';
 
-// Plan data is inlined here (rather than imported from @nexigrate/shared) so
-// the marketing site stays statically buildable without the workspace
-// type graph. Keep these in sync with packages/shared/src/constants/subscriptions.ts.
-//
-// PR-34b note (audit #40): marketing pricing is currently STATIC. Admin
-// can edit prices live via /admin/plans (PR-04), but the marketing site
-// doesn't refetch yet. Risk of stale display is bounded — /upgrade always
-// shows live prices via api.getPlans() (PR-34b), so the actual checkout
-// amount is always correct. Marketing dynamic-price fetch is tracked as
-// a follow-up (PR-34c). When we wire it, the Astro adapter is already
-// `output: 'server'` (Cloudflare), so we can fetch /v1/billing/plans at
-// request time and template the values below — no static build break.
+// Fetch live plan data from the backend. Falls back to hardcoded defaults
+// if the API is unreachable (Cloudflare edge timeout, etc).
+interface LivePlan { id: string; name: string; price: number; yearlyPrice: number; isActive: boolean; comingSoon: boolean; }
+let livePlans: LivePlan[] = [];
+try {
+  const res = await fetch(`${API_URL}/v1/branding`);
+  if (res.ok) {
+    const data = (await res.json()) as { plans?: LivePlan[] };
+    if (data.plans?.length) livePlans = data.plans;
+  }
+} catch { /* fall through to hardcoded defaults */ }
+
 interface PlanConfig {
   slug: 'scholar' | 'aspirant' | 'achiever';
   label: string;
@@ -30,24 +31,24 @@ interface PlanConfig {
 const plans: PlanConfig[] = [
   {
     slug: 'scholar',
-    label: 'Scholar',
-    description: 'Class 5-10 boards. Unlimited credits, ad-free.',
-    monthlyInr: 99,
-    yearlyInr: 830,
+    label: livePlans.find(p => p.id === 'scholar')?.name ?? 'Scholar',
+    description: 'Unlimited credits, ad-free, AI tutor, 10 chapters/day.',
+    monthlyInr: livePlans.find(p => p.id === 'scholar')?.price ?? 99,
+    yearlyInr: livePlans.find(p => p.id === 'scholar')?.yearlyPrice ?? 830,
   },
   {
     slug: 'aspirant',
-    label: 'Aspirant',
-    description: 'Class 11-12, JEE, NEET. + Mock tests, PYQ vault, AI tutor.',
-    monthlyInr: 299,
-    yearlyInr: 2510,
+    label: livePlans.find(p => p.id === 'aspirant')?.name ?? 'Aspirant',
+    description: 'Unlimited everything + essay grading. Coming soon.',
+    monthlyInr: livePlans.find(p => p.id === 'aspirant')?.price ?? 299,
+    yearlyInr: livePlans.find(p => p.id === 'aspirant')?.yearlyPrice ?? 2510,
   },
   {
     slug: 'achiever',
-    label: 'Achiever',
-    description: 'UPSC, SSC, State PSC. + Daily current affairs, essay & answer grading.',
-    monthlyInr: 599,
-    yearlyInr: 5030,
+    label: livePlans.find(p => p.id === 'achiever')?.name ?? 'Achiever',
+    description: 'Everything in Aspirant + priority AI + dedicated support.',
+    monthlyInr: livePlans.find(p => p.id === 'achiever')?.price ?? 599,
+    yearlyInr: livePlans.find(p => p.id === 'achiever')?.yearlyPrice ?? 5030,
   },
 ];
 
@@ -60,31 +61,31 @@ interface FeatureRow {
 const featureRows: FeatureRow[] = [
   {
     label: 'Daily MCQ',
-    values: { scholar: '10 / day', aspirant: '25 / day', achiever: 'Unlimited' },
+    values: { scholar: '30 / day', aspirant: 'Unlimited', achiever: 'Unlimited' },
   },
   {
-    label: 'NCERT-grounded explanations',
-    values: { scholar: '✓', aspirant: '✓', achiever: '✓' },
+    label: 'Chapters per day',
+    values: { scholar: '10', aspirant: 'Unlimited', achiever: 'Unlimited' },
   },
   {
     label: 'Mock tests',
-    values: { scholar: '0 / mo', aspirant: '4 / mo', achiever: 'Unlimited' },
-  },
-  {
-    label: 'Previous-year question vault',
-    values: { scholar: '—', aspirant: '✓', achiever: '✓' },
+    values: { scholar: '5 / mo', aspirant: 'Unlimited', achiever: 'Unlimited' },
   },
   {
     label: 'AI tutor (Q&A)',
-    values: { scholar: '—', aspirant: '50 / mo', achiever: 'Unlimited' },
+    values: { scholar: '✓', aspirant: '✓', achiever: '✓' },
   },
   {
-    label: 'Daily current affairs digest',
-    values: { scholar: '—', aspirant: '—', achiever: '✓' },
+    label: 'Daily current affairs + quiz',
+    values: { scholar: '✓', aspirant: '✓', achiever: '✓' },
   },
   {
     label: 'Essay & answer grading',
-    values: { scholar: '—', aspirant: '—', achiever: '✓' },
+    values: { scholar: '—', aspirant: '✓', achiever: '✓' },
+  },
+  {
+    label: 'Credit deduction',
+    values: { scholar: 'None', aspirant: 'None', achiever: 'None' },
   },
   {
     label: 'Ad-free, no distractions',
