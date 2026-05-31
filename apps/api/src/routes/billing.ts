@@ -16,6 +16,7 @@ import {
 import { grantPlan } from '../lib/billing.js';
 import type { IdempotencyStore } from '../lib/idempotency.js';
 import type { PlatformConfigStore } from '../lib/platformConfigStore.js';
+import { getRazorpayConfig, type ServiceKeyStore } from '../lib/serviceKeyStore.js';
 
 export interface BillingRoutesDeps {
   users: UserStore;
@@ -30,6 +31,12 @@ export interface BillingRoutesDeps {
    * override them via the platformConfig/plans Firestore doc.
    */
   config: PlatformConfigStore;
+  /**
+   * PR-37: Razorpay key_id / key_secret / webhook_secret are read from
+   * this store first, env vars second. Lets the founder rotate keys
+   * from the admin panel without redeploying.
+   */
+  serviceKeys: ServiceKeyStore;
 }
 
 function parsePeriod(input: unknown): BillingPeriod {
@@ -74,11 +81,16 @@ export function makeBillingRoutes(deps: BillingRoutesDeps): Hono {
     const baseRupees = await deps.config.priceFor(planId, period);
     if (baseRupees <= 0) throw new HTTPException(400, { message: 'Invalid price for plan/period' });
 
-    // RAZORPAY_KEY_ID is a public key (not secret). Default to test key if not set.
-    const razorpayKeyId = deps.env.RAZORPAY_KEY_ID || 'rzp_test_SsPfzbJUMaK7Ow';
-    if (!deps.env.RAZORPAY_KEY_SECRET) {
-      throw new HTTPException(503, { message: 'Payment system not configured. RAZORPAY_KEY_SECRET missing.' });
+    // PR-37: Razorpay keys come from serviceKeyStore first, env vars
+    // second. Founder can rotate keys from /admin/service-keys without
+    // touching env vars or redeploying.
+    const rzpCfg = await getRazorpayConfig(deps.serviceKeys, deps.env);
+    if (!rzpCfg) {
+      throw new HTTPException(503, {
+        message: 'Payment system not configured. Open Admin → Service Keys → Razorpay and save Key ID + Key Secret.',
+      });
     }
+    const razorpayKeyId = rzpCfg.keyId;
 
     const baseAmount = baseRupees * 100; // paise
     let finalAmount = baseAmount;
@@ -100,7 +112,7 @@ export function makeBillingRoutes(deps: BillingRoutesDeps): Hono {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Basic ${Buffer.from(`${razorpayKeyId}:${deps.env.RAZORPAY_KEY_SECRET}`).toString('base64')}`,
+          'Authorization': `Basic ${Buffer.from(`${razorpayKeyId}:${rzpCfg.keySecret}`).toString('base64')}`,
         },
         body: JSON.stringify({
           amount: finalAmount,
@@ -175,7 +187,13 @@ export function makeBillingRoutes(deps: BillingRoutesDeps): Hono {
       throw new HTTPException(400, { message: 'Missing payment verification fields' });
     }
 
-    if (!deps.env.RAZORPAY_KEY_SECRET) throw new HTTPException(503, { message: 'Payment system not configured' });
+    // PR-37: Razorpay key secret comes from serviceKeyStore first.
+    const rzpCfg = await getRazorpayConfig(deps.serviceKeys, deps.env);
+    if (!rzpCfg) {
+      throw new HTTPException(503, {
+        message: 'Payment system not configured. Open Admin → Service Keys → Razorpay and save Key ID + Key Secret.',
+      });
+    }
 
     // 1. Idempotency — if we've seen this payment_id before, return the cached response.
     const idemKey = body.razorpay_payment_id;
@@ -188,7 +206,7 @@ export function makeBillingRoutes(deps: BillingRoutesDeps): Hono {
     }
 
     // 2. Verify Razorpay HMAC signature (proves Razorpay signed this payment).
-    const expectedSig = createHmac('sha256', deps.env.RAZORPAY_KEY_SECRET)
+    const expectedSig = createHmac('sha256', rzpCfg.keySecret)
       .update(`${body.razorpay_order_id}|${body.razorpay_payment_id}`)
       .digest('hex');
 
@@ -243,7 +261,7 @@ export function makeBillingRoutes(deps: BillingRoutesDeps): Hono {
     // 6. Send confirmation email — non-blocking, best-effort.
     try {
       const { createEmailService } = await import('../lib/emailService.js');
-      const emailService = createEmailService(deps.env, deps.logger);
+      const emailService = createEmailService(deps.env, deps.logger, deps.serviceKeys);
       const user = await deps.users.get(principal.userId);
       if (user?.email) {
         await emailService.sendPaymentSuccess(
@@ -347,7 +365,7 @@ export function makeBillingRoutes(deps: BillingRoutesDeps): Hono {
     // Confirmation email -- non-blocking, best-effort.
     try {
       const { createEmailService } = await import('../lib/emailService.js');
-      const emailService = createEmailService(deps.env, deps.logger);
+      const emailService = createEmailService(deps.env, deps.logger, deps.serviceKeys);
       if (user.email) {
         await emailService.sendCancellationConfirmation(
           user.email,
@@ -404,6 +422,8 @@ export interface BillingWebhookDeps {
   db: Firestore | null;
   coupons: CouponStore;
   idempotency: IdempotencyStore;
+  /** PR-37: Razorpay webhook secret — admin DB primary, env fallback. */
+  serviceKeys: ServiceKeyStore;
 }
 
 interface RazorpayPaymentEntity {
@@ -428,7 +448,9 @@ export function makeBillingWebhookRoute(deps: BillingWebhookDeps): Hono {
   // Auth: HMAC signature on raw body (NOT a Bearer token).
   // Idempotency: cached on razorpay_payment_id, so duplicate webhook deliveries are safe.
   app.post('/webhook', async (c) => {
-    const webhookSecret = deps.env.RAZORPAY_WEBHOOK_SECRET;
+    // PR-37: webhook secret comes from serviceKeyStore first; env fallback.
+    const rzpCfg = await getRazorpayConfig(deps.serviceKeys, deps.env);
+    const webhookSecret = rzpCfg?.webhookSecret;
 
     // No secret configured → ack 200 so Razorpay stops retrying, but log a warning.
     // We never want to silently fail-open and grant a plan, so missing secret = noop.
