@@ -65,7 +65,7 @@ export function createEmailService(env: Env, logger: Logger, serviceKeys?: Servi
    * fresh each call so the admin can rotate without restarting Cloud
    * Run instances.
    */
-  async function send(to: string, subject: string, html: string): Promise<{ success: boolean; id?: string }> {
+  async function send(to: string, subject: string, html: string, type?: string): Promise<{ success: boolean; id?: string }> {
     const cfg = await resolveResend(serviceKeys, env, logger);
     if (!cfg) {
       return { success: false };
@@ -80,19 +80,38 @@ export function createEmailService(env: Env, logger: Logger, serviceKeys?: Servi
       if (!res.ok) {
         const err = await res.text().catch(() => '');
         logger.error('email.send_failed', { to, subject, status: res.status, error: err.slice(0, 200) });
+        // Log failure
+        logEmailToFirestore(to, subject, type ?? 'custom', 'failed', undefined);
         return { success: false };
       }
       const data = (await res.json()) as { id?: string };
-      logger.info('email.sent', { to, subject, id: data.id });
+      logger.info('email.sent', { to, subject, id: data.id, type });
+      // Log success
+      logEmailToFirestore(to, subject, type ?? 'custom', 'sent', data.id);
       return { success: true, id: data.id };
     } catch (err) {
       logger.error('email.send_error', { to, subject, error: err instanceof Error ? err.message : String(err) });
+      logEmailToFirestore(to, subject, type ?? 'custom', 'error', undefined);
       return { success: false };
     }
   }
 
-  async function sendBoolean(to: string, subject: string, html: string): Promise<boolean> {
-    const r = await send(to, subject, html);
+  /** Fire-and-forget log to Firestore emailLogs collection */
+  function logEmailToFirestore(to: string, subject: string, type: string, status: string, messageId?: string) {
+    // Resolve Firestore lazily from the env — emailService doesn't take db as a dep
+    // We use a dynamic import + the admin SDK's getFirestore to access it
+    import('./firebaseAdmin.js').then(({ getFirebaseFirestore }) => {
+      const db = getFirebaseFirestore(env);
+      db.collection('emailLogs').add({
+        to, subject, type, status, messageId: messageId ?? null,
+        sentAt: new Date().toISOString(),
+        from: 'hello@nexigrate.com',
+      }).catch(() => {});
+    }).catch(() => {});
+  }
+
+  async function sendBoolean(to: string, subject: string, html: string, type?: string): Promise<boolean> {
+    const r = await send(to, subject, html, type);
     return r.success;
   }
 
@@ -141,7 +160,7 @@ export function createEmailService(env: Env, logger: Logger, serviceKeys?: Servi
            <p style="font-size:16px;line-height:1.6;color:#44403C">Welcome to Nexigrate — your AI companion for ${exam.toUpperCase()} preparation.</p>
            <p style="font-size:16px;line-height:1.6;color:#44403C">You have <strong>${credits} free credits</strong> to start — read your first chapter, take MCQs, ask doubts.</p>
            ${ctaButton('Start Learning', 'https://app.nexigrate.com/dashboard')}`;
-      return sendBoolean(to, subject, baseTemplate(body));
+      return sendBoolean(to, subject, baseTemplate(body), 'welcome');
     },
 
     async sendStreakReminder(to, name, streak, language) {
@@ -155,7 +174,7 @@ export function createEmailService(env: Env, logger: Logger, serviceKeys?: Servi
         : `<h1 style="color:#1C1917;font-size:24px">${name}, study now to keep your streak!</h1>
            <p style="font-size:16px;line-height:1.6">Your <strong>${streak}-day streak</strong> is at risk. Just 5 minutes — a chapter or one MCQ — keeps it alive.</p>
            ${ctaButton('Study Now', 'https://app.nexigrate.com/dashboard')}`;
-      return sendBoolean(to, subject, baseTemplate(body));
+      return sendBoolean(to, subject, baseTemplate(body), 'streak_reminder');
     },
 
     async sendPlanExpiry(to, name, plan, expiresAt, language) {
@@ -170,7 +189,7 @@ export function createEmailService(env: Env, logger: Logger, serviceKeys?: Servi
         : `<h1 style="color:#1C1917;font-size:24px">${name}, time to renew</h1>
            <p style="font-size:16px;line-height:1.6">Your <strong>${plan}</strong> plan expires on <strong>${expiryDate}</strong>. Renew to keep unlimited MCQs, AI tutor, and mock tests.</p>
            ${ctaButton('Renew Now', 'https://app.nexigrate.com/upgrade')}`;
-      return sendBoolean(to, subject, baseTemplate(body));
+      return sendBoolean(to, subject, baseTemplate(body), 'plan_expiry');
     },
 
     async sendPaymentSuccess(to, name, plan, expiresAt, amount) {
@@ -180,7 +199,7 @@ export function createEmailService(env: Env, logger: Logger, serviceKeys?: Servi
         <p style="font-size:16px;line-height:1.6">Your <strong>${plan}</strong> plan is now active. Plan expires on <strong>${expiryDate}</strong>. Amount paid: <strong>₹${amount.toLocaleString('en-IN')}</strong>.</p>
         <p style="font-size:14px;color:#78716C">A receipt is available in your profile under Payment History.</p>
         ${ctaButton('Open Dashboard', 'https://app.nexigrate.com/dashboard')}`;
-      return sendBoolean(to, subject, baseTemplate(body));
+      return sendBoolean(to, subject, baseTemplate(body), 'payment_success');
     },
 
     async sendCancellationConfirmation(to, name, plan, expiresAt) {
@@ -190,11 +209,11 @@ export function createEmailService(env: Env, logger: Logger, serviceKeys?: Servi
         <p style="font-size:16px;line-height:1.6">You'll keep <strong>${plan}</strong> access until <strong>${expiryDate}</strong>. After that, your account moves back to the Free plan automatically.</p>
         <p style="font-size:14px;color:#78716C">Changed your mind? You can resume anytime from the upgrade page.</p>
         ${ctaButton('Resume Plan', 'https://app.nexigrate.com/upgrade')}`;
-      return sendBoolean(to, subject, baseTemplate(body));
+      return sendBoolean(to, subject, baseTemplate(body), 'cancellation');
     },
 
     async sendCustom(to, subject, htmlBody) {
-      return sendBoolean(to, subject, htmlBody);
+      return sendBoolean(to, subject, htmlBody, 'custom');
     },
   };
 }
