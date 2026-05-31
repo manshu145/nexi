@@ -301,6 +301,15 @@ export function buildApp(deps: AppDeps): Hono {
   app.route('/v1', v1);
 
   app.onError((err, c) => {
+    // CRITICAL: Add CORS headers on error responses too. Hono's cors()
+    // middleware sets headers on the way in, but onError creates a fresh
+    // response — the headers get lost. Without this, browsers block the
+    // error body and show "Failed to fetch" instead of the real error.
+    const origin = c.req.header('origin') ?? '';
+    if (env.CORS_ALLOWED_ORIGINS.includes(origin)) {
+      c.header('Access-Control-Allow-Origin', origin);
+      c.header('Access-Control-Allow-Credentials', 'true');
+    }
     if (err instanceof HTTPException) { logger.warn('http.error', { status: err.status, message: err.message }); return c.json({ error: err.message }, err.status); }
     logger.error('unhandled', { message: err.message, stack: err.stack });
     // Log to admin store for error tracking

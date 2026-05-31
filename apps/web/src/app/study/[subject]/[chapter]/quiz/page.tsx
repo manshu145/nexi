@@ -48,11 +48,13 @@ export default function ChapterQuizPage() {
 
   useEffect(() => {
     if (!user || !me) return;
+    let cancelled = false;
     (async () => {
       try {
         const exam = me.targetExam ?? 'jee-main';
         const lang = getLanguageFromCookie();
         const res = await api.getChapterQuiz(exam, subject, chapter, lang);
+        if (cancelled) return;
         if (!res.questions || res.questions.length === 0) {
           setError('Quiz generation returned 0 questions. Tap Retry — the server will clear stale data and regenerate.');
           return;
@@ -60,8 +62,18 @@ export default function ChapterQuizPage() {
         setQuestions(res.questions);
         setPhase('quiz');
         setTimer(45);
-      } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load quiz'); }
+      } catch (e) {
+        if (cancelled) return;
+        const msg = e instanceof Error ? e.message : 'Failed to load quiz';
+        // Network/CORS/timeout errors show as "Failed to fetch" — give user clear action
+        if (msg.toLowerCase().includes('failed to fetch') || msg.toLowerCase().includes('network')) {
+          setError('Network error — API se connect nahi ho paya. Check: 1) Internet connection, 2) API deploy hua hai (diag page check karo). Retry karo ↓');
+        } else {
+          setError(msg);
+        }
+      }
     })();
+    return () => { cancelled = true; };
   }, [user, me, subject, chapter]);
 
   const submitQuiz = useCallback(async () => {
