@@ -121,15 +121,10 @@ const featureRows: FeatureRow[] = [
 
     <section class="mt-12 grid gap-4 sm:grid-cols-3">
       {plans.map((plan) => (
-        <article class={`paper-card flex flex-col p-6 relative ${plan.slug !== 'scholar' ? 'opacity-60' : 'border-ember-500 ring-1 ring-ember-500/20'}`}>
+        <article class={`paper-card flex flex-col p-6 relative ${plan.slug === 'scholar' ? 'border-ember-500 ring-1 ring-ember-500/20' : ''}`}>
           {plan.slug === 'scholar' && (
             <span class="absolute -top-2.5 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-ember-500 text-paper-50">
-              Recommended
-            </span>
-          )}
-          {plan.slug !== 'scholar' && (
-            <span class="absolute top-3 right-3 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-paper-300 text-muted-500">
-              Coming Soon
+              Most Popular
             </span>
           )}
           <h2 class="font-serif text-xl font-semibold text-ink-900">{plan.label}</h2>
@@ -143,15 +138,9 @@ const featureRows: FeatureRow[] = [
               ((plan.monthlyInr * 12 - plan.yearlyInr) / (plan.monthlyInr * 12)) * 100,
             )}%
           </p>
-          {plan.slug === 'scholar' ? (
-            <a href={APP_UPGRADE_URL} class="btn-primary mt-6 w-full" rel="noopener">
-              Choose {plan.label}
-            </a>
-          ) : (
-            <button disabled class="mt-6 w-full rounded-xl bg-paper-300 px-4 py-3 text-sm font-medium text-muted-500 cursor-not-allowed">
-              Coming Soon
-            </button>
-          )}
+          <a href={APP_UPGRADE_URL} class="btn-primary mt-6 w-full" rel="noopener">
+            Choose {plan.label}
+          </a>
         </article>
       ))}
     </section>
