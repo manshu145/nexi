@@ -23,6 +23,7 @@ import type { CurrentAffairsStore } from '../lib/currentAffairsStore.js';
 import { isHardcodedSuperAdmin } from '../lib/adminEmails.js';
 import { SERVICE_DEFINITIONS, getServiceDefinition, maskSecret, type ServiceId, type ServiceKeyStore } from '../lib/serviceKeyStore.js';
 import type { PushService, PushNotificationPayload } from '../lib/pushService.js';
+import type { TeamInviteStore } from '../lib/teamInviteStore.js';
 
 export interface AdminRoutesDeps {
   users: UserStore;
@@ -82,6 +83,8 @@ export interface AdminRoutesDeps {
    * without firebase-admin available continue to construct.
    */
   push?: PushService;
+  /** PR-40: team invite store for admin RBAC. */
+  teamInvites?: TeamInviteStore;
 }
 
 export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
@@ -1730,6 +1733,47 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
     deps.logger.info('admin.push_test', { adminId: principal.userId, tokens: myTokens.length, result });
     return c.json({ ok: true, devices: myTokens.length, sent: result.successCount, failed: result.failureCount });
   });
+
+  // ─── PR-40: Team RBAC endpoints ────────────────────────────────────
+  if (deps.teamInvites) {
+    const teamStore = deps.teamInvites;
+
+    // GET /admin/team — list all invites
+    app.get('/team', async (c) => {
+      const invites = await teamStore.list();
+      return c.json({ invites });
+    });
+
+    // POST /admin/team/invite — invite a new team member
+    app.post('/team/invite', async (c) => {
+      const principal = requireAuth(c);
+      const body = await c.req.json<{ email?: string; role?: string }>();
+      if (!body.email || !body.email.includes('@')) {
+        throw new HTTPException(400, { message: 'Valid email required' });
+      }
+      const role = (body.role === 'editor' || body.role === 'viewer') ? body.role : 'editor';
+      // Check for existing invite
+      const existing = await teamStore.findByEmail(body.email);
+      if (existing) {
+        throw new HTTPException(409, { message: 'User already invited' });
+      }
+      const invite = await teamStore.create({
+        email: body.email.toLowerCase().trim(),
+        role,
+        invitedBy: principal.email ?? principal.userId,
+      });
+      deps.logger.info('admin.team_invite_created', { email: invite.email, role: invite.role });
+      return c.json({ invite }, 201);
+    });
+
+    // DELETE /admin/team/:id — revoke an invite
+    app.delete('/team/:id', async (c) => {
+      const id = c.req.param('id');
+      await teamStore.revoke(id);
+      deps.logger.info('admin.team_invite_revoked', { id });
+      return c.json({ ok: true });
+    });
+  }
 
   return app;
 }
