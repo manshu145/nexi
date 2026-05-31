@@ -10,6 +10,9 @@
  * (reads from admin panel → Service Keys → FCM → vapidKey). No build-time
  * env var needed — admin pastes the key in /admin/service-keys → FCM, done.
  *
+ * PR-54: Returns specific error reason string so NotificationBell can
+ * show actionable messages to the admin/user.
+ *
  * NOTE: The firebase-messaging-sw.js service worker handles background
  * notifications. This module handles foreground token registration only.
  */
@@ -37,24 +40,28 @@ async function getVapidKey(): Promise<string> {
   return '';
 }
 
+/** Error reason type for downstream consumption */
+export type PushRegistrationResult = true | 'no_vapid_key' | 'permission_denied' | 'failed';
+
 /**
  * Request push permission + register FCM token with backend.
- * Returns true if token was successfully registered, false otherwise.
+ * Returns true if token was successfully registered, or a specific
+ * error reason string so the bell icon can show actionable feedback.
  * Safe to call multiple times — de-duplicates internally.
  */
-export async function registerPushToken(): Promise<boolean> {
+export async function registerPushToken(): Promise<PushRegistrationResult> {
   if (tokenRegistered) return true;
-  if (typeof window === 'undefined') return false;
-  if (!('Notification' in window)) return false;
+  if (typeof window === 'undefined') return 'failed';
+  if (!('Notification' in window)) return 'failed';
 
   try {
     const permission = await Notification.requestPermission();
-    if (permission !== 'granted') return false;
+    if (permission !== 'granted') return 'permission_denied';
 
     const vapidKey = await getVapidKey();
     if (!vapidKey) {
       console.warn('[push] VAPID key not available — set it in Admin → Service Keys → FCM');
-      return false;
+      return 'no_vapid_key';
     }
 
     // Dynamic import to avoid loading firebase/messaging on pages that
@@ -72,7 +79,7 @@ export async function registerPushToken(): Promise<boolean> {
       swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
     } catch (swErr) {
       console.warn('[push] Service worker registration failed:', swErr);
-      return false;
+      return 'failed';
     }
 
     const token = await getToken(messaging, {
@@ -82,7 +89,7 @@ export async function registerPushToken(): Promise<boolean> {
 
     if (!token) {
       console.warn('[push] getToken returned empty — browser may have blocked it');
-      return false;
+      return 'failed';
     }
 
     // Register with backend
@@ -91,6 +98,6 @@ export async function registerPushToken(): Promise<boolean> {
     return true;
   } catch (err) {
     console.warn('[push] Failed to register token:', err);
-    return false;
+    return 'failed';
   }
 }

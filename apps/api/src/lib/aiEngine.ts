@@ -992,7 +992,20 @@ End with: Important facts to remember for exam.`;
     async generateChapterMCQs(chapter, subject, exam, language = 'en', count = 10, seed?: string, chapterContent?: string, userLevel?: 'beginner' | 'intermediate' | 'advanced') {
       const langInstr = language === 'hi' ? 'Generate in Hindi (Devanagari).' : 'Generate in English.';
       const seedInstr = seed ? `\nVariation seed: ${seed}. Make these questions DIFFERENT from previous attempts. Use creative angles, tricky options, and less common facts from the content.` : '';
-      const contentContext = chapterContent ? `\n\nIMPORTANT: Generate questions ONLY from this specific chapter content. Do NOT ask about topics not covered here:\n---\n${chapterContent.slice(0, 3000)}\n---` : '';
+
+      // When chapterContent is available, constrain questions to it.
+      // When it's NOT available (chapter hasn't been read yet), let the AI
+      // generate freely based on chapter name + subject + exam syllabus.
+      // This fixes the "MCQ pool empty" bug for Hindi where AI returned 0
+      // questions because the prompt said "ONLY from this content" but no
+      // content was provided.
+      const hasContent = !!(chapterContent && chapterContent.trim().length > 50);
+      const contentContext = hasContent
+        ? `\n\nIMPORTANT: Generate questions ONLY from this specific chapter content. Do NOT ask about topics not covered here:\n---\n${chapterContent!.slice(0, 3000)}\n---`
+        : '';
+      const contentRule = hasContent
+        ? '- Questions MUST be based on the chapter content provided above\n- Do NOT ask about topics not covered in the chapter\n- Include explanation referencing the chapter content'
+        : '- Generate questions based on the official syllabus for this chapter topic\n- Questions should cover key concepts, facts, and applications from this chapter\n- Use standard textbook knowledge (NCERT where applicable) for this topic';
 
       // Difficulty distribution based on user level
       let difficultyMix: string;
@@ -1008,7 +1021,7 @@ End with: Important facts to remember for exam.`;
         difficultyStyle = 'Intermediate MCQs: application-based, 2 close options that require careful thinking.';
       }
 
-      const prompt = `Generate exactly ${count} UNIQUE multiple choice questions for chapter "${chapter}" (${subject}, ${exam}).\n${langInstr}${seedInstr}${contentContext}\n\nRules:\n- Questions MUST be based on the chapter content provided above\n- Do NOT ask about topics not covered in the chapter\n- Each question must have exactly 4 options (A/B/C/D), one correct answer, and a brief explanation\n- Mix: ${difficultyMix}\n- ${difficultyStyle}\n- Include explanation referencing the chapter content\n- IMPORTANT: All JSON keys MUST be in English. Only the values (question text, option text, explanation) should be in ${language === 'hi' ? 'Hindi' : 'English'}.\n- Return ONLY valid JSON, no markdown fences.\n\nJSON only:\n{"questions":[{"id":"q1","question":"...","options":[{"key":"A","text":"..."},{"key":"B","text":"..."},{"key":"C","text":"..."},{"key":"D","text":"..."}],"correctOption":"A","explanation":"...","difficulty":"easy","subject":"${subject}","topic":"${chapter}"}]}`;
+      const prompt = `Generate exactly ${count} UNIQUE multiple choice questions for chapter "${chapter}" (${subject}, ${exam}).\n${langInstr}${seedInstr}${contentContext}\n\nRules:\n${contentRule}\n- Each question must have exactly 4 options (A/B/C/D), one correct answer, and a brief explanation\n- Mix: ${difficultyMix}\n- ${difficultyStyle}\n- IMPORTANT: All JSON keys MUST be in English. Only the values (question text, option text, explanation) should be in ${language === 'hi' ? 'Hindi' : 'English'}.\n- Return ONLY valid JSON, no markdown fences.\n\nJSON only:\n{"questions":[{"id":"q1","question":"...","options":[{"key":"A","text":"..."},{"key":"B","text":"..."},{"key":"C","text":"..."},{"key":"D","text":"..."}],"correctOption":"A","explanation":"...","difficulty":"easy","subject":"${subject}","topic":"${chapter}"}]}`;
       const errors: string[] = [];
 
       /** Robust JSON parse — handles markdown fences, trailing commas, partial output */
