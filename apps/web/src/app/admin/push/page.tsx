@@ -28,6 +28,8 @@ interface PushStatus {
   configured: boolean;
   provider?: string;
   reason?: string;
+  subscriberCount?: number;
+  totalDevices?: number;
 }
 
 export default function AdminPushPage() {
@@ -124,6 +126,13 @@ export default function AdminPushPage() {
   const handleTest = async () => {
     setTesting(true);
     try {
+      // PR-45: register this device's token first so "test to me" works
+      // even if admin hasn't tapped the bell icon on the dashboard.
+      try {
+        const { registerPushToken } = await import('~/lib/pushClient');
+        await registerPushToken();
+      } catch { /* non-fatal — might already be registered or permission denied */ }
+
       const token = await getToken();
       const res = await fetch(`${API}/v1/admin/push/test`, {
         method: 'POST',
@@ -133,7 +142,13 @@ export default function AdminPushPage() {
       if (res.ok) {
         toast.success(`Test sent to ${data.sent ?? 0} of ${data.devices ?? 0} of your devices`);
       } else {
-        toast.error(data.message ?? `Test failed (HTTP ${res.status})`);
+        // Show helpful message if no tokens registered
+        const msg = data.message ?? `Test failed (HTTP ${res.status})`;
+        if (msg.includes('No push tokens')) {
+          toast.error('No device registered. Please allow notifications when prompted, then retry.');
+        } else {
+          toast.error(msg);
+        }
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Test failed');
@@ -177,7 +192,12 @@ export default function AdminPushPage() {
         status?.configured ? 'border-line bg-paper-100 text-muted-500' : 'border-ember-500/40 bg-ember-500/5 text-ember-600'
       }`}>
         {status?.configured ? (
-          <>✓ FCM configured (provider: {status.provider})</>
+          <div className="flex items-center justify-between">
+            <span>✓ FCM configured (provider: {status.provider})</span>
+            <span className="font-semibold text-ink-800">
+              📱 {status.subscriberCount ?? 0} subscribers · {status.totalDevices ?? 0} devices
+            </span>
+          </div>
         ) : (
           <>
             ⚠ Push not configured — open <a href="/admin/service-keys" className="underline">Admin → Service Keys → FCM</a> and save the service-account JSON.

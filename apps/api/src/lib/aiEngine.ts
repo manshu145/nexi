@@ -1011,46 +1011,60 @@ End with: Important facts to remember for exam.`;
       const prompt = `Generate exactly ${count} UNIQUE multiple choice questions for chapter "${chapter}" (${subject}, ${exam}).\n${langInstr}${seedInstr}${contentContext}\n\nRules:\n- Questions MUST be based on the chapter content provided above\n- Do NOT ask about topics not covered in the chapter\n- Each question must have exactly 4 options (A/B/C/D), one correct answer, and a brief explanation\n- Mix: ${difficultyMix}\n- ${difficultyStyle}\n- Include explanation referencing the chapter content\n\nJSON only:\n{"questions":[{"id":"q1","question":"...","options":[{"key":"A","text":"..."},{"key":"B","text":"..."},{"key":"C","text":"..."},{"key":"D","text":"..."}],"correctOption":"A","explanation":"...","difficulty":"easy","subject":"${subject}","topic":"${chapter}"}]}`;
       const errors: string[] = [];
 
-      // PR-44: Try Groq — use resolver to get fresh key from admin panel
-      // if available, fall back to env-based instance.
-      const groqInstance = groq ?? await (async () => {
-        if (!resolver) return null;
+      // PR-45: ALWAYS try resolver first (admin-panel keys), then fall
+      // back to env-based instances. The old `groq ?? resolver` pattern
+      // was broken because `groq` is non-null when env has ANY key
+      // (even expired/invalid) → resolver was never reached.
+
+      // ─── Attempt 1: Groq via resolver (admin panel key) ───
+      if (resolver) {
         try {
           const resolved = await resolver.resolve('groq');
-          if (resolved?.apiKey) return new Groq({ apiKey: resolved.apiKey });
-        } catch { /* resolver unavailable */ }
-        return null;
-      })();
-
-      if (groqInstance) {
+          if (resolved?.apiKey) {
+            const freshGroq = new Groq({ apiKey: resolved.apiKey });
+            const model = resolved.model || 'llama-3.3-70b-versatile';
+            const c = await freshGroq.chat.completions.create({ model, messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 4096, response_format: { type: 'json_object' } });
+            const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
+            if (parsed.questions?.length) { logger.info('ai.chapter_mcqs', { provider: 'groq', chapter, count: parsed.questions.length, model }); return parsed.questions; }
+            errors.push('Groq (resolver) returned empty');
+          } else { errors.push('Groq resolver returned no key'); }
+        } catch (err) { errors.push(`Groq (resolver): ${err instanceof Error ? err.message : String(err)}`); }
+      }
+      // Fallback: env-based Groq instance (if env key is set)
+      if (groq && !errors.some(e => e.startsWith('Groq (resolver)'))) {
         try {
-          const c = await groqInstance.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 4096, response_format: { type: 'json_object' } });
+          const c = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 4096, response_format: { type: 'json_object' } });
           const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
-          if (parsed.questions?.length) { logger.info('ai.chapter_mcqs', { provider: 'groq', chapter, count: parsed.questions.length }); return parsed.questions; }
-          errors.push('Groq returned empty');
-        } catch (err) { errors.push(`Groq: ${err instanceof Error ? err.message : String(err)}`); }
-      } else { errors.push('Groq not configured'); }
+          if (parsed.questions?.length) { logger.info('ai.chapter_mcqs', { provider: 'groq-env', chapter, count: parsed.questions.length }); return parsed.questions; }
+          errors.push('Groq (env) returned empty');
+        } catch (err) { errors.push(`Groq (env): ${err instanceof Error ? err.message : String(err)}`); }
+      } else if (!resolver) { errors.push('Groq not configured (no resolver, no env)'); }
 
-      // PR-44: Try OpenAI — same pattern: resolver first, env fallback.
-      const openaiInstance = openai ?? await (async () => {
-        if (!resolver) return null;
+      // ─── Attempt 2: OpenAI via resolver (admin panel key) ───
+      if (resolver) {
         try {
           const resolved = await resolver.resolve('openai');
-          if (resolved?.apiKey) return new OpenAI({ apiKey: resolved.apiKey });
-        } catch { /* resolver unavailable */ }
-        return null;
-      })();
-
-      if (openaiInstance) {
+          if (resolved?.apiKey) {
+            const freshOpenai = new OpenAI({ apiKey: resolved.apiKey });
+            const model = resolved.model || 'gpt-4o';
+            const c = await freshOpenai.chat.completions.create({ model, messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 4096, response_format: { type: 'json_object' } });
+            const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
+            if (parsed.questions?.length) { logger.info('ai.chapter_mcqs', { provider: 'openai', chapter, count: parsed.questions.length, model }); return parsed.questions; }
+            errors.push('OpenAI (resolver) returned empty');
+          } else { errors.push('OpenAI resolver returned no key'); }
+        } catch (err) { errors.push(`OpenAI (resolver): ${err instanceof Error ? err.message : String(err)}`); }
+      }
+      // Fallback: env-based OpenAI instance
+      if (openai && !errors.some(e => e.startsWith('OpenAI (resolver)'))) {
         try {
-          const c = await openaiInstance.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 4096, response_format: { type: 'json_object' } });
+          const c = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 4096, response_format: { type: 'json_object' } });
           const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
-          if (parsed.questions?.length) { logger.info('ai.chapter_mcqs', { provider: 'openai', chapter, count: parsed.questions.length }); return parsed.questions; }
-          errors.push('OpenAI returned empty');
-        } catch (err) { errors.push(`OpenAI: ${err instanceof Error ? err.message : String(err)}`); }
-      } else { errors.push('OpenAI not configured'); }
+          if (parsed.questions?.length) { logger.info('ai.chapter_mcqs', { provider: 'openai-env', chapter, count: parsed.questions.length }); return parsed.questions; }
+          errors.push('OpenAI (env) returned empty');
+        } catch (err) { errors.push(`OpenAI (env): ${err instanceof Error ? err.message : String(err)}`); }
+      }
 
-      // Gemini — already uses callGemini which reads from resolver
+      // ─── Attempt 3: Gemini via callGemini (already uses resolver) ───
       try {
         const r = await callGemini({ prompt, generationConfig: { temperature: 0.7, maxOutputTokens: 4096 }, tier: 'flash' });
         if (r.ok) {
@@ -1061,7 +1075,7 @@ End with: Important facts to remember for exam.`;
             if (parsed.questions?.length) { logger.info('ai.chapter_mcqs', { provider: 'gemini', chapter, count: parsed.questions.length, model: r.model }); return parsed.questions; }
           }
         }
-        errors.push(`Gemini failed${('error' in r) ? ': ' + r.error : ''}`);
+        errors.push(`Gemini: ${('error' in r) ? r.error : 'returned no parseable JSON'}`);
       } catch (err) { errors.push(`Gemini: ${err instanceof Error ? err.message : String(err)}`); }
 
       logger.error('ai.chapter_mcqs_all_failed', { errors, chapter, subject, exam });
