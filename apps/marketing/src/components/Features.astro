@@ -107,7 +107,7 @@ const features = [
       {features.map((f) => (
         <a
           href={f.link}
-          class={`group paper-card p-6 transition-transform hover:-translate-y-1 relative ${!f.live ? 'opacity-70' : ''}`}
+          class={`group paper-card p-6 transition-transform hover:-translate-y-1 relative min-h-[180px] flex flex-col ${!f.live ? 'opacity-70' : ''}`}
         >
           {!f.live && (
             <span class="absolute top-3 right-3 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-paper-300 text-muted-500">

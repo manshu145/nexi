@@ -128,7 +128,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-3">
+        <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-3 overscroll-contain">
           {NAV_ITEMS.map((item) => {
             const active = isActive(item.href);
             return (
@@ -136,19 +136,15 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                 key={item.href}
                 onClick={() => router.push(item.href)}
                 className={
-                  // 44px minimum touch target via py-2.5 + leading-snug.
-                  // Active pill uses an ember-left bar + tinted ember
-                  // background; inactive rows are muted-500 over paper-50
-                  // and pick up the line-token hover.
-                  `flex w-full items-center gap-2 rounded-lg border-l-2 px-3 py-2.5 text-sm transition-colors ${
+                  `flex w-full items-center gap-2.5 rounded-lg border-l-2 px-3 py-2.5 text-sm transition-colors ${
                     active
                       ? 'border-ember-500 bg-ember-500/10 font-medium text-ember-600'
                       : 'border-transparent text-muted-500 hover:bg-paper-200 hover:text-ink-800'
                   }`
                 }
               >
-                <span className="text-base leading-none">{item.icon}</span>
-                <span>{item.label}</span>
+                <span className="text-base leading-none flex-shrink-0">{item.icon}</span>
+                <span className="truncate">{item.label}</span>
               </button>
             );
           })}
