@@ -1581,9 +1581,18 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
    * before composing a message.
    */
   app.get('/push/status', async (c) => {
-    if (!deps.push) return c.json({ configured: false, reason: 'push_service_not_wired' });
+    if (!deps.push) return c.json({ configured: false, reason: 'push_service_not_wired', subscriberCount: 0, totalDevices: 0 });
     const configured = await deps.push.isConfigured();
-    return c.json({ configured, provider: 'fcm-admin-sdk' });
+    let subscriberCount = 0;
+    let totalDevices = 0;
+    try {
+      const users = await deps.users.listAll?.() ?? [];
+      for (const u of users) {
+        const tokens = u.fcmTokens ?? [];
+        if (tokens.length > 0) { subscriberCount++; totalDevices += tokens.length; }
+      }
+    } catch { /* non-fatal */ }
+    return c.json({ configured, provider: 'fcm-admin-sdk', subscriberCount, totalDevices });
   });
 
   /**
