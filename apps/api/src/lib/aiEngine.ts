@@ -1021,7 +1021,7 @@ End with: Important facts to remember for exam.`;
           if (resolved?.apiKey) {
             const freshGroq = new Groq({ apiKey: resolved.apiKey });
             const model = resolved.model || 'llama-3.3-70b-versatile';
-            const c = await freshGroq.chat.completions.create({ model, messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 4096, response_format: { type: 'json_object' } });
+            const c = await freshGroq.chat.completions.create({ model, messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 2048, response_format: { type: 'json_object' } });
             const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
             if (parsed.questions?.length) { logger.info('ai.chapter_mcqs', { provider: 'groq-resolver', chapter, count: parsed.questions.length, model }); return parsed.questions; }
             errors.push(`Groq (resolver, model=${model}) returned empty JSON`);
@@ -1031,7 +1031,7 @@ End with: Important facts to remember for exam.`;
       // Env fallback (only if resolver path failed entirely)
       if (groq) {
         try {
-          const c = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 4096, response_format: { type: 'json_object' } });
+          const c = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 2048, response_format: { type: 'json_object' } });
           const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
           if (parsed.questions?.length) { logger.info('ai.chapter_mcqs', { provider: 'groq-env', chapter, count: parsed.questions.length }); return parsed.questions; }
           errors.push('Groq (env) returned empty');
@@ -1045,7 +1045,7 @@ End with: Important facts to remember for exam.`;
           if (resolved?.apiKey) {
             const freshOai = new OpenAI({ apiKey: resolved.apiKey });
             const model = resolved.model || 'gpt-4o';
-            const c = await freshOai.chat.completions.create({ model, messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 4096, response_format: { type: 'json_object' } });
+            const c = await freshOai.chat.completions.create({ model, messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 2048, response_format: { type: 'json_object' } });
             const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
             if (parsed.questions?.length) { logger.info('ai.chapter_mcqs', { provider: 'openai-resolver', chapter, count: parsed.questions.length, model }); return parsed.questions; }
             errors.push(`OpenAI (resolver, model=${model}) returned empty`);
@@ -1054,7 +1054,7 @@ End with: Important facts to remember for exam.`;
       }
       if (openai) {
         try {
-          const c = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 4096, response_format: { type: 'json_object' } });
+          const c = await openai.chat.completions.create({ model: 'gpt-4o-mini', messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 2048, response_format: { type: 'json_object' } });
           const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
           if (parsed.questions?.length) { logger.info('ai.chapter_mcqs', { provider: 'openai-env', chapter, count: parsed.questions.length }); return parsed.questions; }
           errors.push('OpenAI (env) returned empty');
@@ -1063,7 +1063,7 @@ End with: Important facts to remember for exam.`;
 
       // ─── ATTEMPT 3: Gemini (callGemini already uses resolver internally) ───
       try {
-        const r = await callGemini({ prompt, generationConfig: { temperature: 0.7, maxOutputTokens: 4096 }, tier: 'flash' });
+        const r = await callGemini({ prompt, generationConfig: { temperature: 0.7, maxOutputTokens: 2048 }, tier: 'flash' });
         if (r.ok) {
           const rawText = r.text;
           const jsonMatch = rawText.match(/\{[\s\S]*\}/);

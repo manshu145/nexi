@@ -171,6 +171,14 @@ export class FirestoreMCQPoolStore implements MCQPoolStore {
     // Randomly select `count` questions
     const selected = shuffleArray(available).slice(0, count);
 
+    // PR-48: If pool is empty after regeneration, throw so the user sees
+    // a meaningful error instead of a blank "Quiz not available" page.
+    // Also delete the stale pool doc so next attempt gets fresh generation.
+    if (selected.length === 0) {
+      await poolRef.delete().catch(() => {});
+      throw new Error(`MCQ pool empty for ${examSlug}/${subjectSlug}/${chapterSlug} (${language}). AI may have returned 0 questions. Retry — the stale cache has been cleared.`);
+    }
+
     // Save selected IDs to user's used list
     const newUsedIds = [...Array.from(usedIds), ...selected.map(q => q.id)];
     await usedRef.set({ questionIds: newUsedIds });
