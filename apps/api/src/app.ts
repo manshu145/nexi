@@ -32,10 +32,11 @@ import { FirestoreMockTestStore, InMemoryMockTestStore, type MockTestStore } fro
 import { FirestoreAISpendStore, InMemoryAISpendStore, type AISpendStore, DEFAULT_DAILY_AI_CAP_USD } from './lib/aiSpendStore.js';
 import { FirestoreBlogStore, InMemoryBlogStore, type BlogStore } from './lib/blogStore.js';
 import { FirestoreServiceKeyStore, InMemoryServiceKeyStore, type ServiceKeyStore } from './lib/serviceKeyStore.js';
+import { createPushService, type PushService } from './lib/pushService.js';
 import { makePublicRoutes } from './routes/public.js';
 import { makeMockTestRoutes } from './routes/mockTests.js';
 
-export interface AppDeps { env: Env; logger: Logger; users?: UserStore; aiEngine?: AIEngine; chapters?: ChapterStore; currentAffairs?: CurrentAffairsStore; chatStore?: ChatStore; adminStore?: AdminStore; couponStore?: CouponStore; idempotency?: IdempotencyStore; ledger?: CreditLedger; config?: PlatformConfigStore; mockTests?: MockTestStore; blog?: BlogStore; aiProviderStore?: AIProviderStore; modelResolver?: AIModelResolver; serviceKeys?: ServiceKeyStore; }
+export interface AppDeps { env: Env; logger: Logger; users?: UserStore; aiEngine?: AIEngine; chapters?: ChapterStore; currentAffairs?: CurrentAffairsStore; chatStore?: ChatStore; adminStore?: AdminStore; couponStore?: CouponStore; idempotency?: IdempotencyStore; ledger?: CreditLedger; config?: PlatformConfigStore; mockTests?: MockTestStore; blog?: BlogStore; aiProviderStore?: AIProviderStore; modelResolver?: AIModelResolver; serviceKeys?: ServiceKeyStore; push?: PushService; }
 
 export function buildApp(deps: AppDeps): Hono {
   const { env, logger } = deps;
@@ -65,6 +66,10 @@ export function buildApp(deps: AppDeps): Hono {
   // for non-AI third-party services so the founder can rotate them from
   // the admin panel without redeploys.
   const serviceKeys = deps.serviceKeys ?? (fs ? new FirestoreServiceKeyStore(fs) : new InMemoryServiceKeyStore());
+  // PR-38: push notification dispatcher (FCM Admin SDK). Always
+  // constructed so call sites don't have to null-check; isConfigured()
+  // gates whether sends actually fire.
+  const push = deps.push ?? createPushService(env, logger, serviceKeys);
   const firebaseAuth = getFirebaseAuth(env);
 
   const app = new Hono();
@@ -151,7 +156,7 @@ export function buildApp(deps: AppDeps): Hono {
   //   GET  /v1/branding    -- splash-screen boot data (logo, tagline,
   //     welcome-bonus preview). Used before sign-in, so cannot require auth.
   // Both have their own validation + rate limiting inside makePublicRoutes.
-  app.route('/v1', makePublicRoutes({ adminStore, config, logger, blog }));
+  app.route('/v1', makePublicRoutes({ adminStore, config, logger, blog, firebaseAuth, serviceKeys, env }));
 
   // Cron endpoint — NO auth required (uses x-cron-secret header instead)
   const cronRoutes = makeCurrentAffairsRoutes({ users, aiEngine, currentAffairs, env, logger });
@@ -259,14 +264,14 @@ export function buildApp(deps: AppDeps): Hono {
     }
     return next();
   });
-  v1.route('/users', makeUsersRoutes({ users, logger, db: fs, ledger, config }));
+  v1.route('/users', makeUsersRoutes({ users, logger, db: fs, ledger, config, firebaseAuth }));
   v1.route('/assessment', makeAssessmentRoutes({ users, aiEngine, logger, env, ledger, serviceKeys }));
   v1.route('/study', makeStudyRoutes({ users, aiEngine, chapters, logger, db: fs, env, ledger, config, modelResolver }));
   v1.route('/current-affairs', cronRoutes);
   v1.route('/chat', makeChatRoutes({ users, aiEngine, chat: chatStore, logger, env }));
   v1.route('/credits', makeCreditsRoutes({ users, logger, db: fs, ledger, config }));
   v1.route('/billing', makeBillingRoutes({ users, env, logger, db: fs, coupons: couponStore, idempotency, config, serviceKeys }));
-  v1.route('/admin', makeAdminRoutes({ users, adminStore, env, logger, coupons: couponStore, db: fs, config, aiSpend, firebaseAuth, blog, aiEngine, aiProviderStore, modelResolver, currentAffairs, serviceKeys }));
+  v1.route('/admin', makeAdminRoutes({ users, adminStore, env, logger, coupons: couponStore, db: fs, config, aiSpend, firebaseAuth, blog, aiEngine, aiProviderStore, modelResolver, currentAffairs, serviceKeys, push }));
   v1.route('/support', makeSupportRoutes({ users, db: fs, logger }));
   v1.route('/essay', makeEssayRoutes({ users, aiEngine, logger, db: fs }));
   v1.route('/mock-tests', makeMockTestRoutes({ users, aiEngine, mockTests, ledger, config, logger }));

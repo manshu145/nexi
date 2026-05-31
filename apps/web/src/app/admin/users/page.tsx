@@ -56,6 +56,10 @@ export default function AdminUsersPage() {
   // is brand-consistent and works inside iframes / PWAs that disable
   // native prompts.
   const [banModalOpen, setBanModalOpen] = useState(false);
+  // PR-38: hard-delete state for the user-detail drawer. `deleteConfirmId`
+  // is set to the uid pending confirm; cleared on cancel or successful delete.
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [banReason, setBanReason] = useState('');
   const [banSubmitting, setBanSubmitting] = useState(false);
 
@@ -178,6 +182,55 @@ export default function AdminUsersPage() {
       if (!res.ok) throw new Error('reset failed');
       toast.success(`Password reset email sent to ${email}`);
     } catch { toast.error('Failed to send reset email'); }
+  };
+
+  /**
+   * PR-38: hard delete a user (Firestore + Firebase Auth).
+   *
+   * The founder reported "ek hi email jo maine test kiye the vo alg
+   * alg dikha rahe??? aisa nhi hona chahiye na ak bar koi account
+   * delete hua to usko yaha nhi rhna chhaiye". The duplicates were
+   * caused by partial deletes that nuked the Firestore doc but left
+   * the Firebase Auth user behind, so the same email could re-sign-up
+   * under a different uid and appear as a "ghost" alongside the old
+   * account.
+   *
+   * The backend endpoint walks every user-scoped collection AND
+   * tears down the Auth record so the email is fully reusable.
+   */
+  const handleDeleteUser = async (uid: string, email: string) => {
+    setDeleting(true);
+    try {
+      const auth = getFirebaseAuthClient();
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch(`${API}/v1/admin/users/${uid}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        success?: boolean;
+        partial?: boolean;
+        totalDocs?: number;
+        firebaseAuthDeleted?: boolean;
+        failedCollections?: string[];
+      };
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (data.success) {
+        toast.success(`Deleted ${email} — ${data.totalDocs ?? 0} docs + Firebase Auth`);
+      } else if (data.partial) {
+        toast.warning(`Partially deleted ${email}. Some collections failed: ${(data.failedCollections ?? []).join(', ')}`);
+      } else {
+        toast.error('Delete failed');
+      }
+      // Remove from local list optimistically.
+      setUsers(prev => prev.filter(u => u.id !== uid));
+      setSelectedUser(null);
+      setDeleteConfirmId(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Delete failed');
+    } finally {
+      setDeleting(false);
+    }
   };
 
   // Soft ban / unban toggle. The endpoint flips a `banned` flag on the
@@ -458,6 +511,41 @@ export default function AdminUsersPage() {
                     >
                       {selectedUser.banned ? '✓ Unban User' : '🚫 Ban User'}
                     </button>
+                    {/* PR-38: hard delete (Firestore + Firebase Auth). Founder
+                         report 31 May: "ek hi email jo maine test kiye the vo
+                         alg alg dikha rahe??? aisa nhi hona chahiye". This
+                         button tears down the auth record alongside the docs
+                         so the same email is fully reusable. */}
+                    {deleteConfirmId === selectedUser.id ? (
+                      <div className="rounded-lg border border-ember-500/60 bg-ember-500/5 p-3 space-y-2">
+                        <p className="text-xs text-ember-600">
+                          This will permanently delete <span className="font-mono">{selectedUser.email}</span> — Firestore data + Firebase Auth record. Cannot be undone.
+                        </p>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleDeleteUser(selectedUser.id, selectedUser.email)}
+                            disabled={deleting}
+                            className="flex-1 rounded-lg bg-ember-500 px-3 py-2 text-sm font-medium text-paper-50 hover:bg-ember-600 disabled:opacity-50"
+                          >
+                            {deleting ? 'Deleting…' : 'Delete forever'}
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirmId(null)}
+                            disabled={deleting}
+                            className="flex-1 rounded-lg border border-line bg-paper-100 px-3 py-2 text-sm text-ink-800 hover:bg-paper-200"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setDeleteConfirmId(selectedUser.id)}
+                        className="w-full rounded-lg border border-ember-500/40 bg-paper-50 px-4 py-2 text-left text-sm text-ember-600 hover:bg-ember-500/10 transition-colors"
+                      >
+                        🗑 Delete User Permanently
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
