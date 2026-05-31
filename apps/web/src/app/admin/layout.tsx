@@ -51,6 +51,7 @@ const NAV_ITEMS = [
   { label: 'Email', href: '/admin/email', icon: '📧' },
   { label: 'WhatsApp', href: '/admin/whatsapp', icon: '💬' },
   { label: 'Support', href: '/admin/support', icon: '🎫' },
+  { label: 'Team', href: '/admin/team', icon: '👥‍' },
 ];
 
 // Founder lock §3.6 keeps these as the single hardcoded admin allowlist
