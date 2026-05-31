@@ -311,4 +311,4 @@ export function buildApp(deps: AppDeps): Hono {
   app.notFound((c) => c.json({ error: 'not found' }, 404));
   return app;
 }
-// API redeploy trigger 1779955571
+// API redeploy trigger 1780318400 — force fresh build after PR #239/#241/#243/#244 fixes
