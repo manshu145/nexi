@@ -190,9 +190,11 @@ export default function ChapterQuizPage() {
     <main className="mx-auto flex min-h-dvh max-w-lg flex-col items-center justify-center px-5 py-12">
       <span className="text-4xl">⚠️</span>
       <h2 className="font-serif mt-4 text-xl font-bold text-ink-900">Quiz not available</h2>
-      <p className="mt-2 text-sm text-muted-500 text-center">Could not load quiz questions for this chapter. The AI service may be temporarily unavailable.</p>
-      <button onClick={() => router.push(`/study/${subject}/${chapter}`)} className="btn-primary mt-6 w-full">← Back to Chapter</button>
-      <button onClick={() => { setPhase('loading'); setIdx(0); setAnswers(new Map()); setError(null); }} className="btn-ghost mt-2 w-full">Retry</button>
+      <p className="mt-2 text-sm text-muted-500 text-center">
+        {error || 'Could not load quiz questions. The AI service may be temporarily unavailable.'}
+      </p>
+      <button onClick={() => { setPhase('loading'); setIdx(0); setAnswers(new Map()); setError(null); }} className="btn-primary mt-6 w-full">Retry</button>
+      <button onClick={() => router.push(`/study/${subject}/${chapter}`)} className="btn-ghost mt-2 w-full">← Back to Chapter</button>
     </main>
   );
   const sel = answers.get(q.id);
