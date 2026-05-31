@@ -119,7 +119,13 @@ export default function DashboardPage() {
       // -- we treat undefined as "already chosen" so they aren't bounced
       // back into onboarding mid-product. For new users, false sends
       // them to /onboarding/plan; the page flips it to true on Continue.
-      if (me.onboardingPlanChosen === false) {
+      //
+      // FIX (onboarding double-plan): if the user already has a paid
+      // plan active, never redirect to /onboarding/plan even if the
+      // flag is false (e.g. markPlanChosen API call failed during
+      // onboarding but Razorpay checkout succeeded). A paid plan is
+      // proof the user chose one.
+      if (me.onboardingPlanChosen === false && (me.plan === 'free' || !me.plan)) {
         router.replace('/onboarding/plan');
         return;
       }
