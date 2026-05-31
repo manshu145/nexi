@@ -572,7 +572,7 @@ export default function KindleReaderPage() {
         {showSelectionBtn && (
           <div
             className="selection-viz-btn fixed z-40 animate-fade-in"
-            style={{ left: `${Math.min(Math.max(selectionPos.x - 80, 16), window.innerWidth - 200)}px`, top: `${Math.max(selectionPos.y - 44, 60)}px` }}
+            style={{ left: `${Math.min(Math.max(selectionPos.x - 80, 16), typeof window !== 'undefined' ? window.innerWidth - 200 : 200)}px`, top: `${Math.max(selectionPos.y - 44, 60)}px`, maxWidth: 'calc(100vw - 32px)' }}
           >
             <button
               onClick={() => handleVisualize('selection')}

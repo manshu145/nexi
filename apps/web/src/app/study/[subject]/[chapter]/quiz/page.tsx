@@ -53,6 +53,10 @@ export default function ChapterQuizPage() {
         const exam = me.targetExam ?? 'jee-main';
         const lang = getLanguageFromCookie();
         const res = await api.getChapterQuiz(exam, subject, chapter, lang);
+        if (!res.questions || res.questions.length === 0) {
+          setError('Quiz generation returned 0 questions. Tap Retry — the server will clear stale data and regenerate.');
+          return;
+        }
         setQuestions(res.questions);
         setPhase('quiz');
         setTimer(45);

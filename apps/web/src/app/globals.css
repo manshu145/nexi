@@ -658,6 +658,9 @@ html.dark .viz-modal {
   background-color: var(--color-paper-200);
   border: 1px solid var(--color-line);
   cursor: pointer;
+  min-width: 80px;
+  text-align: center;
+  white-space: nowrap;
   transition: background-color 120ms ease, transform 80ms ease;
 }
 .kindle-toolbar button:hover:not(:disabled) {

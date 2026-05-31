@@ -172,45 +172,45 @@ export default function AdminStatsPage() {
         </div>
       ) : (
         <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <div className="paper-card min-h-0 p-5">
+          <div className="paper-card min-h-[100px] p-5 flex flex-col justify-between">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">Active Users</p>
-            <p className="font-serif mt-2 text-3xl font-bold text-ink-900">
+            <p className="font-serif mt-2 text-3xl font-bold text-ink-900 tabular-nums">
               {stats?.totalUsers.toLocaleString() ?? '0'}
             </p>
           </div>
-          <div className="paper-card min-h-0 p-5">
+          <div className="paper-card min-h-[100px] p-5 flex flex-col justify-between">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">DAU (Today)</p>
-            <p className="font-serif mt-2 text-3xl font-bold text-ink-900">
+            <p className="font-serif mt-2 text-3xl font-bold text-ink-900 tabular-nums">
               {stats?.dau.toLocaleString() ?? '0'}
             </p>
           </div>
-          <div className="paper-card min-h-0 p-5">
+          <div className="paper-card min-h-[100px] p-5 flex flex-col justify-between">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">Active Now</p>
-            <p className="font-serif mt-2 text-3xl font-bold text-ink-900">
+            <p className="font-serif mt-2 text-3xl font-bold text-ink-900 tabular-nums">
               {stats?.activeNow.toLocaleString() ?? '0'}
             </p>
           </div>
-          <div className="paper-card min-h-0 p-5">
+          <div className="paper-card min-h-[100px] p-5 flex flex-col justify-between">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">New Today</p>
-            <p className="font-serif mt-2 text-3xl font-bold text-ink-900">
+            <p className="font-serif mt-2 text-3xl font-bold text-ink-900 tabular-nums">
               {stats?.newToday.toLocaleString() ?? '0'}
             </p>
           </div>
-          <div className="paper-card min-h-0 p-5">
+          <div className="paper-card min-h-[100px] p-5 flex flex-col justify-between">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">Revenue (30d)</p>
-            <p className="font-serif mt-2 text-3xl font-bold text-ink-900">
+            <p className="font-serif mt-2 text-3xl font-bold text-ink-900 tabular-nums">
               ₹{stats?.revenue30d.toLocaleString() ?? '0'}
             </p>
           </div>
-          <div className="paper-card min-h-0 p-5">
+          <div className="paper-card min-h-[100px] p-5 flex flex-col justify-between">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">AI Cost Today</p>
-            <p className="font-serif mt-2 text-3xl font-bold text-ink-900">
+            <p className="font-serif mt-2 text-3xl font-bold text-ink-900 tabular-nums">
               ₹{stats?.aiCostToday.toLocaleString() ?? '0'}
             </p>
           </div>
-          <div className="paper-card min-h-0 p-5">
+          <div className="paper-card min-h-[100px] p-5 flex flex-col justify-between">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">PWA Installs</p>
-            <p className="font-serif mt-2 text-3xl font-bold text-ink-900">
+            <p className="font-serif mt-2 text-3xl font-bold text-ink-900 tabular-nums">
               {stats?.pwaInstalls?.toLocaleString() ?? '0'}
             </p>
           </div>

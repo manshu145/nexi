@@ -248,70 +248,70 @@ export default function DashboardPage() {
 
       {/* Quick Actions - Grid layout */}
       <section className="mt-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 animate-fadeIn-delay-2">
-        <button type="button" onClick={() => router.push('/mock-tests')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3">
-          <span className="text-base">🧪</span>
-          <div className="text-left">
+        <button type="button" onClick={() => router.push('/mock-tests')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3 min-h-[68px]">
+          <span className="text-base flex-shrink-0">🧪</span>
+          <div className="text-left min-w-0">
             <p className="text-sm font-semibold text-ink-900 whitespace-nowrap">{t('mockTests')}</p>
-            <p className="text-[10px] text-muted-500">{t('mockTestsDesc')}</p>
+            <p className="text-[10px] text-muted-500 truncate">{t('mockTestsDesc')}</p>
           </div>
         </button>
-        <button type="button" onClick={() => router.push('/leaderboard')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3">
-          <span className="text-base">🏆</span>
-          <div className="text-left">
+        <button type="button" onClick={() => router.push('/leaderboard')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3 min-h-[68px]">
+          <span className="text-base flex-shrink-0">🏆</span>
+          <div className="text-left min-w-0">
             <p className="text-sm font-semibold text-ink-900 whitespace-nowrap">{t('leaderboard')}</p>
-            <p className="text-[10px] text-muted-500">{t('quizScores')}</p>
+            <p className="text-[10px] text-muted-500 truncate">{t('quizScores')}</p>
           </div>
         </button>
-        <button type="button" onClick={() => router.push('/essay')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3">
-          <span className="text-base">✍️</span>
-          <div className="text-left">
+        <button type="button" onClick={() => router.push('/essay')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3 min-h-[68px]">
+          <span className="text-base flex-shrink-0">✍️</span>
+          <div className="text-left min-w-0">
             <p className="text-sm font-semibold text-ink-900 whitespace-nowrap">{t('essay')}</p>
-            <p className="text-[10px] text-muted-500">{t('essayDesc')}</p>
+            <p className="text-[10px] text-muted-500 truncate">{t('essayDesc')}</p>
           </div>
         </button>
-        <button type="button" onClick={() => router.push('/upgrade')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3">
-          <span className="text-base">⭐</span>
-          <div className="text-left">
+        <button type="button" onClick={() => router.push('/upgrade')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3 min-h-[68px]">
+          <span className="text-base flex-shrink-0">⭐</span>
+          <div className="text-left min-w-0">
             <p className="text-sm font-semibold text-ink-900 whitespace-nowrap">{t('upgrade')}</p>
-            <p className="text-[10px] text-muted-500">{t('upgradeDesc')}</p>
+            <p className="text-[10px] text-muted-500 truncate">{t('upgradeDesc')}</p>
           </div>
         </button>
-        <button type="button" onClick={() => router.push('/refer')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3">
-          <span className="text-base">🎁</span>
-          <div className="text-left">
+        <button type="button" onClick={() => router.push('/refer')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3 min-h-[68px]">
+          <span className="text-base flex-shrink-0">🎁</span>
+          <div className="text-left min-w-0">
             <p className="text-sm font-semibold text-ink-900 whitespace-nowrap">{t('refer')}</p>
-            <p className="text-[10px] text-muted-500">{t('referDesc')}</p>
+            <p className="text-[10px] text-muted-500 truncate">{t('referDesc')}</p>
           </div>
         </button>
-        <button type="button" onClick={() => router.push('/support')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3">
-          <span className="text-base">🛟</span>
-          <div className="text-left">
+        <button type="button" onClick={() => router.push('/support')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3 min-h-[68px]">
+          <span className="text-base flex-shrink-0">🛟</span>
+          <div className="text-left min-w-0">
             <p className="text-sm font-semibold text-ink-900 whitespace-nowrap">{t('support')}</p>
-            <p className="text-[10px] text-muted-500">{t('supportDesc')}</p>
+            <p className="text-[10px] text-muted-500 truncate">{t('supportDesc')}</p>
           </div>
         </button>
       </section>
 
       {/* Stats Row - Compact and visual */}
       <section className="mt-5 paper-card p-4 animate-fadeIn-delay-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="text-center">
-              <p className="font-serif text-xl font-bold text-ink-900">{me?.credits ?? 0}</p>
+        <div className="flex items-center justify-between overflow-x-auto">
+          <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+            <div className="text-center flex-shrink-0">
+              <p className="font-serif text-xl font-bold text-ink-900 tabular-nums">{me?.credits ?? 0}</p>
               <p className="text-[10px] font-medium uppercase tracking-wider text-muted-500">{t('statsCredits')}</p>
             </div>
-            <div className="h-8 w-px bg-line" />
-            <div className="text-center">
-              <p className="font-serif text-xl font-bold text-ink-900">{(me?.currentStreak ?? 0) > 0 ? me?.currentStreak : '—'}</p>
+            <div className="h-8 w-px bg-line flex-shrink-0" />
+            <div className="text-center flex-shrink-0">
+              <p className="font-serif text-xl font-bold text-ink-900 tabular-nums">{(me?.currentStreak ?? 0) > 0 ? me?.currentStreak : '—'}</p>
               <p className="text-[10px] font-medium uppercase tracking-wider text-muted-500">{t('statsStreak')}</p>
             </div>
-            <div className="h-8 w-px bg-line" />
-            <div className="text-center">
+            <div className="h-8 w-px bg-line flex-shrink-0" />
+            <div className="text-center flex-shrink-0">
               <p className="font-serif text-lg font-bold capitalize text-ink-900">{me?.onboardingLevel ?? '—'}</p>
               <p className="text-[10px] font-medium uppercase tracking-wider text-muted-500">{t('statsLevel')}</p>
             </div>
           </div>
-          <button onClick={() => router.push('/profile/level')} className="btn-ghost-sm text-[11px]">
+          <button onClick={() => router.push('/profile/level')} className="btn-ghost-sm text-[11px] flex-shrink-0 ml-2">
             <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
           </button>
         </div>
@@ -320,14 +320,15 @@ export default function DashboardPage() {
       {/* Admin Panel button */}
       {(me?.role === 'admin') && (
         <section className="mt-4">
-          <button type="button" onClick={() => router.push('/admin')} className="paper-card card-selectable p-4 w-full text-left border-ember-500 flex items-center gap-3">
-            <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-ember-500/10">
+          <button type="button" onClick={() => router.push('/admin')} className="paper-card card-selectable p-4 w-full text-left border border-ember-500/40 flex items-center gap-3">
+            <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-ember-500/10 flex-shrink-0">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ember-500"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
             </span>
-            <div>
+            <div className="min-w-0">
               <h3 className="font-serif font-semibold text-ink-900">Admin Panel</h3>
               <p className="text-xs text-muted-500">Manage platform</p>
             </div>
+            <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="ml-auto text-ember-500 flex-shrink-0"><path d="M9 18l6-6-6-6"/></svg>
           </button>
         </section>
       )}
