@@ -134,7 +134,7 @@ export default function AdminPushPage() {
       } catch { /* non-fatal — permission denied or already registered */ }
 
       if (!tokenRegistered) {
-        toast.error('Could not register this device. Check: 1) Notification permission is allowed, 2) NEXT_PUBLIC_FIREBASE_VAPID_KEY is set in deployment env vars.');
+        toast.error('Could not register device. Check: 1) Notification permission allowed, 2) VAPID key set in Admin → Service Keys → FCM.');
         setTesting(false);
         return;
       }
