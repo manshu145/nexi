@@ -504,6 +504,35 @@ export const api = {
       method: 'POST',
     })).json() as Promise<{ provider: ProviderConfigResponse }>;
   },
+
+  // ─── PR-40: Team RBAC ──────────────────────────────────────────────
+  async adminGetTeamInvites() {
+    return (await authedFetch('/v1/admin/team')).json() as Promise<{ invites: Array<{ id: string; email: string; role: 'admin' | 'editor' | 'viewer'; invitedBy: string; acceptedAt?: string | null; createdAt: string }> }>;
+  },
+  async adminCreateTeamInvite(email: string, role: 'editor' | 'viewer') {
+    const res = await authedFetch('/v1/admin/team/invite', {
+      method: 'POST',
+      body: JSON.stringify({ email, role }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({ error: 'Failed' }));
+      throw new Error((data as { error?: string }).error ?? 'Failed to create invite');
+    }
+    return res.json() as Promise<{ invite: { id: string; email: string; role: string } }>;
+  },
+  async adminRevokeTeamInvite(id: string) {
+    return (await authedFetch(`/v1/admin/team/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    })).json() as Promise<{ ok: boolean }>;
+  },
+
+  // ─── PR-40: Push token registration ───────────────────────────────
+  async registerPushToken(token: string, platform: 'web' | 'android' | 'ios') {
+    return (await authedFetch('/v1/users/push-token', {
+      method: 'POST',
+      body: JSON.stringify({ token, platform }),
+    })).json() as Promise<{ ok: boolean }>;
+  },
 };
 
 export interface CurrentAffairsItem { id: string; headline: string; body: string; category: string; sources: string[]; summary: string; factChecked: boolean; date: string; publishedAt: string; }

@@ -33,10 +33,11 @@ import { FirestoreAISpendStore, InMemoryAISpendStore, type AISpendStore, DEFAULT
 import { FirestoreBlogStore, InMemoryBlogStore, type BlogStore } from './lib/blogStore.js';
 import { FirestoreServiceKeyStore, InMemoryServiceKeyStore, type ServiceKeyStore } from './lib/serviceKeyStore.js';
 import { createPushService, type PushService } from './lib/pushService.js';
+import { FirestoreTeamInviteStore, InMemoryTeamInviteStore, type TeamInviteStore } from './lib/teamInviteStore.js';
 import { makePublicRoutes } from './routes/public.js';
 import { makeMockTestRoutes } from './routes/mockTests.js';
 
-export interface AppDeps { env: Env; logger: Logger; users?: UserStore; aiEngine?: AIEngine; chapters?: ChapterStore; currentAffairs?: CurrentAffairsStore; chatStore?: ChatStore; adminStore?: AdminStore; couponStore?: CouponStore; idempotency?: IdempotencyStore; ledger?: CreditLedger; config?: PlatformConfigStore; mockTests?: MockTestStore; blog?: BlogStore; aiProviderStore?: AIProviderStore; modelResolver?: AIModelResolver; serviceKeys?: ServiceKeyStore; push?: PushService; }
+export interface AppDeps { env: Env; logger: Logger; users?: UserStore; aiEngine?: AIEngine; chapters?: ChapterStore; currentAffairs?: CurrentAffairsStore; chatStore?: ChatStore; adminStore?: AdminStore; couponStore?: CouponStore; idempotency?: IdempotencyStore; ledger?: CreditLedger; config?: PlatformConfigStore; mockTests?: MockTestStore; blog?: BlogStore; aiProviderStore?: AIProviderStore; modelResolver?: AIModelResolver; serviceKeys?: ServiceKeyStore; push?: PushService; teamInvites?: TeamInviteStore; }
 
 export function buildApp(deps: AppDeps): Hono {
   const { env, logger } = deps;
@@ -70,6 +71,8 @@ export function buildApp(deps: AppDeps): Hono {
   // constructed so call sites don't have to null-check; isConfigured()
   // gates whether sends actually fire.
   const push = deps.push ?? createPushService(env, logger, serviceKeys);
+  // PR-40: team invite store for RBAC
+  const teamInvites = deps.teamInvites ?? (fs ? new FirestoreTeamInviteStore(fs) : new InMemoryTeamInviteStore());
   const firebaseAuth = getFirebaseAuth(env);
 
   const app = new Hono();
@@ -271,7 +274,7 @@ export function buildApp(deps: AppDeps): Hono {
   v1.route('/chat', makeChatRoutes({ users, aiEngine, chat: chatStore, logger, env }));
   v1.route('/credits', makeCreditsRoutes({ users, logger, db: fs, ledger, config }));
   v1.route('/billing', makeBillingRoutes({ users, env, logger, db: fs, coupons: couponStore, idempotency, config, serviceKeys }));
-  v1.route('/admin', makeAdminRoutes({ users, adminStore, env, logger, coupons: couponStore, db: fs, config, aiSpend, firebaseAuth, blog, aiEngine, aiProviderStore, modelResolver, currentAffairs, serviceKeys, push }));
+  v1.route('/admin', makeAdminRoutes({ users, adminStore, env, logger, coupons: couponStore, db: fs, config, aiSpend, firebaseAuth, blog, aiEngine, aiProviderStore, modelResolver, currentAffairs, serviceKeys, push, teamInvites }));
   v1.route('/support', makeSupportRoutes({ users, db: fs, logger }));
   v1.route('/essay', makeEssayRoutes({ users, aiEngine, logger, db: fs }));
   v1.route('/mock-tests', makeMockTestRoutes({ users, aiEngine, mockTests, ledger, config, logger }));
