@@ -320,7 +320,12 @@ export default function KindleReaderPage() {
       if (result.type === 'image') {
         setVizImageUrl(result.content);
         // PR-42: fire-and-forget save to gallery
-        api.saveGeneratedImage(result.content, `${chapterName} — ${tab}`, 'study', `${subject}/${chapter}`).catch(() => {});
+        // PR-42: fire-and-forget save to gallery (PR-47: with watermark)
+        import('~/lib/watermark').then(({ addWatermark }) =>
+          addWatermark(result.content).then(marked =>
+            api.saveGeneratedImage(marked, `${chapterName} — ${tab}`, 'study', `${subject}/${chapter}`)
+          )
+        ).catch(() => {});
       } else {
         if (!result.content || result.content.trim().length < 10) throw new Error('AI returned empty diagram. Try again.');
         await renderMermaidToSvg(result.content);

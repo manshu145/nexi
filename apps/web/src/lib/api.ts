@@ -528,7 +528,7 @@ export const api = {
 
   // ─── PR-40: Push token registration ───────────────────────────────
   async registerPushToken(token: string, platform: 'web' | 'android' | 'ios') {
-    return (await authedFetch('/v1/users/push-token', {
+    return (await authedFetch('/v1/users/me/push-tokens', {
       method: 'POST',
       body: JSON.stringify({ token, platform }),
     })).json() as Promise<{ ok: boolean }>;
