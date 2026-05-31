@@ -98,10 +98,20 @@ export default function ChapterQuizPage() {
   if (loading || !user) return <main className="flex min-h-dvh items-center justify-center"><AILoader context="quiz" /></main>;
 
   if (phase === 'loading') return (
-    <main className="flex min-h-dvh flex-col items-center justify-center gap-3">
-      <AILoader context="quiz" />
-      <p className="text-sm text-muted-500">Loading quiz questions...</p>
-      {error && <div className="banner banner-error mt-4">{error}</div>}
+    <main className="flex min-h-dvh flex-col items-center justify-center gap-3 px-5">
+      {!error ? (
+        <>
+          <AILoader context="quiz" />
+          <p className="text-sm text-muted-500">Loading quiz questions...</p>
+        </>
+      ) : (
+        <>
+          <span className="text-4xl">⚠️</span>
+          <p className="text-sm font-medium text-ink-900 text-center mt-2">{error}</p>
+          <button onClick={() => { setError(null); router.push(`/study/${subject}/${chapter}`); }} className="btn-primary mt-4">← Back to Chapter</button>
+          <button onClick={() => { setError(null); setPhase('loading'); }} className="btn-ghost mt-2">Retry</button>
+        </>
+      )}
     </main>
   );
 
@@ -176,7 +186,15 @@ export default function ChapterQuizPage() {
 
   // QUIZ phase
   const q = questions[idx];
-  if (!q) return null;
+  if (!q) return (
+    <main className="mx-auto flex min-h-dvh max-w-lg flex-col items-center justify-center px-5 py-12">
+      <span className="text-4xl">⚠️</span>
+      <h2 className="font-serif mt-4 text-xl font-bold text-ink-900">Quiz not available</h2>
+      <p className="mt-2 text-sm text-muted-500 text-center">Could not load quiz questions for this chapter. The AI service may be temporarily unavailable.</p>
+      <button onClick={() => router.push(`/study/${subject}/${chapter}`)} className="btn-primary mt-6 w-full">← Back to Chapter</button>
+      <button onClick={() => { setPhase('loading'); setIdx(0); setAnswers(new Map()); setError(null); }} className="btn-ghost mt-2 w-full">Retry</button>
+    </main>
+  );
   const sel = answers.get(q.id);
 
   return (

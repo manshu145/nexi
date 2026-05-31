@@ -180,6 +180,8 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
     if (!body?.answers || body.timeTaken == null) throw new HTTPException(400, { message: 'answers and timeTaken required' });
 
     const today = new Date().toISOString().split('T')[0]!;
+    // PR-44: Also check yesterday in case user started quiz before midnight
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]!;
     // PR-41: respect language suffix — quiz might be stored as
     // '2026-05-31-hi' for Hindi users. Try language-specific key first,
     // fall back to the base date key.
@@ -187,10 +189,15 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
     const quizKey = lang === 'hi' ? `${today}-hi` : today;
     let questions = await deps.currentAffairs.getDailyQuiz(quizKey);
     if (!questions) {
-      // Fallback: try the other variant (user may have switched language)
+      // Fallback: try the other language variant
       questions = await deps.currentAffairs.getDailyQuiz(lang === 'hi' ? today : `${today}-hi`);
     }
-    if (!questions) throw new HTTPException(404, { message: 'No quiz available for today' });
+    if (!questions) {
+      // PR-44: try yesterday's quiz (midnight rollover edge case)
+      const yesterdayKey = lang === 'hi' ? `${yesterday}-hi` : yesterday;
+      questions = await deps.currentAffairs.getDailyQuiz(yesterdayKey);
+    }
+    if (!questions) throw new HTTPException(404, { message: 'No quiz available. The daily quiz may not have been generated yet — try again after news ingestion runs.' });
 
     // Score the answers
     let correct = 0;

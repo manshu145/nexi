@@ -20,7 +20,10 @@
     "yourAnswer": "Your answer",
     "correct": "Correct",
     "plan": "Plan",
-    "expires": "Expires"
+    "expires": "Expires",
+    "preparingFor": "Preparing for",
+    "continue": "Continue",
+    "chat": "Chat"
   },
   "auth": {
     "signIn": "Sign in",
@@ -90,7 +93,19 @@
     "startStreak": "Take today's quiz to start a streak",
     "best": "Best: {days} days",
     "freePlan": "Free Plan",
-    "upgrade": "Upgrade"
+    "upgrade": "Upgrade",
+    "read": "Read",
+    "leaderboard": "Leaderboard",
+    "quizScores": "Quiz scores",
+    "mockTests": "Mock Tests",
+    "mockTestsDesc": "30q · 30min",
+    "essay": "Essay Practice",
+    "essayDesc": "Write & grade",
+    "upgradeDesc": "Go Pro",
+    "refer": "Refer Friends",
+    "referDesc": "Earn credits",
+    "support": "Support",
+    "supportDesc": "Get help"
   },
   "profile": {
     "title": "Your Profile",
