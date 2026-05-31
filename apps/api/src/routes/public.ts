@@ -159,6 +159,15 @@ export function makePublicRoutes(deps: PublicRoutesDeps): Hono {
       plans = Object.values(planMap).filter(p => p.id !== 'free').map(p => ({ id: p.id, name: p.name, price: p.price, yearlyPrice: p.yearlyPrice, isActive: p.isActive, comingSoon: p.comingSoon }));
     } catch { /* fall through with empty */ }
 
+    // PR-48: VAPID key for web push — read from admin Service Keys → FCM
+    let vapidKey = '';
+    try {
+      if (deps.serviceKeys) {
+        const v = await deps.serviceKeys.getField('fcm', 'vapidKey');
+        if (v) vapidKey = v;
+      }
+    } catch { /* non-fatal */ }
+
     // Browser revalidates ~every minute; the server only does work if it
     // has actually changed.
     c.header('Cache-Control', 'public, max-age=60');
@@ -174,6 +183,7 @@ export function makePublicRoutes(deps: PublicRoutesDeps): Hono {
       signupBonusPreview,
       plans,
       currency: 'INR',
+      vapidKey,
     });
   });
 
