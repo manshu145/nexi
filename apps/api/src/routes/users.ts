@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { asExamSlug, asUserId, isExamSlug } from '@nexigrate/shared';
+import { asExamSlug, asISODateTime, asUserId, isExamSlug } from '@nexigrate/shared';
 import { requireAuth } from '../auth.js';
 import type { Logger } from '../logger.js';
 import type { UserStore } from '../lib/userStore.js';
@@ -9,6 +9,7 @@ import type { Firestore } from 'firebase-admin/firestore';
 import type { CreditLedger } from '../lib/creditLedger.js';
 import type { PlatformConfigStore } from '../lib/platformConfigStore.js';
 import { exportUserData, eraseUserData } from '../lib/userData.js';
+import type { Auth } from 'firebase-admin/auth';
 
 export interface UsersRoutesDeps {
   users: UserStore;
@@ -17,6 +18,13 @@ export interface UsersRoutesDeps {
   ledger: CreditLedger;
   /** Live earn amounts read from platformConfig (admin-editable). */
   config: PlatformConfigStore;
+  /**
+   * PR-38: Firebase Admin Auth — used by DELETE /me to tear down the
+   * Auth record alongside the Firestore data, so a deleted account
+   * doesn't leave an orphan Firebase Auth user that the founder sees
+   * as a "ghost" entry in admin/users.
+   */
+  firebaseAuth?: Auth;
 }
 
 const patchSchema = z.object({ name: z.string().min(1).optional(), phone: z.string().optional(), dob: z.string().optional(), classLevel: z.string().optional(), board: z.string().optional(), school: z.string().optional(), aim: z.string().optional() });
@@ -211,6 +219,30 @@ export function makeUsersRoutes(deps: UsersRoutesDeps): Hono {
         // deleted last, so a partial downstream failure doesn't leave
         // the user signed in with phantom data — they can retry.
         const result = await eraseUserData(deps.db, principal.userId, deps.logger);
+        // PR-38: also tear down the Firebase Auth user. Pre-PR-38 we
+        // only deleted the Firestore docs, which left the Auth record
+        // stranded — same email could re-sign-up but produce a different
+        // uid, and the admin /users list ended up with "ghost" entries
+        // (the old uid was unreachable but the dedup-by-email kept
+        // collapsing them visually). Founder report 31 May 2026:
+        //   "ek hi email jo maine test kiye the vo alg alg dikha rahe???
+        //    aisa nhi hona chahiye na ak bar koi account delete hua to
+        //    usko yaha nhi rhna chhaiye"
+        // Fix: also call Firebase Admin's deleteUser so the Auth side
+        // is fully cleaned up. Failure is non-fatal — Firestore data
+        // is the legal source of truth for DPDP, and the auth record
+        // can be cleaned up out of band by an admin if this fails.
+        if (deps.firebaseAuth) {
+          try {
+            await deps.firebaseAuth.deleteUser(principal.userId);
+            deps.logger.info('users.firebase_auth_deleted', { userId: principal.userId });
+          } catch (err) {
+            deps.logger.warn('users.firebase_auth_delete_failed', {
+              userId: principal.userId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
         deps.logger.info('users.account_deleted', {
           userId: principal.userId,
           collectionsDeleted: result.collectionsDeleted,
@@ -378,6 +410,82 @@ export function makeUsersRoutes(deps: UsersRoutesDeps): Hono {
       } catch { /* fall through */ }
     }
     return c.json({ announcements: [] });
+  });
+
+  // ━━━ PUSH NOTIFICATIONS (PR-38) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Device token registration + revoke. Tokens are stored on the user
+  // doc itself (StoredUser.fcmTokens[]) so the right-to-erasure walk in
+  // lib/userData.ts wipes them automatically when an account is deleted.
+  //
+  // Web clients fetch their FCM token via firebase/messaging in the
+  // browser SDK then POST it here. We dedupe by token value so refreshing
+  // the page doesn't grow the array unboundedly.
+
+  /**
+   * POST /v1/users/me/push-tokens
+   * Body: { token: string, platform?: 'web'|'android'|'ios' }
+   * Idempotent — repeated calls with the same token just bump
+   * lastSeenAt without growing the array.
+   */
+  app.post('/me/push-tokens', async (c) => {
+    const principal = requireAuth(c);
+    const body = (await c.req.json().catch(() => null)) as { token?: string; platform?: 'web' | 'android' | 'ios' } | null;
+    const token = body?.token?.trim();
+    if (!token || token.length < 20) {
+      throw new HTTPException(400, { message: 'token required (FCM device token, min 20 chars)' });
+    }
+    const platform = body?.platform === 'android' || body?.platform === 'ios' || body?.platform === 'web'
+      ? body.platform
+      : 'web';
+    const me = await deps.users.get(principal.userId);
+    if (!me) throw new HTTPException(404, { message: 'User not found' });
+    const now = asISODateTime(new Date().toISOString());
+    const existing = me.fcmTokens ?? [];
+    const idx = existing.findIndex(t => t.token === token);
+    let nextTokens;
+    if (idx >= 0) {
+      // Bump lastSeenAt only — don't shuffle position so creation timestamps stay stable.
+      nextTokens = [...existing];
+      nextTokens[idx] = { ...nextTokens[idx]!, platform, lastSeenAt: now };
+    } else {
+      nextTokens = [...existing, { token, platform, createdAt: now, lastSeenAt: now }];
+    }
+    // Cap at 10 most-recent tokens so a user with 50 reinstalls doesn't
+    // bloat the doc. Drop the oldest by createdAt.
+    if (nextTokens.length > 10) {
+      nextTokens.sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
+      nextTokens = nextTokens.slice(0, 10);
+    }
+    await deps.users.update(principal.userId, { fcmTokens: nextTokens });
+    deps.logger.info('push.token_registered', {
+      userId: principal.userId,
+      platform,
+      tokenCount: nextTokens.length,
+    });
+    return c.json({ success: true, tokenCount: nextTokens.length });
+  });
+
+  /**
+   * DELETE /v1/users/me/push-tokens
+   * Body: { token?: string }
+   * If token specified, only that one is revoked. If omitted, all tokens
+   * for the current user are removed (e.g. "disable notifications" toggle).
+   */
+  app.delete('/me/push-tokens', async (c) => {
+    const principal = requireAuth(c);
+    const body = (await c.req.json().catch(() => ({}))) as { token?: string };
+    const me = await deps.users.get(principal.userId);
+    if (!me) throw new HTTPException(404, { message: 'User not found' });
+    const existing = me.fcmTokens ?? [];
+    const next = body.token
+      ? existing.filter(t => t.token !== body.token)
+      : [];
+    await deps.users.update(principal.userId, { fcmTokens: next });
+    deps.logger.info('push.token_revoked', {
+      userId: principal.userId,
+      revoked: existing.length - next.length,
+    });
+    return c.json({ success: true, tokenCount: next.length });
   });
 
   return app;
