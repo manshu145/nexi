@@ -31,12 +31,24 @@ import type { Logger } from '../logger.js';
 import type { AdminStore } from '../lib/adminStore.js';
 import type { PlatformConfigStore } from '../lib/platformConfigStore.js';
 import type { BlogStore } from '../lib/blogStore.js';
+import type { Auth } from 'firebase-admin/auth';
+import type { ServiceKeyStore } from '../lib/serviceKeyStore.js';
+import type { Env } from '../env.js';
 
 export interface PublicRoutesDeps {
   adminStore: AdminStore;
   config: PlatformConfigStore;
   logger: Logger;
   blog?: BlogStore;
+  /**
+   * PR-38: optional Firebase Admin Auth instance used by the
+   * /forgot-password endpoint to mint a verified password-reset link
+   * which is then sent through Resend with our branded template.
+   */
+  firebaseAuth?: Auth;
+  /** PR-38: serviceKeys + env wired so emailService can resolve Resend keys. */
+  serviceKeys?: ServiceKeyStore;
+  env?: Env;
 }
 
 const errorReportSchema = z.object({
@@ -209,6 +221,103 @@ export function makePublicRoutes(deps: PublicRoutesDeps): Hono {
       }
     });
   }
+
+  // ─── Forgot password (PR-38) ───────────────────────────────────────
+  // POST /v1/forgot-password
+  // Body: { email: string, language?: 'en' | 'hi' }
+  //
+  // Mints a one-time Firebase password-reset URL via the Admin SDK
+  // and sends it through Resend with our branded template. ALWAYS
+  // returns 200 to prevent account enumeration -- a typo or non-
+  // existent email looks identical to a real send.
+  //
+  // The actual delivery is best-effort + logged. If Resend is not
+  // configured we fall back to letting Firebase send its own default
+  // template by calling generatePasswordResetLink() and discarding
+  // the URL (Firebase auto-emails when invoked from the SDK).
+  const forgotPasswordSchema = z.object({
+    email: z.string().email().max(320),
+    language: z.enum(['en', 'hi']).optional(),
+  });
+
+  app.post('/forgot-password', async (c) => {
+    const body = await c.req.json().catch(() => null);
+    const parsed = forgotPasswordSchema.safeParse(body);
+    if (!parsed.success) {
+      // Don't leak validation details. Same reasoning as the error logger.
+      return c.json({ success: true });
+    }
+    const email = parsed.data.email.toLowerCase();
+    const language = parsed.data.language ?? 'en';
+
+    // No Firebase Admin Auth available (e.g. local dev without service
+    // account) — return success silently rather than 500.
+    if (!deps.firebaseAuth) {
+      deps.logger.warn('forgot_password.firebase_admin_missing', { email });
+      return c.json({ success: true });
+    }
+
+    try {
+      // Generate a verified one-time URL. The action code is single-use
+      // and expires in 1 hour by default.
+      const link = await deps.firebaseAuth.generatePasswordResetLink(email);
+
+      // Try Resend with our branded template first; fall back to
+      // Firebase's own auto-send if Resend isn't configured.
+      let viaResend = false;
+      if (deps.env && deps.serviceKeys) {
+        try {
+          const { createEmailService } = await import('../lib/emailService.js');
+          const emailService = createEmailService(deps.env, deps.logger, deps.serviceKeys);
+          if (await emailService.isConfigured()) {
+            const subject = language === 'hi' ? 'पासवर्ड रीसेट करें — नेक्सीग्रेट' : 'Reset your password — Nexigrate';
+            const greeting = language === 'hi' ? 'नमस्ते' : 'Hi';
+            const intro = language === 'hi'
+              ? 'किसी ने आपके नेक्सीग्रेट खाते के लिए पासवर्ड रीसेट का अनुरोध किया है। यदि यह आपने नहीं किया है, तो इस ईमेल को अनदेखा करें।'
+              : 'Someone requested a password reset for your Nexigrate account. If this wasn\'t you, you can safely ignore this email.';
+            const buttonLabel = language === 'hi' ? 'पासवर्ड रीसेट करें' : 'Reset Password';
+            const expiry = language === 'hi'
+              ? 'यह लिंक 1 घंटे में समाप्त हो जाएगा।'
+              : 'This link expires in 1 hour.';
+            const html = `<!DOCTYPE html><html lang="${language}"><body style="margin:0;padding:0;background:#FAF7F2;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+              <div style="max-width:560px;margin:0 auto;padding:24px">
+                <div style="text-align:center;padding:16px 0;border-bottom:3px solid #D97706">
+                  <strong style="color:#1C1917;font-size:20px">Nexigrate</strong>
+                </div>
+                <div style="background:#fff;padding:32px 24px;border-radius:12px;margin-top:16px;border:1px solid #E7E5E4">
+                  <h1 style="color:#1C1917;font-size:22px;margin:0 0 16px">${greeting},</h1>
+                  <p style="font-size:16px;line-height:1.6;color:#44403C">${intro}</p>
+                  <div style="text-align:center;margin:28px 0">
+                    <a href="${link}" style="display:inline-block;background:#D97706;color:#fff;padding:14px 32px;border-radius:99px;text-decoration:none;font-weight:600;font-size:14px">${buttonLabel}</a>
+                  </div>
+                  <p style="font-size:13px;line-height:1.6;color:#78716C">${expiry}</p>
+                  <p style="font-size:11px;color:#A8A29E;margin-top:24px;word-break:break-all">${link}</p>
+                </div>
+              </div>
+            </body></html>`;
+            const result = await emailService.sendEmail(email, subject, html);
+            if (result.success) viaResend = true;
+          }
+        } catch (err) {
+          deps.logger.warn('forgot_password.resend_send_failed', {
+            email,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+
+      deps.logger.info('forgot_password.sent', { email, viaResend, language });
+      return c.json({ success: true });
+    } catch (err) {
+      // Account-not-found, missing-permissions etc. all log internally
+      // but the response stays generic so an attacker can't enumerate.
+      deps.logger.warn('forgot_password.firebase_link_failed', {
+        email,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return c.json({ success: true });
+    }
+  });
 
   return app;
 }

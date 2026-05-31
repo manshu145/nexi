@@ -61,6 +61,23 @@ export interface StoredUser {
   bannedAt?: ISODateTime | null;
   /** Optional reason recorded by the admin for the audit trail. */
   banReason?: string | null;
+  /**
+   * PR-38: Push-notification device tokens. Stored as an array on the
+   * user doc itself (not a separate collection) so the right-to-erasure
+   * walk in lib/userData.ts wipes them automatically when an account
+   * is deleted. Each entry carries a token (the FCM identifier the
+   * client SDK gave us), platform hint, and timestamps so the cleanup
+   * sweeper can age out stale tokens. The array is dedup'd on insert
+   * by token value.
+   *
+   * `undefined` for grandfathered users from before PR-38; treat as `[]`.
+   */
+  fcmTokens?: Array<{
+    token: string;
+    platform?: 'web' | 'android' | 'ios';
+    createdAt: ISODateTime;
+    lastSeenAt: ISODateTime;
+  }>;
   createdAt: ISODateTime; updatedAt: ISODateTime;
 }
 
@@ -236,7 +253,17 @@ export class FirestoreUserStore implements UserStore {
     return user;
   }
   async update(uid: UserId, data: Partial<StoredUser>) { const ref = this.db.collection(COL).doc(uid); await ref.set({ ...data, updatedAt: new Date().toISOString() }, { merge: true }); return (await ref.get()).data() as StoredUser; }
-  async listAll() { const snap = await this.db.collection('users').limit(100).get(); return snap.docs.map(d => d.data() as StoredUser); }
+  async listAll() {
+    // PR-38: bumped from 100 → 5000 + sorted by createdAt desc so the
+    // admin panel sees the freshest users first. Per-call query cost
+    // grows linearly with user count, but at 5k docs it's still well
+    // under the 10MB Firestore page limit.
+    const snap = await this.db.collection('users')
+      .orderBy('createdAt', 'desc')
+      .limit(5000)
+      .get();
+    return snap.docs.map(d => d.data() as StoredUser);
+  }
 
   async getStreakLeaderboard(limit: number) {
     // Composite-index-free read: filter by `currentStreak > 0` (single

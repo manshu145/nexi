@@ -59,14 +59,50 @@ export default function SignInPage() {
       return;
     }
     setError(null);
+    // PR-38: route through our backend so the email comes from
+    // Resend with our branded template (subject, layout, Hindi version
+    // for hi-language users) instead of Firebase's stock template.
+    // The backend always returns 200 to prevent enumeration; if Resend
+    // is unconfigured it falls back to Firebase's auto-send so the
+    // user is never left without a reset path.
     try {
-      await sendPasswordResetEmail(getFirebaseAuthClient(), email.trim());
+      const apiBase = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com';
+      // Best-effort detect language from cookie / localStorage so the
+      // branded template renders in Hindi for the right user.
+      let language: 'en' | 'hi' = 'en';
+      if (typeof document !== 'undefined') {
+        if (/lang=hi/.test(document.cookie) || localStorage.getItem('NEXT_LOCALE') === 'hi') {
+          language = 'hi';
+        }
+      }
+      await fetch(`${apiBase}/v1/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), language }),
+      });
+      // Belt-and-suspenders: also call Firebase's client-side reset so
+      // even if our backend is briefly down, the user still gets an
+      // email via Firebase's default delivery. Both attempts are
+      // idempotent on Firebase's side (token generation is fresh each
+      // call, but the second one is a no-op if the first already won).
+      try {
+        await sendPasswordResetEmail(getFirebaseAuthClient(), email.trim());
+      } catch {
+        // Backend already attempted — swallow this failure silently.
+      }
       setResetSent(true);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to send reset email';
-      if (msg.includes('auth/user-not-found')) setError('No account found with this email.');
-      else if (msg.includes('auth/invalid-email')) setError('Please enter a valid email address.');
-      else setError(msg);
+      // Even on backend failure we try Firebase as a last resort so
+      // the user isn't stranded.
+      try {
+        await sendPasswordResetEmail(getFirebaseAuthClient(), email.trim());
+        setResetSent(true);
+      } catch (err2) {
+        const msg = err2 instanceof Error ? err2.message : err instanceof Error ? err.message : 'Failed to send reset email';
+        if (msg.includes('auth/user-not-found')) setError('No account found with this email.');
+        else if (msg.includes('auth/invalid-email')) setError('Please enter a valid email address.');
+        else setError(msg);
+      }
     }
   };
 

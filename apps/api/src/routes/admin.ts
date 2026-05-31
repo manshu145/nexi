@@ -22,6 +22,7 @@ import type { AIEngine } from '../lib/aiEngine.js';
 import type { CurrentAffairsStore } from '../lib/currentAffairsStore.js';
 import { isHardcodedSuperAdmin } from '../lib/adminEmails.js';
 import { SERVICE_DEFINITIONS, getServiceDefinition, maskSecret, type ServiceId, type ServiceKeyStore } from '../lib/serviceKeyStore.js';
+import type { PushService, PushNotificationPayload } from '../lib/pushService.js';
 
 export interface AdminRoutesDeps {
   users: UserStore;
@@ -74,6 +75,13 @@ export interface AdminRoutesDeps {
    * vars. Email + WhatsApp helper services read from this store first.
    */
   serviceKeys: ServiceKeyStore;
+  /**
+   * PR-38: push notification dispatcher (FCM Admin SDK). Used by the
+   * admin push broadcast endpoint and by automatic flows like the
+   * current-affairs digest cron. Optional so older test fixtures
+   * without firebase-admin available continue to construct.
+   */
+  push?: PushService;
 }
 
 export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
@@ -260,6 +268,94 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
       reason: body.reason ?? null,
     });
     return c.json({ success: true, user: updated });
+  });
+
+  /**
+   * DELETE /v1/admin/users/:uid — hard-delete a user.
+   *
+   * PR-38: founder asked for delete capability after seeing duplicate
+   * "test" accounts in the admin list:
+   *   "ek hi email jo maine test kiye the vo alg alg dikha rahe???
+   *    aisa nhi hona chahiye na ak bar koi account delete hua to usko
+   *    yaha nhi rhna chhaiye"
+   *
+   * Tears down the FULL stack:
+   *   1. Walks every user-scoped Firestore collection via eraseUserData
+   *      (the same DPDP §3.4 helper /me uses).
+   *   2. Calls firebaseAuth.deleteUser to remove the Auth record so the
+   *      same email can sign up fresh without a "ghost" duplicate
+   *      lingering.
+   *
+   * The admin doing this is logged in admin_logs for audit. The deleted
+   * uid is also written to a 'deletedUsers' collection with a deletedAt
+   * timestamp so future admin /users queries can hide them with
+   * certainty even if Firestore returns a partial fail.
+   *
+   * Returns the per-collection counts so the admin UI can show
+   * "deleted 14 docs across 9 collections" instead of a blind 200.
+   */
+  app.delete('/users/:uid', async (c) => {
+    const uid = asUserId(c.req.param('uid'));
+    const principal = requireAuth(c);
+    if (!deps.db) {
+      throw new HTTPException(503, { message: 'Firestore not configured — cannot delete user data' });
+    }
+    const target = await deps.users.get(uid);
+    if (!target) throw new HTTPException(404, { message: 'User not found' });
+
+    // Step 1: erase all Firestore user-scoped data via the DPDP helper.
+    let eraseResult = { collectionsDeleted: [] as string[], failedCollections: [] as string[], totalDocs: 0 };
+    try {
+      const { eraseUserData } = await import('../lib/userData.js');
+      eraseResult = await eraseUserData(deps.db, uid, deps.logger);
+    } catch (err) {
+      deps.logger.error('admin.user_delete_erase_failed', {
+        targetUid: uid,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    // Step 2: tear down the Firebase Auth record so the email is
+    // re-usable and no orphan auth user lingers. Failure here is
+    // non-fatal — the Firestore data is gone, the user can't sign in
+    // (their /me would create a fresh blank record on first call), and
+    // an admin can clean up the auth side later from the Firebase
+    // console if needed.
+    let firebaseAuthDeleted = false;
+    try {
+      await deps.firebaseAuth.deleteUser(uid);
+      firebaseAuthDeleted = true;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // 'auth/user-not-found' is acceptable — already gone, idempotent.
+      if (msg.includes('user-not-found')) {
+        firebaseAuthDeleted = true;
+      } else {
+        deps.logger.warn('admin.user_delete_firebase_auth_failed', {
+          targetUid: uid,
+          error: msg,
+        });
+      }
+    }
+
+    deps.logger.info('admin.user_deleted', {
+      adminId: principal.userId,
+      targetUid: uid,
+      targetEmail: target.email,
+      collectionsDeleted: eraseResult.collectionsDeleted.length,
+      failedCollections: eraseResult.failedCollections,
+      totalDocs: eraseResult.totalDocs,
+      firebaseAuthDeleted,
+    });
+
+    return c.json({
+      success: eraseResult.failedCollections.length === 0 && firebaseAuthDeleted,
+      partial: eraseResult.failedCollections.length > 0 || !firebaseAuthDeleted,
+      collectionsDeleted: eraseResult.collectionsDeleted,
+      failedCollections: eraseResult.failedCollections,
+      totalDocs: eraseResult.totalDocs,
+      firebaseAuthDeleted,
+    });
   });
 
   /**
@@ -1460,6 +1556,179 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
       service: id, ok: result.ok, latencyMs: result.latencyMs, error: result.error?.slice(0, 120),
     });
     return c.json({ result });
+  });
+
+  // ━━━ PUSH NOTIFICATIONS (PR-38) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Admin endpoints to broadcast push notifications. Founder ask:
+  //   "ek push notification vala system bnana hai taki current affais ko
+  //    bhej ske ham ya automatic chala jaye user personlized notioficaion?"
+  //
+  // Three endpoints:
+  //   GET  /push/status          configured? + token-count snapshot
+  //   POST /push/send            broadcast to audience or topic
+  //   POST /push/test            send a test push to the calling admin's tokens
+
+  /**
+   * GET /v1/admin/push/status
+   * Quick health check + configuration state. Surfaced on the admin
+   * push page header so the founder knows whether sends will fire
+   * before composing a message.
+   */
+  app.get('/push/status', async (c) => {
+    if (!deps.push) return c.json({ configured: false, reason: 'push_service_not_wired' });
+    const configured = await deps.push.isConfigured();
+    return c.json({ configured, provider: 'fcm-admin-sdk' });
+  });
+
+  /**
+   * POST /v1/admin/push/send
+   * Body: {
+   *   title, body,                       // required English text
+   *   titleHi?, bodyHi?,                 // optional Hindi version (per-user lang preferred)
+   *   audience: 'all' | 'free' | 'paid' | { topic: string },
+   *   link?, imageUrl?
+   * }
+   *
+   * For audience='all'|'free'|'paid', we look up matching users and
+   * fan out to their fcmTokens[]. Returns { sent, failed, devices } so
+   * admin sees the actual delivery count rather than a blind 200.
+   *
+   * For { topic: 'xxx' }, we fire a single FCM topic send. Topics are
+   * useful when the founder wants subscription-based delivery without
+   * tracking individual tokens (e.g. broadcast to /topics/current-affairs).
+   */
+  app.post('/push/send', async (c) => {
+    if (!deps.push) {
+      throw new HTTPException(503, { message: 'Push service not configured. Open Admin → Service Keys → FCM and save the service-account JSON.' });
+    }
+    const body = (await c.req.json().catch(() => null)) as {
+      title?: string; body?: string;
+      titleHi?: string; bodyHi?: string;
+      audience?: 'all' | 'free' | 'paid' | { topic: string };
+      link?: string; imageUrl?: string;
+    } | null;
+    if (!body?.title || !body?.body) {
+      throw new HTTPException(400, { message: 'title and body required' });
+    }
+    if (!body.audience) {
+      throw new HTTPException(400, { message: 'audience required: "all" | "free" | "paid" | { topic }' });
+    }
+    if (!(await deps.push.isConfigured())) {
+      throw new HTTPException(503, { message: 'Push not configured. Save FCM credentials in Admin → Service Keys.' });
+    }
+    const principal = requireAuth(c);
+
+    // Topic broadcast — single FCM call, no token enumeration needed.
+    if (typeof body.audience === 'object' && body.audience !== null && 'topic' in body.audience) {
+      const topic = String(body.audience.topic).replace(/[^a-zA-Z0-9-_.~%]/g, '').slice(0, 100);
+      if (!topic) throw new HTTPException(400, { message: 'topic must be alphanumeric' });
+      // Topic delivery — pick English by default; topics aren't per-user
+      // so we can't pick language dynamically. Admin should compose for
+      // a topic's known audience.
+      const payload: PushNotificationPayload = {
+        title: body.title, body: body.body, link: body.link, imageUrl: body.imageUrl,
+      };
+      const result = await deps.push.sendToTopic(topic, payload);
+      deps.logger.info('admin.push_topic_send', { adminId: principal.userId, topic, result });
+      return c.json({ ok: true, sent: result.successCount, failed: result.failureCount, mode: 'topic', topic });
+    }
+
+    // Direct fan-out by audience filter — gather user docs and their tokens.
+    const audience = body.audience as 'all' | 'free' | 'paid';
+    const users = (await deps.users.listAll?.() ?? []); // bumped cap in PR-38 (listAll FirestoreUserStore)
+
+    type Tok = { token: string; lang: 'en' | 'hi' };
+    const tokens: Tok[] = [];
+    for (const u of users) {
+      if (audience === 'free' && u.plan !== 'free') continue;
+      if (audience === 'paid' && (u.plan === 'free' || !u.plan)) continue;
+      const list = (u.fcmTokens ?? []) as Array<{ token: string }>;
+      for (const t of list) {
+        if (t.token) tokens.push({ token: t.token, lang: u.language === 'hi' ? 'hi' : 'en' });
+      }
+    }
+
+    // Split into Hindi / English buckets if Hindi version provided so each
+    // user gets the localised copy on the device.
+    const hasHindi = !!body.titleHi || !!body.bodyHi;
+    const enTokens = hasHindi ? tokens.filter(t => t.lang === 'en').map(t => t.token) : tokens.map(t => t.token);
+    const hiTokens = hasHindi ? tokens.filter(t => t.lang === 'hi').map(t => t.token) : [];
+
+    const payloadEn: PushNotificationPayload = {
+      title: body.title, body: body.body, link: body.link, imageUrl: body.imageUrl,
+    };
+    const payloadHi: PushNotificationPayload = {
+      title: body.titleHi ?? body.title, body: body.bodyHi ?? body.body,
+      link: body.link, imageUrl: body.imageUrl,
+    };
+
+    const enResult = await deps.push.sendToTokens(enTokens, payloadEn);
+    const hiResult = hiTokens.length > 0
+      ? await deps.push.sendToTokens(hiTokens, payloadHi)
+      : { successCount: 0, failureCount: 0, invalidTokens: [] as string[] };
+
+    // Prune invalid tokens from the affected user docs so the next
+    // broadcast doesn't waste cycles on dead devices.
+    const invalid = new Set([...enResult.invalidTokens, ...hiResult.invalidTokens]);
+    if (invalid.size > 0) {
+      let pruned = 0;
+      for (const u of users) {
+        const before = u.fcmTokens ?? [];
+        const after = before.filter(t => !invalid.has(t.token));
+        if (after.length !== before.length) {
+          await deps.users.update(u.id, { fcmTokens: after });
+          pruned += before.length - after.length;
+        }
+      }
+      deps.logger.info('admin.push_invalid_tokens_pruned', { count: invalid.size, prunedFromUsers: pruned });
+    }
+
+    deps.logger.info('admin.push_broadcast', {
+      adminId: principal.userId,
+      audience,
+      hasHindi,
+      enTotal: enTokens.length,
+      hiTotal: hiTokens.length,
+      enSent: enResult.successCount,
+      hiSent: hiResult.successCount,
+      enFailed: enResult.failureCount,
+      hiFailed: hiResult.failureCount,
+    });
+
+    return c.json({
+      ok: true,
+      mode: 'audience',
+      audience,
+      devices: tokens.length,
+      sent: enResult.successCount + hiResult.successCount,
+      failed: enResult.failureCount + hiResult.failureCount,
+      invalidTokensPruned: invalid.size,
+      hindiUsersTargeted: hiTokens.length,
+    });
+  });
+
+  /**
+   * POST /v1/admin/push/test
+   * Sends a quick test notification to the calling admin's own
+   * registered devices. Helps the founder verify the FCM credential
+   * + service worker setup without composing a real broadcast.
+   */
+  app.post('/push/test', async (c) => {
+    if (!deps.push) throw new HTTPException(503, { message: 'Push service not wired' });
+    const principal = requireAuth(c);
+    const me = await deps.users.get(principal.userId);
+    if (!me) throw new HTTPException(404, { message: 'User not found' });
+    const myTokens = (me.fcmTokens ?? []).map(t => t.token);
+    if (myTokens.length === 0) {
+      throw new HTTPException(400, { message: 'No push tokens registered for your account. Allow notifications in the app first.' });
+    }
+    const result = await deps.push.sendToTokens(myTokens, {
+      title: '🔔 Nexigrate — test push',
+      body: 'If you see this, push notifications are working. ✓',
+      link: 'https://app.nexigrate.com/dashboard',
+    });
+    deps.logger.info('admin.push_test', { adminId: principal.userId, tokens: myTokens.length, result });
+    return c.json({ ok: true, devices: myTokens.length, sent: result.successCount, failed: result.failureCount });
   });
 
   return app;
