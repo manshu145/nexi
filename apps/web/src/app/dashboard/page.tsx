@@ -9,6 +9,7 @@ import { useAuth } from '~/lib/auth-context';
 import { useUser } from '~/lib/userStore';
 import { api } from '~/lib/api';
 import { AILoader } from '~/components/ui/AILoader';
+import { OnboardingTour } from '~/components/OnboardingTour';
 
 export default function DashboardPage() {
   const t = useTranslations('dashboard');
@@ -137,6 +138,8 @@ export default function DashboardPage() {
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-4xl flex-col px-5 pt-6 pb-8 overflow-x-hidden">
+      {/* Onboarding tour for first-time users */}
+      <OnboardingTour />
       {/* Header */}
       <header className="flex items-center justify-between">
         <Logo height={44} />
@@ -167,15 +170,15 @@ export default function DashboardPage() {
         {me && (
           <button onClick={() => router.push((me.plan ?? 'free') === 'free' ? '/upgrade' : '/profile')} className="mt-2 inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors hover:opacity-80" style={{ background: (me.plan ?? 'free') === 'free' ? 'var(--color-paper-200)' : undefined, color: (me.plan ?? 'free') === 'free' ? 'var(--color-muted-500)' : undefined }}>
             {(me.plan ?? 'free') === 'free' ? (
-              <><span>Free Plan</span><span className="text-amber-500">· Upgrade →</span></>
+              <><span>{t('freePlan')}</span><span className="text-amber-500">· {t('upgrade')} →</span></>
             ) : (
-              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-3 py-1 text-xs font-semibold text-stone-900">⭐ {(me.plan ?? 'free').charAt(0).toUpperCase() + (me.plan ?? 'free').slice(1)} Plan{me.planExpiresAt ? ` · Expires ${new Date(me.planExpiresAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}` : ''}</span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-3 py-1 text-xs font-semibold text-stone-900">⭐ {(me.plan ?? 'free').charAt(0).toUpperCase() + (me.plan ?? 'free').slice(1)} {tc('plan')}{me.planExpiresAt ? ` · ${tc('expires')} ${new Date(me.planExpiresAt).toLocaleDateString(me.language === 'hi' ? 'hi-IN' : 'en-IN', { day: 'numeric', month: 'short' })}` : ''}</span>
             )}
           </button>
         )}
         {/* Quick stats inline */}
         <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-ink-700">
-          {(me?.currentStreak ?? 0) > 0 && <span className="flex items-center gap-1">🔥 {me?.currentStreak} {tc('days')} streak</span>}
+          {(me?.currentStreak ?? 0) > 0 && <span className="flex items-center gap-1">🔥 {me?.currentStreak} {tc('days')} {tc('streak')}</span>}
           <span className="flex items-center gap-1 cursor-pointer hover:opacity-80" onClick={() => router.push('/credits')}>💎 {me?.credits ?? 0} {tc('credits')}</span>
           <span className="flex items-center gap-1 capitalize">📊 {levelLabel}</span>
         </div>

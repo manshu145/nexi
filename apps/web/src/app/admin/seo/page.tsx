@@ -107,6 +107,16 @@ export default function AdminSeoPage() {
         </button>
       </div>
 
+      {/* Status notice */}
+      <div className="mt-4 rounded-lg border border-ember-500/30 bg-ember-500/5 p-3 text-xs text-ink-700">
+        <p className="font-semibold text-ember-600 mb-1">⚠️ Current Limitations</p>
+        <ul className="list-disc list-inside space-y-0.5 text-muted-600">
+          <li><strong>Web App (app.nexigrate.com)</strong> — Site title, description, and OG image are saved and apply on next deploy.</li>
+          <li><strong>Marketing Site (nexigrate.com)</strong> — Uses static build; changes here reflect after the next Cloudflare Pages deployment.</li>
+          <li><strong>robots.txt, Google Analytics ID</strong> — Saved but require a manual redeploy to take effect.</li>
+        </ul>
+      </div>
+
       {error && <div className="banner banner-error mt-4">{error}</div>}
       {saved && <div className="banner banner-success mt-4">Settings saved successfully!</div>}
 

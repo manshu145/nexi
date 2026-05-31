@@ -83,18 +83,24 @@ export default function CurrentAffairsShortsPage() {
   /**
    * Derive currentIdx from the scroll container's scrollTop. Native
    * scroll-snap snaps to each card's height, so dividing scrollTop by
-   * the container's clientHeight gives the active index. We rAF-throttle
-   * to avoid setState storms during inertial scroll on high-refresh
-   * mobiles (120 Hz iPad, etc).
+   * the container's clientHeight gives the active index.
+   *
+   * PR-41: rAF-throttle to avoid setState storms during inertial scroll
+   * on 120Hz displays. Previous version fired setCurrentIdx on every
+   * scroll event (~4-8× per frame on iPad Pro) which caused re-renders
+   * mid-momentum and visible stutter.
    */
+  const rafRef = useRef<number>(0);
   const onScroll = useCallback(() => {
-    const el = scrollerRef.current;
-    if (!el) return;
-    const idx = Math.round(el.scrollTop / Math.max(1, el.clientHeight));
-    if (idx !== currentIdx && idx >= 0 && idx < filtered.length) {
-      setCurrentIdx(idx);
-    }
-  }, [currentIdx, filtered.length]);
+    if (rafRef.current) return; // already scheduled
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = 0;
+      const el = scrollerRef.current;
+      if (!el) return;
+      const idx = Math.round(el.scrollTop / Math.max(1, el.clientHeight));
+      setCurrentIdx(prev => (idx !== prev && idx >= 0 && idx < filtered.length) ? idx : prev);
+    });
+  }, [filtered.length]);
 
   // Programmatic navigation (keyboard, dot click, etc) — uses native
   // smooth scroll so it feels identical to a swipe.
@@ -234,15 +240,15 @@ export default function CurrentAffairsShortsPage() {
             <div
               ref={scrollerRef}
               onScroll={onScroll}
-              className="relative w-full max-w-[480px] lg:max-w-[420px] h-full overflow-y-auto overscroll-contain scrollbar-hide will-change-transform"
+              className="relative w-full max-w-[480px] lg:max-w-[420px] h-full overflow-y-auto overscroll-contain scrollbar-hide will-change-transform touch-pan-y"
               style={{ scrollSnapType: 'y mandatory', WebkitOverflowScrolling: 'touch' }}
               aria-label="News reel"
             >
               {filtered.map((item, idx) => {
-                // Render-window: keep current and immediate neighbours
-                // mounted. Items further away render as transparent
-                // placeholders that hold the snap height.
-                const inWindow = Math.abs(idx - currentIdx) <= 1;
+                // Render-window: keep current ±2 neighbours mounted for
+                // buttery-smooth fast swiping. Items further away render
+                // as transparent placeholders that hold the snap height.
+                const inWindow = Math.abs(idx - currentIdx) <= 2;
                 return (
                   <div
                     key={item.id}
@@ -290,11 +296,10 @@ export default function CurrentAffairsShortsPage() {
             <div className="absolute right-1.5 top-1/2 -translate-y-1/2 z-10 lg:hidden">
               <div className="h-32 w-1 rounded-full bg-muted-400/30 overflow-hidden">
                 <div
-                  className="w-full bg-ember-500 rounded-full transition-all duration-200 ease-out"
+                  className="w-full bg-ember-500 rounded-full transition-all duration-300 ease-out"
                   style={{
-                    height: `${100 / filtered.length}%`,
-                    transform: `translateY(${currentIdx * (100 / Math.max(1, filtered.length))}vh)`,
-                    transformOrigin: 'top',
+                    height: `${Math.max(10, 100 / filtered.length)}%`,
+                    transform: `translateY(${currentIdx * (100 / Math.max(1, filtered.length - 1)) * ((filtered.length - 1) / Math.max(1, filtered.length))}%)`,
                   }}
                 />
               </div>

@@ -255,6 +255,11 @@ export default function CurrentAffairsDetailPage() {
         🤖 Ask Nexi to explain this topic
       </button>
 
+      {/* Fair Use / DMCA Notice */}
+      <p className="mt-6 text-[10px] text-muted-400 leading-relaxed text-center px-4">
+        This content is an AI-generated summary for educational purposes under fair use (Section 52, Indian Copyright Act 1957). Original sources are attributed above. For DMCA/takedown requests, contact <a href="mailto:legal@nexigrate.com" className="underline">legal@nexigrate.com</a>.
+      </p>
+
       {/* Fixed bottom action bar */}
       <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-paper-200 bg-paper-50/95 backdrop-blur-md safe-bottom">
         <div className="mx-auto max-w-2xl flex items-center justify-around py-3 px-4">

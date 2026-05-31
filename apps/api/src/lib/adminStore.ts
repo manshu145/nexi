@@ -149,16 +149,27 @@ export class FirestoreAdminStore implements AdminStore {
     const weekAgo = new Date(now.getTime() - 7 * 86400000).toISOString();
     const monthAgo = new Date(now.getTime() - 30 * 86400000).toISOString();
 
-    // Get user counts — deduplicate by unique doc ID
+    // Get user counts — deduplicate by unique doc ID, exclude deleted + banned
     const usersSnap = await this.db.collection('users').get();
-    const uniqueUids = new Set(usersSnap.docs.map(d => d.id));
-    const totalUsers = uniqueUids.size;
+    // PR-41: fetch deleted UIDs so we can exclude them from all counts.
+    // The admin DELETE /users/:uid flow writes to 'deletedUsers' collection.
+    const deletedSnap = await this.db.collection('deletedUsers').get().catch(() => null);
+    const deletedUids = new Set(deletedSnap?.docs.map(d => d.id) ?? []);
+
+    let totalUsers = 0;
     let dau = 0, newUsersToday = 0, newUsersThisWeek = 0;
     const tenMinAgo = new Date(now.getTime() - 10 * 60000).toISOString();
     let activeSessions = 0;
 
     usersSnap.forEach(doc => {
       const data = doc.data();
+      // Skip deleted accounts (eraseUserData removes the doc, but partial
+      // failures or self-delete via /me might leave orphans)
+      if (deletedUids.has(doc.id)) return;
+      // Skip banned accounts — founder: "sirf active logo ko ginna hai"
+      if (data.banned) return;
+
+      totalUsers++;
       if (data.lastDailyAt?.startsWith(todayStr)) dau++;
       if (data.createdAt?.startsWith(todayStr)) newUsersToday++;
       if (data.createdAt > weekAgo) newUsersThisWeek++;

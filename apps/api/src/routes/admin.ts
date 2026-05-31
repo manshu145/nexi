@@ -301,7 +301,10 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
       throw new HTTPException(503, { message: 'Firestore not configured — cannot delete user data' });
     }
     const target = await deps.users.get(uid);
-    if (!target) throw new HTTPException(404, { message: 'User not found' });
+    // PR-41: Don't 404 if user doc already gone — still attempt to
+    // clean up Firebase Auth + orphan subcollection docs from a prior
+    // partial delete attempt.
+    const targetEmail = target?.email ?? uid;
 
     // Step 1: erase all Firestore user-scoped data via the DPDP helper.
     let eraseResult = { collectionsDeleted: [] as string[], failedCollections: [] as string[], totalDocs: 0 };
@@ -341,7 +344,7 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
     deps.logger.info('admin.user_deleted', {
       adminId: principal.userId,
       targetUid: uid,
-      targetEmail: target.email,
+      targetEmail: targetEmail,
       collectionsDeleted: eraseResult.collectionsDeleted.length,
       failedCollections: eraseResult.failedCollections,
       totalDocs: eraseResult.totalDocs,

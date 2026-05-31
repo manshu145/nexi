@@ -176,11 +176,20 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
   // POST /v1/current-affairs/quiz/submit — submit answers, update leaderboard
   app.post('/quiz/submit', async (c) => {
     const principal = requireAuth(c);
-    const body = await c.req.json().catch(() => null) as { answers: number[]; timeTaken: number } | null;
+    const body = await c.req.json().catch(() => null) as { answers: number[]; timeTaken: number; lang?: string } | null;
     if (!body?.answers || body.timeTaken == null) throw new HTTPException(400, { message: 'answers and timeTaken required' });
 
     const today = new Date().toISOString().split('T')[0]!;
-    const questions = await deps.currentAffairs.getDailyQuiz(today);
+    // PR-41: respect language suffix — quiz might be stored as
+    // '2026-05-31-hi' for Hindi users. Try language-specific key first,
+    // fall back to the base date key.
+    const lang = body.lang || 'en';
+    const quizKey = lang === 'hi' ? `${today}-hi` : today;
+    let questions = await deps.currentAffairs.getDailyQuiz(quizKey);
+    if (!questions) {
+      // Fallback: try the other variant (user may have switched language)
+      questions = await deps.currentAffairs.getDailyQuiz(lang === 'hi' ? today : `${today}-hi`);
+    }
     if (!questions) throw new HTTPException(404, { message: 'No quiz available for today' });
 
     // Score the answers

@@ -1,15 +1,13 @@
 'use client';
 
 /**
- * Streak leaderboard page (lock §5.4).
+ * Leaderboard page — shows today's Current Affairs quiz top performers.
  *
- * Single read-only surface showing the top 50 users by current streak.
- * Mobile-first, brand-tokened. Highlights the signed-in user's row if
- * they're on the board so they immediately see "you're #7".
+ * Founder (31 May 2026): "isme streaks nhi balki current affair quize
+ * me jo log achha perform kiye hai unka dena hai"
  *
- * Why streaks (and not e.g. quiz scores): streaks are the most honest
- * leading indicator of disciplined preparation. Calm-brand fit -- no
- * noisy gamification, just "show up daily, see yourself climb".
+ * Fetches from GET /v1/current-affairs/leaderboard which returns:
+ *   { date, leaderboard: [...], yesterdayWinner: {...} | null }
  */
 
 import { useEffect, useState } from 'react';
@@ -19,32 +17,30 @@ import { useUser } from '~/lib/userStore';
 import { api } from '~/lib/api';
 import { AILoader } from '~/components/ui/AILoader';
 
-interface LeaderboardRow {
+interface LeaderboardEntry {
   userId: string;
-  name: string;
-  photoURL: string | null;
-  currentStreak: number;
-  bestStreak: number;
-  targetExam: string | null;
+  userName: string;
+  score: number;
+  timeTaken: number;
+  date: string;
 }
 
 export default function LeaderboardPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const { user: me } = useUser();
-  const [rows, setRows] = useState<LeaderboardRow[]>([]);
+  const [rows, setRows] = useState<LeaderboardEntry[]>([]);
+  const [yesterdayWinner, setYesterdayWinner] = useState<LeaderboardEntry | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (authLoading) return;
     if (!user) { router.replace('/signin'); return; }
-    // Only fetch the leaderboard here — the user's own streak comes from
-    // the shared useUser() store (PR-32) so we don't fan out a second
-    // /me round-trip on every leaderboard visit.
     (async () => {
       try {
-        const lb = await api.getStreakLeaderboard(50);
-        setRows(lb.leaderboard);
+        const res = await api.getCurrentAffairsLeaderboard();
+        setRows(res.leaderboard ?? []);
+        setYesterdayWinner(res.yesterdayWinner ?? null);
       } catch {
         setRows([]);
       } finally {
@@ -59,33 +55,44 @@ export default function LeaderboardPage() {
 
   const myUid = user?.uid ?? '';
   const myRank = rows.findIndex(r => r.userId === myUid);
-  const myStreak = me?.currentStreak ?? 0;
 
   return (
     <main className="min-h-screen bg-paper-100 px-4 py-6 pb-24">
       <header className="mx-auto mb-6 max-w-2xl">
-        <button type="button" onClick={() => router.back()} className="btn-ghost-sm mb-3">← Back</button>
-        <h1 className="font-serif text-2xl font-semibold text-ink-900">Streak Leaderboard</h1>
-        <p className="mt-1 text-sm text-muted-500">Top students by current daily-study streak. Show up tomorrow to climb.</p>
+        <button type="button" onClick={() => router.back()} className="btn-ghost-sm mb-3">&larr; Back</button>
+        <h1 className="font-serif text-2xl font-semibold text-ink-900">Quiz Leaderboard</h1>
+        <p className="mt-1 text-sm text-muted-500">Top scorers on today&apos;s Current Affairs quiz. Take the quiz to compete!</p>
       </header>
 
-      {/* You card */}
-      {me && (
-        <section className="mx-auto mb-6 max-w-2xl">
+      {/* Yesterday's winner */}
+      {yesterdayWinner && (
+        <section className="mx-auto mb-4 max-w-2xl">
+          <div className="paper-card p-4 border-gold-500/40 bg-gold-500/5">
+            <p className="text-[10px] uppercase tracking-wider text-gold-600 font-semibold mb-1">Yesterday&apos;s Champion</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-serif text-lg font-bold text-ink-900">{yesterdayWinner.userName}</p>
+                <p className="text-xs text-muted-500">Score: {yesterdayWinner.score}% &middot; Time: {Math.floor(yesterdayWinner.timeTaken / 60)}m {yesterdayWinner.timeTaken % 60}s</p>
+              </div>
+              <span className="text-3xl">🏆</span>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Your rank card */}
+      {myRank >= 0 && me && (
+        <section className="mx-auto mb-4 max-w-2xl">
           <div className="paper-card p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs font-medium uppercase tracking-wider text-muted-500">Your streak</p>
-                <p className="font-serif mt-1 text-2xl font-semibold text-ink-900">
-                  {myStreak} <span className="text-sm font-normal text-muted-500">days</span>
-                </p>
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-500">Your rank today</p>
+                <p className="font-serif mt-1 text-2xl font-semibold text-ember-600">#{myRank + 1}</p>
               </div>
-              {myRank >= 0 && (
-                <div className="text-right">
-                  <p className="text-xs font-medium uppercase tracking-wider text-muted-500">Your rank</p>
-                  <p className="font-serif mt-1 text-2xl font-semibold text-ember-600">#{myRank + 1}</p>
-                </div>
-              )}
+              <div className="text-right">
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-500">Score</p>
+                <p className="font-serif mt-1 text-2xl font-semibold text-ink-900">{rows[myRank]?.score}%</p>
+              </div>
             </div>
           </div>
         </section>
@@ -95,7 +102,9 @@ export default function LeaderboardPage() {
       <section className="mx-auto max-w-2xl">
         {rows.length === 0 ? (
           <div className="paper-card p-8 text-center">
-            <p className="text-sm text-muted-500">No streaks yet. Be the first to start one — open any chapter today.</p>
+            <p className="text-lg mb-2">📝</p>
+            <p className="text-sm text-muted-500">No quiz submissions yet today.</p>
+            <button onClick={() => router.push('/current-affairs/quiz')} className="btn-primary mt-4 text-sm">Take Today&apos;s Quiz</button>
           </div>
         ) : (
           <ol className="space-y-2">
@@ -106,33 +115,27 @@ export default function LeaderboardPage() {
                 : i === 2 ? 'bg-ember-500/10 border-ember-500/30'
                 : 'border-line bg-paper-50';
               const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
+              const mins = Math.floor(r.timeTaken / 60);
+              const secs = r.timeTaken % 60;
               return (
-                <li key={r.userId}>
+                <li key={`${r.userId}-${r.date}`}>
                   <div className={`rounded-lg border p-3 ${rankBg} ${isMe ? 'ring-2 ring-ember-500/60' : ''}`}>
                     <div className="flex items-center gap-3">
                       <span className="grid h-9 w-9 place-items-center rounded-full bg-paper-50 text-sm font-mono font-semibold text-ink-900">
                         {medal ?? `#${i + 1}`}
                       </span>
-                      {r.photoURL ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={r.photoURL} alt="" className="h-9 w-9 rounded-full object-cover" />
-                      ) : (
-                        <span className="grid h-9 w-9 place-items-center rounded-full bg-ember-500/10 text-sm font-semibold text-ember-600">
-                          {(r.name?.[0] ?? '?').toUpperCase()}
-                        </span>
-                      )}
+                      <span className="grid h-9 w-9 place-items-center rounded-full bg-ember-500/10 text-sm font-semibold text-ember-600">
+                        {(r.userName?.[0] ?? '?').toUpperCase()}
+                      </span>
                       <div className="flex-1 min-w-0">
                         <p className="truncate text-sm font-medium text-ink-900">
-                          {r.name || 'Student'}
+                          {r.userName || 'Student'}
                           {isMe && <span className="ml-2 rounded-full bg-ember-500 px-1.5 py-0.5 text-[10px] font-semibold text-paper-50">you</span>}
                         </p>
-                        {r.targetExam && (
-                          <p className="truncate text-[11px] text-muted-500">{r.targetExam.replace(/-/g, ' ').toUpperCase()}</p>
-                        )}
+                        <p className="text-[11px] text-muted-500">{mins}m {secs}s</p>
                       </div>
                       <div className="text-right">
-                        <p className="font-serif text-base font-semibold text-ink-900">{r.currentStreak}d</p>
-                        <p className="text-[10px] text-muted-500">best {r.bestStreak}d</p>
+                        <p className="font-serif text-base font-semibold text-ink-900">{r.score}%</p>
                       </div>
                     </div>
                   </div>

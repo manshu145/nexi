@@ -51,10 +51,10 @@ export const PLANS: Readonly<Record<PlanId, PlanConfig>> = {
     isActive: true,
     comingSoon: false,
     features: {
-      dailyMCQ: 10,
-      mockTests: 0,
+      dailyMCQ: 5,
+      mockTests: 1,
       aiTutor: false,
-      currentAffairs: false,
+      currentAffairs: true,
       essayGrading: false,
       chaptersPerDay: 2,
       creditDeduction: true,
@@ -65,16 +65,16 @@ export const PLANS: Readonly<Record<PlanId, PlanConfig>> = {
     name: 'Scholar',
     nameHi: 'विद्वान',
     price: 99,
-    yearlyPrice: 830, // 99×12=1188 → 30% off → ₹831.6 → rounded down to clean ₹830
+    yearlyPrice: 830,
     isActive: true,
     comingSoon: false,
     features: {
-      dailyMCQ: -1,
-      mockTests: -1,
+      dailyMCQ: 30,
+      mockTests: 5,
       aiTutor: true,
       currentAffairs: true,
       essayGrading: false,
-      chaptersPerDay: -1,
+      chaptersPerDay: 10,
       creditDeduction: false,
     },
   },
@@ -83,7 +83,7 @@ export const PLANS: Readonly<Record<PlanId, PlanConfig>> = {
     name: 'Aspirant',
     nameHi: 'अभ्यर्थी',
     price: 299,
-    yearlyPrice: 2510, // 299×12=3588 → 30% off → ₹2511.6 → rounded down to ₹2510
+    yearlyPrice: 2510,
     isActive: false,
     comingSoon: true,
     features: {
@@ -91,7 +91,7 @@ export const PLANS: Readonly<Record<PlanId, PlanConfig>> = {
       mockTests: -1,
       aiTutor: true,
       currentAffairs: true,
-      essayGrading: false,
+      essayGrading: true,
       chaptersPerDay: -1,
       creditDeduction: false,
     },
@@ -101,7 +101,7 @@ export const PLANS: Readonly<Record<PlanId, PlanConfig>> = {
     name: 'Achiever',
     nameHi: 'उपलब्धिकर्ता',
     price: 599,
-    yearlyPrice: 5030, // 599×12=7188 → 30% off → ₹5031.6 → rounded down to ₹5030
+    yearlyPrice: 5030,
     isActive: false,
     comingSoon: true,
     features: {
