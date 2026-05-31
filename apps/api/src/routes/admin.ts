@@ -427,21 +427,32 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
   // POST /v1/admin/announcements — create announcement
   app.post('/announcements', async (c) => {
     const body = await c.req.json().catch(() => null) as {
-      title?: string; body?: string; type?: 'banner' | 'modal' | 'email' | 'all';
+      title?: string; body?: string;
+      titleHi?: string; bodyHi?: string;
+      type?: 'banner' | 'modal' | 'email' | 'all';
       targetAudience?: 'all' | string; expiresAt?: string;
     } | null;
     if (!body?.title || !body?.body) throw new HTTPException(400, { message: 'title and body required' });
     const principal = requireAuth(c);
     const id = crypto.randomUUID();
-    const announcement = {
-      id, title: body.title, body: body.body, type: body.type ?? 'banner',
-      targetAudience: body.targetAudience ?? 'all', createdBy: principal.userId,
-      createdAt: new Date().toISOString(), expiresAt: body.expiresAt ?? null,
+    // PR-36: Hindi fields (titleHi/bodyHi) are OPTIONAL. If admin
+    // doesn't fill them, the frontend falls back to title/body for
+    // Hindi users too. Stored only when non-empty so the doc shape
+    // doesn't bloat.
+    const announcement: Record<string, unknown> = {
+      id, title: body.title, body: body.body,
+      type: body.type ?? 'banner',
+      targetAudience: body.targetAudience ?? 'all',
+      createdBy: principal.userId,
+      createdAt: new Date().toISOString(),
+      expiresAt: body.expiresAt ?? null,
       isActive: true, sentViaEmail: false, sentCount: 0,
     };
+    if (body.titleHi && body.titleHi.trim()) announcement['titleHi'] = body.titleHi.trim();
+    if (body.bodyHi && body.bodyHi.trim()) announcement['bodyHi'] = body.bodyHi.trim();
     // Save to Firestore
     await deps.adminStore.saveAnnouncement(announcement);
-    deps.logger.info('admin.announcement_created', { id, title: body.title });
+    deps.logger.info('admin.announcement_created', { id, title: body.title, hasHindi: !!body.titleHi });
     return c.json({ announcement });
   });
 
@@ -464,6 +475,18 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
     const id = c.req.param('id');
     const body = await c.req.json().catch(() => null) as Record<string, any> | null;
     if (!body) throw new HTTPException(400, { message: 'body required' });
+    // PR-36: normalise empty Hindi strings to absence so we don't
+    // persist '' which the frontend would prefer over the English
+    // fallback. Trim everything so trailing whitespace doesn't cause
+    // a "partially translated" announcement.
+    if ('titleHi' in body) {
+      const v = typeof body['titleHi'] === 'string' ? body['titleHi'].trim() : '';
+      if (v) body['titleHi'] = v; else delete body['titleHi'];
+    }
+    if ('bodyHi' in body) {
+      const v = typeof body['bodyHi'] === 'string' ? body['bodyHi'].trim() : '';
+      if (v) body['bodyHi'] = v; else delete body['bodyHi'];
+    }
     await deps.adminStore.saveAnnouncement({ ...body, id });
     deps.logger.info('admin.announcement_updated', { id });
     return c.json({ success: true });

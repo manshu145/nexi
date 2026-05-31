@@ -4,10 +4,32 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '~/lib/auth-context';
 import { getFirebaseAuthClient } from '~/lib/firebase';
 
+/**
+ * Admin: Announcements (PR-36 — Hindi support added).
+ *
+ * Founder report (30 May 2026): "Announcement abhi bhi popup me nhi
+ * hai our admin panel me jo announcement bnane ka option diya hai
+ * usko Hindi ka option dena taki hindi users ke liye bhi bnaya ja
+ * ske".
+ *
+ * Two changes shipped here:
+ *   1. Optional Hindi fields (titleHi + bodyHi) on the create/edit
+ *      form. When the student app loads with `language === 'hi'` it
+ *      prefers these; otherwise it falls back to the English fields.
+ *   2. Clearer "Modal Popup" hint right below the type selector so
+ *      admin understands the difference between a banner (top strip)
+ *      and a popup (centred dialog with countdown). The founder's
+ *      "popup nhi aa raha" was actually because they were saving as
+ *      type='banner' which is a top strip, not a popup.
+ *
+ * Backend already accepts titleHi / bodyHi optionally (PR-36 admin.ts).
+ */
 interface Announcement {
   id: string;
   title: string;
   body: string;
+  titleHi?: string;
+  bodyHi?: string;
   type: 'banner' | 'modal' | 'email' | 'all';
   targetAudience: string;
   createdAt: string;
@@ -23,7 +45,13 @@ export default function AdminAnnouncementsPage() {
   const [fetching, setFetching] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState<{ title: string; body: string; type: 'banner' | 'modal' | 'email' | 'all'; targetAudience: string }>({ title: '', body: '', type: 'banner', targetAudience: 'all' });
+  const [form, setForm] = useState<{
+    title: string; body: string;
+    titleHi: string; bodyHi: string;
+    type: 'banner' | 'modal' | 'email' | 'all';
+    targetAudience: string;
+  }>({ title: '', body: '', titleHi: '', bodyHi: '', type: 'banner', targetAudience: 'all' });
+  const [showHindi, setShowHindi] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
@@ -58,28 +86,41 @@ export default function AdminAnnouncementsPage() {
     setCreating(true);
     try {
       const token = await getToken();
+      // Build payload — only send Hindi fields when non-empty so backend
+      // can store / clear them correctly.
+      const payload: Record<string, unknown> = {
+        title: form.title,
+        body: form.body,
+        type: form.type,
+        targetAudience: form.targetAudience,
+      };
+      if (form.titleHi.trim()) payload['titleHi'] = form.titleHi.trim();
+      if (form.bodyHi.trim()) payload['bodyHi'] = form.bodyHi.trim();
       if (editingId) {
         // Update existing announcement
         const res = await fetch(`${API}/v1/admin/announcements/${editingId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify(form),
+          body: JSON.stringify(payload),
         });
         if (!res.ok) throw new Error(`Failed: ${res.status}`);
-        setAnnouncements(prev => prev.map(a => a.id === editingId ? { ...a, ...form } : a));
+        setAnnouncements(prev => prev.map(a => a.id === editingId
+          ? { ...a, ...form, titleHi: form.titleHi.trim() || undefined, bodyHi: form.bodyHi.trim() || undefined }
+          : a));
         setEditingId(null);
       } else {
         // Create new
         const res = await fetch(`${API}/v1/admin/announcements`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify(form),
+          body: JSON.stringify(payload),
         });
         if (!res.ok) throw new Error(`Failed: ${res.status}`);
         const data = (await res.json()) as { announcement: Announcement };
         setAnnouncements(prev => [data.announcement, ...prev]);
       }
-      setForm({ title: '', body: '', type: 'banner', targetAudience: 'all' });
+      setForm({ title: '', body: '', titleHi: '', bodyHi: '', type: 'banner', targetAudience: 'all' });
+      setShowHindi(false);
       setShowForm(false);
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed to save'); }
     finally { setCreating(false); }
@@ -111,8 +152,34 @@ export default function AdminAnnouncementsPage() {
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed to update'); }
   };
 
+  /**
+   * PR-36 helper — clears `dismissedAnnouncements` localStorage so the
+   * admin can re-test their banner/popup creations without going
+   * incognito. The founder reported "popup nhi aa raha" — usually this
+   * is because they dismissed it once during testing and the key
+   * persists. This button gives them a one-click reset.
+   */
+  const handleResetDismissals = () => {
+    try {
+      localStorage.removeItem('dismissedAnnouncements');
+      // Legacy key (pre-PR-34a) — clear too in case anything stale.
+      localStorage.removeItem('dismissed-announcements');
+      alert('Cleared. Reload the app tab to see banners/popups again.');
+    } catch {
+      alert('Could not clear localStorage in this context.');
+    }
+  };
+
   const startEdit = (a: Announcement) => {
-    setForm({ title: a.title, body: a.body, type: a.type, targetAudience: a.targetAudience });
+    setForm({
+      title: a.title,
+      body: a.body,
+      titleHi: a.titleHi ?? '',
+      bodyHi: a.bodyHi ?? '',
+      type: a.type,
+      targetAudience: a.targetAudience,
+    });
+    setShowHindi(!!(a.titleHi || a.bodyHi));
     setEditingId(a.id);
     setShowForm(true);
   };
@@ -126,14 +193,24 @@ export default function AdminAnnouncementsPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h1 className="font-serif text-2xl font-bold text-ink-900">Announcements</h1>
-          <p className="mt-1 text-sm text-muted-500">Send in-app banners and notifications to users</p>
+          <p className="mt-1 text-sm text-muted-500">Send in-app banners and popup notifications. Banner = top strip · Modal Popup = centred dialog with countdown · All = both surfaces.</p>
         </div>
-        <button onClick={() => { setShowForm(!showForm); setEditingId(null); setForm({ title: '', body: '', type: 'banner', targetAudience: 'all' }); }} className="btn-primary text-sm">
-          {showForm ? 'Cancel' : '+ New Announcement'}
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={handleResetDismissals}
+            className="btn-ghost text-xs"
+            title="Clears your local 'dismissed' list so you can re-test announcements"
+          >
+            Reset my dismissals
+          </button>
+          <button onClick={() => { setShowForm(!showForm); setEditingId(null); setShowHindi(false); setForm({ title: '', body: '', titleHi: '', bodyHi: '', type: 'banner', targetAudience: 'all' }); }} className="btn-primary text-sm">
+            {showForm ? 'Cancel' : '+ New Announcement'}
+          </button>
+        </div>
       </div>
 
       {error && <div className="banner banner-error mt-4">{error}</div>}
@@ -143,22 +220,69 @@ export default function AdminAnnouncementsPage() {
         <div className="paper-card mt-6 p-5 space-y-4">
           <p className="text-sm font-semibold text-ink-700">{editingId ? 'Edit Announcement' : 'New Announcement'}</p>
           <div>
-            <label className="text-xs font-medium text-ink-700">Title</label>
+            <label className="text-xs font-medium text-ink-700">Title (English)</label>
             <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} className="input mt-1" placeholder="Announcement title" />
           </div>
           <div>
-            <label className="text-xs font-medium text-ink-700">Body (Markdown supported)</label>
+            <label className="text-xs font-medium text-ink-700">Body (English) — Markdown supported</label>
             <textarea value={form.body} onChange={e => setForm(f => ({ ...f, body: e.target.value }))} className="input mt-1" rows={4} placeholder="Write your announcement..." />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+
+          {/* Optional Hindi version (PR-36) */}
+          <div className="rounded-lg border border-line bg-paper-100 p-3">
+            <button
+              type="button"
+              onClick={() => setShowHindi(s => !s)}
+              className="flex w-full items-center justify-between text-xs font-medium text-ink-700"
+            >
+              <span>Hindi version (अनुवाद) — optional</span>
+              <span className="text-muted-500">{showHindi ? '▾' : '▸'}</span>
+            </button>
+            {showHindi && (
+              <div className="mt-3 space-y-3">
+                <div>
+                  <label className="text-xs font-medium text-ink-700">शीर्षक (Title in Hindi)</label>
+                  <input
+                    value={form.titleHi}
+                    onChange={e => setForm(f => ({ ...f, titleHi: e.target.value }))}
+                    className="input mt-1"
+                    placeholder="उदाहरण: नया फ़ीचर लॉन्च"
+                    lang="hi"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-ink-700">विवरण (Body in Hindi)</label>
+                  <textarea
+                    value={form.bodyHi}
+                    onChange={e => setForm(f => ({ ...f, bodyHi: e.target.value }))}
+                    className="input mt-1"
+                    rows={4}
+                    placeholder="अपना संदेश यहाँ लिखें..."
+                    lang="hi"
+                  />
+                </div>
+                <p className="text-[11px] text-muted-500">
+                  If filled, Hindi-language users see this version instead of the English one. Leave blank to show the English text to all users.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-xs font-medium text-ink-700">Type</label>
-              <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value as any }))} className="input mt-1">
-                <option value="banner">In-App Banner</option>
-                <option value="modal">Modal Popup</option>
+              <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value as 'banner' | 'modal' | 'email' | 'all' }))} className="input mt-1">
+                <option value="banner">Banner (top strip)</option>
+                <option value="modal">Modal Popup (centred dialog)</option>
+                <option value="all">All (banner + popup)</option>
                 <option value="email">Email Only</option>
-                <option value="all">All Channels</option>
               </select>
+              <p className="mt-1 text-[11px] text-muted-500">
+                {form.type === 'banner' && 'A thin strip at the top of every page. Dismissible. Best for ongoing promos.'}
+                {form.type === 'modal' && 'Centred popup that auto-dismisses after 10 seconds. Best for one-time messages.'}
+                {form.type === 'all' && 'Shows both — popup first on load, banner stays.'}
+                {form.type === 'email' && 'Email-only — no in-app surface. Use the Email tab to send.'}
+              </p>
             </div>
             <div>
               <label className="text-xs font-medium text-ink-700">Target</label>
@@ -195,20 +319,28 @@ export default function AdminAnnouncementsPage() {
         <div className="mt-6 space-y-3">
           {announcements.map(a => (
             <div key={a.id} className="paper-card p-4">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
+              <div className="flex items-start justify-between flex-wrap gap-2">
+                <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm text-ink-900">{a.title}</p>
                   <p className="mt-1 text-xs text-muted-500 line-clamp-2">{a.body}</p>
-                  <div className="mt-2 flex items-center gap-2">
+                  {/* PR-36: show Hindi pill if titleHi/bodyHi set */}
+                  {(a.titleHi || a.bodyHi) && (
+                    <div className="mt-2 rounded-md border border-line bg-paper-100 p-2" lang="hi">
+                      <p className="text-xs font-medium text-ink-900">{a.titleHi || a.title}</p>
+                      <p className="mt-0.5 text-[11px] text-muted-500 line-clamp-2">{a.bodyHi || a.body}</p>
+                    </div>
+                  )}
+                  <div className="mt-2 flex items-center gap-2 flex-wrap">
                     <span className="pill text-xs">{a.type}</span>
                     <span className="pill text-xs">{a.targetAudience}</span>
+                    {(a.titleHi || a.bodyHi) && <span className="pill text-xs" title="Hindi version available">🇮🇳 hi</span>}
                     <span className="text-xs text-muted-400">{new Date(a.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
                     <span className={`text-xs font-medium ${a.isActive ? 'text-amber-600' : 'text-muted-400'}`}>
                       {a.isActive ? 'Active' : 'Inactive'}
                     </span>
                   </div>
                 </div>
-                <div className="flex items-center gap-1 ml-3">
+                <div className="flex items-center gap-1 ml-3 flex-wrap">
                   {/* Toggle Active/Inactive */}
                   <button
                     onClick={() => handleToggleActive(a.id, a.isActive)}

@@ -4,6 +4,7 @@ import { useAuth } from '~/lib/auth-context';
 import { useEffect, useState, type ReactNode } from 'react';
 import { AILoader } from '~/components/ui/AILoader';
 import { Toaster } from '~/components/toaster';
+import { toast } from 'sonner';
 
 /**
  * Admin shell.
@@ -58,7 +59,7 @@ const NAV_ITEMS = [
 const ADMIN_EMAILS = ['manshu.ibc24@gmail.com', 'manshusinha777@gmail.com'];
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, signOut } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -77,6 +78,24 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     setSidebarOpen(false);
   }, [pathname]);
+
+  /**
+   * PR-36: Founder explicitly asked for a sign-out option in admin
+   * (was previously only available on /profile inside the student app).
+   * Wired through useAuth().signOut so it shares the Firebase auth-state
+   * teardown with the rest of the app — after sign-out the layout's
+   * own auth guard kicks in and bounces to /admin/login.
+   */
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      toast.success('Signed out');
+      router.replace('/admin/login');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Sign-out failed';
+      toast.error(msg);
+    }
+  };
 
   if (isLoginPage) return <>{children}</>;
 
@@ -133,12 +152,19 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         </nav>
 
         {/* Foot */}
-        <div className="border-t border-line px-3 py-3">
+        <div className="border-t border-line px-3 py-3 space-y-1">
           <button
             onClick={() => router.push('/dashboard')}
             className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-sm text-muted-500 transition-colors hover:bg-paper-200 hover:text-ink-800"
           >
             <span>←</span> Back to App
+          </button>
+          {/* PR-36: Sign out — exits admin + the rest of the app entirely. */}
+          <button
+            onClick={handleSignOut}
+            className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-sm text-muted-500 transition-colors hover:bg-ember-500/10 hover:text-ember-600"
+          >
+            <span>↩</span> Sign Out
           </button>
         </div>
       </aside>
