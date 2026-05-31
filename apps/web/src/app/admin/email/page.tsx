@@ -35,8 +35,9 @@ export default function AdminEmailPage() {
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
   const [templateName, setTemplateName] = useState('');
   const [showSaveTemplate, setShowSaveTemplate] = useState(false);
-  const [activeTab, setActiveTab] = useState<'compose' | 'templates' | 'logs'>('compose');
+  const [activeTab, setActiveTab] = useState<'compose' | 'templates' | 'logs' | 'settings'>('compose');
   const [emailLogs, setEmailLogs] = useState<EmailLog[]>([]);
+  const [emailConfig, setEmailConfig] = useState<Record<string, any>>({});
 
   useEffect(() => { if (!loading && !user) router.replace('/admin/login'); }, [user, loading, router]);
 
@@ -50,14 +51,16 @@ export default function AdminEmailPage() {
     (async () => {
       try {
         const token = await getToken();
-        const [statusRes, templatesRes, logsRes] = await Promise.all([
+        const [statusRes, templatesRes, logsRes, configRes] = await Promise.all([
           fetch(`${API}/v1/admin/email/status`, { headers: { Authorization: `Bearer ${token}` } }),
           fetch(`${API}/v1/admin/email/templates`, { headers: { Authorization: `Bearer ${token}` } }),
           fetch(`${API}/v1/admin/email/logs`, { headers: { Authorization: `Bearer ${token}` } }),
+          fetch(`${API}/v1/admin/email/config`, { headers: { Authorization: `Bearer ${token}` } }),
         ]);
         if (statusRes.ok) { const data = (await statusRes.json()) as { configured: boolean }; setConfigured(data.configured); }
         if (templatesRes.ok) { const data = (await templatesRes.json()) as { templates: EmailTemplate[] }; setTemplates(data.templates); }
         if (logsRes.ok) { const data = (await logsRes.json()) as { logs: EmailLog[] }; setEmailLogs(data.logs); }
+        if (configRes.ok) { const data = (await configRes.json()) as { config: Record<string, any> }; setEmailConfig(data.config); }
       } catch { setConfigured(false); }
     })();
   }, [user]);
@@ -141,6 +144,9 @@ export default function AdminEmailPage() {
         <button onClick={() => setActiveTab('logs')} className={`pill ${activeTab === 'logs' ? 'bg-ink-900 text-paper-50 border-ink-900' : ''}`}>
           Logs ({emailLogs.length})
         </button>
+        <button onClick={() => setActiveTab('settings')} className={`pill ${activeTab === 'settings' ? 'bg-ink-900 text-paper-50 border-ink-900' : ''}`}>
+          Settings
+        </button>
       </div>
 
       {activeTab === 'compose' && (
@@ -217,6 +223,7 @@ export default function AdminEmailPage() {
                   <tr className="border-b border-paper-300">
                     <th className="p-3 text-left text-xs font-medium text-muted-500">To</th>
                     <th className="p-3 text-left text-xs font-medium text-muted-500">Subject</th>
+                    <th className="p-3 text-left text-xs font-medium text-muted-500">Type</th>
                     <th className="p-3 text-left text-xs font-medium text-muted-500">Status</th>
                     <th className="p-3 text-left text-xs font-medium text-muted-500">Sent At</th>
                   </tr>
@@ -226,6 +233,7 @@ export default function AdminEmailPage() {
                     <tr key={log.id} className="border-b border-paper-200">
                       <td className="p-3 text-xs text-ink-700 truncate max-w-[150px]">{log.to ?? '—'}</td>
                       <td className="p-3 text-xs text-ink-700 truncate max-w-[200px]">{log.subject ?? '—'}</td>
+                      <td className="p-3 text-xs text-muted-500">{(log as any).type ?? '—'}</td>
                       <td className="p-3">
                         <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${
                           log.status === 'sent' ? 'bg-gold-500/10 text-gold-600' : 'bg-ember-500/10 text-ember-600'
@@ -240,6 +248,101 @@ export default function AdminEmailPage() {
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {activeTab === 'settings' && (
+        <div className="mt-4 space-y-4">
+          {/* Auto-email types */}
+          <div className="paper-card p-5">
+            <h2 className="text-sm font-semibold text-ink-900">Auto-Email Types</h2>
+            <p className="text-xs text-muted-500 mt-1">Enable/disable automatic emails. All use Resend (hello@nexigrate.com).</p>
+            <div className="mt-4 space-y-3">
+              {[
+                { id: 'welcome', label: 'Welcome Email', desc: 'Sent after first sign-up + assessment' },
+                { id: 'streak_reminder', label: 'Streak Reminder', desc: 'Daily 7pm IST to at-risk users' },
+                { id: 'payment_success', label: 'Payment Receipt', desc: 'After Razorpay payment verified' },
+                { id: 'plan_expiry', label: 'Plan Expiry Warning', desc: '3 days before plan expires' },
+                { id: 'cancellation', label: 'Cancellation Confirmation', desc: 'When user cancels plan' },
+                { id: 'forgot_password', label: 'Forgot Password', desc: 'Firebase password reset email' },
+              ].map(type => (
+                <div key={type.id} className="flex items-center justify-between py-2 border-b border-paper-200 last:border-0">
+                  <div>
+                    <p className="text-sm text-ink-800">{type.label}</p>
+                    <p className="text-[11px] text-muted-400">{type.desc}</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={emailConfig[`${type.id}_enabled`] !== false}
+                      onChange={async (e) => {
+                        const newConfig = { ...emailConfig, [`${type.id}_enabled`]: e.target.checked };
+                        setEmailConfig(newConfig);
+                        const token = await getToken();
+                        fetch(`${API}/v1/admin/email/config`, {
+                          method: 'PUT',
+                          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                          body: JSON.stringify({ [`${type.id}_enabled`]: e.target.checked }),
+                        }).catch(() => {});
+                      }}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-paper-300 peer-focus:ring-2 peer-focus:ring-ember-500/20 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-paper-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-ember-500"></div>
+                  </label>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Sender Config */}
+          <div className="paper-card p-5">
+            <h2 className="text-sm font-semibold text-ink-900">Sender Addresses</h2>
+            <p className="text-xs text-muted-500 mt-1">Configure who emails come from. Domain must be verified in Resend.</p>
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="text-xs font-medium text-ink-700">Transactional (welcome, receipts, streak)</label>
+                <input
+                  value={emailConfig.transactionalFrom ?? 'hello@nexigrate.com'}
+                  onChange={(e) => setEmailConfig(c => ({ ...c, transactionalFrom: e.target.value }))}
+                  className="input mt-1"
+                  placeholder="hello@nexigrate.com"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-ink-700">Marketing (campaigns, broadcasts)</label>
+                <input
+                  value={emailConfig.marketingFrom ?? 'admin@nexigrate.com'}
+                  onChange={(e) => setEmailConfig(c => ({ ...c, marketingFrom: e.target.value }))}
+                  className="input mt-1"
+                  placeholder="admin@nexigrate.com"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-ink-700">From Name</label>
+                <input
+                  value={emailConfig.fromName ?? 'Nexigrate'}
+                  onChange={(e) => setEmailConfig(c => ({ ...c, fromName: e.target.value }))}
+                  className="input mt-1"
+                  placeholder="Nexigrate"
+                />
+              </div>
+              <button
+                onClick={async () => {
+                  const token = await getToken();
+                  await fetch(`${API}/v1/admin/email/config`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                    body: JSON.stringify(emailConfig),
+                  });
+                  setResult('Settings saved!');
+                  setTimeout(() => setResult(null), 3000);
+                }}
+                className="btn-primary mt-2"
+              >
+                Save Settings
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

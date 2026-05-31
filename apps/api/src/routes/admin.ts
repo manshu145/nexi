@@ -975,6 +975,26 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
     return c.json({ logs, total: logs.length });
   });
 
+  // ━━━ EMAIL CONFIG (Auto-emails + senders) ━━━
+  // Stores which auto-emails are enabled and sender addresses.
+  // Saved in Firestore: system/emailConfig
+  app.get('/email/config', async (c) => {
+    if (!deps.db) return c.json({ config: {} });
+    try {
+      const snap = await deps.db.collection('system').doc('emailConfig').get();
+      return c.json({ config: snap.exists ? snap.data() : {} });
+    } catch { return c.json({ config: {} }); }
+  });
+
+  app.put('/email/config', async (c) => {
+    if (!deps.db) throw new HTTPException(503, { message: 'Firestore required' });
+    const body = await c.req.json().catch(() => null) as Record<string, any> | null;
+    if (!body) throw new HTTPException(400, { message: 'body required' });
+    await deps.db.collection('system').doc('emailConfig').set(body, { merge: true });
+    deps.logger.info('admin.email_config_updated', { keys: Object.keys(body) });
+    return c.json({ success: true });
+  });
+
   // GET /v1/admin/users/:uid/chat — list all chat sessions for a user
   app.get('/users/:uid/chat', async (c) => {
     const uid = c.req.param('uid');
