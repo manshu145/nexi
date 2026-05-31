@@ -202,8 +202,18 @@ export async function eraseUserData(
       if (refs.length > 0) deleted.push(col.name);
       totalDocs += refs.length;
     } catch (err) {
-      logger.warn('users.erase_collection_failed', { userId, collection: col.name, error: errMsg(err) });
-      failed.push(col.name);
+      // PR-47: Don't report as "failed" if the error is just "collection
+      // doesn't exist" or "no index" — those mean there's nothing to delete.
+      // Only actual write/permission errors are real failures.
+      const msg = errMsg(err);
+      const isHarmless = msg.includes('NOT_FOUND') || msg.includes('no matching index') || msg.includes('FAILED_PRECONDITION') || msg.includes('requires an index');
+      if (isHarmless) {
+        // Collection likely empty for this user — not a failure
+        logger.info('users.erase_collection_skipped', { userId, collection: col.name, reason: msg.slice(0, 80) });
+      } else {
+        logger.warn('users.erase_collection_failed', { userId, collection: col.name, error: msg });
+        failed.push(col.name);
+      }
     }
   }
 

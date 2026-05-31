@@ -140,20 +140,19 @@ export default function UpgradePage() {
     finally { setValidatingCoupon(false); }
   };
 
-  const handleBuyScholar = async () => {
+  const handleBuyPlan = async (planId: 'scholar' | 'aspirant' | 'achiever') => {
     if (processing) return;
     setError(null);
     setProcessing(true);
 
-    // Generated ONCE per checkout attempt and reused on retry — guarantees the
-    // server treats a refresh-after-success as a no-op instead of double-granting.
     const idempotencyKey = newIdempotencyKey();
+    const planLabel = planId.charAt(0).toUpperCase() + planId.slice(1);
 
     try {
       const orderRes = await fetch(`${process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com'}/v1/billing/order`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
-        body: JSON.stringify({ planId: 'scholar', period, couponCode: couponApplied?.valid ? couponCode.trim() : undefined }),
+        body: JSON.stringify({ planId, period, couponCode: couponApplied?.valid ? couponCode.trim() : undefined }),
       });
       if (!orderRes.ok) { const e = await orderRes.json().catch(() => ({})) as { message?: string }; throw new Error(e.message || `Order failed: ${orderRes.status}`); }
       const order = await orderRes.json() as { orderId: string; amount: number; currency: string; keyId: string; period: BillingPeriod };
@@ -165,7 +164,7 @@ export default function UpgradePage() {
         amount: order.amount,
         currency: order.currency,
         name: 'Nexigrate',
-        description: `Scholar Plan — ₹${displayAmount}/${periodLabel}`,
+        description: `${planLabel} Plan — ₹${displayAmount}/${periodLabel}`,
         order_id: order.orderId,
         handler: async (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
           try {
@@ -181,7 +180,7 @@ export default function UpgradePage() {
             });
             if (!verifyRes.ok) throw new Error('Verification failed');
             setSuccess('Plan activated! Redirecting...');
-            setCurrentPlan('scholar');
+            setCurrentPlan(planId);
             setTimeout(() => router.push('/dashboard'), 2000);
           } catch (e) {
             setError(e instanceof Error ? e.message : 'Payment verification failed');
@@ -349,7 +348,7 @@ export default function UpgradePage() {
           )}
 
           <button
-            onClick={handleBuyScholar}
+            onClick={() => handleBuyPlan('scholar')}
             disabled={isCurrentScholar || processing}
             className={`mt-4 w-full rounded-xl py-3 text-sm font-semibold transition-colors ${isCurrentScholar ? 'bg-paper-200 text-muted-500 cursor-not-allowed' : 'btn-primary'}`}
           >
@@ -361,43 +360,49 @@ export default function UpgradePage() {
           </button>
         </div>
 
-        {/* ASPIRANT — COMING SOON */}
-        <div className="paper-card relative flex flex-col p-5 opacity-70">
-          <span className="absolute -top-2.5 right-3 rounded-full bg-stone-500 px-3 py-0.5 text-xs font-semibold text-paper-50">Coming Soon</span>
+        {/* ASPIRANT — ACTIVE */}
+        <div className="paper-card relative flex flex-col p-5">
           <h3 className="font-serif text-lg font-bold text-ink-900">Aspirant</h3>
           <p className="mt-2">
-            <span className="font-serif text-3xl font-bold text-muted-400">₹{pricingFor('aspirant')[period]}</span>
-            <span className="text-sm text-muted-400">/{period === 'yearly' ? 'yr' : 'mo'}</span>
+            <span className="font-serif text-3xl font-bold text-ink-900">₹{pricingFor('aspirant')[period]}</span>
+            <span className="text-sm text-muted-500">/{period === 'yearly' ? 'yr' : 'mo'}</span>
           </p>
           <ul className="mt-4 flex-1 space-y-2">
             {ASPIRANT_FEATURES.map(f => (
-              <li key={f} className="flex items-start gap-2 text-sm text-muted-400">
-                <span className="text-muted-300 mt-0.5 flex-shrink-0">✓</span>{f}
+              <li key={f} className="flex items-start gap-2 text-sm text-ink-800">
+                <span className="text-ember-500 mt-0.5 flex-shrink-0">✓</span>{f}
               </li>
             ))}
           </ul>
-          <button disabled className="mt-5 w-full rounded-xl py-3 text-sm font-semibold bg-stone-200 dark:bg-stone-700 text-muted-400 cursor-not-allowed">
-            Coming Soon
+          <button
+            onClick={() => handleBuyPlan('aspirant')}
+            disabled={currentPlan === 'aspirant' || processing}
+            className="mt-5 w-full rounded-xl bg-ink-900 dark:bg-ink-100 dark:text-ink-900 py-3 text-sm font-semibold text-paper-50 hover:bg-ember-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {currentPlan === 'aspirant' ? 'Current Plan' : processing ? 'Processing...' : `Choose Aspirant — ₹${pricingFor('aspirant')[period]}`}
           </button>
         </div>
 
-        {/* ACHIEVER — COMING SOON */}
-        <div className="paper-card relative flex flex-col p-5 opacity-70">
-          <span className="absolute -top-2.5 right-3 rounded-full bg-stone-500 px-3 py-0.5 text-xs font-semibold text-paper-50">Coming Soon</span>
+        {/* ACHIEVER — ACTIVE */}
+        <div className="paper-card relative flex flex-col p-5">
           <h3 className="font-serif text-lg font-bold text-ink-900">Achiever</h3>
           <p className="mt-2">
-            <span className="font-serif text-3xl font-bold text-muted-400">₹{pricingFor('achiever')[period]}</span>
-            <span className="text-sm text-muted-400">/{period === 'yearly' ? 'yr' : 'mo'}</span>
+            <span className="font-serif text-3xl font-bold text-ink-900">₹{pricingFor('achiever')[period]}</span>
+            <span className="text-sm text-muted-500">/{period === 'yearly' ? 'yr' : 'mo'}</span>
           </p>
           <ul className="mt-4 flex-1 space-y-2">
             {ACHIEVER_FEATURES.map(f => (
-              <li key={f} className="flex items-start gap-2 text-sm text-muted-400">
-                <span className="text-muted-300 mt-0.5 flex-shrink-0">✓</span>{f}
+              <li key={f} className="flex items-start gap-2 text-sm text-ink-800">
+                <span className="text-ember-500 mt-0.5 flex-shrink-0">✓</span>{f}
               </li>
             ))}
           </ul>
-          <button disabled className="mt-5 w-full rounded-xl py-3 text-sm font-semibold bg-stone-200 dark:bg-stone-700 text-muted-400 cursor-not-allowed">
-            Coming Soon
+          <button
+            onClick={() => handleBuyPlan('achiever')}
+            disabled={currentPlan === 'achiever' || processing}
+            className="mt-5 w-full rounded-xl bg-ink-900 dark:bg-ink-100 dark:text-ink-900 py-3 text-sm font-semibold text-paper-50 hover:bg-ember-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {currentPlan === 'achiever' ? 'Current Plan' : processing ? 'Processing...' : `Choose Achiever — ₹${pricingFor('achiever')[period]}`}
           </button>
         </div>
       </div>

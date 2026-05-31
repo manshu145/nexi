@@ -84,8 +84,8 @@ export const PLANS: Readonly<Record<PlanId, PlanConfig>> = {
     nameHi: 'अभ्यर्थी',
     price: 299,
     yearlyPrice: 2510,
-    isActive: false,
-    comingSoon: true,
+    isActive: true,
+    comingSoon: false,
     features: {
       dailyMCQ: -1,
       mockTests: -1,
@@ -102,8 +102,8 @@ export const PLANS: Readonly<Record<PlanId, PlanConfig>> = {
     nameHi: 'उपलब्धिकर्ता',
     price: 599,
     yearlyPrice: 5030,
-    isActive: false,
-    comingSoon: true,
+    isActive: true,
+    comingSoon: false,
     features: {
       dailyMCQ: -1,
       mockTests: -1,
