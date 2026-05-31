@@ -125,11 +125,31 @@ export default function AdminFeedsPage() {
   const handleIngestNow = async () => {
     setIngesting(true);
     setIngestResult(null);
+    // PR-35: RSS + AI summarisation can take 30-90 seconds. Without an
+    // explicit client-side timeout, mobile/flaky networks drop the idle
+    // socket and the browser throws TypeError("Failed to fetch") with no
+    // context. Use the same AbortController + progressive-message pattern
+    // PR-32 introduced for mock-tests; bump the ceiling to 150s because
+    // ingestion is heavier (6 feeds × multi-item AI summarisation).
+    const INGEST_TIMEOUT_MS = 150_000;
+    const controller = new AbortController();
+    const progressMessages: Array<{ at: number; msg: string }> = [
+      { at: 0, msg: 'Fetching RSS feeds…' },
+      { at: 12_000, msg: 'Summarising new items with AI…' },
+      { at: 45_000, msg: 'Saving items to Firestore…' },
+      { at: 90_000, msg: 'Almost done — finalising…' },
+      { at: 130_000, msg: 'Taking longer than expected, hang on…' },
+    ];
+    const progressTimers = progressMessages.map((p) =>
+      window.setTimeout(() => setIngestResult(p.msg), p.at),
+    );
+    const timeoutId = window.setTimeout(() => controller.abort(), INGEST_TIMEOUT_MS);
     try {
       const token = await getToken();
       const res = await fetch(`${API}/v1/admin/feeds/ingest-now`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
       });
       const data = (await res.json().catch(() => ({}))) as {
         success?: boolean;
@@ -157,12 +177,31 @@ export default function AdminFeedsPage() {
         setIngestResult(data.error ?? data.message ?? `Ingestion failed (HTTP ${res.status})`);
       }
     } catch (err) {
-      setIngestResult(
-        err instanceof Error
-          ? `Failed to trigger ingestion: ${err.message}`
-          : 'Failed to trigger ingestion',
-      );
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        setIngestResult(
+          `Ingestion took longer than ${INGEST_TIMEOUT_MS / 1000}s and was cancelled. ` +
+            `It may still be running on the server — refresh the feed list in a minute to check.`,
+        );
+        // Background recovery: the request might still complete server-side.
+        // Re-fetch once after a short delay so a successful late completion
+        // updates the lastFetched counters even though the client gave up.
+        window.setTimeout(() => { void fetchFeeds(); }, 30_000);
+      } else if (err instanceof TypeError && /fetch/i.test(err.message)) {
+        setIngestResult(
+          'Network error — your connection dropped while ingestion was running. ' +
+            'It may still be running on the server. Wait a minute, then check the feed table for updated "Last fetched" timestamps before retrying.',
+        );
+        window.setTimeout(() => { void fetchFeeds(); }, 30_000);
+      } else {
+        setIngestResult(
+          err instanceof Error
+            ? `Failed to trigger ingestion: ${err.message}`
+            : 'Failed to trigger ingestion',
+        );
+      }
     } finally {
+      progressTimers.forEach((t) => window.clearTimeout(t));
+      window.clearTimeout(timeoutId);
       setIngesting(false);
     }
   };

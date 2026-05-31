@@ -271,18 +271,28 @@ export class InMemoryAIProviderStore implements AIProviderStore {
   async upsert(id: ProviderId, patch: Partial<ProviderConfig>): Promise<ProviderConfig> {
     const existing = this.docs.get(id);
     const now = nowIso();
+    // PR-35: use `'key' in patch` semantics so callers can EXPLICITLY clear
+    // a nullable field by passing `undefined`. The previous `??` /
+    // `!== undefined` logic always fell through to the existing value when
+    // the patch had `undefined`, so e.g. `lastValidationError: undefined`
+    // never actually cleared the field — admin saw a stale red-error
+    // banner forever (founder report 30 May 2026, 16:42 IST).
+    const pickClearable = <K extends keyof ProviderConfig>(key: K): ProviderConfig[K] | undefined =>
+      key in patch ? patch[key] : existing?.[key];
     const next: ProviderConfig = {
       id,
-      enabled: patch.enabled ?? existing?.enabled ?? true,
-      apiKey: patch.apiKey ?? existing?.apiKey ?? '',
-      pinnedModel: patch.pinnedModel ?? existing?.pinnedModel,
-      pinnedModelFailureCount: patch.pinnedModelFailureCount ?? existing?.pinnedModelFailureCount ?? 0,
-      lastValidatedAt: patch.lastValidatedAt ?? existing?.lastValidatedAt,
-      lastValidationLatencyMs: patch.lastValidationLatencyMs ?? existing?.lastValidationLatencyMs,
-      lastValidationError: patch.lastValidationError ?? existing?.lastValidationError,
-      blacklist: patch.blacklist ?? existing?.blacklist ?? {},
-      knownGoodModel: patch.knownGoodModel ?? existing?.knownGoodModel,
-      knownGoodAt: patch.knownGoodAt ?? existing?.knownGoodAt,
+      enabled: 'enabled' in patch ? (patch.enabled ?? true) : (existing?.enabled ?? true),
+      apiKey: 'apiKey' in patch ? (patch.apiKey ?? '') : (existing?.apiKey ?? ''),
+      pinnedModel: pickClearable('pinnedModel'),
+      pinnedModelFailureCount: 'pinnedModelFailureCount' in patch
+        ? (patch.pinnedModelFailureCount ?? 0)
+        : (existing?.pinnedModelFailureCount ?? 0),
+      lastValidatedAt: pickClearable('lastValidatedAt'),
+      lastValidationLatencyMs: pickClearable('lastValidationLatencyMs'),
+      lastValidationError: pickClearable('lastValidationError'),
+      blacklist: 'blacklist' in patch ? (patch.blacklist ?? {}) : (existing?.blacklist ?? {}),
+      knownGoodModel: pickClearable('knownGoodModel'),
+      knownGoodAt: pickClearable('knownGoodAt'),
       updatedAt: now,
       createdAt: existing?.createdAt ?? now,
     };
@@ -454,25 +464,53 @@ export class FirestoreAIProviderStore implements AIProviderStore {
     const cache = await this.ensureCache();
     const existing = cache.byId.get(id) ?? this.fromFirestore(id, {});
     const now = nowIso();
+    // PR-35: `'key' in patch` semantics so admin can clear nullable fields
+    // (lastValidationError, pinnedModel, knownGoodModel etc.) by passing
+    // `undefined`. The previous `??` logic kept the stale value forever.
+    // Founder report 30 May 2026, 16:42 IST: red error banner never
+    // cleared even after a successful re-validate.
+    const pickClearable = <K extends keyof ProviderConfig>(key: K): ProviderConfig[K] | undefined =>
+      key in patch ? patch[key] : existing[key];
     const next: ProviderConfig = {
       id,
-      enabled: patch.enabled ?? existing.enabled,
-      apiKey: patch.apiKey ?? existing.apiKey,
-      pinnedModel: patch.pinnedModel !== undefined ? patch.pinnedModel : existing.pinnedModel,
-      pinnedModelFailureCount: patch.pinnedModelFailureCount ?? existing.pinnedModelFailureCount,
-      lastValidatedAt: patch.lastValidatedAt ?? existing.lastValidatedAt,
-      lastValidationLatencyMs: patch.lastValidationLatencyMs ?? existing.lastValidationLatencyMs,
-      lastValidationError: patch.lastValidationError !== undefined ? patch.lastValidationError : existing.lastValidationError,
-      blacklist: patch.blacklist ?? existing.blacklist,
-      knownGoodModel: patch.knownGoodModel ?? existing.knownGoodModel,
-      knownGoodAt: patch.knownGoodAt ?? existing.knownGoodAt,
+      enabled: 'enabled' in patch ? (patch.enabled ?? true) : existing.enabled,
+      apiKey: 'apiKey' in patch ? (patch.apiKey ?? '') : existing.apiKey,
+      pinnedModel: pickClearable('pinnedModel'),
+      pinnedModelFailureCount: 'pinnedModelFailureCount' in patch
+        ? (patch.pinnedModelFailureCount ?? 0)
+        : existing.pinnedModelFailureCount,
+      lastValidatedAt: pickClearable('lastValidatedAt'),
+      lastValidationLatencyMs: pickClearable('lastValidationLatencyMs'),
+      lastValidationError: pickClearable('lastValidationError'),
+      blacklist: 'blacklist' in patch ? (patch.blacklist ?? {}) : existing.blacklist,
+      knownGoodModel: pickClearable('knownGoodModel'),
+      knownGoodAt: pickClearable('knownGoodAt'),
       updatedAt: now,
       createdAt: existing.createdAt || now,
     };
     // Patch local cache first so a follow-up read in the same handler
     // sees the new value without waiting on the Firestore round-trip.
     cache.byId.set(id, next);
-    await this.collection().doc(id).set(this.stripUndefined({ ...next }), { merge: true });
+    // PR-35: explicitly DELETE fields that the patch cleared so Firestore
+    // doesn't keep the stale value. `set({...}, { merge: true })` ignores
+    // undefined fields rather than removing them, so we have to translate
+    // "in patch but undefined" → FieldValue.delete().
+    const { FieldValue } = await import('firebase-admin/firestore');
+    const clearableFields: Array<keyof ProviderConfig> = [
+      'pinnedModel',
+      'lastValidatedAt',
+      'lastValidationLatencyMs',
+      'lastValidationError',
+      'knownGoodModel',
+      'knownGoodAt',
+    ];
+    const writePayload: Record<string, unknown> = this.stripUndefined({ ...next });
+    for (const key of clearableFields) {
+      if (key in patch && patch[key] === undefined) {
+        writePayload[key] = FieldValue.delete();
+      }
+    }
+    await this.collection().doc(id).set(writePayload, { merge: true });
     return next;
   }
 
