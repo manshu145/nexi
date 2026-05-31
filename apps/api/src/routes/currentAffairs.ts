@@ -80,13 +80,44 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
         }
       } catch (e) { deps.logger.warn('ca.refresh_check_error', { error: String(e) }); }
 
-      // For Hindi users, swap to pre-translated fields (translated at ingestion time)
-      if (language === 'hi' && items.length > 0) {
+      // PR-39: Hindi enforcement.
+      // Founder report (30 May 22:00 IST):
+      //   "kai bar eng me news aa rha hai hindi user ke me bhi"
+      //
+      // Pre-PR-39: Hindi users got the English fields whenever the
+      // pre-translated `headlineHi` / `summaryHi` happened to be missing
+      // (e.g. an item ingested before Gemini translation succeeded). The
+      // behaviour was "best-effort fallback" -- but the founder doesn't
+      // want partial-Hindi mixing. For Hindi users we now FILTER OUT
+      // items that lack Hindi translation entirely, so the feed is
+      // 100% Devanagari or it shows the empty state. Better to wait
+      // for the next ingestion than to ship English text to a Hindi
+      // student.
+      if (language === 'hi') {
+        const before = items.length;
+        // Strict filter: drop items without BOTH headline and summary
+        // translated. Items missing only one field could be partial
+        // Gemini failures and aren't safe to render as "Hindi".
+        items = items.filter((it: any) =>
+          typeof it.headlineHi === 'string' && it.headlineHi.length > 0 &&
+          (typeof it.summaryHi === 'string' ? it.summaryHi.length > 0 : false)
+        );
+        if (before > items.length) {
+          deps.logger.info('ca.hindi_filter_dropped_untranslated', {
+            before, after: items.length, dropped: before - items.length,
+          });
+        }
+        // Now swap the rendered fields to the Hindi versions so the
+        // client sees a clean { headline, summary, body } structure
+        // without having to know about the *Hi shadow fields.
         items = items.map((it: any) => ({
           ...it,
-          headline: it.headlineHi || it.headline,
-          summary: it.summaryHi || it.summary || it.body,
+          headline: it.headlineHi,
+          summary: it.summaryHi,
           body: it.summaryHi || it.body,
+          // Keep the originals around in case the detail page wants them.
+          _headlineEn: it.headline,
+          _summaryEn: it.summary,
         }));
       }
 
