@@ -4,7 +4,14 @@ import { pickProbeModel } from '../lib/aiProviderRegistry.js';
 
 export function makeHealthRoutes(): Hono {
   const app = new Hono();
-  app.get('/healthz', (c) => c.json({ status: 'ok', version: '1.0.0', timestamp: new Date().toISOString() }));
+  app.get('/healthz', (c) => c.json({
+    status: 'ok',
+    version: '1.0.0',
+    timestamp: new Date().toISOString(),
+    persistence: process.env['PERSISTENCE'] || (process.env['K_SERVICE'] ? 'firestore' : 'memory'),
+    cloudRun: !!(process.env['K_SERVICE']),
+    nodeEnv: process.env['NODE_ENV'] || 'unset',
+  }));
   app.get('/readyz', (c) => c.json({ status: 'ready' }));
   return app;
 }

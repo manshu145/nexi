@@ -1,9 +1,14 @@
 import { z } from 'zod';
 
+// Cloud Run always sets K_SERVICE and K_REVISION. Use this to auto-detect
+// production environment even when NODE_ENV isn't explicitly set.
+const isCloudRun = !!(process.env['K_SERVICE'] || process.env['K_REVISION']);
+const defaultPersistence = (process.env['NODE_ENV'] === 'production' || isCloudRun) ? 'firestore' : 'memory';
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().default(8080),
-  PERSISTENCE: z.enum(['firestore', 'memory']).default('memory'),
+  PERSISTENCE: z.enum(['firestore', 'memory']).default(defaultPersistence as 'firestore' | 'memory'),
   // Firebase — Cloud Run uses GCP_PROJECT_ID, local uses FIREBASE_PROJECT_ID
   FIREBASE_PROJECT_ID: z.string().optional().default(''),
   GCP_PROJECT_ID: z.string().optional().default(''),
@@ -36,7 +41,9 @@ export function loadEnv(): Env {
     const formatted = result.error.issues.map((i) => `  ${i.path.join('.')}: ${i.message}`).join('\n');
     throw new Error(`Environment validation failed:\n${formatted}`);
   }
-  // Resolve project ID from either FIREBASE_PROJECT_ID or GCP_PROJECT_ID
-  const resolvedProjectId = result.data.FIREBASE_PROJECT_ID || result.data.GCP_PROJECT_ID || 'nexigrate-prod';
+  // Resolve project ID from either FIREBASE_PROJECT_ID or GCP_PROJECT_ID.
+  // On Cloud Run, GCP_PROJECT_ID is set via --set-env-vars in deploy,
+  // and GOOGLE_CLOUD_PROJECT is always set by the platform itself.
+  const resolvedProjectId = result.data.FIREBASE_PROJECT_ID || result.data.GCP_PROJECT_ID || process.env['GOOGLE_CLOUD_PROJECT'] || 'nexigrate-prod';
   return { ...result.data, resolvedProjectId, FIREBASE_PROJECT_ID: resolvedProjectId };
 }

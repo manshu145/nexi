@@ -113,7 +113,7 @@ export default function ChapterQuizPage() {
           <span className="text-4xl">⚠️</span>
           <p className="text-sm font-medium text-ink-900 text-center mt-2">{error}</p>
           <button onClick={() => { setError(null); router.push(`/study/${subject}/${chapter}`); }} className="btn-primary mt-4">← Back to Chapter</button>
-          <button onClick={() => { setError(null); setPhase('loading'); }} className="btn-ghost mt-2">Retry</button>
+          <button onClick={() => { setError(null); window.location.reload(); }} className="btn-ghost mt-2">Retry</button>
         </>
       )}
     </main>

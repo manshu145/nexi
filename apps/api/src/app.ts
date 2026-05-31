@@ -79,7 +79,7 @@ export function buildApp(deps: AppDeps): Hono {
 
   app.use('*', cors({
     origin: (origin) => (env.CORS_ALLOWED_ORIGINS.includes(origin) ? origin : null),
-    allowMethods: ['GET','POST','PATCH','DELETE','OPTIONS'],
+    allowMethods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
     allowHeaders: ['Authorization','Content-Type','X-User-Email','X-User-Name','X-User-Photo','X-User-Provider','x-cron-secret','Idempotency-Key'],
     maxAge: 600, credentials: true,
   }));

@@ -33,15 +33,34 @@ export async function registerPushToken(): Promise<boolean> {
     const { getMessaging, getToken } = await import('firebase/messaging');
     const { getApp } = await import('firebase/app');
 
+    const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY ?? '';
+    if (!vapidKey) {
+      console.warn('[push] NEXT_PUBLIC_FIREBASE_VAPID_KEY not set — cannot register token');
+      return false;
+    }
+
     const app = getApp();
     const messaging = getMessaging(app);
 
+    // Service worker registration may fail if file doesn't exist or
+    // HTTPS is not available. Catch and fall back gracefully.
+    let swRegistration: ServiceWorkerRegistration | undefined;
+    try {
+      swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+    } catch (swErr) {
+      console.warn('[push] Service worker registration failed:', swErr);
+      return false;
+    }
+
     const token = await getToken(messaging, {
-      vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY ?? '',
-      serviceWorkerRegistration: await navigator.serviceWorker.register('/firebase-messaging-sw.js'),
+      vapidKey,
+      serviceWorkerRegistration: swRegistration,
     });
 
-    if (!token) return false;
+    if (!token) {
+      console.warn('[push] getToken returned empty — browser may have blocked it');
+      return false;
+    }
 
     // Register with backend
     await api.registerPushToken(token, 'web');
