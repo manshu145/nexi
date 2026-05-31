@@ -168,41 +168,28 @@ export default function CurrentAffairsShortsPage() {
 
   return (
     <main className="shorts-shell fixed inset-0 flex flex-col overflow-hidden select-none">
-      {/* Top bar */}
-      <header className="relative z-20 flex items-center justify-between px-4 pt-3 pb-2">
-        <button onClick={() => router.push('/dashboard')} className="flex items-center gap-1.5 text-ink-700 text-sm font-medium hover:text-ink-900 transition-colors active:scale-95 rounded-lg px-2 py-1.5 -ml-2 hover:bg-paper-300/50">
-          <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
-          Back
-        </button>
-        <div className="flex items-center gap-2">
-          <span className="text-ink-900 text-sm font-semibold">Today&apos;s News</span>
-          {isFromYesterday && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-ember-500/15 text-ember-600 font-medium">Yesterday</span>}
+      {/* Top bar — clean news-site style */}
+      <header className="relative z-20 px-4 pt-3 pb-1">
+        <div className="flex items-center justify-between">
+          <button onClick={() => router.push('/dashboard')} className="text-ink-700 hover:text-ink-900 transition-colors active:scale-95 rounded-lg p-1.5 -ml-1.5 hover:bg-paper-300/50">
+            <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+          <h1 className="text-lg font-serif font-bold text-ink-900">
+            Today&apos;s News
+            {isFromYesterday && <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-ember-500/15 text-ember-600 font-medium align-middle">Yesterday</span>}
+          </h1>
+          <div className="flex items-center gap-1.5">
+            <button onClick={() => router.push('/current-affairs/quiz/leaderboard')} className="rounded-full p-1.5 hover:bg-paper-300/50 text-ink-700 transition-colors active:scale-95" title="Leaderboard">🏆</button>
+            <button onClick={() => router.push('/current-affairs/bookmarks')} className="rounded-full p-1.5 hover:bg-paper-300/50 text-ink-700 transition-colors active:scale-95" title="Saved">🔖</button>
+            <button onClick={() => router.push('/current-affairs/quiz')} className="inline-flex items-center gap-1 rounded-full bg-ember-500 px-3 py-1.5 text-xs font-semibold text-paper-50 hover:bg-ember-600 transition-all shadow-sm active:scale-95">
+              Quiz
+            </button>
+          </div>
         </div>
-        <button onClick={() => router.push('/current-affairs/quiz')} className="inline-flex items-center gap-1.5 rounded-full bg-ember-500 px-3.5 py-1.5 text-xs font-semibold text-paper-50 hover:bg-ember-600 transition-all duration-150 shadow-sm active:scale-95">
-          <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-          Quiz
-        </button>
       </header>
 
-      {/* Secondary nav row (PR-34c): leaderboard + saved bookmarks */}
-      <div className="relative z-20 -mt-1 px-4 pb-1 flex items-center justify-end gap-2">
-        <button
-          onClick={() => router.push('/current-affairs/quiz/leaderboard')}
-          className="inline-flex items-center gap-1 rounded-full border border-line bg-paper-50 px-3 py-1 text-[11px] font-medium text-ink-700 hover:border-ember-500/40 hover:bg-ember-500/5 transition-colors active:scale-95"
-        >
-          🏆 Leaderboard
-        </button>
-        <button
-          onClick={() => router.push('/current-affairs/bookmarks')}
-          className="inline-flex items-center gap-1 rounded-full border border-line bg-paper-50 px-3 py-1 text-[11px] font-medium text-ink-700 hover:border-ember-500/40 hover:bg-ember-500/5 transition-colors active:scale-95"
-          aria-label="Saved news"
-        >
-          🔖 Saved
-        </button>
-      </div>
-
-      {/* Category pills */}
-      <div className="relative z-20 px-3 pb-3 flex gap-2 overflow-x-auto scrollbar-hide">
+      {/* Category pills — below heading like news websites */}
+      <div className="relative z-20 px-3 pb-2 pt-1 flex gap-2 overflow-x-auto scrollbar-hide">
         {CATEGORIES.map(cat => (
           <button
             key={cat.key}
