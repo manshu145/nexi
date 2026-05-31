@@ -154,7 +154,7 @@ export default function ChapterQuizPage() {
           {!result.passed && (
             <>
               <button onClick={() => router.push(`/study/${subject}/${chapter}`)} className="btn-primary w-full">Review Chapter</button>
-              <button onClick={() => { setPhase('loading'); setIdx(0); setAnswers(new Map()); setTimer(45); }} className="btn-ghost w-full">Retry Quiz</button>
+              <button onClick={() => window.location.reload()} className="btn-ghost w-full">Retry Quiz</button>
             </>
           )}
           <button onClick={() => router.push('/study')} className="btn-ghost w-full">← Back to Syllabus</button>
@@ -197,7 +197,7 @@ export default function ChapterQuizPage() {
       <p className="mt-2 text-sm text-muted-500 text-center">
         {error || 'Could not load quiz questions. The AI service may be temporarily unavailable.'}
       </p>
-      <button onClick={() => { setPhase('loading'); setIdx(0); setAnswers(new Map()); setError(null); }} className="btn-primary mt-6 w-full">Retry</button>
+      <button onClick={() => window.location.reload()} className="btn-primary mt-6 w-full">Retry</button>
       <button onClick={() => router.push(`/study/${subject}/${chapter}`)} className="btn-ghost mt-2 w-full">← Back to Chapter</button>
     </main>
   );

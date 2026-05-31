@@ -317,9 +317,9 @@ export default function CurrentAffairsShortsPage() {
         </div>
       )}
 
-      {/* Sticky mobile bottom quiz bar */}
+      {/* Sticky mobile bottom quiz bar — positioned above BottomNav (h-14 + safe-area) */}
       {filtered.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 z-30 px-4 pb-4 pb-[env(safe-area-inset-bottom)] pt-3 bg-gradient-to-t from-paper-50 via-paper-50/95 to-transparent lg:hidden animate-slideUp">
+        <div className="fixed bottom-[calc(3.5rem+env(safe-area-inset-bottom))] left-0 right-0 z-30 px-4 pb-2 pt-3 bg-gradient-to-t from-paper-50 via-paper-50/95 to-transparent lg:hidden animate-slideUp">
           <button
             onClick={() => router.push('/current-affairs/quiz')}
             className="w-full rounded-xl bg-ember-500 px-4 py-3.5 text-sm font-bold text-paper-50 shadow-lg hover:bg-ember-600 transition-all duration-150 active:scale-[0.97] flex items-center justify-center gap-2"
@@ -423,11 +423,10 @@ function ShortCard({ item, isActive, liked, bookmarked, likeCount, onLike, onBoo
             occupies the 64-116px band of the viewport. Pre-PR-33 the
             action buttons sat at 80-230px, overlapping the quiz bar's
             top 36px and disappearing into its gradient fade.
-            PR-49: BottomNav now hidden on /current-affairs so quiz bar
-            sits at bottom-0. Action buttons at bottom-20 to clear it.
-            Also bumped z-index from z-10 to z-20 so a translucent
-            quiz bar gradient (z-30) does not cover them on overscroll. */}
-        <div className="absolute right-2.5 bottom-20 flex flex-col items-center gap-2.5 z-20 lg:hidden">
+            PR-49: BottomNav now stays visible on /current-affairs.
+            Quiz bar sits above BottomNav (~56px + safe-area from bottom).
+            Action buttons at bottom-32 to clear quiz bar + BottomNav. */}
+        <div className="absolute right-2.5 bottom-32 flex flex-col items-center gap-2.5 z-20 lg:hidden">
           <button onClick={(e) => { e.stopPropagation(); onLike(); }} className={`flex flex-col items-center gap-0.5 rounded-full p-2.5 border transition-all duration-150 active:scale-90 ${liked ? 'bg-paper-50/90 border-ember-500/30 shadow-md' : 'bg-paper-50/70 backdrop-blur-sm border-line/50'}`}>
             <span className={`text-lg transition-transform duration-200 ${liked ? 'scale-110' : ''}`}>{liked ? '❤️' : '🤍'}</span>
             {likeCount > 0 && <span className="text-[9px] text-ink-800 font-semibold">{likeCount}</span>}
