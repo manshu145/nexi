@@ -10,6 +10,7 @@ import { useUser } from '~/lib/userStore';
 import { api } from '~/lib/api';
 import { AILoader } from '~/components/ui/AILoader';
 import { OnboardingTour } from '~/components/OnboardingTour';
+import { NotificationBell } from '~/components/NotificationBell';
 
 export default function DashboardPage() {
   const t = useTranslations('dashboard');
@@ -151,6 +152,7 @@ export default function DashboardPage() {
             <span className="text-[10px] text-amber-600 font-medium">✓ Installed</span>
           )}
           <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="btn-ghost-sm" aria-label="Toggle theme">{theme === 'dark' ? '☀️' : '🌙'}</button>
+          <NotificationBell />
           <button onClick={() => router.push('/profile')} className="h-9 w-9 overflow-hidden rounded-full bg-paper-300 border border-line flex items-center justify-center">
             {user.photoURL ? <img src={user.photoURL} alt="" className="h-full w-full object-cover" /> : <span className="text-sm font-bold text-ink-800">{firstName?.[0]?.toUpperCase()}</span>}
           </button>

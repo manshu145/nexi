@@ -152,6 +152,13 @@ export function makePublicRoutes(deps: PublicRoutesDeps): Hono {
       signupBonusPreview = await deps.config.getEarnAmount('signup_verified');
     } catch { /* keep default */ }
 
+    // PR-43: include plan matrix for marketing site SSR pricing page
+    let plans: Array<{ id: string; name: string; price: number; yearlyPrice: number; isActive: boolean; comingSoon: boolean }> = [];
+    try {
+      const planMap = await deps.config.getPlans();
+      plans = Object.values(planMap).filter(p => p.id !== 'free').map(p => ({ id: p.id, name: p.name, price: p.price, yearlyPrice: p.yearlyPrice, isActive: p.isActive, comingSoon: p.comingSoon }));
+    } catch { /* fall through with empty */ }
+
     // Browser revalidates ~every minute; the server only does work if it
     // has actually changed.
     c.header('Cache-Control', 'public, max-age=60');
@@ -165,8 +172,7 @@ export function makePublicRoutes(deps: PublicRoutesDeps): Hono {
       taglineHi,
       supportEmail: 'hello@nexigrate.com',
       signupBonusPreview,
-      // Static for now; PR-04 admin edits live here too if/when we want
-      // marketing to advertise different welcome bonuses per campaign.
+      plans,
       currency: 'INR',
     });
   });
