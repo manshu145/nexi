@@ -190,7 +190,50 @@ export function makeDiagRoutes(
       probeGemini(),
     ]);
 
-    const allOk = groqResult.ok || openaiResult.ok || geminiResult.ok; // At least one provider up = chain functional
+    // PR-48: Also probe ALL admin-panel providers (Anthropic, xAI, DeepSeek, Bedrock)
+    type ExtraProvider = { id: string; baseUrl: string; model: string; format: 'openai' | 'anthropic' | 'bedrock' };
+    const extras: ExtraProvider[] = [
+      { id: 'anthropic', baseUrl: 'https://api.anthropic.com/v1/messages', model: 'claude-sonnet-4-20250514', format: 'anthropic' },
+      { id: 'xai', baseUrl: 'https://api.x.ai/v1/chat/completions', model: 'grok-3-mini', format: 'openai' },
+      { id: 'deepseek', baseUrl: 'https://api.deepseek.com/v1/chat/completions', model: 'deepseek-chat', format: 'openai' },
+      { id: 'bedrock', baseUrl: '', model: '', format: 'bedrock' },
+    ];
+
+    async function probeExtra(p: ExtraProvider): Promise<ProbeResult> {
+      if (!resolver) return { ok: false, latencyMs: 0, error: 'no_resolver' };
+      try {
+        const r = await resolver.resolve(p.id as any, { tier: 'flash' });
+        if (!r?.apiKey) return { ok: false, latencyMs: 0, error: 'not_configured' };
+        if (p.format === 'bedrock') return { ok: false, latencyMs: 0, model: r.model, error: 'key_present_probe_not_supported' };
+        const t0 = Date.now();
+        if (p.format === 'anthropic') {
+          const res = await withTimeout(fetch(p.baseUrl, {
+            method: 'POST',
+            headers: { 'x-api-key': r.apiKey, 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01' },
+            body: JSON.stringify({ model: r.model || p.model, max_tokens: 10, messages: [{ role: 'user', content: PROBE_PROMPT }] }),
+          }), TIMEOUT_MS);
+          const latencyMs = Date.now() - t0;
+          if (!res.ok) { const body = await res.text().catch(() => ''); return { ok: false, latencyMs, model: r.model, error: `HTTP ${res.status}: ${body.slice(0, 150)}` }; }
+          return { ok: true, latencyMs, model: r.model || p.model, sample: 'OK' };
+        }
+        // OpenAI-compatible (xAI, DeepSeek)
+        const res = await withTimeout(fetch(p.baseUrl, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${r.apiKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: r.model || p.model, messages: [{ role: 'user', content: PROBE_PROMPT }], max_tokens: 10 }),
+        }), TIMEOUT_MS);
+        const latencyMs = Date.now() - t0;
+        if (!res.ok) { const body = await res.text().catch(() => ''); return { ok: false, latencyMs, model: r.model, error: `HTTP ${res.status}: ${body.slice(0, 150)}` }; }
+        const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+        return { ok: true, latencyMs, model: r.model || p.model, sample: data.choices?.[0]?.message?.content?.trim().slice(0, 50) ?? 'OK' };
+      } catch (err) { return { ok: false, latencyMs: 0, error: err instanceof Error ? err.message.slice(0, 150) : 'probe_failed' }; }
+    }
+
+    const extraResults = await Promise.all(extras.map(p => probeExtra(p)));
+    const extraMap: Record<string, ProbeResult> = {};
+    extras.forEach((p, i) => { extraMap[p.id] = extraResults[i]!; });
+
+    const allOk = groqResult.ok || openaiResult.ok || geminiResult.ok;
     const totalMs = Date.now() - startedAt;
     return c.json({
       ok: allOk,
@@ -200,6 +243,7 @@ export function makeDiagRoutes(
         groq: groqResult,
         openai: openaiResult,
         gemini: geminiResult,
+        ...extraMap,
       },
       timestamp: new Date().toISOString(),
     }, allOk ? 200 : 503);
