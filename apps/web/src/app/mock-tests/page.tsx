@@ -337,8 +337,11 @@ export default function MockTestsPage() {
             </button>
           </div>
         ) : attempts.length === 0 ? (
-          <div className="paper-card p-8 text-center">
-            <p className="text-sm text-muted-500">No attempts yet. Start your first mock test above to see your progress here.</p>
+          <div className="paper-card p-6 text-center">
+            <p className="text-2xl mb-2">📋</p>
+            <p className="text-sm font-medium text-ink-900">No past attempts</p>
+            <p className="mt-1 text-xs text-muted-500">Your completed mock tests will appear here. Start one above — results are saved automatically when you submit.</p>
+            <p className="mt-2 text-[11px] text-muted-400">Note: Tests that failed to generate (timeout/network error) or were abandoned without submitting don&apos;t appear here.</p>
           </div>
         ) : (
           <ul className="space-y-2">

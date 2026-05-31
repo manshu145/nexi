@@ -50,7 +50,7 @@ export default function AdminAnnouncementsPage() {
     titleHi: string; bodyHi: string;
     type: 'banner' | 'modal' | 'email' | 'all';
     targetAudience: string;
-  }>({ title: '', body: '', titleHi: '', bodyHi: '', type: 'banner', targetAudience: 'all' });
+  }>({ title: '', body: '', titleHi: '', bodyHi: '', type: 'all', targetAudience: 'all' });
   const [showHindi, setShowHindi] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);

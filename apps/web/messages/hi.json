@@ -20,7 +20,10 @@
     "yourAnswer": "आपका उत्तर",
     "correct": "सही उत्तर",
     "plan": "प्लान",
-    "expires": "समाप्ति"
+    "expires": "समाप्ति",
+    "preparingFor": "तैयारी कर रहे हैं",
+    "continue": "जारी रखें",
+    "chat": "चैट"
   },
   "auth": {
     "signIn": "साइन इन",
@@ -90,7 +93,19 @@
     "startStreak": "स्ट्रीक शुरू करने के लिए आज प्रश्नोत्तरी दें",
     "best": "सर्वश्रेष्ठ: {days} दिन",
     "freePlan": "फ्री प्लान",
-    "upgrade": "अपग्रेड"
+    "upgrade": "अपग्रेड",
+    "read": "पढ़ें",
+    "leaderboard": "लीडरबोर्ड",
+    "quizScores": "क्विज़ स्कोर",
+    "mockTests": "मॉक टेस्ट",
+    "mockTestsDesc": "30 प्रश्न · 30 मिनट",
+    "essay": "निबंध अभ्यास",
+    "essayDesc": "लिखें और ग्रेड पाएं",
+    "upgradeDesc": "प्रो बनें",
+    "refer": "दोस्तों को बताएं",
+    "referDesc": "क्रेडिट कमाएं",
+    "support": "सहायता",
+    "supportDesc": "मदद लें"
   },
   "profile": {
     "title": "आपकी प्रोफ़ाइल",

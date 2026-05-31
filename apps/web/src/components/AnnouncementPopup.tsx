@@ -35,6 +35,12 @@ export function AnnouncementPopup({
   const [current, setCurrent] = useState<Announcement | null>(null);
   const [countdown, setCountdown] = useState(10);
 
+  // PR-44: stabilize effect dependency. Previously `[announcements]` caused
+  // re-fires on every parent re-render (new array ref). Using the first
+  // announcement's ID as the dep ensures the timer only resets when the
+  // actual content changes — not on every useUser() tick.
+  const firstId = announcements[0]?.id ?? '';
+
   useEffect(() => {
     if (!announcements.length) {
       setCurrent(null);
@@ -50,7 +56,8 @@ export function AnnouncementPopup({
     // Show after 2s delay
     const timer = setTimeout(() => setVisible(true), 2000);
     return () => clearTimeout(timer);
-  }, [announcements]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firstId]);
 
   const handleClose = useCallback(() => {
     setVisible(false);

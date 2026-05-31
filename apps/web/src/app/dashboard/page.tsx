@@ -165,7 +165,7 @@ export default function DashboardPage() {
         {examName && (
           <div className="mt-3">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-ember-500 px-3.5 py-1.5 text-xs font-semibold text-paper-50">
-              Preparing for: {examName}
+              {tc('preparingFor')}: {examName}
             </span>
           </div>
         )}
@@ -202,7 +202,7 @@ export default function DashboardPage() {
               </div>
             </div>
             <div className="flex items-center gap-1 text-sm font-semibold text-ember-500">
-              <span className="hidden sm:inline">Continue</span>
+              <span className="hidden sm:inline">{tc('continue')}</span>
               <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="group-hover:translate-x-1 transition-transform"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
             </div>
           </div>
@@ -226,7 +226,7 @@ export default function DashboardPage() {
           <h3 className="mt-3 font-serif text-base font-bold text-ink-900">{t('currentAffairs')}</h3>
           <p className="mt-1 text-xs text-muted-500 line-clamp-1">{t('currentAffairsDesc')}</p>
           <div className="mt-2 flex items-center gap-1 text-xs font-medium text-ember-500">
-            Read →
+            {t('read')} →
             <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="group-hover:translate-x-0.5 transition-transform"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
           </div>
         </button>
@@ -238,9 +238,9 @@ export default function DashboardPage() {
         >
           <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ember-500/10 text-xl">🤖</span>
           <h3 className="mt-3 font-serif text-base font-bold text-ink-900">{t('nexiAI')}</h3>
-          <p className="mt-1 text-xs text-muted-500 line-clamp-1">Ask doubts, get answers</p>
+          <p className="mt-1 text-xs text-muted-500 line-clamp-1">{t('nexiAIDesc')}</p>
           <div className="mt-2 flex items-center gap-1 text-xs font-medium text-ember-500">
-            Chat →
+            {tc('chat')} →
             <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="group-hover:translate-x-0.5 transition-transform"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
           </div>
         </button>
@@ -251,43 +251,43 @@ export default function DashboardPage() {
         <button type="button" onClick={() => router.push('/mock-tests')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3">
           <span className="text-base">🧪</span>
           <div className="text-left">
-            <p className="text-sm font-semibold text-ink-900 whitespace-nowrap">Mock Tests</p>
-            <p className="text-[10px] text-muted-500">30q · 30min</p>
+            <p className="text-sm font-semibold text-ink-900 whitespace-nowrap">{t('mockTests')}</p>
+            <p className="text-[10px] text-muted-500">{t('mockTestsDesc')}</p>
           </div>
         </button>
         <button type="button" onClick={() => router.push('/leaderboard')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3">
           <span className="text-base">🏆</span>
           <div className="text-left">
-            <p className="text-sm font-semibold text-ink-900 whitespace-nowrap">Leaderboard</p>
-            <p className="text-[10px] text-muted-500">Top streaks</p>
+            <p className="text-sm font-semibold text-ink-900 whitespace-nowrap">{t('leaderboard')}</p>
+            <p className="text-[10px] text-muted-500">{t('quizScores')}</p>
           </div>
         </button>
         <button type="button" onClick={() => router.push('/essay')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3">
           <span className="text-base">✍️</span>
           <div className="text-left">
-            <p className="text-sm font-semibold text-ink-900 whitespace-nowrap">Practice Set</p>
-            <p className="text-[10px] text-muted-500">Write & grade</p>
+            <p className="text-sm font-semibold text-ink-900 whitespace-nowrap">{t('essay')}</p>
+            <p className="text-[10px] text-muted-500">{t('essayDesc')}</p>
           </div>
         </button>
         <button type="button" onClick={() => router.push('/upgrade')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3">
           <span className="text-base">⭐</span>
           <div className="text-left">
-            <p className="text-sm font-semibold text-ink-900 whitespace-nowrap">Upgrade</p>
-            <p className="text-[10px] text-muted-500">Go Pro</p>
+            <p className="text-sm font-semibold text-ink-900 whitespace-nowrap">{t('upgrade')}</p>
+            <p className="text-[10px] text-muted-500">{t('upgradeDesc')}</p>
           </div>
         </button>
         <button type="button" onClick={() => router.push('/refer')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3">
           <span className="text-base">🎁</span>
           <div className="text-left">
-            <p className="text-sm font-semibold text-ink-900 whitespace-nowrap">Refer Friends</p>
-            <p className="text-[10px] text-muted-500">Earn 50 cr</p>
+            <p className="text-sm font-semibold text-ink-900 whitespace-nowrap">{t('refer')}</p>
+            <p className="text-[10px] text-muted-500">{t('referDesc')}</p>
           </div>
         </button>
         <button type="button" onClick={() => router.push('/support')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3">
           <span className="text-base">🛟</span>
           <div className="text-left">
-            <p className="text-sm font-semibold text-ink-900 whitespace-nowrap">Support</p>
-            <p className="text-[10px] text-muted-500">Get help</p>
+            <p className="text-sm font-semibold text-ink-900 whitespace-nowrap">{t('support')}</p>
+            <p className="text-[10px] text-muted-500">{t('supportDesc')}</p>
           </div>
         </button>
       </section>

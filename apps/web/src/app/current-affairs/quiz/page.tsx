@@ -28,6 +28,11 @@ export default function CurrentAffairsQuizPage() {
     try {
       const lang = (localStorage.getItem('nexigrate-language') as 'en' | 'hi') || 'en';
       const res = await api.getCurrentAffairsQuiz(lang);
+      if (!res.questions || res.questions.length === 0) {
+        setError('No quiz available for today. News may not have been ingested yet. Try again later.');
+        setPhase('rules');
+        return;
+      }
       setQuestions(res.questions);
       setAnswers(new Array(res.questions.length).fill(-1));
       setPhase('quiz');
@@ -35,7 +40,7 @@ export default function CurrentAffairsQuizPage() {
       setTimeLeft(600);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to load quiz';
-      setError(msg === 'Failed to fetch' ? 'Server is generating quiz questions. Please wait 10 seconds and try again.' : msg);
+      setError(msg.includes('fetch') ? 'Server is generating quiz questions. Please wait 10 seconds and try again.' : msg.includes('404') ? 'No quiz available today — news ingestion may not have run yet.' : msg);
       setPhase('rules');
     }
   };
@@ -154,9 +159,17 @@ export default function CurrentAffairsQuizPage() {
     </main>
   );
 
-  // QUIZ phase
+  // QUIZ phase — guard against empty questions array (no quiz generated)
   const q = questions[idx];
-  if (!q) return null;
+  if (!q) return (
+    <main className="mx-auto flex min-h-dvh max-w-lg flex-col items-center justify-center px-5 py-12">
+      <span className="text-4xl">📭</span>
+      <h2 className="font-serif mt-4 text-xl font-bold text-ink-900">No quiz available today</h2>
+      <p className="mt-2 text-sm text-muted-500 text-center">The daily quiz hasn&apos;t been generated yet. This usually happens if current affairs haven&apos;t been ingested today.</p>
+      <button onClick={() => { setPhase('rules'); setError(null); }} className="btn-primary mt-6 w-full">Try Again</button>
+      <button onClick={() => router.push('/current-affairs')} className="btn-ghost mt-2 w-full">← Back to News</button>
+    </main>
+  );
   const mins = Math.floor(timeLeft / 60);
   const secs = timeLeft % 60;
 
