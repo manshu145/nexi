@@ -182,10 +182,12 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       deps.logger.error('study.quiz_error', { exam, subject, chapter, language, error: errorMsg, stack: err instanceof Error ? err.stack?.slice(0, 500) : '' });
-      // PR-45: surface the actual provider error to the user so we can debug
-      // production failures. The generic "AI service may be unavailable" was
-      // hiding the real issue (e.g. "Groq: 429 rate limit" or "all not configured").
-      throw new HTTPException(503, { message: `Quiz generation failed: ${errorMsg.slice(0, 200)}. Try again in a few seconds.` });
+      // Return 200 with empty questions + error message instead of 503.
+      // Cloudflare proxy strips CORS headers from 503 responses which causes
+      // the browser to show "Failed to fetch" instead of the real error.
+      // Returning 200 ensures CORS headers pass through and the frontend
+      // can display the actual error message to the user.
+      return c.json({ questions: [], error: `Quiz generation failed: ${errorMsg.slice(0, 200)}. Try again in a few seconds.`, userLevel: 'intermediate' });
     }
   });
 

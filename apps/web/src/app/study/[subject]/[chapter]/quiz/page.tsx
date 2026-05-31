@@ -54,13 +54,21 @@ export default function ChapterQuizPage() {
         const lang = getLanguageFromCookie();
         const res = await api.getChapterQuiz(exam, subject, chapter, lang);
         if (!res.questions || res.questions.length === 0) {
-          setError('Quiz generation returned 0 questions. Tap Retry — the server will clear stale data and regenerate.');
+          const errMsg = (res as any).error || 'Quiz generation returned 0 questions. Tap Retry to regenerate.';
+          setError(errMsg);
           return;
         }
         setQuestions(res.questions);
         setPhase('quiz');
         setTimer(45);
-      } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load quiz'); }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Failed to load quiz';
+        if (msg.toLowerCase().includes('failed to fetch')) {
+          setError('Network error — please check your internet and retry.');
+        } else {
+          setError(msg);
+        }
+      }
     })();
   }, [user, me, subject, chapter]);
 
