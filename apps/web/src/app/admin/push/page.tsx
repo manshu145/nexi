@@ -124,6 +124,13 @@ export default function AdminPushPage() {
   const handleTest = async () => {
     setTesting(true);
     try {
+      // PR-45: register this device's token first so "test to me" works
+      // even if admin hasn't tapped the bell icon on the dashboard.
+      try {
+        const { registerPushToken } = await import('~/lib/pushClient');
+        await registerPushToken();
+      } catch { /* non-fatal — might already be registered or permission denied */ }
+
       const token = await getToken();
       const res = await fetch(`${API}/v1/admin/push/test`, {
         method: 'POST',
@@ -133,7 +140,13 @@ export default function AdminPushPage() {
       if (res.ok) {
         toast.success(`Test sent to ${data.sent ?? 0} of ${data.devices ?? 0} of your devices`);
       } else {
-        toast.error(data.message ?? `Test failed (HTTP ${res.status})`);
+        // Show helpful message if no tokens registered
+        const msg = data.message ?? `Test failed (HTTP ${res.status})`;
+        if (msg.includes('No push tokens')) {
+          toast.error('No device registered. Please allow notifications when prompted, then retry.');
+        } else {
+          toast.error(msg);
+        }
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Test failed');

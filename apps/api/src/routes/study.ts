@@ -180,8 +180,9 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
       );
       return c.json({ questions, userLevel });
     } catch (err) {
-      deps.logger.error('study.quiz_error', { exam, subject, chapter, language, error: err instanceof Error ? err.message : String(err) });
-      throw new HTTPException(503, { message: 'Quiz generation failed. AI service may be unavailable. Please try again.' });
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      deps.logger.error('study.quiz_error', { exam, subject, chapter, language, error: errorMsg });
+      throw new HTTPException(503, { message: `Quiz generation failed: ${errorMsg.slice(0, 300)}` });
     }
   });
 
