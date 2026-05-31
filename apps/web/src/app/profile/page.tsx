@@ -298,6 +298,12 @@ export default function ProfilePage() {
                 >
                   View payment history →
                 </button>
+                <button
+                  onClick={() => router.push('/profile/gallery')}
+                  className="mt-2 w-full text-left text-xs text-ember-600 hover:underline"
+                >
+                  🎨 My generated images →
+                </button>
               </div>
             </div>
           );

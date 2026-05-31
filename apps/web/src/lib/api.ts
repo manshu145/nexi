@@ -533,6 +533,20 @@ export const api = {
       body: JSON.stringify({ token, platform }),
     })).json() as Promise<{ ok: boolean }>;
   },
+
+  // ─── PR-42: Image Gallery ─────────────────────────────────────────
+  async saveGeneratedImage(dataUrl: string, prompt: string, source: 'study' | 'chat', context?: string) {
+    return (await authedFetch('/v1/users/me/images', {
+      method: 'POST',
+      body: JSON.stringify({ dataUrl, prompt, source, context }),
+    })).json() as Promise<{ id: string; createdAt: string }>;
+  },
+  async getMyImages() {
+    return (await authedFetch('/v1/users/me/images')).json() as Promise<{ images: Array<{ id: string; dataUrl: string; prompt: string; source: string; context: string; createdAt: string }> }>;
+  },
+  async deleteMyImage(id: string) {
+    return (await authedFetch(`/v1/users/me/images/${encodeURIComponent(id)}`, { method: 'DELETE' })).json() as Promise<{ ok: boolean }>;
+  },
 };
 
 export interface CurrentAffairsItem { id: string; headline: string; body: string; category: string; sources: string[]; summary: string; factChecked: boolean; date: string; publishedAt: string; }
