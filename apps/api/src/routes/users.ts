@@ -488,5 +488,66 @@ export function makeUsersRoutes(deps: UsersRoutesDeps): Hono {
     return c.json({ success: true, tokenCount: next.length });
   });
 
+  // ─── PR-42: Image Gallery ─────────────────────────────────────────
+  // Founder: "user jo images generate kr raha hai vo bad me dekh ske"
+  // Save generated images (base64 data URL) to a Firestore subcollection
+  // so users can view them later from /profile/gallery.
+
+  // POST /v1/users/me/images — save a generated image
+  app.post('/me/images', async (c) => {
+    const principal = requireAuth(c);
+    const body = await c.req.json().catch(() => null) as {
+      dataUrl?: string;
+      prompt?: string;
+      source?: 'study' | 'chat';
+      context?: string;
+    } | null;
+    if (!body?.dataUrl || !body.dataUrl.startsWith('data:image/')) {
+      return c.json({ error: 'dataUrl required (must be a data:image/* URL)' }, 400);
+    }
+    // Limit: max 2MB base64 payload (~1.5MB image)
+    if (body.dataUrl.length > 2 * 1024 * 1024) {
+      return c.json({ error: 'Image too large (max 2MB)' }, 413);
+    }
+    if (!deps.db) return c.json({ error: 'Storage not configured' }, 503);
+
+    const doc = {
+      dataUrl: body.dataUrl,
+      prompt: body.prompt?.slice(0, 500) ?? '',
+      source: body.source ?? 'unknown',
+      context: body.context?.slice(0, 200) ?? '',
+      createdAt: new Date().toISOString(),
+    };
+    const ref = await deps.db.collection('users').doc(principal.userId).collection('generatedImages').add(doc);
+    deps.logger.info('images.saved', { userId: principal.userId, id: ref.id });
+    return c.json({ id: ref.id, createdAt: doc.createdAt }, 201);
+  });
+
+  // GET /v1/users/me/images — list saved images (latest 50)
+  app.get('/me/images', async (c) => {
+    const principal = requireAuth(c);
+    if (!deps.db) return c.json({ images: [] });
+    try {
+      const snap = await deps.db.collection('users').doc(principal.userId)
+        .collection('generatedImages')
+        .orderBy('createdAt', 'desc')
+        .limit(50)
+        .get();
+      const images = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      return c.json({ images });
+    } catch {
+      return c.json({ images: [] });
+    }
+  });
+
+  // DELETE /v1/users/me/images/:id — delete a saved image
+  app.delete('/me/images/:id', async (c) => {
+    const principal = requireAuth(c);
+    const id = c.req.param('id');
+    if (!deps.db) return c.json({ error: 'Storage not configured' }, 503);
+    await deps.db.collection('users').doc(principal.userId).collection('generatedImages').doc(id).delete();
+    return c.json({ ok: true });
+  });
+
   return app;
 }

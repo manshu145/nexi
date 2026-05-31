@@ -258,6 +258,10 @@ function ChatPage() {
         setGeneratedImage({ type: 'mermaid', content: res.content });
       } else {
         setGeneratedImage(res);
+        // PR-42: save generated image to gallery (fire-and-forget)
+        if (res.type === 'image' && res.content?.startsWith('data:image/')) {
+          api.saveGeneratedImage(res.content, topic, 'chat').catch(() => {});
+        }
       }
     } catch {
       // Total failure — fall back to diagram
