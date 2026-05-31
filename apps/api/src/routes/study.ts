@@ -180,8 +180,12 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
       );
       return c.json({ questions, userLevel });
     } catch (err) {
-      deps.logger.error('study.quiz_error', { exam, subject, chapter, language, error: err instanceof Error ? err.message : String(err) });
-      throw new HTTPException(503, { message: 'Quiz generation failed. AI service may be unavailable. Please try again.' });
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      deps.logger.error('study.quiz_error', { exam, subject, chapter, language, error: errorMsg, stack: err instanceof Error ? err.stack?.slice(0, 500) : '' });
+      // PR-45: surface the actual provider error to the user so we can debug
+      // production failures. The generic "AI service may be unavailable" was
+      // hiding the real issue (e.g. "Groq: 429 rate limit" or "all not configured").
+      throw new HTTPException(503, { message: `Quiz generation failed: ${errorMsg.slice(0, 200)}. Try again in a few seconds.` });
     }
   });
 
