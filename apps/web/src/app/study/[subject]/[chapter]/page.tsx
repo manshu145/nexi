@@ -115,10 +115,18 @@ export default function KindleReaderPage() {
     finally { setUnlocking(false); setPageLoading(false); }
   };
 
-  /** Play a realistic paper page-turn sound using Web Audio API */
+  /** Play a realistic paper page-turn sound using Web Audio API.
+   * PR-41: memoize AudioContext to avoid creating 30+ contexts in a
+   * long chapter (each takes ~50ms on iOS Safari). */
+  const audioCtxRef = useRef<AudioContext | null>(null);
   const playPageTurnSound = useCallback(() => {
     try {
-      const ctx = new AudioContext();
+      if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+        audioCtxRef.current = new AudioContext();
+      }
+      const ctx = audioCtxRef.current;
+      // Resume if suspended (iOS requires user gesture first)
+      if (ctx.state === 'suspended') ctx.resume();
       const sampleRate = ctx.sampleRate;
       const duration = 0.25; // 250ms for a natural page flip
       const buffer = ctx.createBuffer(1, sampleRate * duration, sampleRate);
@@ -162,9 +170,6 @@ export default function KindleReaderPage() {
       lpFilter.connect(gain);
       gain.connect(ctx.destination);
       source.start();
-
-      // Cleanup
-      source.onended = () => { ctx.close().catch(() => {}); };
     } catch { /* AudioContext not available, silently skip */ }
   }, []);
 
@@ -177,7 +182,7 @@ export default function KindleReaderPage() {
         setCurrentPage(p => p + 1);
         setFlipDirection(null);
         setIsFlipping(false);
-      }, 700);
+      }, 350);
     }
   }, [currentPage, pages.length, isFlipping]);
 
@@ -190,7 +195,7 @@ export default function KindleReaderPage() {
         setCurrentPage(p => p - 1);
         setFlipDirection(null);
         setIsFlipping(false);
-      }, 700);
+      }, 350);
     }
   }, [currentPage, isFlipping]);
 
@@ -467,6 +472,8 @@ export default function KindleReaderPage() {
       setShowSimplified(!showSimplified);
       return;
     }
+    // PR-41: warn user this costs credits before calling AI
+    if (!window.confirm(getLanguage() === 'hi' ? 'इससे 1 AI क्रेडिट खर्च होगा। जारी रखें?' : 'This will use 1 AI credit. Continue?')) return;
     setSimplifying(true);
     try {
       const lang = getLanguage();

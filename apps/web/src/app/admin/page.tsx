@@ -87,27 +87,33 @@ export default function AdminStatsPage() {
     if (!loading && user && !isAdmin(user.email)) router.replace('/dashboard');
   }, [user, loading, router]);
 
+  const fetchStats = useCallback(async () => {
+    if (!user || !isAdmin(user.email)) return;
+    try {
+      const auth = getFirebaseAuthClient();
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch(`${API}/v1/admin/stats`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(`Failed: ${res.status}`);
+      const data = (await res.json()) as AdminStats;
+      setStats({ ...data, activeNow: data.activeNow ?? data.activeSessions ?? 0, newToday: data.newToday ?? data.newUsersToday ?? 0 });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load stats');
+    } finally {
+      setFetchingStats(false);
+    }
+  }, [user]);
+
   useEffect(() => {
     if (!user || !isAdmin(user.email)) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const auth = getFirebaseAuthClient();
-        const token = await auth.currentUser?.getIdToken();
-        const res = await fetch(`${API}/v1/admin/stats`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) throw new Error(`Failed: ${res.status}`);
-        const data = (await res.json()) as AdminStats;
-        if (!cancelled) setStats({ ...data, activeNow: data.activeNow ?? data.activeSessions ?? 0, newToday: data.newToday ?? data.newUsersToday ?? 0 });
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load stats');
-      } finally {
-        if (!cancelled) setFetchingStats(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [user]);
+    void fetchStats();
+    // PR-41: auto-refresh stats every 60s with visibility gate
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') void fetchStats();
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, [user, fetchStats]);
 
   const fetchHealth = useCallback(async () => {
     if (!user || !isAdmin(user.email)) return;
@@ -167,7 +173,7 @@ export default function AdminStatsPage() {
       ) : (
         <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div className="paper-card min-h-0 p-5">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">Total Users</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">Active Users</p>
             <p className="font-serif mt-2 text-3xl font-bold text-ink-900">
               {stats?.totalUsers.toLocaleString() ?? '0'}
             </p>
