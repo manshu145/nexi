@@ -301,9 +301,17 @@ export function buildApp(deps: AppDeps): Hono {
   app.route('/v1', v1);
 
   app.onError((err, c) => {
+    // CRITICAL FIX: Hono cors() middleware sets CORS headers on the way in,
+    // but onError creates a FRESH response — headers are LOST. Without this,
+    // browser sees 503 without Access-Control-Allow-Origin → blocks response
+    // → shows "Failed to fetch" instead of the real error message.
+    const origin = c.req.header('origin') ?? '';
+    if (env.CORS_ALLOWED_ORIGINS.includes(origin)) {
+      c.header('Access-Control-Allow-Origin', origin);
+      c.header('Access-Control-Allow-Credentials', 'true');
+    }
     if (err instanceof HTTPException) { logger.warn('http.error', { status: err.status, message: err.message }); return c.json({ error: err.message }, err.status); }
     logger.error('unhandled', { message: err.message, stack: err.stack });
-    // Log to admin store for error tracking
     adminStore.logError({ id: crypto.randomUUID(), message: err.message, stack: err.stack, route: c.req.path, timestamp: new Date().toISOString(), severity: 'critical' }).catch(() => {});
     return c.json({ error: 'internal server error' }, 500);
   });

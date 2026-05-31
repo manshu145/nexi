@@ -1008,8 +1008,36 @@ End with: Important facts to remember for exam.`;
         difficultyStyle = 'Intermediate MCQs: application-based, 2 close options that require careful thinking.';
       }
 
-      const prompt = `Generate exactly ${count} UNIQUE multiple choice questions for chapter "${chapter}" (${subject}, ${exam}).\n${langInstr}${seedInstr}${contentContext}\n\nRules:\n- Questions MUST be based on the chapter content provided above\n- Do NOT ask about topics not covered in the chapter\n- Each question must have exactly 4 options (A/B/C/D), one correct answer, and a brief explanation\n- Mix: ${difficultyMix}\n- ${difficultyStyle}\n- Include explanation referencing the chapter content\n\nJSON only:\n{"questions":[{"id":"q1","question":"...","options":[{"key":"A","text":"..."},{"key":"B","text":"..."},{"key":"C","text":"..."},{"key":"D","text":"..."}],"correctOption":"A","explanation":"...","difficulty":"easy","subject":"${subject}","topic":"${chapter}"}]}`;
+      const prompt = `Generate exactly ${count} UNIQUE multiple choice questions for chapter "${chapter}" (${subject}, ${exam}).\n${langInstr}${seedInstr}${contentContext}\n\nRules:\n- Questions MUST be based on the chapter content provided above\n- Do NOT ask about topics not covered in the chapter\n- Each question must have exactly 4 options (A/B/C/D), one correct answer, and a brief explanation\n- Mix: ${difficultyMix}\n- ${difficultyStyle}\n- Include explanation referencing the chapter content\n- IMPORTANT: All JSON keys MUST be in English. Only the values (question text, option text, explanation) should be in ${language === 'hi' ? 'Hindi' : 'English'}.\n- Return ONLY valid JSON, no markdown fences.\n\nJSON only:\n{"questions":[{"id":"q1","question":"...","options":[{"key":"A","text":"..."},{"key":"B","text":"..."},{"key":"C","text":"..."},{"key":"D","text":"..."}],"correctOption":"A","explanation":"...","difficulty":"easy","subject":"${subject}","topic":"${chapter}"}]}`;
       const errors: string[] = [];
+
+      /** Robust JSON parse — handles markdown fences, trailing commas, partial output */
+      function safeParseMCQs(raw: string): GeneratedMCQ[] {
+        if (!raw || raw.length < 10) return [];
+        // Strip markdown code fences if present
+        let text = raw.replace(/^```(?:json)?\s*/gm, '').replace(/```\s*$/gm, '').trim();
+        // Find the JSON object
+        const jsonStart = text.indexOf('{');
+        const jsonEnd = text.lastIndexOf('}');
+        if (jsonStart === -1 || jsonEnd === -1) return [];
+        text = text.slice(jsonStart, jsonEnd + 1);
+        // Fix trailing commas (common AI mistake)
+        text = text.replace(/,\s*([}\]])/g, '$1');
+        try {
+          const parsed = JSON.parse(text) as { questions?: GeneratedMCQ[] };
+          return parsed.questions ?? [];
+        } catch {
+          // Last resort: try to extract array directly
+          const arrMatch = text.match(/\[\s*\{[\s\S]*\}\s*\]/);
+          if (arrMatch) {
+            try {
+              const fixedArr = arrMatch[0].replace(/,\s*([}\]])/g, '$1');
+              return JSON.parse(fixedArr) as GeneratedMCQ[];
+            } catch { return []; }
+          }
+          return [];
+        }
+      }
 
       // ─── ATTEMPT 1: Groq via RESOLVER (admin-panel key — ALWAYS first) ───
       // PR-45: The old `groq ?? resolver` pattern was broken because env
@@ -1022,9 +1050,9 @@ End with: Important facts to remember for exam.`;
             const freshGroq = new Groq({ apiKey: resolved.apiKey });
             const model = resolved.model || 'llama-3.3-70b-versatile';
             const c = await freshGroq.chat.completions.create({ model, messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 2048, response_format: { type: 'json_object' } });
-            const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
-            if (parsed.questions?.length) { logger.info('ai.chapter_mcqs', { provider: 'groq-resolver', chapter, count: parsed.questions.length, model }); return parsed.questions; }
-            errors.push(`Groq (resolver, model=${model}) returned empty JSON`);
+            const parsed = safeParseMCQs(c.choices[0]?.message?.content ?? '');
+            if (parsed.length) { logger.info('ai.chapter_mcqs', { provider: 'groq-resolver', chapter, count: parsed.length, model }); return parsed; }
+            errors.push(`Groq (resolver, model=${model}) returned empty/unparseable`);
           } else { errors.push('Groq: resolver returned no key (check /admin/ai-providers)'); }
         } catch (err) { errors.push(`Groq (resolver): ${err instanceof Error ? err.message : String(err)}`); }
       }
@@ -1032,9 +1060,9 @@ End with: Important facts to remember for exam.`;
       if (groq) {
         try {
           const c = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 2048, response_format: { type: 'json_object' } });
-          const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
-          if (parsed.questions?.length) { logger.info('ai.chapter_mcqs', { provider: 'groq-env', chapter, count: parsed.questions.length }); return parsed.questions; }
-          errors.push('Groq (env) returned empty');
+          const parsed = safeParseMCQs(c.choices[0]?.message?.content ?? '');
+          if (parsed.length) { logger.info('ai.chapter_mcqs', { provider: 'groq-env', chapter, count: parsed.length }); return parsed; }
+          errors.push('Groq (env) returned empty/unparseable');
         } catch (err) { errors.push(`Groq (env): ${err instanceof Error ? err.message : String(err)}`); }
       }
 
@@ -1046,18 +1074,18 @@ End with: Important facts to remember for exam.`;
             const freshOai = new OpenAI({ apiKey: resolved.apiKey });
             const model = resolved.model || 'gpt-4o';
             const c = await freshOai.chat.completions.create({ model, messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 2048, response_format: { type: 'json_object' } });
-            const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
-            if (parsed.questions?.length) { logger.info('ai.chapter_mcqs', { provider: 'openai-resolver', chapter, count: parsed.questions.length, model }); return parsed.questions; }
-            errors.push(`OpenAI (resolver, model=${model}) returned empty`);
+            const parsed = safeParseMCQs(c.choices[0]?.message?.content ?? '');
+            if (parsed.length) { logger.info('ai.chapter_mcqs', { provider: 'openai-resolver', chapter, count: parsed.length, model }); return parsed; }
+            errors.push(`OpenAI (resolver, model=${model}) returned empty/unparseable`);
           } else { errors.push('OpenAI: resolver returned no key'); }
         } catch (err) { errors.push(`OpenAI (resolver): ${err instanceof Error ? err.message : String(err)}`); }
       }
       if (openai) {
         try {
           const c = await openai.chat.completions.create({ model: 'gpt-4o-mini', messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 2048, response_format: { type: 'json_object' } });
-          const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
-          if (parsed.questions?.length) { logger.info('ai.chapter_mcqs', { provider: 'openai-env', chapter, count: parsed.questions.length }); return parsed.questions; }
-          errors.push('OpenAI (env) returned empty');
+          const parsed = safeParseMCQs(c.choices[0]?.message?.content ?? '');
+          if (parsed.length) { logger.info('ai.chapter_mcqs', { provider: 'openai-env', chapter, count: parsed.length }); return parsed; }
+          errors.push('OpenAI (env) returned empty/unparseable');
         } catch (err) { errors.push(`OpenAI (env): ${err instanceof Error ? err.message : String(err)}`); }
       }
 
@@ -1065,13 +1093,9 @@ End with: Important facts to remember for exam.`;
       try {
         const r = await callGemini({ prompt, generationConfig: { temperature: 0.7, maxOutputTokens: 2048 }, tier: 'flash' });
         if (r.ok) {
-          const rawText = r.text;
-          const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            const parsed = JSON.parse(jsonMatch[0]) as { questions: GeneratedMCQ[] };
-            if (parsed.questions?.length) { logger.info('ai.chapter_mcqs', { provider: 'gemini', chapter, count: parsed.questions.length, model: r.model }); return parsed.questions; }
-          }
-          errors.push('Gemini returned no parseable questions JSON');
+          const parsed = safeParseMCQs(r.text);
+          if (parsed.length) { logger.info('ai.chapter_mcqs', { provider: 'gemini', chapter, count: parsed.length, model: r.model }); return parsed; }
+          errors.push('Gemini returned unparseable response');
         } else {
           errors.push(`Gemini: ${('error' in r) ? r.error : 'call failed'}`);
         }
