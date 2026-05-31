@@ -328,7 +328,7 @@ export default function AdminUsersPage() {
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-muted-500 truncate">{u.email}</p>
+                  <p className="text-xs text-muted-500 truncate">{u.email}{u.phone ? ` · ${u.phone}` : ''}</p>
                 </div>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">

@@ -1,13 +1,141 @@
 {
-  "common": { "appName": "Nexigrate", "tagline": "भारतीय छात्रों के लिए AI-संचालित परीक्षा तैयारी", "loading": "लोड हो रहा है…", "error": "कुछ गलत हो गया", "retry": "पुनः प्रयास करें", "save": "सहेजें", "cancel": "रद्द करें", "next": "अगला", "back": "पीछे", "signOut": "साइन आउट", "credits": "क्रेडिट्स", "streak": "स्ट्रीक", "days": "दिन", "level": "स्तर", "passwordTooShort": "पासवर्ड में कम से कम 8 अक्षर होने चाहिए।", "passwordsDoNotMatch": "दोनों पासवर्ड मेल नहीं खा रहे।", "skipped": "छोड़ा गया", "yourAnswer": "आपका उत्तर", "correct": "सही उत्तर" },
-  "auth": { "signIn": "साइन इन", "signInWithGoogle": "Google से साइन इन करें", "signInSubtitle": "अपनी परीक्षा तैयारी यात्रा शुरू करें", "signingIn": "साइन इन हो रहा है…" },
-  "onboarding": { "step": "चरण {current} / {total}", "language": { "title": "अपनी भाषा चुनें", "subtitle": "आप इसे बाद में बदल सकते हैं", "english": "English", "hindi": "हिंदी" }, "profile": { "title": "अपने बारे में बताएं", "subtitle": "यह हमें आपके अनुभव को व्यक्तिगत बनाने में मदद करता है", "name": "पूरा नाम", "dob": "जन्म तिथि", "phone": "मोबाइल नंबर", "school": "स्कूल / कॉलेज", "aim": "आपका लक्ष्य क्या है?", "aimPlaceholder": "जैसे, IAS अधिकारी बनना..." }, "exam": { "title": "अपनी लक्ष्य परीक्षा चुनें", "subtitle": "हम इसके अनुसार आपकी अध्ययन योजना बनाएंगे" }, "assessment": { "title": "त्वरित मूल्यांकन", "subtitle": "आपके स्तर को समझने के लिए 3 चरणों में 23 प्रश्न", "description": "हम 3 चरणों में मूल्यांकन करेंगे — मूल ज्ञान (10), कठिनाई जांच (8), और कमजोर क्षेत्र (5)। अपना समय लें।", "startButton": "मूल्यांकन शुरू करें", "question": "प्रश्न {current} / {total}", "timeLeft": "{seconds} सेकंड", "submitting": "विश्लेषण हो रहा है…" }, "complete": { "title": "आप तैयार हैं!", "score": "आपने {score}/{total} अंक प्राप्त किए", "level": "आपका स्तर: {level}", "startLearning": "सीखना शुरू करें →", "beginner": "प्रारंभिक", "intermediate": "मध्यवर्ती", "advanced": "उन्नत" } },
-  "dashboard": { "greeting": { "morning": "सुप्रभात", "afternoon": "नमस्कार", "evening": "शुभ संध्या" }, "todaySlate": "आज की अध्ययन सूची", "tracking": "ट्रैकिंग", "study": "अध्ययन", "studyDesc": "अपना पाठ्यक्रम जारी रखें", "currentAffairs": "समसामयिक घटनाएं", "currentAffairsDesc": "आज का समाचार सारांश और प्रश्नोत्तरी", "nexiAI": "Nexi AI", "nexiAIDesc": "आपका व्यक्तिगत अध्ययन सहायक", "statsCredits": "क्रेडिट्स शेष", "statsStreak": "दैनिक स्ट्रीक", "statsLevel": "आपका स्तर", "earnMore": "प्रतिदिन अध्ययन करके और कमाएं", "startStreak": "स्ट्रीक शुरू करने के लिए आज प्रश्नोत्तरी दें", "best": "सर्वश्रेष्ठ: {days} दिन" },
-  "profile": { "title": "आपकी प्रोफ़ाइल", "editProfile": "प्रोफ़ाइल संपादित करें", "personalInfo": "व्यक्तिगत जानकारी", "academicInfo": "शैक्षणिक जानकारी", "accountInfo": "खाता जानकारी", "name": "नाम", "email": "ईमेल", "phone": "फ़ोन", "dob": "जन्म तिथि", "school": "स्कूल / कॉलेज", "aim": "आपका लक्ष्य", "targetExam": "लक्ष्य परीक्षा", "classLevel": "कक्षा", "board": "बोर्ड", "plan": "वर्तमान योजना", "level": "मूल्यांकन स्तर", "credits": "क्रेडिट्स", "memberSince": "सदस्यता तिथि", "saved": "प्रोफ़ाइल अपडेट हो गई" },
-  "plans": { "free": "मुफ़्त", "scholar": "स्कॉलर", "aspirant": "एस्पिरेंट", "achiever": "अचीवर" },
-  "errors": { "title": "कुछ गलत हो गया", "subtitle": "एक अनपेक्षित त्रुटि हुई। हमारी टीम को सूचित कर दिया गया है।", "tryAgain": "पुनः प्रयास करें", "goToDashboard": "डैशबोर्ड पर जाएं" },
-  "notFound": { "title": "पृष्ठ नहीं मिला", "subtitle": "आप जो पृष्ठ खोज रहे हैं वह मौजूद नहीं है।", "backToDashboard": "← डैशबोर्ड पर वापस जाएं" },
-  "offline": { "title": "आप ऑफ़लाइन हैं", "subtitle": "इंटरनेट कनेक्शन के बिना कुछ सामग्री उपलब्ध नहीं हो सकती। कृपया अपना नेटवर्क जाँचें और पुनः प्रयास करें।", "goToDashboard": "डैशबोर्ड पर जाएं", "retry": "कनेक्शन पुनः प्रयास करें" },
+  "common": {
+    "appName": "Nexigrate",
+    "tagline": "भारतीय छात्रों के लिए AI-संचालित परीक्षा तैयारी",
+    "loading": "लोड हो रहा है…",
+    "error": "कुछ गलत हो गया",
+    "retry": "पुनः प्रयास करें",
+    "save": "सहेजें",
+    "cancel": "रद्द करें",
+    "next": "अगला",
+    "back": "पीछे",
+    "signOut": "साइन आउट",
+    "credits": "क्रेडिट्स",
+    "streak": "स्ट्रीक",
+    "days": "दिन",
+    "level": "स्तर",
+    "passwordTooShort": "पासवर्ड में कम से कम 8 अक्षर होने चाहिए।",
+    "passwordsDoNotMatch": "दोनों पासवर्ड मेल नहीं खा रहे।",
+    "skipped": "छोड़ा गया",
+    "yourAnswer": "आपका उत्तर",
+    "correct": "सही उत्तर",
+    "plan": "प्लान",
+    "expires": "समाप्ति"
+  },
+  "auth": {
+    "signIn": "साइन इन",
+    "signInWithGoogle": "Google से साइन इन करें",
+    "signInSubtitle": "अपनी परीक्षा तैयारी यात्रा शुरू करें",
+    "signingIn": "साइन इन हो रहा है…"
+  },
+  "onboarding": {
+    "step": "चरण {current} / {total}",
+    "language": {
+      "title": "अपनी भाषा चुनें",
+      "subtitle": "आप इसे बाद में बदल सकते हैं",
+      "english": "English",
+      "hindi": "हिंदी"
+    },
+    "profile": {
+      "title": "अपने बारे में बताएं",
+      "subtitle": "यह हमें आपके अनुभव को व्यक्तिगत बनाने में मदद करता है",
+      "name": "पूरा नाम",
+      "dob": "जन्म तिथि",
+      "phone": "मोबाइल नंबर",
+      "school": "स्कूल / कॉलेज",
+      "aim": "आपका लक्ष्य क्या है?",
+      "aimPlaceholder": "जैसे, IAS अधिकारी बनना..."
+    },
+    "exam": {
+      "title": "अपनी लक्ष्य परीक्षा चुनें",
+      "subtitle": "हम इसके अनुसार आपकी अध्ययन योजना बनाएंगे"
+    },
+    "assessment": {
+      "title": "त्वरित मूल्यांकन",
+      "subtitle": "आपके स्तर को समझने के लिए 3 चरणों में 23 प्रश्न",
+      "description": "हम 3 चरणों में मूल्यांकन करेंगे — मूल ज्ञान (10), कठिनाई जांच (8), और कमजोर क्षेत्र (5)। अपना समय लें।",
+      "startButton": "मूल्यांकन शुरू करें",
+      "question": "प्रश्न {current} / {total}",
+      "timeLeft": "{seconds} सेकंड",
+      "submitting": "विश्लेषण हो रहा है…"
+    },
+    "complete": {
+      "title": "आप तैयार हैं!",
+      "score": "आपने {score}/{total} अंक प्राप्त किए",
+      "level": "आपका स्तर: {level}",
+      "startLearning": "सीखना शुरू करें →",
+      "beginner": "प्रारंभिक",
+      "intermediate": "मध्यवर्ती",
+      "advanced": "उन्नत"
+    }
+  },
+  "dashboard": {
+    "greeting": {
+      "morning": "सुप्रभात",
+      "afternoon": "नमस्कार",
+      "evening": "शुभ संध्या"
+    },
+    "todaySlate": "आज की अध्ययन सूची",
+    "tracking": "ट्रैकिंग",
+    "study": "अध्ययन",
+    "studyDesc": "अपना पाठ्यक्रम जारी रखें",
+    "currentAffairs": "समसामयिक घटनाएं",
+    "currentAffairsDesc": "आज का समाचार सारांश और प्रश्नोत्तरी",
+    "nexiAI": "Nexi AI",
+    "nexiAIDesc": "आपका व्यक्तिगत अध्ययन सहायक",
+    "statsCredits": "क्रेडिट्स शेष",
+    "statsStreak": "दैनिक स्ट्रीक",
+    "statsLevel": "आपका स्तर",
+    "earnMore": "प्रतिदिन अध्ययन करके और कमाएं",
+    "startStreak": "स्ट्रीक शुरू करने के लिए आज प्रश्नोत्तरी दें",
+    "best": "सर्वश्रेष्ठ: {days} दिन",
+    "freePlan": "फ्री प्लान",
+    "upgrade": "अपग्रेड"
+  },
+  "profile": {
+    "title": "आपकी प्रोफ़ाइल",
+    "editProfile": "प्रोफ़ाइल संपादित करें",
+    "personalInfo": "व्यक्तिगत जानकारी",
+    "academicInfo": "शैक्षणिक जानकारी",
+    "accountInfo": "खाता जानकारी",
+    "name": "नाम",
+    "email": "ईमेल",
+    "phone": "फ़ोन",
+    "dob": "जन्म तिथि",
+    "school": "स्कूल / कॉलेज",
+    "aim": "आपका लक्ष्य",
+    "targetExam": "लक्ष्य परीक्षा",
+    "classLevel": "कक्षा",
+    "board": "बोर्ड",
+    "plan": "वर्तमान योजना",
+    "level": "मूल्यांकन स्तर",
+    "credits": "क्रेडिट्स",
+    "memberSince": "सदस्यता तिथि",
+    "saved": "प्रोफ़ाइल अपडेट हो गई"
+  },
+  "plans": {
+    "free": "मुफ़्त",
+    "scholar": "स्कॉलर",
+    "aspirant": "एस्पिरेंट",
+    "achiever": "अचीवर"
+  },
+  "errors": {
+    "title": "कुछ गलत हो गया",
+    "subtitle": "एक अनपेक्षित त्रुटि हुई। हमारी टीम को सूचित कर दिया गया है।",
+    "tryAgain": "पुनः प्रयास करें",
+    "goToDashboard": "डैशबोर्ड पर जाएं"
+  },
+  "notFound": {
+    "title": "पृष्ठ नहीं मिला",
+    "subtitle": "आप जो पृष्ठ खोज रहे हैं वह मौजूद नहीं है।",
+    "backToDashboard": "← डैशबोर्ड पर वापस जाएं"
+  },
+  "offline": {
+    "title": "आप ऑफ़लाइन हैं",
+    "subtitle": "इंटरनेट कनेक्शन के बिना कुछ सामग्री उपलब्ध नहीं हो सकती। कृपया अपना नेटवर्क जाँचें और पुनः प्रयास करें।",
+    "goToDashboard": "डैशबोर्ड पर जाएं",
+    "retry": "कनेक्शन पुनः प्रयास करें"
+  },
   "loader": {
     "chapter": [
       "📖 आपका अध्याय AI से तैयार हो रहा है...",

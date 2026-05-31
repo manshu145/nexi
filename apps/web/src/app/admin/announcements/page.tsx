@@ -55,6 +55,7 @@ export default function AdminAnnouncementsPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [preview, setPreview] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) router.replace('/admin/login');
@@ -293,9 +294,20 @@ export default function AdminAnnouncementsPage() {
               </select>
             </div>
           </div>
-          <button onClick={handleCreate} disabled={creating || !form.title.trim() || !form.body.trim()} className="btn-primary w-full">
-            {creating ? 'Saving...' : editingId ? 'Update Announcement' : 'Send Announcement'}
-          </button>
+          <div className="flex gap-3">
+            <button onClick={handleCreate} disabled={creating || !form.title.trim() || !form.body.trim()} className="btn-primary flex-1">
+              {creating ? 'Saving...' : editingId ? 'Update Announcement' : 'Send Announcement'}
+            </button>
+            {form.title.trim() && (
+              <button
+                type="button"
+                onClick={() => setPreview(true)}
+                className="rounded-lg border border-ember-500/40 bg-ember-500/5 px-4 py-2 text-sm font-medium text-ember-600 hover:bg-ember-500/10"
+              >
+                👁 Preview
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -376,6 +388,40 @@ export default function AdminAnnouncementsPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Preview modal */}
+      {preview && form.title.trim() && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center px-4" onClick={() => setPreview(false)}>
+          <div className="absolute inset-0 bg-ink-950/60 backdrop-blur-sm" />
+          <div className="relative w-full max-w-[420px] rounded-2xl border border-ember-500/50 bg-paper-50 dark:bg-paper-900 p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <button onClick={() => setPreview(false)} className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full text-muted-500 hover:bg-paper-200 hover:text-ink-900 transition-colors">✕</button>
+            <p className="text-[10px] uppercase tracking-wider text-muted-400 mb-2">Preview — {form.type}</p>
+            {form.type === 'banner' || form.type === 'all' ? (
+              <div className="rounded-lg bg-ember-500 text-paper-50 px-4 py-2 mb-3">
+                <p className="text-sm font-bold">{form.title}</p>
+                <p className="text-xs text-paper-50/80 mt-0.5">{form.body}</p>
+              </div>
+            ) : null}
+            {form.type === 'modal' || form.type === 'all' ? (
+              <div className="rounded-xl border border-line-200 dark:border-line-700 p-4">
+                <h3 className="font-serif text-lg font-bold text-ink-900 dark:text-ink-100">{form.title}</h3>
+                <p className="mt-2 text-sm text-ink-800 dark:text-ink-200">{form.body}</p>
+                <div className="mt-3 h-1 w-full rounded-full bg-paper-300 dark:bg-paper-700">
+                  <div className="h-full w-[70%] rounded-full bg-ember-500" />
+                </div>
+                <p className="mt-1 text-[10px] text-muted-400">Closing in 7 seconds...</p>
+              </div>
+            ) : null}
+            {showHindi && form.titleHi && (
+              <div className="mt-3 rounded-lg border border-line-200 dark:border-line-700 p-3" lang="hi">
+                <p className="text-[10px] uppercase tracking-wider text-muted-400 mb-1">Hindi version</p>
+                <p className="text-sm font-bold text-ink-900 dark:text-ink-100">{form.titleHi}</p>
+                <p className="text-xs text-ink-700 dark:text-ink-300 mt-1">{form.bodyHi}</p>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

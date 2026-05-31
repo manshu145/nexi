@@ -115,10 +115,18 @@ export default function KindleReaderPage() {
     finally { setUnlocking(false); setPageLoading(false); }
   };
 
-  /** Play a realistic paper page-turn sound using Web Audio API */
+  /** Play a realistic paper page-turn sound using Web Audio API.
+   * PR-41: memoize AudioContext to avoid creating 30+ contexts in a
+   * long chapter (each takes ~50ms on iOS Safari). */
+  const audioCtxRef = useRef<AudioContext | null>(null);
   const playPageTurnSound = useCallback(() => {
     try {
-      const ctx = new AudioContext();
+      if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+        audioCtxRef.current = new AudioContext();
+      }
+      const ctx = audioCtxRef.current;
+      // Resume if suspended (iOS requires user gesture first)
+      if (ctx.state === 'suspended') ctx.resume();
       const sampleRate = ctx.sampleRate;
       const duration = 0.25; // 250ms for a natural page flip
       const buffer = ctx.createBuffer(1, sampleRate * duration, sampleRate);
@@ -162,9 +170,6 @@ export default function KindleReaderPage() {
       lpFilter.connect(gain);
       gain.connect(ctx.destination);
       source.start();
-
-      // Cleanup
-      source.onended = () => { ctx.close().catch(() => {}); };
     } catch { /* AudioContext not available, silently skip */ }
   }, []);
 
@@ -325,6 +330,19 @@ export default function KindleReaderPage() {
 
   const renderMermaidToSvg = async (mermaidStr: string) => {
     try {
+      // PR-41: sanitize the AI-generated mermaid code before rendering.
+      // Common issues: extra backticks from markdown fencing, leading
+      // whitespace, or "mermaid" language tag included in the code.
+      let cleaned = mermaidStr.trim();
+      // Strip markdown fencing if AI included it
+      if (cleaned.startsWith('```')) {
+        cleaned = cleaned.replace(/^```(?:mermaid)?\n?/, '').replace(/\n?```$/, '');
+      }
+      // Strip leading "mermaid" text if present
+      if (cleaned.toLowerCase().startsWith('mermaid\n')) {
+        cleaned = cleaned.slice(8);
+      }
+
       const mermaidLib = await import('mermaid');
       mermaidLib.default.initialize({
         startOnLoad: false,
@@ -333,11 +351,19 @@ export default function KindleReaderPage() {
         flowchart: { curve: 'basis', padding: 16 },
         securityLevel: 'loose',
       });
-      const { svg } = await mermaidLib.default.render('mermaid-viz-' + Date.now(), mermaidStr);
+
+      // Validate syntax first before rendering
+      const valid = await mermaidLib.default.parse(cleaned, { suppressErrors: true }).catch(() => false);
+      if (!valid) {
+        setVizSvgHtml(`<div style="background:var(--color-paper-100);border:1px solid var(--color-ember-500);border-radius:12px;padding:20px;text-align:center"><p style="font-size:14px;color:var(--color-ink-900);font-weight:600;margin-bottom:8px">⚠️ Diagram generation failed</p><p style="font-size:12px;color:var(--color-muted-500)">The AI generated invalid diagram syntax. Try visualizing again — it often works on the second attempt.</p></div>`);
+        return;
+      }
+
+      const { svg } = await mermaidLib.default.render('mermaid-viz-' + Date.now(), cleaned);
       setVizSvgHtml(svg);
     } catch {
-      // Mermaid parse failed — show raw code
-      setVizSvgHtml(`<div style="background:var(--color-paper-100);border:1px solid var(--color-paper-300);border-radius:8px;padding:16px;font-family:monospace;font-size:12px;white-space:pre-wrap;color:var(--color-ink-900);max-height:400px;overflow:auto"><p style="color:var(--color-muted-500);margin-bottom:8px;font-family:Inter,sans-serif;font-size:13px">Diagram code (render failed):</p>${escapeHtml(mermaidStr)}</div>`);
+      // Mermaid parse failed — show friendly retry message instead of raw code
+      setVizSvgHtml(`<div style="background:var(--color-paper-100);border:1px solid var(--color-ember-500);border-radius:12px;padding:20px;text-align:center"><p style="font-size:14px;color:var(--color-ink-900);font-weight:600;margin-bottom:8px">⚠️ Diagram rendering failed</p><p style="font-size:12px;color:var(--color-muted-500)">Close and try again. Tip: select a shorter text passage for better results.</p></div>`);
     }
   };
 
@@ -467,6 +493,8 @@ export default function KindleReaderPage() {
       setShowSimplified(!showSimplified);
       return;
     }
+    // PR-41: warn user this costs credits before calling AI
+    if (!window.confirm(getLanguage() === 'hi' ? 'इससे 1 AI क्रेडिट खर्च होगा। जारी रखें?' : 'This will use 1 AI credit. Continue?')) return;
     setSimplifying(true);
     try {
       const lang = getLanguage();
