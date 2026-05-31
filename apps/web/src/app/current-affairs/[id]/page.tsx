@@ -260,8 +260,8 @@ export default function CurrentAffairsDetailPage() {
         This content is an AI-generated summary for educational purposes under fair use (Section 52, Indian Copyright Act 1957). Original sources are attributed above. For DMCA/takedown requests, contact <a href="mailto:legal@nexigrate.com" className="underline">legal@nexigrate.com</a>.
       </p>
 
-      {/* Fixed bottom action bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-paper-200 bg-paper-50/95 backdrop-blur-md safe-bottom">
+      {/* Fixed bottom action bar — sits above BottomNav */}
+      <div className="fixed bottom-[calc(3.5rem+env(safe-area-inset-bottom))] left-0 right-0 z-30 border-t border-paper-200 bg-paper-50/95 backdrop-blur-md">
         <div className="mx-auto max-w-2xl flex items-center justify-around py-3 px-4">
           <button onClick={handleLike} className="flex flex-col items-center gap-0.5 transition-transform active:scale-90">
             <span className={`text-2xl transition-all ${liked ? 'scale-110' : ''}`}>{liked ? '❤️' : '🤍'}</span>

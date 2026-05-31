@@ -12,18 +12,15 @@ const NAV_ITEMS = [
 // PR-34a: hide the bottom nav on screens that own their own bottom-anchored
 // chrome and would otherwise be visually clobbered by a fixed nav at z-[100].
 //   - /chat: textarea + send button live at the bottom of `flex h-dvh`
-//   - /current-affairs: the reels page has its own fixed quiz bar at the
-//     bottom. Sub-routes like /current-affairs/<id> also have their own
-//     fixed action bars (PR-33). The quiz page has its own chrome too.
 //   - /study/<subject>/<chapter>(/quiz): the kindle-toolbar is the nav
 //     surface for that screen. The /study subject list keeps the nav.
-const HIDDEN_PATHS = ['/admin', '/onboarding', '/signin', '/verify-phone', '/chat', '/current-affairs'];
+const HIDDEN_PATHS = ['/admin', '/onboarding', '/signin', '/verify-phone', '/chat'];
 
 export function BottomNav() {
   const pathname = usePathname();
   const router = useRouter();
 
-  // Hide on admin/onboarding/signin/chat/current-affairs
+  // Hide on admin/onboarding/signin/chat
   if (HIDDEN_PATHS.some(p => pathname === p || pathname.startsWith(p + '/'))) return null;
 
   // Study chapter reader and its quiz manage their own bottom toolbar.

@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import Script from 'next/script';
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale, getMessages } from 'next-intl/server';
 import { Providers } from '~/components/providers';
@@ -32,6 +33,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const messages = await getMessages();
   return (
     <html lang={locale} suppressHydrationWarning>
+      <head>
+        {/* Google Analytics */}
+        <Script src="https://www.googletagmanager.com/gtag/js?id=G-HZEF3PG0QY" strategy="afterInteractive" />
+        <Script id="gtag-init" strategy="afterInteractive">
+          {`window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-HZEF3PG0QY');`}
+        </Script>
+      </head>
       <body>
         <NextIntlClientProvider messages={messages}>
           <Providers>
