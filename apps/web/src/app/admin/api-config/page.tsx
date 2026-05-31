@@ -80,6 +80,20 @@ export default function AdminAIProvidersPage() {
         runtime auto-resolver handles model fallback automatically — pinning
         is for cost / compliance overrides only.
       </p>
+      {/*
+       * PR-36 reassurance: the founder rotated keys via this admin panel
+       * and asked "kya ye actually used ho raha hai?". Yes — AIProviderStore
+       * (PR-29) is the runtime source of truth; the env var is only a
+       * fallback when the admin doc is empty. This banner makes that
+       * explicit so future-them doesn't have to re-investigate.
+       */}
+      <div className="mt-3 rounded-lg border border-line bg-paper-100 px-3 py-2 text-xs text-muted-500">
+        <span className="font-medium text-ink-800">How keys are used:</span>{' '}
+        Keys saved here are read at runtime by every AI call (chapter
+        generation, chat, blog drafts, current-affairs ingestion). The
+        environment variables in GitHub are now <strong>fallback only</strong> —
+        they're used only when no key is configured here.
+      </div>
 
       <div className="mt-6 space-y-4">
         {providers.map(p => (
@@ -115,13 +129,18 @@ function ProviderCard({ provider, onChange }: ProviderCardProps) {
   const [showBlacklist, setShowBlacklist] = useState(false);
 
   // Reset draft state when provider data changes (after a refresh).
+  // PR-36: ALSO reset testResult here so a stale "✗ failed" strip from a
+  // previous test doesn't linger after the admin pastes a fresh key
+  // and saves. The PR-35 backend fix clears `lastValidationError` on
+  // success — this clears the corresponding client-side strip.
   useEffect(() => {
     setPinnedDraft(provider.pinnedModel ?? '');
     setEnabledDraft(provider.enabled);
     setEditing(false);
     setDraftKey('');
     setRevealed(false);
-  }, [provider.id, provider.lastValidatedAt, provider.knownGoodAt, provider.pinnedModel, provider.enabled]);
+    setTestResult(null);
+  }, [provider.id, provider.lastValidatedAt, provider.knownGoodAt, provider.pinnedModel, provider.enabled, provider.lastValidationError]);
 
   const handleSaveKey = async () => {
     if (!draftKey.trim()) return;
@@ -131,6 +150,9 @@ function ProviderCard({ provider, onChange }: ProviderCardProps) {
       toast.success(`${provider.label} key saved`);
       setEditing(false);
       setDraftKey('');
+      // PR-36: clear any stale Test Connection result strip — the new
+      // key invalidates whatever the previous test said.
+      setTestResult(null);
       await onChange();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Save failed';

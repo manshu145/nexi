@@ -25,9 +25,11 @@ interface Announcement {
 export function AnnouncementPopup({
   announcements,
   onDismiss,
+  isHindi = false,
 }: {
   announcements: Announcement[];
   onDismiss: (id: string) => void;
+  isHindi?: boolean;
 }) {
   const [visible, setVisible] = useState(false);
   const [current, setCurrent] = useState<Announcement | null>(null);
@@ -71,7 +73,7 @@ export function AnnouncementPopup({
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center px-4" onClick={handleClose}>
       <div className="absolute inset-0 bg-ink-950/60 backdrop-blur-sm" />
-      <div className="relative w-full max-w-[380px] rounded-2xl border border-ember-500/50 bg-paper-50 p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+      <div className="relative w-full max-w-[380px] rounded-2xl border border-ember-500/50 bg-paper-50 p-6 shadow-2xl" onClick={e => e.stopPropagation()} lang={isHindi ? 'hi' : 'en'}>
         {/* Close button */}
         <button onClick={handleClose} className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full text-muted-500 hover:bg-paper-200 hover:text-ink-900 transition-colors">✕</button>
 
@@ -82,7 +84,9 @@ export function AnnouncementPopup({
 
         {/* Countdown */}
         <div className="mt-5">
-          <p className="text-[10px] text-muted-500 mb-1">Closing in {countdown} seconds...</p>
+          <p className="text-[10px] text-muted-500 mb-1">
+            {isHindi ? `${countdown} सेकंड में बंद होगा...` : `Closing in ${countdown} seconds...`}
+          </p>
           <div className="h-1 w-full overflow-hidden rounded-full bg-paper-300">
             <div className="h-full rounded-full bg-ember-500 transition-all duration-1000 ease-linear" style={{ width: `${(countdown / 10) * 100}%` }} />
           </div>

@@ -1,10 +1,22 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '~/lib/auth-context';
+import { useUser } from '~/lib/userStore';
 import { getFirebaseAuthClient } from '~/lib/firebase';
 import { AnnouncementPopup } from './AnnouncementPopup';
 
-interface Announcement {
+interface RawAnnouncement {
+  id: string;
+  title: string;
+  body: string;
+  /** PR-36: optional Hindi translations preferred when user.language === 'hi'. */
+  titleHi?: string;
+  bodyHi?: string;
+  type: 'banner' | 'modal' | 'email' | 'all';
+  date?: string;
+}
+
+interface RenderedAnnouncement {
   id: string;
   title: string;
   body: string;
@@ -17,31 +29,25 @@ const API = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com';
 /**
  * Announcement renderer — single auth-aware fetch, two surfaces.
  *
- * PR-34a unification:
- *   Pre-PR-34a there were two roots — this banner (auth-aware, banner-only)
- *   AND `<AnnouncementWrapper />` (no auth, modal-only). The wrapper fired
- *   /v1/announcements without a Firebase token, returning 401 on every page
- *   load and a wasted fetch. We folded the popup logic into this component
- *   so we keep the auth-aware fetch + dismissal-key state in one place.
+ * PR-34a unified the two announcement systems (banner + popup). PR-36
+ * adds Hindi-language preference: if the logged-in user's language is
+ * 'hi' and the announcement has titleHi/bodyHi set, those are shown
+ * instead of the English fields. Otherwise the English fields are
+ * always the safe fallback so a half-translated set never blanks out.
  *
- *   Routing rules (server-set `type` field):
+ * Routing rules (server-set `type` field):
  *     - 'banner'           → banner UI at fixed top-0
  *     - 'modal'            → AnnouncementPopup (centred dialog with countdown)
  *     - 'all'              → both surfaces
  *     - 'email' / unknown  → not rendered client-side
  *
- *   Dismissal key is `dismissedAnnouncements` (camelCase plural) — kept as
- *   the canonical storage key used by both surfaces. The legacy
- *   `'dismissed-announcements'` key (kebab-singular) was retired here too
- *   so a single dismiss propagates across banner + popup.
- *
- *   When the banner is visible we render an in-flow spacer of the same
- *   height immediately after the fixed div so page content naturally
- *   pushes down — no measured CSS variable required.
+ * Dismissal key is `dismissedAnnouncements` (camelCase plural) — single
+ * source of truth across banner + popup.
  */
 export function AnnouncementBanner() {
   const { user } = useAuth();
-  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const { user: me } = useUser();
+  const [announcements, setAnnouncements] = useState<RawAnnouncement[]>([]);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -62,7 +68,7 @@ export function AnnouncementBanner() {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (res.ok) {
-          const data = await res.json() as { announcements: Announcement[] };
+          const data = await res.json() as { announcements: RawAnnouncement[] };
           setAnnouncements(data.announcements);
         }
       } catch { /* silent */ }
@@ -78,11 +84,30 @@ export function AnnouncementBanner() {
     } catch { /* silent */ }
   };
 
+  // PR-36: language-aware rendering. Resolve display title/body once
+  // upfront so each surface (banner, popup) sees the same shape.
+  const isHindi = me?.language === 'hi';
+  const rendered: RenderedAnnouncement[] = useMemo(
+    () =>
+      announcements.map(a => ({
+        id: a.id,
+        type: a.type,
+        date: a.date,
+        // Prefer the Hindi version IFF user language = hi AND the field
+        // is present. If only one of titleHi/bodyHi is filled, the missing
+        // one falls back to its English counterpart so we never render a
+        // blank line.
+        title: isHindi && a.titleHi ? a.titleHi : a.title,
+        body: isHindi && a.bodyHi ? a.bodyHi : a.body,
+      })),
+    [announcements, isHindi],
+  );
+
   // Filter into banner vs modal surfaces. 'all' → goes to both.
-  const bannerAnnouncements = announcements.filter(a =>
+  const bannerAnnouncements = rendered.filter(a =>
     !dismissed.has(a.id) && (a.type === 'banner' || a.type === 'all'),
   );
-  const modalAnnouncements = announcements.filter(a =>
+  const modalAnnouncements = rendered.filter(a =>
     !dismissed.has(a.id) && (a.type === 'modal' || a.type === 'all'),
   );
 
@@ -97,7 +122,7 @@ export function AnnouncementBanner() {
             <div className="w-full bg-ember-500 text-paper-50">
               <div className="mx-auto max-w-5xl px-3 py-2 sm:px-4 sm:py-2.5 flex items-center justify-between gap-2">
                 {/* Content: title always visible, body on sm+ */}
-                <div className="flex-1 min-w-0">
+                <div className="flex-1 min-w-0" lang={isHindi ? 'hi' : 'en'}>
                   <p className="text-xs sm:text-sm font-medium truncate sm:whitespace-normal">
                     <span className="font-bold">{visibleBanner.title}</span>
                     <span className="hidden sm:inline"> — {visibleBanner.body}</span>
@@ -128,6 +153,7 @@ export function AnnouncementBanner() {
         <AnnouncementPopup
           announcements={modalAnnouncements}
           onDismiss={handleDismiss}
+          isHindi={isHindi}
         />
       )}
     </>

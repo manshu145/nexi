@@ -96,6 +96,7 @@ export default function MockTestsPage() {
   const tc = useTranslations('common');
   const [attempts, setAttempts] = useState<AttemptListItem[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   // Start-flow state machine: 'idle' → 'starting' → 'error' (or success
@@ -116,8 +117,15 @@ export default function MockTestsPage() {
       try {
         const res = await api.getMockTestHistory();
         setAttempts(res.attempts);
-      } catch {
-        // history call failures are non-fatal — show empty list, the start path still works
+        setHistoryError(null);
+      } catch (err) {
+        // PR-36: founder reported "Past attempts nhi dikha raha hai".
+        // Pre-PR-36 we silently swallowed errors and rendered an empty
+        // list — indistinguishable from a genuinely-empty history. Now
+        // we surface the failure so the founder can tell whether it's
+        // "no data" vs "fetch broken".
+        const msg = err instanceof Error ? err.message : 'Could not load past attempts';
+        setHistoryError(msg);
         setAttempts([]);
       } finally {
         setLoadingHistory(false);
@@ -303,7 +311,32 @@ export default function MockTestsPage() {
       {/* History */}
       <section className="mx-auto max-w-2xl">
         <h2 className="mb-3 px-1 text-xs font-semibold uppercase tracking-wider text-muted-500">Past attempts</h2>
-        {attempts.length === 0 ? (
+        {historyError ? (
+          <div role="alert" className="paper-card border border-ember-500/40 p-5">
+            <p className="text-sm font-medium text-ink-900">Could not load your past attempts</p>
+            <p className="mt-1 text-xs text-muted-500">{historyError}</p>
+            <button
+              type="button"
+              onClick={() => {
+                setHistoryError(null);
+                setLoadingHistory(true);
+                void (async () => {
+                  try {
+                    const res = await api.getMockTestHistory();
+                    setAttempts(res.attempts);
+                  } catch (err) {
+                    setHistoryError(err instanceof Error ? err.message : 'Retry failed');
+                  } finally {
+                    setLoadingHistory(false);
+                  }
+                })();
+              }}
+              className="btn-ghost-sm mt-3"
+            >
+              Retry
+            </button>
+          </div>
+        ) : attempts.length === 0 ? (
           <div className="paper-card p-8 text-center">
             <p className="text-sm text-muted-500">No attempts yet. Start your first mock test above to see your progress here.</p>
           </div>
