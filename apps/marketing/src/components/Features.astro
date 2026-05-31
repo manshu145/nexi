@@ -1,0 +1,128 @@
+---
+/**
+ * Features section — reflects what's actually built and live on the platform.
+ * Features marked "coming soon" are in development.
+ */
+const features = [
+  {
+    title: 'AI Study Plan',
+    description: 'Personalized study plan generated from onboarding assessment. AI adapts to your level.',
+    icon: '📝',
+    link: 'https://app.nexigrate.com/study',
+    live: true,
+  },
+  {
+    title: 'Kindle-Style Chapters',
+    description: 'Page-by-page reading with drop caps, serif typography, page flip animation, and saved position.',
+    icon: '📖',
+    link: 'https://app.nexigrate.com/study',
+    live: true,
+  },
+  {
+    title: 'Text-to-Speech',
+    description: 'Listen to chapters in Hindi & English. Natural voice with speed control.',
+    icon: '🔊',
+    link: 'https://app.nexigrate.com/study',
+    live: true,
+  },
+  {
+    title: 'Current Affairs',
+    description: 'Daily digest from 19+ official sources (PIB, RBI, etc). Updated every 4 hours. AI fact-checked.',
+    icon: '📰',
+    link: 'https://app.nexigrate.com/current-affairs',
+    live: true,
+  },
+  {
+    title: 'Daily Quiz',
+    description: 'Current affairs quiz with leaderboard. Test your knowledge every day and earn credits.',
+    icon: '🏆',
+    link: 'https://app.nexigrate.com/current-affairs/quiz',
+    live: true,
+  },
+  {
+    title: 'Nexi AI Chatbot',
+    description: 'Ask doubts, get explanations, request diagrams. Powered by GPT-4o, Groq & Gemini.',
+    icon: '🤖',
+    link: 'https://app.nexigrate.com/chat',
+    live: true,
+  },
+  {
+    title: 'AI Visualization',
+    description: 'Generate mind maps and diagrams from any topic. Mermaid diagrams + AI-generated images.',
+    icon: '🗺️',
+    link: 'https://app.nexigrate.com/chat',
+    live: true,
+  },
+  {
+    title: 'Progress Tracking',
+    description: 'Chapter unlock system with quiz scores. Track streaks, credits, and mastery level.',
+    icon: '📊',
+    link: 'https://app.nexigrate.com/dashboard',
+    live: true,
+  },
+  {
+    title: 'Credits System',
+    description: 'Earn credits by studying, passing quizzes, and daily logins. Spend on premium AI features.',
+    icon: '💎',
+    link: 'https://app.nexigrate.com/dashboard',
+    live: true,
+  },
+  {
+    title: 'Refer & Earn',
+    description: 'Earn 50 credits for each friend who joins and completes onboarding.',
+    icon: '🤝',
+    link: 'https://app.nexigrate.com/profile#referral',
+    live: true,
+  },
+  {
+    title: 'Essay & Answer Grading',
+    description: 'Write long-form answers. AI grades on rubric axes with detailed feedback.',
+    icon: '✍️',
+    link: 'https://app.nexigrate.com/essay',
+    live: true,
+  },
+  {
+    title: 'WhatsApp Notifications',
+    description: 'Daily study reminders and quiz results delivered to your WhatsApp.',
+    icon: '💬',
+    link: '#',
+    live: false,
+  },
+];
+---
+
+<section id="features" class="py-20 bg-paper-50/50 reveal-on-scroll">
+  <div class="mx-auto max-w-6xl px-5">
+    <p class="text-center text-xs font-semibold uppercase tracking-[0.2em] text-ember-600">
+      Everything you need
+    </p>
+    <h2 class="mt-3 text-center font-serif text-3xl font-semibold text-ink-900 sm:text-4xl">
+      One platform. Every exam.
+    </h2>
+    <p class="mt-4 mx-auto max-w-xl text-center text-base text-muted-500">
+      From Class 5 to UPSC — AI-generated, 3-layer AI verified, NCERT-grounded content delivered fresh daily.
+    </p>
+
+    <div class="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      {features.map((f) => (
+        <a
+          href={f.link}
+          class={`group paper-card p-6 transition-transform hover:-translate-y-1 relative min-h-[180px] flex flex-col ${!f.live ? 'opacity-70' : ''}`}
+        >
+          {!f.live && (
+            <span class="absolute top-3 right-3 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-paper-300 text-muted-500">
+              Coming Soon
+            </span>
+          )}
+          <span class="text-2xl">{f.icon}</span>
+          <h3 class="mt-3 font-serif text-lg font-semibold text-ink-900 group-hover:text-ember-600 transition-colors">
+            {f.title}
+          </h3>
+          <p class="mt-2 text-sm text-muted-500 leading-relaxed">
+            {f.description}
+          </p>
+        </a>
+      ))}
+    </div>
+  </div>
+</section>

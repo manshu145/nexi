@@ -4,18 +4,78 @@ import Logo from './Logo.astro';
 
 <header class="sticky top-0 z-40 backdrop-blur-md bg-paper-100/80 border-b border-line">
   <div class="mx-auto flex max-w-6xl items-center justify-between px-5 py-4">
-    <Logo />
+    <Logo height={40} />
 
     <nav class="hidden items-center gap-7 md:flex" aria-label="Primary">
-      <a href="/#why" class="text-sm font-medium text-ink-800 hover:text-ember-600 transition">Why Nexigrate</a>
+      <a href="/#features" class="text-sm font-medium text-ink-800 hover:text-ember-600 transition">Features</a>
       <a href="/#exams" class="text-sm font-medium text-ink-800 hover:text-ember-600 transition">Exams</a>
       <a href="/#how" class="text-sm font-medium text-ink-800 hover:text-ember-600 transition">How it works</a>
       <a href="/pricing" class="text-sm font-medium text-ink-800 hover:text-ember-600 transition">Pricing</a>
+      <a href="/blog" class="text-sm font-medium text-ink-800 hover:text-ember-600 transition">Blog</a>
       <a href="/#faq" class="text-sm font-medium text-ink-800 hover:text-ember-600 transition">FAQ</a>
     </nav>
 
-    <a href="/#waitlist" class="btn-primary text-sm">
-      Get early access
-    </a>
+    <div class="flex items-center gap-3">
+      <!-- Dark mode toggle -->
+      <button id="theme-toggle" class="p-2 rounded-full text-ink-800 hover:bg-paper-200 transition" aria-label="Toggle dark mode">
+        <svg id="theme-icon-light" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="hidden"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+        <svg id="theme-icon-dark" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="hidden"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+      <!-- Desktop only: Sign in -->
+      <a href="https://app.nexigrate.com/signin" class="hidden md:inline-flex btn-primary !text-sm !py-2 !px-4">Sign in</a>
+      <!-- Mobile: only hamburger -->
+      <button id="mobile-menu-btn" class="md:hidden p-2 text-ink-800" aria-label="Menu" aria-expanded="false">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Mobile menu backdrop -->
+  <div id="mobile-menu-backdrop" class="hidden fixed inset-0 z-40 bg-black/50" aria-hidden="true"></div>
+
+  <!-- Mobile dropdown menu -->
+  <div id="mobile-menu" class="hidden md:hidden fixed inset-x-4 top-16 z-50 paper-card p-4 shadow-lg animate-in max-h-[70vh] overflow-y-auto" role="navigation" aria-label="Mobile navigation">
+    <nav class="flex flex-col gap-1">
+      <a href="/#features" class="mobile-nav-link">Features</a>
+      <a href="/#exams" class="mobile-nav-link">Exams</a>
+      <a href="/#how" class="mobile-nav-link">How it works</a>
+      <a href="/pricing" class="mobile-nav-link">Pricing</a>
+      <a href="/blog" class="mobile-nav-link">Blog</a>
+      <a href="/#faq" class="mobile-nav-link">FAQ</a>
+      <hr class="my-2 border-line" />
+      <a href="https://app.nexigrate.com/signin" class="btn-primary text-center !text-sm !py-2.5 mt-2">Sign in →</a>
+    </nav>
   </div>
 </header>
+
+<style>
+  .mobile-nav-link { display: block; padding: 0.6rem 0.85rem; border-radius: 0.5rem; font-size: 0.9rem; font-weight: 500; color: var(--color-ink-800); transition: background-color 120ms ease; }
+  .mobile-nav-link:hover { background-color: var(--color-paper-200); }
+  .animate-in { animation: slide-in 200ms ease-out; }
+  @keyframes slide-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+</style>
+
+<script>
+  const btn = document.getElementById('mobile-menu-btn');
+  const menu = document.getElementById('mobile-menu');
+  const backdrop = document.getElementById('mobile-menu-backdrop');
+  function openMenu() { menu?.classList.remove('hidden'); backdrop?.classList.remove('hidden'); btn?.setAttribute('aria-expanded', 'true'); }
+  function closeMenu() { menu?.classList.add('hidden'); backdrop?.classList.add('hidden'); btn?.setAttribute('aria-expanded', 'false'); }
+  if (btn && menu && backdrop) {
+    btn.addEventListener('click', () => { btn.getAttribute('aria-expanded') === 'true' ? closeMenu() : openMenu(); });
+    backdrop.addEventListener('click', closeMenu);
+    document.addEventListener('click', (e) => { if (!menu.contains(e.target as Node) && !btn.contains(e.target as Node) && !backdrop.contains(e.target as Node)) closeMenu(); });
+    menu.querySelectorAll('a').forEach((link) => { link.addEventListener('click', closeMenu); });
+  }
+</script>
+
+<script>
+  const toggle = document.getElementById('theme-toggle');
+  const iconLight = document.getElementById('theme-icon-light');
+  const iconDark = document.getElementById('theme-icon-dark');
+  function applyTheme(theme: string) { document.documentElement.classList.toggle('dark', theme === 'dark'); if (iconLight && iconDark) { iconLight.classList.toggle('hidden', theme !== 'dark'); iconDark.classList.toggle('hidden', theme === 'dark'); } }
+  const stored = localStorage.getItem('nexi.theme');
+  const preferred = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  applyTheme(stored || preferred);
+  toggle?.addEventListener('click', () => { const next = document.documentElement.classList.contains('dark') ? 'light' : 'dark'; localStorage.setItem('nexi.theme', next); applyTheme(next); });
+</script>

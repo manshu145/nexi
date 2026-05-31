@@ -31,9 +31,7 @@ export const prerender = true;
         <h2 class="font-serif text-2xl font-semibold text-ink-900">1. Who we are</h2>
         <p class="mt-3">
           Nexigrate is operated by the Nexigrate team based in India
-          (“we”, “us”, “our”). Until incorporation we operate as a sole
-          proprietorship; once registered we will update this section with the
-          legal entity name and CIN. You can reach us at
+          (“we”, “us”, “our”). You can reach us at
           <a class="text-ember-600 underline" href="mailto:hello@nexigrate.com">hello@nexigrate.com</a>.
         </p>
       </section>
@@ -42,11 +40,11 @@ export const prerender = true;
         <h2 class="font-serif text-2xl font-semibold text-ink-900">2. Eligibility</h2>
         <p class="mt-3">
           The Service is intended for students preparing for Indian school and
-          competitive exams. Users under 18 may use the Service only with the
-          consent of a parent or legal guardian. We may ask for verifiable
-          parental consent before processing any data of a user we have reason
-          to believe is a minor, in line with the Digital Personal Data
-          Protection Act, 2023.
+          competitive exams. Users under 18 should use the Service with the
+          knowledge and supervision of a parent or legal guardian. We comply
+          with the Digital Personal Data Protection Act, 2023 in how we
+          handle personal data of minors and welcome parents to write to us
+          if they have any concerns about an account.
         </p>
       </section>
 
@@ -82,10 +80,13 @@ export const prerender = true;
           Free use of the Service is subject to fair-use rate limits. Paid plans
           (Scholar, Aspirant, Achiever) are billed in Indian Rupees and processed
           by <a class="text-ember-600 underline" href="https://razorpay.com">Razorpay</a>.
-          We do not store full card numbers on our servers. Subscriptions
-          continue for the period you paid for and do not auto-renew unless we
-          announce it explicitly in advance. Refunds are governed by our
-          <a class="text-ember-600 underline" href="/refund">Refund Policy</a>.
+          We do not store full card numbers on our servers. Each payment buys
+          a fixed period (one month or one year). Subscriptions
+          <strong>do not auto-renew</strong>; you choose to start a new period
+          when the current one ends. We do <strong>not</strong> issue refunds
+          on completed payments — cancellation rules and how we make things
+          right when the Service is materially broken are described in our
+          <a class="text-ember-600 underline" href="/refund">Cancellation and No-Refund Policy</a>.
         </p>
       </section>
 
@@ -96,9 +97,12 @@ export const prerender = true;
           from publicly available NCERT textbooks, previous-year question
           papers, and government-published syllabus materials, used under
           fair-use educational provisions with original publishers credited.
-          AI-generated drafts are reviewed by human subject-matter experts
-          before they are published in the daily MCQ stream. We do not
-          guarantee that any specific question will appear in any specific
+          AI-generated drafts pass through a 3-layer AI verification pipeline
+          (cross-checking outputs across OpenAI, Gemini, and Groq Llama models
+          from three different model families) before they are published in
+          the daily MCQ stream. Outputs that fall below our confidence
+          threshold are auto-regenerated rather than shown to students. We do
+          not guarantee that any specific question will appear in any specific
           exam.
         </p>
       </section>

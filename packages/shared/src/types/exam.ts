@@ -16,7 +16,10 @@ export type ExamCategory =
   | 'civil-services'
   | 'defence'
   | 'banking'
-  | 'state';
+  | 'state'
+  | 'law'
+  | 'management'
+  | 'professional-skills';
 
 export type ExamStatus = 'live' | 'soon';
 
@@ -49,8 +52,14 @@ export interface Subject {
   order: number;
 }
 
-/** A chapter inside a subject (e.g. "Kinematics" under Physics). */
-export interface Chapter {
+/** A chapter inside a subject (e.g. "Kinematics" under Physics).
+ *
+ * NOTE: This is the curriculum-tree metadata stub used for the syllabus
+ * tree. The full content chapter (with sections, AI verification, etc.)
+ * lives in `types/chapter.ts` as `Chapter`. Different concerns; same
+ * domain noun. Renamed here to avoid the export-name clash.
+ */
+export interface CurriculumChapter {
   id: ChapterId;
   subject: SubjectId;
   exam: ExamSlug;
