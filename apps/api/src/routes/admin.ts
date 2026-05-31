@@ -24,6 +24,7 @@ import { isHardcodedSuperAdmin } from '../lib/adminEmails.js';
 import { SERVICE_DEFINITIONS, getServiceDefinition, maskSecret, type ServiceId, type ServiceKeyStore } from '../lib/serviceKeyStore.js';
 import type { PushService, PushNotificationPayload } from '../lib/pushService.js';
 import type { TeamInviteStore } from '../lib/teamInviteStore.js';
+import type { EmailMarketingStore, EmailType } from '../lib/emailMarketingStore.js';
 
 export interface AdminRoutesDeps {
   users: UserStore;
@@ -85,6 +86,8 @@ export interface AdminRoutesDeps {
   push?: PushService;
   /** PR-40: team invite store for admin RBAC. */
   teamInvites?: TeamInviteStore;
+  /** Email Marketing: config, logs, templates, campaigns. */
+  emailMarketing?: EmailMarketingStore;
 }
 
 export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
@@ -607,7 +610,7 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
     const body = await c.req.json().catch(() => null) as { to?: string; emails?: string[]; subject?: string; body?: string } | null;
     if (!body?.subject || !body?.body) throw new HTTPException(400, { message: 'subject and body required' });
     const { createEmailService } = await import('../lib/emailService.js');
-    const emailService = createEmailService(deps.env, deps.logger, deps.serviceKeys);
+    const emailService = createEmailService(deps.env, deps.logger, deps.serviceKeys, deps.emailMarketing);
     if (body.to) {
       const result = await emailService.sendEmail(body.to, body.subject, body.body);
       return c.json(result);
@@ -632,7 +635,7 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
     // mirrors that path so the admin sees `configured: true` only when
     // the helper actually has a key to use.
     const { createEmailService } = await import('../lib/emailService.js');
-    const emailService = createEmailService(deps.env, deps.logger, deps.serviceKeys);
+    const emailService = createEmailService(deps.env, deps.logger, deps.serviceKeys, deps.emailMarketing);
     const configured = await emailService.isConfigured();
     return c.json({ configured, provider: 'resend' });
   });
@@ -967,12 +970,133 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
     }
   });
 
-  // ━━━ EMAIL LOGS ━━━
+  // ━━━ EMAIL MARKETING ━━━
+
+  // GET /v1/admin/email/logs — paginated email logs with filters
   app.get('/email/logs', async (c) => {
+    if (deps.emailMarketing) {
+      const page = parseInt(c.req.query('page') ?? '1');
+      const limit = parseInt(c.req.query('limit') ?? '50');
+      const type = c.req.query('type') as EmailType | undefined;
+      const status = c.req.query('status') as 'sent' | 'failed' | undefined;
+      const result = await deps.emailMarketing.getLogs({ page, limit, type, status });
+      return c.json(result);
+    }
+    // Fallback to raw Firestore query
     if (!deps.db) return c.json({ logs: [], total: 0 });
     const snap = await deps.db.collection('emailLogs').orderBy('sentAt', 'desc').limit(50).get();
     const logs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     return c.json({ logs, total: logs.length });
+  });
+
+  // GET /v1/admin/email/config — get email marketing config (types + senders)
+  app.get('/email/config', async (c) => {
+    if (!deps.emailMarketing) {
+      const { DEFAULT_CONFIG } = await import('../lib/emailMarketingStore.js');
+      return c.json(DEFAULT_CONFIG);
+    }
+    const config = await deps.emailMarketing.getConfig();
+    return c.json(config);
+  });
+
+  // PUT /v1/admin/email/config — update email marketing config
+  app.put('/email/config', async (c) => {
+    if (!deps.emailMarketing) {
+      throw new HTTPException(503, { message: 'Email marketing store not available' });
+    }
+    const body = await c.req.json().catch(() => null) as Partial<{
+      types: Array<{ type: string; enabled: boolean; senderEmail: string; senderName: string }>;
+      transactionalSender: { email: string; name: string };
+      marketingSender: { email: string; name: string };
+    }> | null;
+    if (!body) throw new HTTPException(400, { message: 'Body required' });
+    const config = await deps.emailMarketing.updateConfig(body as any);
+    deps.logger.info('admin.email_config_updated', { keys: Object.keys(body) });
+    return c.json({ success: true, config });
+  });
+
+  // GET /v1/admin/email/marketing-templates — get all per-type templates
+  app.get('/email/marketing-templates', async (c) => {
+    if (!deps.emailMarketing) return c.json({ templates: [] });
+    const templates = await deps.emailMarketing.getAllTemplates();
+    return c.json({ templates });
+  });
+
+  // PUT /v1/admin/email/marketing-templates/:type — save template for a type
+  app.put('/email/marketing-templates/:type', async (c) => {
+    if (!deps.emailMarketing) {
+      throw new HTTPException(503, { message: 'Email marketing store not available' });
+    }
+    const type = c.req.param('type') as EmailType;
+    const body = await c.req.json().catch(() => null) as { subject?: string; body?: string } | null;
+    if (!body?.subject || !body?.body) {
+      throw new HTTPException(400, { message: 'subject and body required' });
+    }
+    await deps.emailMarketing.saveTemplate({
+      type,
+      subject: body.subject,
+      body: body.body,
+      updatedAt: new Date().toISOString(),
+    });
+    deps.logger.info('admin.email_template_updated', { type });
+    return c.json({ success: true });
+  });
+
+  // POST /v1/admin/email/test — send test email to self
+  app.post('/email/test', async (c) => {
+    const body = await c.req.json().catch(() => null) as { to?: string; subject?: string; body?: string } | null;
+    if (!body?.to || !body?.subject || !body?.body) {
+      throw new HTTPException(400, { message: 'to, subject, and body required' });
+    }
+    const { createEmailService } = await import('../lib/emailService.js');
+    const emailService = createEmailService(deps.env, deps.logger, deps.serviceKeys, deps.emailMarketing);
+    const result = await emailService.sendEmail(body.to, body.subject, body.body);
+    return c.json(result);
+  });
+
+  // POST /v1/admin/email/campaign — send bulk campaign to segment
+  app.post('/email/campaign', async (c) => {
+    const body = await c.req.json().catch(() => null) as {
+      subject?: string;
+      htmlBody?: string;
+      segment?: 'all' | 'free' | 'paid' | 'custom';
+      emails?: string[];
+      senderEmail?: string;
+      senderName?: string;
+    } | null;
+    if (!body?.subject || !body?.htmlBody) {
+      throw new HTTPException(400, { message: 'subject and htmlBody required' });
+    }
+    const segment = body.segment ?? 'all';
+    const { createEmailService } = await import('../lib/emailService.js');
+    const emailService = createEmailService(deps.env, deps.logger, deps.serviceKeys, deps.emailMarketing);
+
+    let targetEmails: string[] = [];
+    if (segment === 'custom' && body.emails?.length) {
+      targetEmails = body.emails.filter(e => e.includes('@'));
+    } else {
+      const allUsers = await deps.users.listAll?.() ?? [];
+      if (segment === 'free') {
+        targetEmails = allUsers.filter(u => u.plan === 'free' && u.email?.includes('@')).map(u => u.email!);
+      } else if (segment === 'paid') {
+        targetEmails = allUsers.filter(u => u.plan !== 'free' && u.email?.includes('@')).map(u => u.email!);
+      } else {
+        targetEmails = allUsers.filter(u => u.email?.includes('@')).map(u => u.email!);
+      }
+    }
+
+    if (targetEmails.length === 0) {
+      throw new HTTPException(400, { message: 'No matching users found for this segment' });
+    }
+
+    const result = await emailService.sendBulkEmail(targetEmails, body.subject, body.htmlBody);
+    deps.logger.info('admin.email_campaign_sent', {
+      segment,
+      total: targetEmails.length,
+      sent: result.sent,
+      failed: result.failed,
+    });
+    return c.json({ ...result, segment, totalTargeted: targetEmails.length });
   });
 
   // GET /v1/admin/users/:uid/chat — list all chat sessions for a user

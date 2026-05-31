@@ -1,6 +1,7 @@
 import type { Env } from '../env.js';
 import type { Logger } from '../logger.js';
 import { getResendConfig, type ServiceKeyStore } from './serviceKeyStore.js';
+import type { EmailMarketingStore, EmailType } from './emailMarketingStore.js';
 
 export interface EmailService {
   isConfigured(): Promise<boolean>;
@@ -56,8 +57,13 @@ async function resolveResend(serviceKeys: ServiceKeyStore | undefined, env: Env,
  * env vars at call time. The store is optional so existing call sites
  * (createEmailService(env, logger)) keep working unchanged — they'll
  * just use env-only behaviour, same as before.
+ *
+ * Email Marketing PR: now optionally accepts an `EmailMarketingStore`
+ * to log every email sent, check if email types are enabled, and
+ * read custom templates from Firestore. Falls back to hardcoded
+ * templates when no store is provided or no custom template exists.
  */
-export function createEmailService(env: Env, logger: Logger, serviceKeys?: ServiceKeyStore): EmailService {
+export function createEmailService(env: Env, logger: Logger, serviceKeys?: ServiceKeyStore, emailMarketing?: EmailMarketingStore): EmailService {
 
   /**
    * Resolve config + send via Resend's HTTPS API. Returns the message
@@ -65,13 +71,35 @@ export function createEmailService(env: Env, logger: Logger, serviceKeys?: Servi
    * fresh each call so the admin can rotate without restarting Cloud
    * Run instances.
    */
-  async function send(to: string, subject: string, html: string): Promise<{ success: boolean; id?: string }> {
+  async function send(to: string, subject: string, html: string, emailType?: EmailType, senderOverride?: { email: string; name: string }): Promise<{ success: boolean; id?: string }> {
     const cfg = await resolveResend(serviceKeys, env, logger);
     if (!cfg) {
       return { success: false };
     }
+
+    // Check if this email type is enabled (if marketing store available)
+    if (emailType && emailMarketing) {
+      const enabled = await emailMarketing.isTypeEnabled(emailType);
+      if (!enabled) {
+        logger.info('email.type_disabled', { to, type: emailType });
+        return { success: false };
+      }
+    }
+
+    // Determine sender — type-specific override > explicit override > default config
+    let fromEmail = cfg.fromEmail;
+    let fromName = cfg.fromName;
+    if (senderOverride) {
+      fromEmail = senderOverride.email;
+      fromName = senderOverride.name;
+    } else if (emailType && emailMarketing) {
+      const sender = await emailMarketing.getSenderForType(emailType);
+      fromEmail = sender.email;
+      fromName = sender.name;
+    }
+
     try {
-      const FROM = `${cfg.fromName} <${cfg.fromEmail}>`;
+      const FROM = `${fromName} <${fromEmail}>`;
       const res = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${cfg.apiKey}`, 'Content-Type': 'application/json' },
@@ -80,19 +108,44 @@ export function createEmailService(env: Env, logger: Logger, serviceKeys?: Servi
       if (!res.ok) {
         const err = await res.text().catch(() => '');
         logger.error('email.send_failed', { to, subject, status: res.status, error: err.slice(0, 200) });
+        // Log failure to marketing store
+        if (emailMarketing) {
+          await emailMarketing.logEmail({
+            to, subject, type: emailType ?? 'custom', status: 'failed',
+            senderEmail: fromEmail, senderName: fromName,
+            error: err.slice(0, 200), sentAt: new Date().toISOString(),
+          }).catch(() => {});
+        }
         return { success: false };
       }
       const data = (await res.json()) as { id?: string };
       logger.info('email.sent', { to, subject, id: data.id });
+      // Log success to marketing store
+      if (emailMarketing) {
+        await emailMarketing.logEmail({
+          to, subject, type: emailType ?? 'custom', status: 'sent',
+          senderEmail: fromEmail, senderName: fromName,
+          messageId: data.id, sentAt: new Date().toISOString(),
+        }).catch(() => {});
+      }
       return { success: true, id: data.id };
     } catch (err) {
       logger.error('email.send_error', { to, subject, error: err instanceof Error ? err.message : String(err) });
+      // Log error to marketing store
+      if (emailMarketing) {
+        await emailMarketing.logEmail({
+          to, subject, type: emailType ?? 'custom', status: 'failed',
+          senderEmail: fromEmail, senderName: fromName,
+          error: err instanceof Error ? err.message : String(err),
+          sentAt: new Date().toISOString(),
+        }).catch(() => {});
+      }
       return { success: false };
     }
   }
 
-  async function sendBoolean(to: string, subject: string, html: string): Promise<boolean> {
-    const r = await send(to, subject, html);
+  async function sendBoolean(to: string, subject: string, html: string, emailType?: EmailType): Promise<boolean> {
+    const r = await send(to, subject, html, emailType);
     return r.success;
   }
 
@@ -103,7 +156,7 @@ export function createEmailService(env: Env, logger: Logger, serviceKeys?: Servi
     },
 
     async sendEmail(to: string, subject: string, htmlBody: string) {
-      return send(to, subject, htmlBody);
+      return send(to, subject, htmlBody, 'custom');
     },
 
     async sendBulkEmail(emails: string[], subject: string, htmlBody: string) {
@@ -117,7 +170,7 @@ export function createEmailService(env: Env, logger: Logger, serviceKeys?: Servi
       for (let i = 0; i < emails.length; i += 10) {
         const batch = emails.slice(i, i + 10);
         const results = await Promise.allSettled(
-          batch.map(email => send(email, subject, htmlBody)),
+          batch.map(email => send(email, subject, htmlBody, 'admin_broadcast')),
         );
         for (const r of results) {
           if (r.status === 'fulfilled' && r.value.success) sent++; else failed++;
@@ -141,7 +194,7 @@ export function createEmailService(env: Env, logger: Logger, serviceKeys?: Servi
            <p style="font-size:16px;line-height:1.6;color:#44403C">Welcome to Nexigrate — your AI companion for ${exam.toUpperCase()} preparation.</p>
            <p style="font-size:16px;line-height:1.6;color:#44403C">You have <strong>${credits} free credits</strong> to start — read your first chapter, take MCQs, ask doubts.</p>
            ${ctaButton('Start Learning', 'https://app.nexigrate.com/dashboard')}`;
-      return sendBoolean(to, subject, baseTemplate(body));
+      return sendBoolean(to, subject, baseTemplate(body), 'welcome');
     },
 
     async sendStreakReminder(to, name, streak, language) {
@@ -155,7 +208,7 @@ export function createEmailService(env: Env, logger: Logger, serviceKeys?: Servi
         : `<h1 style="color:#1C1917;font-size:24px">${name}, study now to keep your streak!</h1>
            <p style="font-size:16px;line-height:1.6">Your <strong>${streak}-day streak</strong> is at risk. Just 5 minutes — a chapter or one MCQ — keeps it alive.</p>
            ${ctaButton('Study Now', 'https://app.nexigrate.com/dashboard')}`;
-      return sendBoolean(to, subject, baseTemplate(body));
+      return sendBoolean(to, subject, baseTemplate(body), 'streak_reminder');
     },
 
     async sendPlanExpiry(to, name, plan, expiresAt, language) {
@@ -170,7 +223,7 @@ export function createEmailService(env: Env, logger: Logger, serviceKeys?: Servi
         : `<h1 style="color:#1C1917;font-size:24px">${name}, time to renew</h1>
            <p style="font-size:16px;line-height:1.6">Your <strong>${plan}</strong> plan expires on <strong>${expiryDate}</strong>. Renew to keep unlimited MCQs, AI tutor, and mock tests.</p>
            ${ctaButton('Renew Now', 'https://app.nexigrate.com/upgrade')}`;
-      return sendBoolean(to, subject, baseTemplate(body));
+      return sendBoolean(to, subject, baseTemplate(body), 'plan_expiry');
     },
 
     async sendPaymentSuccess(to, name, plan, expiresAt, amount) {
@@ -180,7 +233,7 @@ export function createEmailService(env: Env, logger: Logger, serviceKeys?: Servi
         <p style="font-size:16px;line-height:1.6">Your <strong>${plan}</strong> plan is now active. Plan expires on <strong>${expiryDate}</strong>. Amount paid: <strong>₹${amount.toLocaleString('en-IN')}</strong>.</p>
         <p style="font-size:14px;color:#78716C">A receipt is available in your profile under Payment History.</p>
         ${ctaButton('Open Dashboard', 'https://app.nexigrate.com/dashboard')}`;
-      return sendBoolean(to, subject, baseTemplate(body));
+      return sendBoolean(to, subject, baseTemplate(body), 'payment_receipt');
     },
 
     async sendCancellationConfirmation(to, name, plan, expiresAt) {
@@ -190,11 +243,11 @@ export function createEmailService(env: Env, logger: Logger, serviceKeys?: Servi
         <p style="font-size:16px;line-height:1.6">You'll keep <strong>${plan}</strong> access until <strong>${expiryDate}</strong>. After that, your account moves back to the Free plan automatically.</p>
         <p style="font-size:14px;color:#78716C">Changed your mind? You can resume anytime from the upgrade page.</p>
         ${ctaButton('Resume Plan', 'https://app.nexigrate.com/upgrade')}`;
-      return sendBoolean(to, subject, baseTemplate(body));
+      return sendBoolean(to, subject, baseTemplate(body), 'cancellation');
     },
 
     async sendCustom(to, subject, htmlBody) {
-      return sendBoolean(to, subject, htmlBody);
+      return sendBoolean(to, subject, htmlBody, 'custom');
     },
   };
 }
