@@ -505,9 +505,9 @@ export function makeUsersRoutes(deps: UsersRoutesDeps): Hono {
     if (!body?.dataUrl || !body.dataUrl.startsWith('data:image/')) {
       return c.json({ error: 'dataUrl required (must be a data:image/* URL)' }, 400);
     }
-    // Limit: max 2MB base64 payload (~1.5MB image)
-    if (body.dataUrl.length > 2 * 1024 * 1024) {
-      return c.json({ error: 'Image too large (max 2MB)' }, 413);
+    // Limit: max 5MB base64 payload (~3.5MB image)
+    if (body.dataUrl.length > 5 * 1024 * 1024) {
+      return c.json({ error: 'Image too large (max 5MB)' }, 413);
     }
     if (!deps.db) return c.json({ error: 'Storage not configured' }, 503);
 

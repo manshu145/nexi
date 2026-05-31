@@ -47,7 +47,7 @@ export async function addWatermark(dataUrl: string): Promise<string> {
         ctx.textAlign = 'right';
         ctx.fillText('nexigrate.com', img.width - 16, img.height - 8);
 
-        resolve(canvas.toDataURL('image/png'));
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
       };
       logo.onerror = () => {
         // If logo fails to load, just add text watermark
@@ -55,7 +55,7 @@ export async function addWatermark(dataUrl: string): Promise<string> {
         ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
         ctx.textAlign = 'right';
         ctx.fillText('Nexigrate', img.width - 16, img.height - 16);
-        resolve(canvas.toDataURL('image/png'));
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
       };
       logo.src = LOGO_SVG_URL;
     };
