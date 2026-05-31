@@ -1190,7 +1190,19 @@ End with: Important facts to remember for exam.`;
                 responsePreview: `Image URL generated (DALL-E 3 fallback): ${imageUrl.slice(0, 80)}...`,
               });
               logger.info('ai.visualization_image', { topic, subject, exam, provider: 'dalle3' });
-              // Note: DALL-E URLs expire in ~1hr. Frontend should cache/download.
+              // Convert URL to base64 data URL so it never expires
+              try {
+                const imgFetch = await fetch(imageUrl);
+                if (imgFetch.ok) {
+                  const buffer = await imgFetch.arrayBuffer();
+                  const base64 = Buffer.from(buffer).toString('base64');
+                  const contentType = imgFetch.headers.get('content-type') || 'image/png';
+                  return { type: 'image', content: `data:${contentType};base64,${base64}` };
+                }
+              } catch (fetchErr) {
+                logger.warn('ai.visualization_dalle_url_fetch_failed', { error: fetchErr instanceof Error ? fetchErr.message : String(fetchErr) });
+              }
+              // If fetch-to-base64 failed, return URL as fallback
               return { type: 'image', content: imageUrl };
             }
           } catch (err) {

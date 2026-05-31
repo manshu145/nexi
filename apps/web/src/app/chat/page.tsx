@@ -265,6 +265,20 @@ function ChatPage() {
               api.saveGeneratedImage(marked, topic, 'chat')
             )
           ).catch(() => {});
+        } else if (res.type === 'image' && res.content?.startsWith('http')) {
+          // DALL-E 3 URL fallback — fetch image, convert to data URL, watermark, save
+          fetch(res.content).then(r => r.blob()).then(blob => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const dataUrl = reader.result as string;
+              import('~/lib/watermark').then(({ addWatermark }) =>
+                addWatermark(dataUrl).then(marked =>
+                  api.saveGeneratedImage(marked, topic, 'chat')
+                )
+              ).catch(() => {});
+            };
+            reader.readAsDataURL(blob);
+          }).catch(() => {});
         }
       }
     } catch {

@@ -127,10 +127,17 @@ export default function AdminPushPage() {
     setTesting(true);
     try {
       // PR-45: auto-register this device first so test works
+      let tokenRegistered = false;
       try {
         const { registerPushToken } = await import('~/lib/pushClient');
-        await registerPushToken();
+        tokenRegistered = await registerPushToken();
       } catch { /* non-fatal — permission denied or already registered */ }
+
+      if (!tokenRegistered) {
+        toast.error('Could not register this device. Check: 1) Notification permission is allowed, 2) NEXT_PUBLIC_FIREBASE_VAPID_KEY is set in deployment env vars.');
+        setTesting(false);
+        return;
+      }
 
       const token = await getToken();
       const res = await fetch(`${API}/v1/admin/push/test`, {

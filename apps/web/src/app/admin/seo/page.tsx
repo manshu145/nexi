@@ -61,8 +61,12 @@ export default function AdminSeoPage() {
           if (data.settings && Object.keys(data.settings).length > 0) {
             setSettings({ ...DEFAULT_SEO, ...data.settings });
           }
+        } else {
+          setError(`Failed to load settings (HTTP ${res.status})`);
         }
-      } catch { /* use defaults */ }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Failed to fetch');
+      }
       finally { setPageLoading(false); }
     })();
   }, [user]);
