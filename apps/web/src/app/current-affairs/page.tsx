@@ -18,6 +18,32 @@ const CATEGORIES = [
   { key: 'environment', label: 'Environment', emoji: '\u{1F331}' },
 ];
 
+/**
+ * Current Affairs reels — PR-39 native scroll-snap rebuild.
+ *
+ * Founder lock (30 May 22:00 IST):
+ *   "uske single page me reel vala slider atk rha hai bahut.. smooth
+ *    nhi hai jaise insta ka hota hai. uska UI me kam krne ki jaurat hai."
+ *
+ * Pre-PR-39 the reels used an absolute-positioned container with a
+ * transform-translate animation driven by manual touch + wheel handlers.
+ * Even with PR-33's GPU compositing tweaks it never felt as native as
+ * Instagram's reels because the gesture detection was JS-driven --
+ * iOS Safari and Chromium handle native scroll inertia + rubber-banding
+ * far better than any setTimeout-throttled JS handler can.
+ *
+ * PR-39 swaps to native CSS scroll-snap: each card is a snap-point in
+ * a vertically-scrollable column. The browser owns the gesture, the
+ * inertia curve, the rubber-band edges, and the snap. We only listen
+ * to `scroll` to keep `currentIdx` in sync for the desktop sidebar +
+ * dot indicators, and we call `scrollTo({ top, behavior: 'smooth' })`
+ * for keyboard/programmatic navigation.
+ *
+ * Performance: we still mount only the active card +/- 1 sibling so
+ * a 50-item feed doesn't render 50 heavy ShortCard nodes simultaneously.
+ * Items outside the window render a transparent placeholder of equal
+ * height so the snap geometry stays correct.
+ */
 export default function CurrentAffairsShortsPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -30,11 +56,7 @@ export default function CurrentAffairsShortsPage() {
   const [userBookmarks, setUserBookmarks] = useState<Set<string>>(new Set());
   const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
   const [isFromYesterday, setIsFromYesterday] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const touchStartY = useRef(0);
-  const touchStartX = useRef(0);
-  const isTransitioning = useRef(false);
-  const wheelTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrollerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
 
@@ -58,71 +80,46 @@ export default function CurrentAffairsShortsPage() {
 
   const filtered = activeTab === 'all' ? items : items.filter(i => i.category === activeTab);
 
-  const goNext = useCallback(() => {
-    if (isTransitioning.current) return;
-    if (currentIdx < filtered.length - 1) {
-      isTransitioning.current = true;
-      setCurrentIdx(i => i + 1);
-      // PR-33: lock matches the 300ms CSS transition + 50ms safety. Pre-PR-33
-      // the lock was 400ms, which caused dropped touch events on rapid swipes
-      // (the next swipe arrived during the unlock window and was discarded).
-      setTimeout(() => { isTransitioning.current = false; }, 350);
+  /**
+   * Derive currentIdx from the scroll container's scrollTop. Native
+   * scroll-snap snaps to each card's height, so dividing scrollTop by
+   * the container's clientHeight gives the active index. We rAF-throttle
+   * to avoid setState storms during inertial scroll on high-refresh
+   * mobiles (120 Hz iPad, etc).
+   */
+  const onScroll = useCallback(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const idx = Math.round(el.scrollTop / Math.max(1, el.clientHeight));
+    if (idx !== currentIdx && idx >= 0 && idx < filtered.length) {
+      setCurrentIdx(idx);
     }
   }, [currentIdx, filtered.length]);
 
-  const goPrev = useCallback(() => {
-    if (isTransitioning.current) return;
-    if (currentIdx > 0) {
-      isTransitioning.current = true;
-      setCurrentIdx(i => i - 1);
-      setTimeout(() => { isTransitioning.current = false; }, 350);
-    }
-  }, [currentIdx]);
-
-  // Touch handlers for swipe (mobile)
-  const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartY.current = e.touches[0]!.clientY;
-    touchStartX.current = e.touches[0]!.clientX;
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    const deltaY = touchStartY.current - e.changedTouches[0]!.clientY;
-    const deltaX = Math.abs(touchStartX.current - e.changedTouches[0]!.clientX);
-    if (Math.abs(deltaY) > 50 && deltaX < 120) {
-      if (deltaY > 0) goNext();
-      else goPrev();
-    }
-  };
-
-  // Mouse wheel handler (desktop) - use { passive: false } via ref to avoid Chrome warning
-  const handleWheel = useCallback((e: WheelEvent) => {
-    e.preventDefault();
-    if (wheelTimeout.current) return;
-    if (Math.abs(e.deltaY) < 30) return;
-    if (e.deltaY > 0) goNext();
-    else goPrev();
-    wheelTimeout.current = setTimeout(() => { wheelTimeout.current = null; }, 400);
-  }, [goNext, goPrev]);
-
-  // Attach wheel listener with { passive: false } to avoid Chrome warning (Fix #16)
-  useEffect(() => {
-    const el = containerRef.current;
+  // Programmatic navigation (keyboard, dot click, etc) — uses native
+  // smooth scroll so it feels identical to a swipe.
+  const scrollToIndex = useCallback((idx: number) => {
+    const el = scrollerRef.current;
     if (!el) return;
-    el.addEventListener('wheel', handleWheel, { passive: false });
-    return () => el.removeEventListener('wheel', handleWheel);
-  }, [handleWheel]);
+    const clamped = Math.max(0, Math.min(filtered.length - 1, idx));
+    el.scrollTo({ top: clamped * el.clientHeight, behavior: 'smooth' });
+  }, [filtered.length]);
 
-  // Keyboard navigation
+  // Keyboard nav (desktop). Mobile users swipe — handled natively.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowDown' || e.key === 'j') { e.preventDefault(); goNext(); }
-      if (e.key === 'ArrowUp' || e.key === 'k') { e.preventDefault(); goPrev(); }
+      if (e.key === 'ArrowDown' || e.key === 'j') { e.preventDefault(); scrollToIndex(currentIdx + 1); }
+      if (e.key === 'ArrowUp' || e.key === 'k') { e.preventDefault(); scrollToIndex(currentIdx - 1); }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [goNext, goPrev]);
+  }, [currentIdx, scrollToIndex]);
 
-  useEffect(() => { setCurrentIdx(0); }, [activeTab]);
+  // Reset to top when category changes.
+  useEffect(() => {
+    setCurrentIdx(0);
+    if (scrollerRef.current) scrollerRef.current.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+  }, [activeTab]);
 
   const handleLike = async (id: string) => {
     try {
@@ -181,10 +178,7 @@ export default function CurrentAffairsShortsPage() {
         </button>
       </header>
 
-      {/* PR-34c (audit #29 + #30): secondary nav row exposing the CA quiz
-          leaderboard and saved-bookmarks pages. The top bar above is
-          space-constrained on mobile (Back · Today's News · Quiz fills
-          it), so we put these two as a slim pill row right under it. */}
+      {/* Secondary nav row (PR-34c): leaderboard + saved bookmarks */}
       <div className="relative z-20 -mt-1 px-4 pb-1 flex items-center justify-end gap-2">
         <button
           onClick={() => router.push('/current-affairs/quiz/leaderboard')}
@@ -219,7 +213,7 @@ export default function CurrentAffairsShortsPage() {
         ))}
       </div>
 
-      {/* Shorts container */}
+      {/* Reels container */}
       {filtered.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center text-center px-6 animate-fadeIn">
           <div className="w-16 h-16 rounded-2xl bg-paper-300 flex items-center justify-center">
@@ -229,58 +223,51 @@ export default function CurrentAffairsShortsPage() {
           <p className="mt-2 text-sm text-muted-500 max-w-xs">Refreshes every 30 minutes. Check back soon!</p>
         </div>
       ) : (
-        <div
-          ref={containerRef}
-          className="flex-1 relative overflow-hidden"
-          onTouchStart={handleTouchStart}
-          onTouchEnd={handleTouchEnd}
-        >
-          {/* Desktop layout: centered card + sidebar */}
+        <div className="flex-1 relative overflow-hidden">
           <div className="absolute inset-0 flex items-stretch justify-center">
-            {/* Card column.
-                PR-33: render ONLY the visible card +/- 1 sibling rather
-                than every filtered item. Pre-PR-33 a 50-item feed
-                mounted 50 fully-styled cards (each with image, gradient,
-                action buttons, etc.) which is what made the slider
-                stutter on mobile -- mid-tier Android devices struggle
-                with 50 layout-heavy DOM nodes inside a transformed
-                ancestor. Window rendering keeps DOM size constant. */}
-            <div className="relative w-full max-w-[480px] lg:max-w-[420px] h-full overflow-hidden">
-              <div
-                className="absolute inset-0 transition-transform duration-300 ease-out will-change-transform"
-                style={{
-                  // PR-33: translate3d(0, ..., 0) instead of translateY()
-                  // forces GPU compositing on iOS Safari + Chromium
-                  // mobile, which removes the "stuck" feeling on the
-                  // first swipe after a long idle.
-                  transform: `translate3d(0, -${currentIdx * 100}%, 0)`,
-                }}
-              >
-                {filtered.map((item, idx) => {
-                  // Render-window: keep current and immediate neighbours
-                  // in the DOM. Items further away render a lightweight
-                  // placeholder so the absolute positioning stays
-                  // correct (each slot still occupies 100% height).
-                  const inWindow = Math.abs(idx - currentIdx) <= 1;
-                  return inWindow ? (
-                    <ShortCard
-                      key={item.id}
-                      item={item}
-                      isActive={idx === currentIdx}
-                      liked={userLikes.has(item.id)}
-                      bookmarked={userBookmarks.has(item.id)}
-                      likeCount={likeCounts[item.id] ?? 0}
-                      onLike={() => handleLike(item.id)}
-                      onBookmark={() => handleBookmark(item.id)}
-                      onShare={() => handleShare(item)}
-                      onTap={() => router.push(`/current-affairs/${item.id}`)}
-                      onAskNexi={() => router.push(`/chat?topic=${encodeURIComponent(item.headline)}`)}
-                    />
-                  ) : (
-                    <div key={item.id} className="h-full w-full" aria-hidden />
-                  );
-                })}
-              </div>
+            {/* Native scroll-snap column.
+                Each ShortCard wrapper has snap-start + h-full so the
+                browser snaps to one card per page. overscroll-contain
+                stops the underlying body from scrolling on rubber-band.
+                will-change-transform hints the compositor for momentum
+                on iOS Safari. */}
+            <div
+              ref={scrollerRef}
+              onScroll={onScroll}
+              className="relative w-full max-w-[480px] lg:max-w-[420px] h-full overflow-y-auto overscroll-contain scrollbar-hide will-change-transform"
+              style={{ scrollSnapType: 'y mandatory', WebkitOverflowScrolling: 'touch' }}
+              aria-label="News reel"
+            >
+              {filtered.map((item, idx) => {
+                // Render-window: keep current and immediate neighbours
+                // mounted. Items further away render as transparent
+                // placeholders that hold the snap height.
+                const inWindow = Math.abs(idx - currentIdx) <= 1;
+                return (
+                  <div
+                    key={item.id}
+                    className="h-full w-full"
+                    style={{ scrollSnapAlign: 'start', scrollSnapStop: 'always' }}
+                  >
+                    {inWindow ? (
+                      <ShortCard
+                        item={item}
+                        isActive={idx === currentIdx}
+                        liked={userLikes.has(item.id)}
+                        bookmarked={userBookmarks.has(item.id)}
+                        likeCount={likeCounts[item.id] ?? 0}
+                        onLike={() => handleLike(item.id)}
+                        onBookmark={() => handleBookmark(item.id)}
+                        onShare={() => handleShare(item)}
+                        onTap={() => router.push(`/current-affairs/${item.id}`)}
+                        onAskNexi={() => router.push(`/chat?topic=${encodeURIComponent(item.headline)}`)}
+                      />
+                    ) : (
+                      <div className="h-full w-full" aria-hidden />
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             {/* Desktop sidebar: action buttons */}
@@ -296,20 +283,29 @@ export default function CurrentAffairsShortsPage() {
             </div>
           </div>
 
-          {/* Mobile progress dots */}
-          <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex flex-col gap-1.5 z-10 lg:hidden">
-            {filtered.slice(Math.max(0, currentIdx - 3), currentIdx + 4).map((item, i) => {
-              const realIdx = Math.max(0, currentIdx - 3) + i;
-              return (
-                <div key={item.id} className={`rounded-full transition-all duration-300 ease-out ${realIdx === currentIdx ? 'w-2 h-5 bg-ember-500 shadow-sm' : 'w-2 h-2 bg-muted-400/60'}`} />
-              );
-            })}
-          </div>
-
-
+          {/* Mobile progress indicator: vertical line on the right edge,
+              like Instagram's reel position bar. Cleaner than the dot
+              cluster pre-PR-39 and doesn't overlap action buttons. */}
+          {filtered.length > 1 && (
+            <div className="absolute right-1.5 top-1/2 -translate-y-1/2 z-10 lg:hidden">
+              <div className="h-32 w-1 rounded-full bg-muted-400/30 overflow-hidden">
+                <div
+                  className="w-full bg-ember-500 rounded-full transition-all duration-200 ease-out"
+                  style={{
+                    height: `${100 / filtered.length}%`,
+                    transform: `translateY(${currentIdx * (100 / Math.max(1, filtered.length))}vh)`,
+                    transformOrigin: 'top',
+                  }}
+                />
+              </div>
+              <p className="mt-1.5 text-center text-[9px] font-mono text-muted-500">
+                {currentIdx + 1}/{filtered.length}
+              </p>
+            </div>
+          )}
 
           {currentIdx === 0 && (
-            <div className="absolute bottom-14 left-1/2 -translate-x-1/2 z-10 animate-bounce opacity-40">
+            <div className="absolute bottom-14 left-1/2 -translate-x-1/2 z-10 animate-bounce opacity-40 pointer-events-none">
               <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="text-ink-700"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
             </div>
           )}

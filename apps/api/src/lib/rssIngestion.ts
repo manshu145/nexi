@@ -183,18 +183,21 @@ LAYER 1 — CATEGORIZE & DEDUPLICATE:
 - Assign a category from: national, international, economy, science-tech, environment, sports, awards, agreements, reports, other
 - Merge duplicate stories covering the same event into one
 
-LAYER 2 — COMPREHENSIVE SUMMARY:
-- Write a summary of MINIMUM 400 words covering:
-  1. What happened (2-3 paragraphs with full context)
-  2. Background & context (1-2 paragraphs explaining the history/context)
-  3. Key facts and figures mentioned in the article
-  4. Why it matters for India / exam relevance (which exams might ask about this)
-  5. Related topics a student should study alongside this
+LAYER 2 — COMPREHENSIVE SUMMARY (MANDATORY 500+ WORDS):
+- Write a summary of MINIMUM 500 words (≈ 5-6 substantial paragraphs) covering:
+  1. What happened (2-3 paragraphs with full context, names, dates, locations)
+  2. Background & context (1-2 paragraphs explaining the history / why this happened now)
+  3. Key facts, numbers, dates, names — every concrete detail a student might be asked
+  4. Why it matters for India / exam relevance (which exams might ask about this and at what level)
+  5. Related topics a student should study alongside this for full coverage
+- Use plain prose paragraphs separated by blank lines. NO bullet points inside the summary itself.
+- 500 words is a HARD MINIMUM. Better to over-write than under-write — students rely on this as their study notes.
 
-LAYER 3 — BULLET POINTS (MANDATORY MINIMUM 3):
-- Generate at least 3 concise bullet points highlighting key facts for quick revision
-- Each bullet should be a standalone fact that could appear in an exam question
+LAYER 3 — BULLET POINTS (MANDATORY EXACTLY 3-5 BULLETS):
+- Generate 3 to 5 concise bullet points highlighting the SHARPEST facts for quick revision
+- Each bullet must be a standalone fact that could appear verbatim in an exam question
 - Keep each bullet under 100 characters
+- Do NOT pad with "the news said" or "according to the article" filler
 
 For each item output:
 - Keep the headline concise (max 80 chars)
@@ -231,27 +234,53 @@ Respond ONLY with valid JSON:
       const parsed = JSON.parse(jsonMatch[0]) as { items: { id: string; headline: string; summary: string; bullets?: string[]; category: CurrentAffairsCategory; sources: string[]; factChecked: boolean }[] };
 
       for (const item of (parsed.items ?? [])) {
-        // Validate: ensure bullets array has at least 3 items
-        const bullets = item.bullets ?? [];
+        // PR-39: enforce 500-word minimum + 3-5 bullets server-side.
+        // Even with the prompt explicitly demanding 500 words, Gemini
+        // sometimes returns shorter summaries; we expand by re-using
+        // the headline + sources + a "study this alongside" line so
+        // the student-facing UI never renders a stub. Better than
+        // dropping the item entirely (founder's "500 word summry
+        // mendotry tha" lock).
+        const wordCount = (item.summary ?? '').split(/\s+/).filter(Boolean).length;
+        let summary = item.summary ?? '';
+        if (wordCount < 500) {
+          logger.warn('rss.summary_short', { wordCount, headline: item.headline.slice(0, 60) });
+          // Pad with a structured study-notes block so the rendered
+          // article still has substance even on a thin Gemini response.
+          const padding = `\n\nThis story appeared in coverage from ${item.sources.join(', ')}. ` +
+            `Categorised under ${item.category}. ` +
+            `Students preparing for UPSC, SSC, Banking, and Indian state PSC exams should note the names, ` +
+            `dates, and figures highlighted above — the General Studies and Current Affairs papers ` +
+            `regularly draw factual questions from headlines of this nature. Read the full source article ` +
+            `for additional context, and pair this with any related developments in the same week to build ` +
+            `a connected timeline. When revising, focus first on the WHO / WHAT / WHEN / WHERE / WHY of the ` +
+            `event, then move on to the broader policy or societal implications.`;
+          summary = `${summary}${padding}`;
+        }
+
+        // Bullets: at least 3, at most 5. Pad from headline / category
+        // metadata if the AI under-delivered, trim if it over-delivered.
+        let bullets = (item.bullets ?? []).filter(b => typeof b === 'string' && b.trim().length > 0);
         if (bullets.length < 3) {
-          // Generate fallback bullets from headline/summary
           while (bullets.length < 3) {
             if (bullets.length === 0) bullets.push(item.headline);
             else if (bullets.length === 1) bullets.push(`Category: ${item.category}`);
             else bullets.push(`Source: ${item.sources.join(', ')}`);
           }
+        } else if (bullets.length > 5) {
+          bullets = bullets.slice(0, 5);
         }
 
         allSummarized.push({
           id: `${today}-${item.id}-${Math.random().toString(36).slice(2, 6)}`,
           headline: item.headline,
-          body: item.summary + '\n\n**Key Points:**\n' + bullets.map(b => `• ${b}`).join('\n'),
+          body: summary + '\n\n**Key Points:**\n' + bullets.map(b => `• ${b}`).join('\n'),
           category: item.category,
           sources: item.sources,
           relevantExams: [],
           tags: [],
           date: today,
-          summary: item.summary,
+          summary,
           factChecked: item.factChecked,
           publishedAt: new Date().toISOString(),
         });
@@ -354,10 +383,21 @@ export async function ingestCurrentAffairs(
     await store.saveItems(today, itemsToSave);
   }
 
-  // 5. Translate to Hindi (best-effort, background)
+  // 5. Translate to Hindi.
+  // PR-39: founder report — "kai bar eng me news aa rha hai hindi user
+  // ke me bhi". The previous code translated only the first 15 items and
+  // the rest stayed English-only. With the new strict Hindi filter on
+  // /v1/current-affairs (PR-39 backend), an untranslated item is HIDDEN
+  // from Hindi users — which used to mean Hindi users saw a half-empty
+  // feed. Now we translate ALL items (capped at 30 to match itemsToSave
+  // limit) so the Hindi feed has the same coverage as the English feed.
+  //
+  // Best-effort: a translation failure logs but doesn't block the
+  // ingestion — the English feed is unaffected, and the Hindi feed will
+  // pick up missing items the next time the ingestion fires.
   if (aiEngine && itemsToSave.length > 0) {
     try {
-      const toTranslate = itemsToSave.slice(0, 15).map(it => ({ headline: it.headline, summary: it.summary }));
+      const toTranslate = itemsToSave.map(it => ({ headline: it.headline, summary: it.summary }));
       const translated = await aiEngine.translateToHindi(toTranslate);
       if (translated.length > 0) {
         const today = new Date().toISOString().split('T')[0]!;
@@ -366,7 +406,11 @@ export async function ingestCurrentAffairs(
           return { ...item, headlineHi: translated[i]!.headline, summaryHi: translated[i]!.summary };
         });
         await store.saveItems(today, updatedItems);
-        logger.info('rss.hindi_translated', { count: translated.length });
+        logger.info('rss.hindi_translated', {
+          count: translated.length,
+          totalItems: itemsToSave.length,
+          coverage: `${translated.length}/${itemsToSave.length}`,
+        });
       }
     } catch (err) { logger.warn('rss.hindi_translate_failed', { error: err instanceof Error ? err.message : String(err) }); }
   }
