@@ -23,6 +23,7 @@ import type { CurrentAffairsStore } from '../lib/currentAffairsStore.js';
 import { isHardcodedSuperAdmin } from '../lib/adminEmails.js';
 import { SERVICE_DEFINITIONS, getServiceDefinition, maskSecret, type ServiceId, type ServiceKeyStore } from '../lib/serviceKeyStore.js';
 import type { PushService, PushNotificationPayload } from '../lib/pushService.js';
+import { type TeamInviteStore, type AdminRole, ADMIN_ROLE_LABELS, type TeamInvite } from '../lib/teamInviteStore.js';
 
 export interface AdminRoutesDeps {
   users: UserStore;
@@ -82,6 +83,12 @@ export interface AdminRoutesDeps {
    * without firebase-admin available continue to construct.
    */
   push?: PushService;
+  /**
+   * PR-40: team-invite store. Lets `super_admin` callers invite new
+   * admins by email; on the invitee's next sign-in the /me handler
+   * auto-applies the invited role.
+   */
+  teamInvites?: TeamInviteStore;
 }
 
 export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
@@ -1730,6 +1737,236 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
     deps.logger.info('admin.push_test', { adminId: principal.userId, tokens: myTokens.length, result });
     return c.json({ ok: true, devices: myTokens.length, sent: result.successCount, failed: result.failureCount });
   });
+
+  // ━━━ TEAM RBAC (PR-40) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Admin invite + revoke flow. Founder lock §3.6:
+  //   "abhi koi team nhi hai sirf mai hu ek hi rahega. ab access dene
+  //    ka option de dena"
+  //
+  // Today the founder is solo. This endpoint set adds the OPTION to
+  // delegate granular admin access to future team members:
+  //
+  //   GET    /v1/admin/team               list current admins + pending invites
+  //   POST   /v1/admin/team/invite        super_admin only — invite by email + role
+  //   DELETE /v1/admin/team/:email        super_admin only — revoke pending OR
+  //                                        downgrade an existing admin to student
+  //
+  // Per-route enforcement of granular roles (e.g. content_admin can edit
+  // blog but not billing) is a follow-up — this PR ships the data shape
+  // so future route guards can check `principal.adminRole` without a
+  // schema migration.
+  if (deps.teamInvites) {
+    const teamInvites = deps.teamInvites;
+
+    /**
+     * Helper: is the calling principal a super_admin?
+     * Only super_admins can invite or revoke. Hardcoded super-admins
+     * (HARDCODED_SUPER_ADMIN_EMAILS in adminEmails.ts) always pass.
+     * Other admins pass only if their `adminRole === 'super_admin'`.
+     */
+    async function requireSuperAdmin(c: import('hono').Context): Promise<void> {
+      const principal = requireAuth(c);
+      const me = await deps.users.get(principal.userId);
+      const isHardcoded = isHardcodedSuperAdmin(me?.email ?? '');
+      const isSuper = me?.role === 'admin' && (me.adminRole === 'super_admin' || me.adminRole === undefined);
+      if (!isHardcoded && !isSuper) {
+        throw new HTTPException(403, { message: 'super_admin role required' });
+      }
+    }
+
+    app.get('/team', async (c) => {
+      // No super-admin gate on read — any admin can SEE who else is on
+      // the team (matches typical org dashboards). Super-admin gate is
+      // only on writes (invite / revoke).
+      requireAuth(c);
+      const [allUsers, invites] = await Promise.all([
+        deps.users.listAll?.() ?? [],
+        teamInvites.list(),
+      ]);
+      const admins = allUsers
+        .filter(u => u.role === 'admin')
+        .map(u => ({
+          uid: u.id,
+          email: u.email,
+          name: u.name,
+          adminRole: (u.adminRole ?? 'super_admin') as AdminRole,
+          isHardcoded: isHardcodedSuperAdmin(u.email),
+          createdAt: u.createdAt,
+        }));
+      // Pending = invited but NOT yet matched to a user doc with role=admin.
+      const adminEmails = new Set(admins.map(a => a.email.toLowerCase()));
+      const pending = invites
+        .filter(i => i.status === 'pending' && !adminEmails.has(i.email))
+        .map(i => ({
+          email: i.email,
+          adminRole: i.adminRole,
+          invitedAt: i.invitedAt,
+          expiresAt: i.expiresAt,
+          invitedBy: i.invitedBy,
+        }));
+      return c.json({ admins, pending, roleLabels: ADMIN_ROLE_LABELS });
+    });
+
+    /**
+     * POST /v1/admin/team/invite
+     * Body: { email, adminRole }
+     *
+     * Stores a pending invite. The invitee's next /me call (or first
+     * sign-in if they don't have an account yet) auto-applies the
+     * invited role. We also fire a Resend email with a sign-in
+     * deep-link if Resend is configured — best-effort, not blocking.
+     */
+    app.post('/team/invite', async (c) => {
+      await requireSuperAdmin(c);
+      const principal = requireAuth(c);
+      const body = (await c.req.json().catch(() => null)) as {
+        email?: string;
+        adminRole?: AdminRole;
+      } | null;
+      const email = body?.email?.trim().toLowerCase();
+      const adminRole = body?.adminRole;
+      if (!email || !email.includes('@')) {
+        throw new HTTPException(400, { message: 'Body { email, adminRole } required' });
+      }
+      if (!adminRole || !['super_admin', 'content', 'support', 'finance'].includes(adminRole)) {
+        throw new HTTPException(400, { message: 'adminRole must be one of: super_admin, content, support, finance' });
+      }
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + 14 * 86400_000); // 14-day window
+      const invite: TeamInvite = {
+        email,
+        adminRole,
+        invitedBy: principal.userId,
+        invitedAt: now.toISOString(),
+        expiresAt: expiresAt.toISOString(),
+        status: 'pending',
+      };
+      const saved = await teamInvites.upsert(invite);
+
+      // Best-effort welcome / invite email via Resend.
+      try {
+        const { createEmailService } = await import('../lib/emailService.js');
+        const emailService = createEmailService(deps.env, deps.logger, deps.serviceKeys);
+        if (await emailService.isConfigured()) {
+          const subject = `You\u2019ve been invited to the Nexigrate admin team`;
+          const html = `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#FAF7F2;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+            <div style="max-width:560px;margin:0 auto;padding:24px">
+              <div style="text-align:center;padding:16px 0;border-bottom:3px solid #D97706">
+                <strong style="color:#1C1917;font-size:20px">Nexigrate</strong>
+              </div>
+              <div style="background:#fff;padding:32px 24px;border-radius:12px;margin-top:16px;border:1px solid #E7E5E4">
+                <h1 style="color:#1C1917;font-size:22px;margin:0 0 16px">You&rsquo;re invited to the team</h1>
+                <p style="font-size:16px;line-height:1.6;color:#44403C">
+                  Manshu has invited you to the Nexigrate admin team as a
+                  <strong>${ADMIN_ROLE_LABELS[adminRole]}</strong>.
+                </p>
+                <p style="font-size:16px;line-height:1.6;color:#44403C">
+                  Sign in with this email at the link below — your role will be
+                  applied automatically on first login. The invite expires in 14 days.
+                </p>
+                <div style="text-align:center;margin:28px 0">
+                  <a href="https://app.nexigrate.com/admin/login" style="display:inline-block;background:#D97706;color:#fff;padding:14px 32px;border-radius:99px;text-decoration:none;font-weight:600;font-size:14px">Open Admin Console</a>
+                </div>
+                <p style="font-size:13px;line-height:1.6;color:#78716C">
+                  If you didn&rsquo;t expect this invite, just ignore the email — no
+                  account is created until you sign in.
+                </p>
+              </div>
+            </div>
+          </body></html>`;
+          await emailService.sendEmail(email, subject, html);
+        }
+      } catch (err) {
+        deps.logger.warn('admin.team.invite_email_failed', {
+          email,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+
+      // If the invitee ALREADY has a user doc, auto-promote them now.
+      // Saves them a round-trip — they don't have to sign out + back in
+      // for the role to take effect.
+      try {
+        const allUsers = await (deps.users.listAll?.() ?? Promise.resolve([]));
+        const target = allUsers.find(u => u.email.toLowerCase() === email);
+        if (target) {
+          await deps.users.update(target.id, { role: 'admin', adminRole } as Parameters<UserStore['update']>[1]);
+          await teamInvites.markAccepted(email, target.id);
+          deps.logger.info('admin.team.invite_auto_applied', {
+            invitedBy: principal.userId,
+            targetUid: target.id,
+            email,
+            adminRole,
+          });
+        }
+      } catch (err) {
+        deps.logger.warn('admin.team.invite_auto_apply_failed', {
+          email,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+
+      deps.logger.info('admin.team.invite_created', {
+        invitedBy: principal.userId,
+        email,
+        adminRole,
+      });
+      return c.json({ invite: saved });
+    });
+
+    /**
+     * DELETE /v1/admin/team/:email
+     *
+     * Two paths:
+     *   - if pending invite exists for this email: mark revoked.
+     *   - if a user doc exists with role=admin for this email: downgrade
+     *     to role=student + clear adminRole.
+     *
+     * Idempotent — calling twice on a never-existing email is a 200 no-op.
+     * super_admin gate on writes; can't revoke a hardcoded super-admin
+     * (those entries return 403 with a clear "code change required" hint).
+     */
+    app.delete('/team/:email', async (c) => {
+      await requireSuperAdmin(c);
+      const principal = requireAuth(c);
+      const rawEmail = c.req.param('email');
+      const email = decodeURIComponent(rawEmail).trim().toLowerCase();
+      if (!email || !email.includes('@')) {
+        throw new HTTPException(400, { message: 'email path param required' });
+      }
+      if (isHardcodedSuperAdmin(email)) {
+        throw new HTTPException(403, {
+          message: 'Cannot revoke a hardcoded super-admin. Edit apps/api/src/lib/adminEmails.ts and ship a deploy.',
+        });
+      }
+
+      // Revoke any pending invite.
+      await teamInvites.revoke(email);
+
+      // Downgrade matching user doc.
+      let downgradedUid: string | null = null;
+      try {
+        const allUsers = await (deps.users.listAll?.() ?? Promise.resolve([]));
+        const target = allUsers.find(u => u.email.toLowerCase() === email && u.role === 'admin');
+        if (target) {
+          await deps.users.update(target.id, { role: 'student', adminRole: undefined } as Parameters<UserStore['update']>[1]);
+          downgradedUid = target.id;
+        }
+      } catch (err) {
+        deps.logger.warn('admin.team.revoke_downgrade_failed', {
+          email,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+
+      deps.logger.info('admin.team.revoked', {
+        revokedBy: principal.userId,
+        email,
+        downgradedUid,
+      });
+      return c.json({ success: true, downgradedUid });
+    });
+  }
 
   return app;
 }

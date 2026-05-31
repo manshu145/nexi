@@ -43,6 +43,7 @@ const NAV_ITEMS = [
   { label: 'Revenue', href: '/admin/revenue', icon: '💰' },
   { label: 'AI Providers', href: '/admin/api-config', icon: '🔑' },
   { label: 'Service Keys', href: '/admin/service-keys', icon: '🔐' },
+  { label: 'Team & Roles', href: '/admin/team', icon: '👨‍💼' },
   { label: 'Push', href: '/admin/push', icon: '🔔' },
   { label: 'News Feeds', href: '/admin/feeds', icon: '📡' },
   { label: 'AI & Logs', href: '/admin/logs', icon: '🤖' },

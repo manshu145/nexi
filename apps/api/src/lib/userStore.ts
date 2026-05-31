@@ -4,6 +4,17 @@ import { asISODateTime, type ExamSlug, type ISODateTime, type UserId, type Board
 export interface StoredUser {
   id: UserId; firebaseUid: string; email: string; name: string; phone: string | null;
   photoURL: string | null; primaryProvider: 'google' | 'phone'; role: 'student' | 'admin';
+  /**
+   * PR-40: granular admin sub-role. Optional — only set when role==='admin'.
+   * Used by per-route permission gates planned for future PRs. Today
+   * any admin role passes the binary admin gate; this field is the
+   * data shape so route handlers can start checking
+   * `me.adminRole === 'finance'` without a schema migration later.
+   *
+   * `undefined` for grandfathered admins from before PR-40 — treat
+   * as 'super_admin' (the founder-equivalent).
+   */
+  adminRole?: 'super_admin' | 'content' | 'support' | 'finance';
   language: 'en' | 'hi'; targetExam: ExamSlug | null; classLevel: ClassLevel | null;
   board: Board | null; school: string | null; dob: string | null; aim: string | null;
   onboardingScore: number | null; onboardingLevel: 'beginner' | 'intermediate' | 'advanced' | null;
