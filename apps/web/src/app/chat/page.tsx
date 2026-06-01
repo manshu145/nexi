@@ -76,10 +76,13 @@ function ChatPage() {
 
   // Handle ?topic= parameter from Current Affairs "Ask Nexi" button
   useEffect(() => {
-    if (!user || topicHandled.current || sending) return;
+    if (!user || topicHandled.current) return;
     const topic = searchParams.get('topic');
     if (!topic) return;
+    // Mark as handled IMMEDIATELY before any async work to prevent
+    // double-fire in React strict mode or rapid re-renders.
     topicHandled.current = true;
+    if (sending) return; // already in flight from another trigger
     const chapterContext = searchParams.get('context');
     const contextMessage = chapterContext
       ? `I'm studying "${topic}" and I need help understanding this section:\n\n"${chapterContext}"\n\nPlease explain this in simple terms. If there's anything confusing, break it down step by step. Give me exam-relevant tips for this topic.`
