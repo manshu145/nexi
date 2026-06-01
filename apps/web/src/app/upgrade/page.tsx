@@ -185,6 +185,19 @@ export default function UpgradePage() {
         theme: { color: '#F59E0B' },
       };
 
+      // Check Razorpay script is loaded before opening checkout
+      if (typeof window.Razorpay === 'undefined') {
+        // Script hasn't loaded yet (lazyOnload). Wait up to 3 seconds.
+        await new Promise<void>((resolve, reject) => {
+          let waited = 0;
+          const interval = setInterval(() => {
+            if (typeof window.Razorpay !== 'undefined') { clearInterval(interval); resolve(); }
+            waited += 200;
+            if (waited > 3000) { clearInterval(interval); reject(new Error('Payment gateway is loading. Please try again in a moment.')); }
+          }, 200);
+        });
+      }
+
       const rzp = new window.Razorpay(options);
       rzp.open();
     } catch (e) {
