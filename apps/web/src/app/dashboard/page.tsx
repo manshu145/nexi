@@ -3,7 +3,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useTheme } from 'next-themes';
-import { EXAM_BY_SLUG } from '@nexigrate/shared';
+import { EXAM_BY_SLUG, planDisplayName } from '@nexigrate/shared';
 import { Logo } from '~/components/Logo';
 import { useAuth } from '~/lib/auth-context';
 import { useUser } from '~/lib/userStore';
@@ -180,7 +180,7 @@ export default function DashboardPage() {
             {(me.plan ?? 'free') === 'free' ? (
               <><span>{t('freePlan')}</span><span className="text-amber-500">· {t('upgrade')} →</span></>
             ) : (
-              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-3 py-1 text-xs font-semibold text-stone-900">⭐ {(me.plan ?? 'free').charAt(0).toUpperCase() + (me.plan ?? 'free').slice(1)} {tc('plan')}{me.planExpiresAt ? ` · ${tc('expires')} ${new Date(me.planExpiresAt).toLocaleDateString(me.language === 'hi' ? 'hi-IN' : 'en-IN', { day: 'numeric', month: 'short' })}` : ''}</span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-3 py-1 text-xs font-semibold text-stone-900">⭐ {planDisplayName(me.plan)} {tc('plan')}{me.planExpiresAt ? ` · ${tc('expires')} ${new Date(me.planExpiresAt).toLocaleDateString(me.language === 'hi' ? 'hi-IN' : 'en-IN', { day: 'numeric', month: 'short' })}` : ''}</span>
             )}
           </button>
         )}

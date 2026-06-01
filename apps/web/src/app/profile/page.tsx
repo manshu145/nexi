@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { EXAM_BY_SLUG } from '@nexigrate/shared';
+import { EXAM_BY_SLUG, planDisplayName } from '@nexigrate/shared';
 import { Logo } from '~/components/Logo';
 import { useAuth } from '~/lib/auth-context';
 import { useUser } from '~/lib/userStore';
@@ -215,7 +215,7 @@ export default function ProfilePage() {
           </div>
         </div>
       </section>
-      <section className="mt-6"><h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">{t('accountInfo')}</h2><div className="mt-3"><Row label={t('plan')} value={me?.plan} /><Row label={t('credits')} value={String(me?.credits ?? 0)} /><Row label={t('memberSince')} value={me?.createdAt ? new Date(me.createdAt).toLocaleDateString() : '—'} /></div></section>
+      <section className="mt-6"><h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">{t('accountInfo')}</h2><div className="mt-3"><Row label={t('plan')} value={planDisplayName(me?.plan)} /><Row label={t('credits')} value={String(me?.credits ?? 0)} /><Row label={t('memberSince')} value={me?.createdAt ? new Date(me.createdAt).toLocaleDateString() : '—'} /></div></section>
 
       {/* Plan & Billing */}
       <section className="mt-6">
@@ -238,7 +238,7 @@ export default function ProfilePage() {
             <div className="mt-3 paper-card p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-ink-900 capitalize">{plan} Plan</p>
+                  <p className="text-sm font-medium text-ink-900">{planDisplayName(plan)} Plan</p>
                   <p className="text-xs text-muted-500">
                     {!isActive && !isPaid && 'Free forever'}
                     {!isActive && isPaid && 'Plan expired — renew to regain access'}
@@ -258,7 +258,7 @@ export default function ProfilePage() {
               {/* Cancelled-but-active explainer banner */}
               {isCancelledActive && expiryLabel && (
                 <div className="rounded-lg border border-line bg-paper-200 p-3 text-xs leading-relaxed text-muted-600 dark:text-muted-400">
-                  Your subscription is cancelled. You'll keep full <span className="capitalize font-medium text-ink-900">{plan}</span> access until <span className="font-medium text-ink-900">{expiryLabel}</span>, then drop to Free automatically. No further charges.
+                  Your subscription is cancelled. You'll keep full <span className="font-medium text-ink-900">{planDisplayName(plan)}</span> access until <span className="font-medium text-ink-900">{expiryLabel}</span>, then drop to Free automatically. No further charges.
                 </div>
               )}
 
@@ -334,7 +334,7 @@ export default function ProfilePage() {
         >
           <div className="paper-card w-full max-w-md p-5 sm:p-6 m-3 animate-in fade-in zoom-in-95">
             <h3 id="cancel-plan-title" className="font-serif text-xl font-semibold text-ink-900">
-              Cancel your {me?.plan} plan?
+              Cancel your {planDisplayName(me?.plan)} plan?
             </h3>
             <p className="mt-2 text-sm leading-relaxed text-muted-600 dark:text-muted-400">
               You'll keep full access until <span className="font-medium text-ink-900">

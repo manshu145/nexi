@@ -154,14 +154,18 @@ export class InMemoryAISpendStore implements AISpendStore {
  *   Gemini Flash:       ~$0.0001 per 1k tokens (effectively free)
  *   gpt-image-1:        $0.02 per medium-quality image
  *
- * Free tier $0.30/day = 6 full chapter generations OR ~60 chat
- * exchanges OR 15 images. A serious student stays under that.
+ * These are HARD per-day backstops that only abusers hit — normal users
+ * stay well under. Combined with the per-feature daily quotas in the plan
+ * matrix (essaysPerDay, imagesPerDay, aiTutorPerDay), they protect margin.
+ * Recalibrated for the freemium plan restructure (Starter ₹79 / Pro ₹249 /
+ * Elite ₹599) so even a maxed-out day stays within a sustainable fraction
+ * of the plan price. Groq (free) is tried first so real spend is far lower.
  *
  * Admin-editable via platformConfig.
  */
 export const DEFAULT_DAILY_AI_CAP_USD: Record<string, number> = {
-  free:     0.30,
-  scholar:  2.00,
-  aspirant: 8.00,
-  achiever: 30.00,
+  free:     0.15,   // ~₹12/day max — loss-leader hook, realistically pennies
+  scholar:  0.40,   // Starter ₹79  — backstop only; daily quotas throttle normal use
+  aspirant: 1.20,   // Pro ₹249
+  achiever: 3.00,   // Elite ₹599
 };

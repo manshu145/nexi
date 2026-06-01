@@ -11,42 +11,42 @@ declare global { interface Window { Razorpay: new (options: Record<string, unkno
 type BillingPeriod = 'monthly' | 'yearly';
 
 const SCHOLAR_FEATURES = [
-  'Unlimited Daily MCQs',
-  'Unlimited Mock Tests',
-  'Unlimited Chapter Access (no credits deducted)',
-  'AI Tutor — Nexi AI unlimited',
+  '30 Daily MCQs',
+  '5 Mock Tests / month',
+  '8 Chapters / day (no credits)',
+  'AI Tutor — 30 messages / day',
+  'Essay Grading — 3 / day',
+  'AI Image Generation — 6 / day',
   'Current Affairs Daily Digest',
-  'Daily Quiz + Leaderboard',
-  'Hindi + English content',
-  'No credit deductions',
-  'Priority support',
+  'Ad-free, no distractions',
 ];
 
 const ASPIRANT_FEATURES = [
-  'Everything in Scholar',
-  'Advanced AI Tutor with memory',
-  'Essay & Answer Grading',
-  'Personalized study plans',
-  'Mentor support',
+  'Everything in Starter',
+  '100 Daily MCQs · 25 Chapters/day',
+  '15 Mock Tests / month',
+  'AI Tutor — 100 messages / day',
+  'Essay Grading — 10 / day',
+  'Priority AI (GPT-4o)',
 ];
 
 const ACHIEVER_FEATURES = [
-  'Everything in Aspirant',
-  'Essay Grading with expert feedback',
-  'UPSC-specific mock interviews',
-  'Expert AMAs',
-  'Dedicated study coach',
+  'Everything in Pro',
+  'Unlimited MCQs & Chapters',
+  '40 Mock Tests / month',
+  'Unlimited Essay Grading',
+  'AI Images — 50 / day',
+  'Dedicated mentor support',
 ];
 
 // Hardcoded fallback used only when the live admin matrix is unreachable
 // (network down, API outage). The /upgrade page would otherwise render
 // ₹0 / NaN for half a beat which is worse than slightly-stale numbers.
-// The live values come from `api.getPlans()` and override these on mount —
-// see PR-34b (audit #41).
+// The live values come from `api.getPlans()` and override these on mount.
 const PRICING_FALLBACK = {
-  scholar:  { monthly: 99,  yearly: 830  },
-  aspirant: { monthly: 299, yearly: 2510 },
-  achiever: { monthly: 599, yearly: 5030 },
+  scholar:  { monthly: 79,  yearly: 599  },
+  aspirant: { monthly: 249, yearly: 1899 },
+  achiever: { monthly: 599, yearly: 4499 },
 } as const;
 
 type PlanKey = keyof typeof PRICING_FALLBACK;
@@ -305,7 +305,7 @@ export default function UpgradePage() {
         {/* SCHOLAR — ACTIVE */}
         <div className={`paper-card relative flex flex-col p-5 border-amber-500 shadow-[0_0_0_2px_rgba(245,158,11,0.3)] ${isCurrentScholar ? 'border-2 border-amber-400' : ''}`}>
           <span className="absolute -top-2.5 right-3 rounded-full bg-amber-500 px-3 py-0.5 text-xs font-semibold text-ink-900">Recommended</span>
-          <h3 className="font-serif text-lg font-bold text-ink-900">Scholar</h3>
+          <h3 className="font-serif text-lg font-bold text-ink-900">Starter</h3>
           <p className="mt-2">
             <span className="font-serif text-3xl font-bold text-ink-900">₹{scholarDisplayPrice}</span>
             <span className="text-sm text-muted-500">/{period === 'yearly' ? 'yr' : 'mo'}</span>

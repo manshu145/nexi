@@ -1,17 +1,55 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <rect x="0" y="0" width="64" height="64" rx="14" fill="#1C1917"/>
-  <rect x="12" y="8" width="40" height="50" rx="7" fill="#EDE8DC"/>
-  <rect x="19" y="18" width="26" height="4" rx="2" fill="#1C1917" opacity="0.8"/>
-  <rect x="19" y="27" width="20" height="3" rx="1.5" fill="#1C1917" opacity="0.55"/>
-  <rect x="19" y="35" width="24" height="3" rx="1.5" fill="#1C1917" opacity="0.55"/>
-  <rect x="19" y="43" width="14" height="3" rx="1.5" fill="#1C1917" opacity="0.4"/>
-  <circle cx="20" cy="54" r="4" fill="#8B1A0E"/>
-  <text x="38" y="57"
-    font-family="Georgia, serif"
-    font-size="10"
-    font-weight="700"
-    font-style="italic"
-    fill="#8B1A0E"
-    text-anchor="middle"
-    opacity="0.8">nx</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1C1917"/>
+      <stop offset="100%" stop-color="#2E2623"/>
+    </linearGradient>
+
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8B1A0E"/>
+      <stop offset="100%" stop-color="#C2410C"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1024" height="1024" rx="240" fill="url(#bg)"/>
+
+  <!-- Book shape -->
+  <path
+    d="M260 250
+       C260 220 280 200 320 200
+       L510 200
+       C560 200 600 230 620 270
+       L760 560
+       C780 600 760 640 720 640
+       L520 640
+       C470 640 430 610 410 570
+       L260 250Z"
+    fill="#F8F5EF"
+    opacity="0.95"/>
+
+  <!-- Stylized N -->
+  <path
+    d="M300 760
+       L300 300
+       L420 300
+       L620 590
+       L620 300
+       L740 300
+       L740 760
+       L620 760
+       L420 470
+       L420 760Z"
+    fill="url(#accent)"/>
+
+  <!-- AI dot -->
+  <circle cx="760" cy="240" r="48" fill="#F59E0B"/>
+
+  <!-- Small connection line -->
+  <path
+    d="M700 260 C720 250 735 245 750 242"
+    stroke="#F59E0B"
+    stroke-width="16"
+    stroke-linecap="round"
+    fill="none"/>
 </svg>
