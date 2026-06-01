@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { toast } from 'sonner';
 import { registerPushToken } from '~/lib/pushClient';
 
 /**
@@ -25,7 +26,18 @@ export function NotificationBell() {
     if (permission === 'unsupported') return;
     setRegistering(true);
     const success = await registerPushToken();
-    setPermission(success ? 'granted' : 'denied');
+    if (success) {
+      setPermission('granted');
+      toast.success('Notifications enabled!');
+    } else {
+      // Check if permission was denied by the user vs VAPID key missing
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'denied') {
+        setPermission('denied');
+        toast.error('Notification permission denied. Enable it in browser settings.');
+      } else {
+        toast.error('Could not enable notifications. VAPID key may not be configured — contact admin.');
+      }
+    }
     setRegistering(false);
   }, [permission]);
 

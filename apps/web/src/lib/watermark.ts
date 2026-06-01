@@ -9,7 +9,7 @@
  * Output: base64 data URL with watermark applied
  */
 
-const LOGO_SVG_URL = '/brand/nexigrate-logo-light.svg';
+const LOGO_SVG_URL = '/brand/nexigrate-logo-dark.svg';
 const WATERMARK_OPACITY = 0.5;
 const WATERMARK_SCALE = 0.18; // 18% of image width
 

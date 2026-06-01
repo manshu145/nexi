@@ -205,6 +205,16 @@ export default function AdminPushPage() {
         )}
       </div>
 
+      {/* VAPID key warning — shown when push is configured but 0 subscribers
+          (likely means VAPID key is missing so the bell silently fails). */}
+      {status?.configured && (status.subscriberCount ?? 0) === 0 && (
+        <div className="mt-2 rounded-lg border border-amber-400/50 bg-amber-50 dark:bg-amber-900/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+          ⚠ <strong>0 subscribers</strong> — the user-facing bell won't work without a VAPID key.
+          Go to <a href="/admin/service-keys" className="underline font-medium">Service Keys → FCM</a> and
+          paste your <code className="bg-amber-100 dark:bg-amber-900/30 px-1 rounded">vapidKey</code> (from Firebase Console → Project Settings → Cloud Messaging → Web Push certificates).
+        </div>
+      )}
+
       {/* Compose form */}
       <section className="mt-6 rounded-xl border border-line bg-paper-50 p-5">
         <p className="text-sm font-semibold text-ink-700">Compose</p>

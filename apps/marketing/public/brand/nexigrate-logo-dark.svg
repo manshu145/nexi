@@ -1,16 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 120" width="480" height="120">
-  <rect x="18" y="18" width="54" height="66" rx="9" fill="#EDE8DC"/>
-  <rect x="27" y="30" width="36" height="4" rx="2" fill="#1C1917" opacity="0.8"/>
-  <rect x="27" y="40" width="30" height="3" rx="1.5" fill="#1C1917" opacity="0.55"/>
-  <rect x="27" y="49" width="34" height="3" rx="1.5" fill="#1C1917" opacity="0.55"/>
-  <rect x="27" y="58" width="22" height="3" rx="1.5" fill="#1C1917" opacity="0.4"/>
+  <rect x="18" y="18" width="54" height="66" rx="9" fill="#1C1917"/>
+  <rect x="27" y="30" width="36" height="4" rx="2" fill="#EDE8DC" opacity="0.85"/>
+  <rect x="27" y="40" width="30" height="3" rx="1.5" fill="#EDE8DC" opacity="0.6"/>
+  <rect x="27" y="49" width="34" height="3" rx="1.5" fill="#EDE8DC" opacity="0.6"/>
+  <rect x="27" y="58" width="22" height="3" rx="1.5" fill="#EDE8DC" opacity="0.45"/>
   <circle cx="30" cy="73" r="4" fill="#8B1A0E"/>
-  <rect x="38" y="70.5" width="18" height="2.5" rx="1.2" fill="#1C1917" opacity="0.35"/>
+  <rect x="38" y="70.5" width="18" height="2.5" rx="1.2" fill="#EDE8DC" opacity="0.4"/>
   <text x="88" y="70"
     font-family="Georgia, 'Times New Roman', serif"
     font-size="46"
     font-weight="700"
-    fill="#EDE8DC"
+    fill="#1C1917"
     letter-spacing="-1.5">Nexi</text>
   <text x="204" y="70"
     font-family="Georgia, 'Times New Roman', serif"
@@ -22,8 +22,7 @@
   <text x="89" y="96"
     font-family="Georgia, serif"
     font-size="10"
-    fill="#C4A882"
-    letter-spacing="3.2"
-    opacity="0.8">STUDY SMART · VERIFIED FACTS</text>
-  <rect x="89" y="103" width="265" height="0.8" rx="0.4" fill="#8B1A0E" opacity="0.45"/>
+    fill="#78716C"
+    letter-spacing="3.2">STUDY SMART · VERIFIED FACTS</text>
+  <rect x="89" y="103" width="265" height="0.8" rx="0.4" fill="#8B1A0E" opacity="0.4"/>
 </svg>

@@ -249,6 +249,11 @@ export default function PlanSelectionPage() {
                   ⭐ {lang === 'hi' ? RECOMMENDED_BADGE.hi : RECOMMENDED_BADGE.en}
                 </span>
               )}
+              {('comingSoon' in plan) && (plan as any).comingSoon && !isRecommended && (
+                <span className="absolute -top-2.5 right-4 rounded-full bg-paper-300 px-3 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-600">
+                  {lang === 'hi' ? 'जल्द आ रहा है' : 'Coming Soon'}
+                </span>
+              )}
               <div className="flex items-start gap-3">
                 <span className="text-2xl">{PLAN_ICONS[planId]}</span>
                 <div className="flex-1">
@@ -301,9 +306,14 @@ export default function PlanSelectionPage() {
           ? (lang === 'hi' ? 'सहेजा जा रहा है…' : 'Saving…')
           : selected === 'free'
             ? (lang === 'hi' ? 'मुफ़्त में शुरू करें' : 'Continue with Free')
-            : (lang === 'hi'
-                ? `${plans.find(p => p.id === selected)?.nameHi ?? ''} में अपग्रेड करें`
-                : `Upgrade to ${plans.find(p => p.id === selected)?.name ?? selected}`)}
+            : (() => {
+                const selectedPlan = plans.find(p => p.id === selected);
+                const isComingSoon = selectedPlan && ('comingSoon' in selectedPlan) && (selectedPlan as any).comingSoon;
+                if (isComingSoon) return lang === 'hi' ? 'जल्द आ रहा है — मुफ़्त में शुरू करें' : 'Coming Soon — Continue with Free';
+                return lang === 'hi'
+                  ? `${selectedPlan?.nameHi ?? ''} में अपग्रेड करें`
+                  : `Upgrade to ${selectedPlan?.name ?? selected}`;
+              })()}
       </button>
 
       <p className="mt-4 text-center text-[11px] leading-relaxed text-muted-400">
