@@ -166,6 +166,14 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
     const principal = requireAuth(c);
     const { exam, subject, chapter } = c.req.param();
     const language = (c.req.query('lang') as 'en' | 'hi') || 'en';
+
+    // CORS headers set MANUALLY — bypasses Cloudflare stripping on error responses
+    const origin = c.req.header('origin') || 'https://app.nexigrate.com';
+    if (['https://app.nexigrate.com', 'https://nexigrate.com', 'http://localhost:3000'].includes(origin)) {
+      c.header('Access-Control-Allow-Origin', origin);
+      c.header('Access-Control-Allow-Credentials', 'true');
+    }
+
     try {
       // Get user level for difficulty calibration
       const user = await deps.users.get(principal.userId);
@@ -181,13 +189,8 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
       return c.json({ questions, userLevel });
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
-      deps.logger.error('study.quiz_error', { exam, subject, chapter, language, error: errorMsg, stack: err instanceof Error ? err.stack?.slice(0, 500) : '' });
-      // Return 200 with empty questions + error message instead of 503.
-      // Cloudflare proxy strips CORS headers from 503 responses which causes
-      // the browser to show "Failed to fetch" instead of the real error.
-      // Returning 200 ensures CORS headers pass through and the frontend
-      // can display the actual error message to the user.
-      return c.json({ questions: [], error: `Quiz generation failed: ${errorMsg.slice(0, 200)}. Try again in a few seconds.`, userLevel: 'intermediate' });
+      deps.logger.error('study.quiz_error', { exam, subject, chapter, language, error: errorMsg });
+      return c.json({ questions: [], error: `Quiz generation failed: ${errorMsg.slice(0, 200)}. Try again.`, userLevel: 'intermediate' });
     }
   });
 
