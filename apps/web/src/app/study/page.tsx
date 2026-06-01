@@ -170,8 +170,8 @@ export default function StudyPage() {
                     // Unlock logic: first 2 chapters always unlocked, rest need previous completed
                     const prevKey = idx > 0 ? `${subject.slug}/${subject.chapters[idx - 1]!.slug}` : null;
                     const isUnlocked = idx < 2 || completedSet.has(prevKey!);
-                    // Free plan: only lock if chapter not yet unlocked by progress (don't block earned progress)
-                    const isPlanLocked = false;
+                    // Free plan: lock chapters beyond the first 2 per subject unless already completed
+                    const isPlanLocked = currentPlan === 'free' && idx >= 2 && !isCompleted;
 
                     return (
                       <button
@@ -252,16 +252,14 @@ export default function StudyPage() {
                             setGenerating(subject.slug);
                             setGenSuccess(null);
                             try {
-                              const res = await fetch(`${process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com'}/v1/study/generate-chapters`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await (await import('~/lib/firebase')).getFirebaseAuthClient().currentUser?.getIdToken()}` },
-                                body: JSON.stringify({ examSlug: syllabus!.exam, subjectSlug: subject.slug }),
-                              });
-                              if (!res.ok) throw new Error('Failed');
-                              const data = await res.json() as { newChapters: any[]; message: string };
-                              setGenSuccess(data.message);
-                              // Refresh syllabus. Exam slug comes from the
-                              // shared user store — no second /me call.
+                              const res = await api.generateChapters
+                                ? api.generateChapters(syllabus!.exam, subject.slug)
+                                : (await (await import('~/lib/api')).authedFetch('/v1/study/generate-chapters', {
+                                    method: 'POST',
+                                    body: JSON.stringify({ examSlug: syllabus!.exam, subjectSlug: subject.slug }),
+                                  })).json() as { newChapters: any[]; message: string };
+                              setGenSuccess((res as any).message ?? 'New chapters generated!');
+                              // Refresh syllabus
                               const exam = me?.targetExam;
                               if (exam) {
                                 const syllRes = await api.getSyllabus(exam);
