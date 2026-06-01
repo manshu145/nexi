@@ -73,11 +73,29 @@ export async function grantPlan(deps: GrantPlanDeps, input: GrantPlanInput): Pro
     throw new Error(`unknown planId: ${input.planId}`);
   }
 
-  // 1. Idempotency check via order status.
-  // If the order is already 'completed', do nothing (do NOT extend twice).
+  // 1. Idempotency check via order status — using a Firestore transaction
+  // so concurrent /verify + /webhook calls are serialized. Only the first
+  // to see status !== 'completed' proceeds; the second gets 'completed'
+  // in its transaction read and returns early.
   if (db) {
-    const orderSnap = await db.collection('billingOrders').doc(input.orderId).get();
-    if (orderSnap.exists && orderSnap.data()?.status === 'completed') {
+    const orderRef = db.collection('billingOrders').doc(input.orderId);
+    const alreadyCompleted = await db.runTransaction(async (tx) => {
+      const orderSnap = await tx.get(orderRef);
+      if (orderSnap.exists && orderSnap.data()?.status === 'completed') {
+        return true; // already done
+      }
+      // Mark completed inside the transaction — second caller will see this.
+      tx.set(orderRef, {
+        status: 'completed',
+        paymentId: input.paymentId,
+        period: input.period,
+        completedAt: new Date().toISOString(),
+        completedVia: input.source,
+      }, { merge: true });
+      return false;
+    });
+
+    if (alreadyCompleted) {
       const user = await users.get(input.uid);
       const expiresAt = (user as unknown as { planExpiresAt?: string })?.planExpiresAt
         ?? new Date().toISOString();
@@ -98,30 +116,21 @@ export async function grantPlan(deps: GrantPlanDeps, input: GrantPlanInput): Pro
   //    Also clears planCancelledAt: a fresh paid period is, by definition,
   //    a "resume" -- the user is no longer in the cancelled-but-still-active
   //    transitional state.
+  //    Also sets onboardingPlanChosen: true — a successful payment is proof
+  //    the user chose a plan, so the dashboard guard should never bounce them
+  //    back to /onboarding/plan even if the markPlanChosen API call failed
+  //    during the onboarding flow.
   await users.update(input.uid, {
     plan: input.planId,
     planExpiresAt: newExpiry,
     planCancelledAt: null,
+    onboardingPlanChosen: true,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any);
 
-  // 4. Mark order completed + record coupon usage (best-effort — never fail the grant on these).
+  // 4. Record coupon usage (best-effort — never fail the grant on these).
+  //    Order status was already marked 'completed' in the transaction above.
   if (db) {
-    try {
-      await db.collection('billingOrders').doc(input.orderId).set({
-        status: 'completed',
-        paymentId: input.paymentId,
-        period: input.period,
-        completedAt: new Date().toISOString(),
-        completedVia: input.source,
-        grantedExpiresAt: newExpiry,
-      }, { merge: true });
-    } catch (e) {
-      logger.warn('billing.order_status_update_failed', {
-        orderId: input.orderId, error: e instanceof Error ? e.message : String(e),
-      });
-    }
-
     if (input.couponCode) {
       try {
         await coupons.incrementUsage(input.couponCode);

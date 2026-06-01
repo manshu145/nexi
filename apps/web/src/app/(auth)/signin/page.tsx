@@ -338,7 +338,7 @@ export default function SignInPage() {
                   else localStorage.removeItem('pendingReferral');
                 }}
               />
-              <span className="text-[10px] text-muted-400">+25 credits</span>
+              <span className="text-[10px] text-muted-400">+100 credits</span>
             </div>
           </details>
         </div>

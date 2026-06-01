@@ -135,7 +135,19 @@ export default function ProfilePage() {
       // password is no longer valid + sign out + redirect.
       const { getFirebaseAuthClient } = await import('~/lib/firebase');
       const auth = getFirebaseAuthClient();
-      try { await auth.currentUser?.delete(); } catch { /* token may have expired during long erase; ignore */ }
+      try {
+        await auth.currentUser?.delete();
+      } catch (authErr: any) {
+        // If session is too old, Firebase requires re-authentication.
+        // Server-side deletion already succeeded (the important part) so
+        // just sign out locally — the auth record will be cleaned up by
+        // the server's deleteUser call in the same endpoint.
+        if (authErr?.code === 'auth/requires-recent-login') {
+          try { await auth.signOut(); } catch { /* best effort */ }
+        }
+        // Other errors (network, etc.) — server already deleted the user,
+        // so a stale auth record is acceptable and will be cleaned up.
+      }
       window.location.href = '/';
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to delete account. Please contact support.', { id: toastId });
@@ -188,13 +200,13 @@ export default function ProfilePage() {
             </div>
             <div className="flex rounded-lg bg-paper-200 p-1">
               <button
-                onClick={() => { localStorage.setItem('nexigrate-language', 'en'); document.cookie = 'nexigrate-language=en;path=/;max-age=31536000'; toast.success('Language set to English'); window.location.reload(); }}
+                onClick={() => { localStorage.setItem('nexigrate-language', 'en'); document.cookie = 'nexigrate-language=en;path=/;max-age=31536000'; toast.success('Language set to English'); router.refresh(); }}
                 className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${(localStorage.getItem('nexigrate-language') || 'en') === 'en' ? 'bg-paper-50 text-ink-900 shadow-sm' : 'text-muted-500'}`}
               >
                 English
               </button>
               <button
-                onClick={() => { localStorage.setItem('nexigrate-language', 'hi'); document.cookie = 'nexigrate-language=hi;path=/;max-age=31536000'; toast.success('भाषा हिंदी में बदली गई'); window.location.reload(); }}
+                onClick={() => { localStorage.setItem('nexigrate-language', 'hi'); document.cookie = 'nexigrate-language=hi;path=/;max-age=31536000'; toast.success('भाषा हिंदी में बदली गई'); router.refresh(); }}
                 className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${localStorage.getItem('nexigrate-language') === 'hi' ? 'bg-paper-50 text-ink-900 shadow-sm' : 'text-muted-500'}`}
               >
                 हिंदी
@@ -397,7 +409,7 @@ export default function ProfilePage() {
               {/* Share button */}
               <button
                 onClick={() => {
-                  const text = `Join me on Nexigrate! Use my code ${referralStats.code} to get 25 bonus credits. ${referralStats.referralUrl}`;
+                  const text = `Join me on Nexigrate! Use my code ${referralStats.code} to get 100 bonus credits. ${referralStats.referralUrl}`;
                   if (navigator.share) {
                     navigator.share({ title: 'Join Nexigrate', text, url: referralStats.referralUrl }).catch(() => {});
                   } else {
