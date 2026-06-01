@@ -166,6 +166,13 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
     const principal = requireAuth(c);
     const { exam, subject, chapter } = c.req.param();
     const language = (c.req.query('lang') as 'en' | 'hi') || 'en';
+
+    // CORS headers set MANUALLY on every quiz response — do NOT rely on
+    // middleware because Cloudflare/proxy can strip headers from error responses.
+    const origin = c.req.header('origin') || 'https://app.nexigrate.com';
+    c.header('Access-Control-Allow-Origin', origin);
+    c.header('Access-Control-Allow-Credentials', 'true');
+
     try {
       // Get user level for difficulty calibration
       const user = await deps.users.get(principal.userId);
@@ -187,7 +194,7 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
       // the browser to show "Failed to fetch" instead of the real error.
       // Returning 200 ensures CORS headers pass through and the frontend
       // can display the actual error message to the user.
-      return c.json({ questions: [], error: `Quiz generation failed: ${errorMsg.slice(0, 200)}. Try again in a few seconds.`, userLevel: 'intermediate' });
+      return c.json({ questions: [], error: `Quiz generation failed: ${errorMsg.slice(0, 200)}. Try again in a few seconds.`, userLevel: 'intermediate' }, 200);
     }
   });
 

@@ -16,6 +16,10 @@ export interface PlanFeatures {
   essayGrading: boolean;
   chaptersPerDay: number;    // -1 = unlimited
   creditDeduction: boolean;  // true = credits ARE deducted for features
+  priorityAI: boolean;       // faster AI responses (queue priority)
+  advancedAnalytics: boolean; // detailed study analytics
+  downloadContent: boolean;  // offline chapter downloads
+  personalMentor: boolean;   // priority doubt clearing
 }
 
 export interface PlanConfig {
@@ -58,6 +62,10 @@ export const PLANS: Readonly<Record<PlanId, PlanConfig>> = {
       essayGrading: false,
       chaptersPerDay: 2,
       creditDeduction: true,
+      priorityAI: false,
+      advancedAnalytics: false,
+      downloadContent: false,
+      personalMentor: false,
     },
   },
   scholar: {
@@ -76,6 +84,10 @@ export const PLANS: Readonly<Record<PlanId, PlanConfig>> = {
       essayGrading: false,
       chaptersPerDay: 10,
       creditDeduction: false,
+      priorityAI: false,
+      advancedAnalytics: false,
+      downloadContent: false,
+      personalMentor: false,
     },
   },
   aspirant: {
@@ -94,6 +106,10 @@ export const PLANS: Readonly<Record<PlanId, PlanConfig>> = {
       essayGrading: true,
       chaptersPerDay: -1,
       creditDeduction: false,
+      priorityAI: false,
+      advancedAnalytics: false,
+      downloadContent: false,
+      personalMentor: false,
     },
   },
   achiever: {
@@ -112,6 +128,10 @@ export const PLANS: Readonly<Record<PlanId, PlanConfig>> = {
       essayGrading: true,
       chaptersPerDay: -1,
       creditDeduction: false,
+      priorityAI: true,
+      advancedAnalytics: true,
+      downloadContent: true,
+      personalMentor: true,
     },
   },
 } as const;
