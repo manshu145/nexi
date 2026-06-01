@@ -106,6 +106,37 @@ export function makeBillingRoutes(deps: BillingRoutesDeps): Hono {
       finalAmount = validation.finalAmount;
     }
 
+    // ₹0 short-circuit: if a 100% coupon makes the amount zero, grant the
+    // plan directly without creating a Razorpay order (Razorpay rejects ₹0).
+    if (finalAmount <= 0) {
+      const freeOrderId = `free_${principal.userId.slice(0, 12)}_${Date.now().toString(36)}`;
+      const result = await grantPlan(
+        { users: deps.users, coupons: deps.coupons, db: deps.db, logger: deps.logger },
+        {
+          uid: principal.userId,
+          planId,
+          period,
+          paymentId: `coupon_${couponCode}`,
+          orderId: freeOrderId,
+          couponCode,
+          source: 'verify',
+        },
+      );
+      deps.logger.info('billing.free_coupon_grant', {
+        userId: principal.userId, planId, period, couponCode, expiresAt: result.expiresAt,
+      });
+      return c.json({
+        orderId: freeOrderId,
+        amount: 0,
+        currency: 'INR',
+        keyId: razorpayKeyId,
+        period,
+        granted: true,
+        plan: result.plan,
+        expiresAt: result.expiresAt,
+      });
+    }
+
     try {
       const receipt = `order_${principal.userId.slice(0, 12)}_${Date.now().toString(36)}`;
       const res = await fetch('https://api.razorpay.com/v1/orders', {
