@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '~/lib/auth-context';
 import { getFirebaseAuthClient } from '~/lib/firebase';
+import { api } from '~/lib/api';
 
 interface AdminStats {
   totalUsers: number;
@@ -78,6 +79,9 @@ export default function AdminStatsPage() {
   const [error, setError] = useState<string | null>(null);
   const [fetchingStats, setFetchingStats] = useState(true);
   const [fetchingHealth, setFetchingHealth] = useState(true);
+  const [resetting, setResetting] = useState(false);
+  const [resetConfirm, setResetConfirm] = useState(false);
+  const [resetMsg, setResetMsg] = useState<string | null>(null);
 
   const isAdmin = (email?: string | null) =>
     email === 'manshu.ibc24@gmail.com' || email === 'manshusinha777@gmail.com';
@@ -160,10 +164,51 @@ export default function AdminStatsPage() {
 
   if (error) return <div className="banner banner-error">{error}</div>;
 
+  const handleReset = async () => {
+    setResetting(true);
+    setResetMsg(null);
+    try {
+      const res = await api.adminResetAnalytics();
+      const summary = Object.entries(res.deleted).map(([k, v]) => `${k}: ${v}`).join(' · ');
+      setResetMsg(`✓ Reset complete — ${summary}`);
+      setResetConfirm(false);
+      void fetchStats();
+    } catch (e) {
+      setResetMsg(`✗ ${e instanceof Error ? e.message : 'Reset failed'}`);
+    } finally {
+      setResetting(false);
+    }
+  };
+
   return (
     <div>
-      <h1 className="font-serif text-2xl font-bold text-ink-900">Dashboard</h1>
-      <p className="mt-1 text-sm text-muted-500">Overview of platform metrics</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="font-serif text-2xl font-bold text-ink-900">Dashboard</h1>
+          <p className="mt-1 text-sm text-muted-500">Overview of platform metrics</p>
+        </div>
+        {/* Reset test data — clears AI logs / error logs / sessions + counters.
+            Users & payments are NOT affected. */}
+        <div className="flex flex-col items-end gap-1">
+          {!resetConfirm ? (
+            <button
+              onClick={() => { setResetConfirm(true); setResetMsg(null); }}
+              className="rounded-lg border border-line bg-paper-50 px-3 py-1.5 text-xs font-medium text-muted-600 hover:text-ember-600 hover:border-ember-500/40 transition-colors"
+            >
+              ♻️ Reset test data
+            </button>
+          ) : (
+            <div className="flex items-center gap-2 rounded-lg border border-ember-500/40 bg-ember-500/5 px-3 py-1.5">
+              <span className="text-xs text-ink-900">Clear analytics? (users & payments safe)</span>
+              <button onClick={handleReset} disabled={resetting} className="text-xs font-semibold text-ember-600 hover:text-ember-700 disabled:opacity-50">
+                {resetting ? 'Resetting…' : 'Yes, reset'}
+              </button>
+              <button onClick={() => setResetConfirm(false)} disabled={resetting} className="text-xs font-medium text-muted-500 hover:text-ink-900">Cancel</button>
+            </div>
+          )}
+          {resetMsg && <p className="text-[11px] text-muted-500 max-w-xs text-right">{resetMsg}</p>}
+        </div>
+      </div>
 
       {/* KPI Cards */}
       {fetchingStats ? (

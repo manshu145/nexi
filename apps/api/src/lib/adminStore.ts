@@ -90,6 +90,10 @@ export interface AdminStore {
   getRevenue(): Promise<{ payments: Record<string, any>[]; total: number }>;
   // Support tickets
   getSupportTickets(): Promise<Record<string, any>[]>;
+  // Analytics reset (founder: wipe accumulated test data so real data shows).
+  // Clears aiCallLogs / errorLogs / sessions and resets counters. Does NOT
+  // touch users or billingOrders. Returns a summary of what was removed.
+  resetAnalytics?(): Promise<{ deleted: Record<string, number> }>;
 }
 
 export interface EmailTemplate {
@@ -137,6 +141,13 @@ export class InMemoryAdminStore implements AdminStore {
   async getAnnouncements() { return this.announcements; }
   async deleteAnnouncement(id: string) { this.announcements = this.announcements.filter(a => a.id !== id); }
   async getRevenue() { return { payments: [], total: 0 }; }
+  async resetAnalytics() {
+    const deleted = { aiCallLogs: this.aiCallLogs.length, errorLogs: this.errorLogs.length, sessions: this.sessions.size };
+    this.aiCallLogs = [];
+    this.errorLogs = [];
+    this.sessions.clear();
+    return { deleted };
+  }
   async getSupportTickets() { return []; }
 }
 
@@ -176,19 +187,24 @@ export class FirestoreAdminStore implements AdminStore {
       if (data.lastActiveAt && data.lastActiveAt > tenMinAgo) activeSessions++;
     });
 
-    // Get revenue
+    // Get revenue — read from billingOrders (the collection the Razorpay
+    // flow actually writes to). status === 'completed' means money moved.
+    // (Pre-fix this queried a non-existent `payments` collection so revenue
+    // always showed 0 / stale test data.)
     let revenueToday = 0, revenue7d = 0, revenue30d = 0, revenueTotal = 0;
     try {
-      const paymentsSnap = await this.db.collection('payments').where('status', '==', 'verified').get();
-      paymentsSnap.forEach(doc => {
+      const ordersSnap = await this.db.collection('billingOrders').where('status', '==', 'completed').get();
+      ordersSnap.forEach(doc => {
         const p = doc.data();
-        const amount = p.amount || 0;
+        // amount is stored in paise → convert to rupees for the dashboard.
+        const amount = (p.amount || 0) / 100;
+        const when = p.completedAt || p.createdAt || '';
         revenueTotal += amount;
-        if (p.createdAt > monthAgo) revenue30d += amount;
-        if (p.createdAt > weekAgo) revenue7d += amount;
-        if (p.createdAt?.startsWith(todayStr)) revenueToday += amount;
+        if (when > monthAgo) revenue30d += amount;
+        if (when > weekAgo) revenue7d += amount;
+        if (when?.startsWith(todayStr)) revenueToday += amount;
       });
-    } catch { /* payments collection may not exist */ }
+    } catch { /* billingOrders collection may not exist yet */ }
 
     // AI calls today
     let aiCallsToday = 0, aiCallsThisWeek = 0, aiCostToday = 0;
@@ -415,5 +431,47 @@ export class FirestoreAdminStore implements AdminStore {
       const snap = await this.db.collection('supportTickets').orderBy('createdAt', 'desc').limit(50).get();
       return snap.docs.map(d => d.data());
     } catch { return []; }
+  }
+
+  /**
+   * Wipe accumulated analytics/test data so the dashboard reflects real
+   * usage from now on. Deletes the aiCallLogs, errorLogs and sessions
+   * collections in batches and resets the pwaInstalls counter.
+   *
+   * SAFETY: deliberately does NOT touch `users` or `billingOrders` — only
+   * the ephemeral analytics collections. Gated behind admin auth + an
+   * explicit confirm flag at the route layer.
+   */
+  async resetAnalytics(): Promise<{ deleted: Record<string, number> }> {
+    const collections = ['aiCallLogs', 'errorLogs', 'sessions'];
+    const deleted: Record<string, number> = {};
+
+    for (const col of collections) {
+      let total = 0;
+      // Delete in batches of 400 (Firestore batch limit is 500).
+      // Loop until the collection is empty.
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const snap = await this.db.collection(col).limit(400).get();
+        if (snap.empty) break;
+        const batch = this.db.batch();
+        snap.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+        total += snap.size;
+        if (snap.size < 400) break;
+      }
+      deleted[col] = total;
+    }
+
+    // Reset the running counters on the stats doc.
+    try {
+      await this.db.collection('platformConfig').doc('stats').set(
+        { pwaInstalls: 0, resetAt: new Date().toISOString() },
+        { merge: true },
+      );
+      deleted['pwaInstalls (reset)'] = 1;
+    } catch { /* non-fatal */ }
+
+    return { deleted };
   }
 }

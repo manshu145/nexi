@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Script from 'next/script';
 import { useAuth } from '~/lib/auth-context';
-import { api, newIdempotencyKey, type Plan } from '~/lib/api';
+import { api, authedFetch, newIdempotencyKey, type Plan } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 
 declare global { interface Window { Razorpay: new (options: Record<string, unknown>) => { open(): void }; } }
@@ -11,42 +11,42 @@ declare global { interface Window { Razorpay: new (options: Record<string, unkno
 type BillingPeriod = 'monthly' | 'yearly';
 
 const SCHOLAR_FEATURES = [
-  'Unlimited Daily MCQs',
-  'Unlimited Mock Tests',
-  'Unlimited Chapter Access (no credits deducted)',
-  'AI Tutor — Nexi AI unlimited',
+  '30 Daily MCQs',
+  '5 Mock Tests / month',
+  '8 Chapters / day (no credits)',
+  'AI Tutor — 30 messages / day',
+  'Essay Grading — 3 / day',
+  'AI Image Generation — 6 / day',
   'Current Affairs Daily Digest',
-  'Daily Quiz + Leaderboard',
-  'Hindi + English content',
-  'No credit deductions',
-  'Priority support',
+  'Ad-free, no distractions',
 ];
 
 const ASPIRANT_FEATURES = [
-  'Everything in Scholar',
-  'Advanced AI Tutor with memory',
-  'Essay & Answer Grading',
-  'Personalized study plans',
-  'Mentor support',
+  'Everything in Starter',
+  '100 Daily MCQs · 25 Chapters/day',
+  '15 Mock Tests / month',
+  'AI Tutor — 100 messages / day',
+  'Essay Grading — 10 / day',
+  'Priority AI (GPT-4o)',
 ];
 
 const ACHIEVER_FEATURES = [
-  'Everything in Aspirant',
-  'Essay Grading with expert feedback',
-  'UPSC-specific mock interviews',
-  'Expert AMAs',
-  'Dedicated study coach',
+  'Everything in Pro',
+  'Unlimited MCQs & Chapters',
+  '40 Mock Tests / month',
+  'Unlimited Essay Grading',
+  'AI Images — 50 / day',
+  'Dedicated mentor support',
 ];
 
 // Hardcoded fallback used only when the live admin matrix is unreachable
 // (network down, API outage). The /upgrade page would otherwise render
 // ₹0 / NaN for half a beat which is worse than slightly-stale numbers.
-// The live values come from `api.getPlans()` and override these on mount —
-// see PR-34b (audit #41).
+// The live values come from `api.getPlans()` and override these on mount.
 const PRICING_FALLBACK = {
-  scholar:  { monthly: 99,  yearly: 830  },
-  aspirant: { monthly: 299, yearly: 2510 },
-  achiever: { monthly: 599, yearly: 5030 },
+  scholar:  { monthly: 79,  yearly: 599  },
+  aspirant: { monthly: 249, yearly: 1899 },
+  achiever: { monthly: 599, yearly: 4499 },
 } as const;
 
 type PlanKey = keyof typeof PRICING_FALLBACK;
@@ -125,13 +125,8 @@ export default function UpgradePage() {
     setValidatingCoupon(true);
     setCouponApplied(null);
     try {
-      const res = await fetch(`${process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com'}/v1/billing/validate-coupon`, {
+      const res = await authedFetch('/v1/billing/validate-coupon', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
-        // TODO(audit #34): when aspirant/achiever launch, thread the
-        // selected planId through here. Currently /upgrade only sells
-        // scholar so 'scholar' is correct, but coupons configured for
-        // aspirant/achiever cannot be validated against this page.
         body: JSON.stringify({ couponCode: couponCode.trim(), planId: 'scholar', period }),
       });
       const data = await res.json() as { valid: boolean; discount: number; finalAmount: number; error?: string };
@@ -149,18 +144,22 @@ export default function UpgradePage() {
     const planLabel = planId.charAt(0).toUpperCase() + planId.slice(1);
 
     try {
-      const orderRes = await fetch(`${process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com'}/v1/billing/order`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
-        body: JSON.stringify({ planId, period, couponCode: couponApplied?.valid ? couponCode.trim() : undefined }),
-      });
-      if (!orderRes.ok) { const e = await orderRes.json().catch(() => ({})) as { message?: string }; throw new Error(e.message || `Order failed: ${orderRes.status}`); }
-      const order = await orderRes.json() as { orderId: string; amount: number; currency: string; keyId: string; period: BillingPeriod };
+      const order = await api.createOrder(planId, period, couponApplied?.valid ? couponCode.trim() : undefined);
+
+      // If amount is 0 (100% coupon), the server grants the plan directly
+      // and returns { granted: true } — no Razorpay checkout needed.
+      if (order.amount === 0 && (order as any).granted) {
+        setSuccess('Plan activated! Redirecting...');
+        setCurrentPlan(planId);
+        setTimeout(() => router.push('/dashboard'), 2000);
+        setProcessing(false);
+        return;
+      }
 
       const displayAmount = order.amount / 100;
       const periodLabel = order.period === 'yearly' ? 'year' : 'month';
       const options = {
-        key: order.keyId,
+        key: order.keyId ?? order.key,
         amount: order.amount,
         currency: order.currency,
         name: 'Nexigrate',
@@ -168,17 +167,7 @@ export default function UpgradePage() {
         order_id: order.orderId,
         handler: async (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
           try {
-            const verifyRes = await fetch(`${process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com'}/v1/billing/verify`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${await getToken()}`,
-                // SAME key on retry → server returns the cached response.
-                'Idempotency-Key': idempotencyKey,
-              },
-              body: JSON.stringify(response),
-            });
-            if (!verifyRes.ok) throw new Error('Verification failed');
+            await api.verifyPayment(response, idempotencyKey);
             setSuccess('Plan activated! Redirecting...');
             setCurrentPlan(planId);
             setTimeout(() => router.push('/dashboard'), 2000);
@@ -195,6 +184,19 @@ export default function UpgradePage() {
         prefill: { name: user?.displayName ?? '', email: user?.email ?? '' },
         theme: { color: '#F59E0B' },
       };
+
+      // Check Razorpay script is loaded before opening checkout
+      if (typeof window.Razorpay === 'undefined') {
+        // Script hasn't loaded yet (lazyOnload). Wait up to 3 seconds.
+        await new Promise<void>((resolve, reject) => {
+          let waited = 0;
+          const interval = setInterval(() => {
+            if (typeof window.Razorpay !== 'undefined') { clearInterval(interval); resolve(); }
+            waited += 200;
+            if (waited > 3000) { clearInterval(interval); reject(new Error('Payment gateway is loading. Please try again in a moment.')); }
+          }, 200);
+        });
+      }
 
       const rzp = new window.Razorpay(options);
       rzp.open();
@@ -303,7 +305,7 @@ export default function UpgradePage() {
         {/* SCHOLAR — ACTIVE */}
         <div className={`paper-card relative flex flex-col p-5 border-amber-500 shadow-[0_0_0_2px_rgba(245,158,11,0.3)] ${isCurrentScholar ? 'border-2 border-amber-400' : ''}`}>
           <span className="absolute -top-2.5 right-3 rounded-full bg-amber-500 px-3 py-0.5 text-xs font-semibold text-ink-900">Recommended</span>
-          <h3 className="font-serif text-lg font-bold text-ink-900">Scholar</h3>
+          <h3 className="font-serif text-lg font-bold text-ink-900">Starter</h3>
           <p className="mt-2">
             <span className="font-serif text-3xl font-bold text-ink-900">₹{scholarDisplayPrice}</span>
             <span className="text-sm text-muted-500">/{period === 'yearly' ? 'yr' : 'mo'}</span>
@@ -454,8 +456,3 @@ export default function UpgradePage() {
   );
 }
 
-async function getToken(): Promise<string> {
-  const { getFirebaseAuthClient } = await import('~/lib/firebase');
-  const auth = getFirebaseAuthClient();
-  return (await auth.currentUser?.getIdToken()) ?? '';
-}

@@ -31,24 +31,24 @@ interface PlanConfig {
 const plans: PlanConfig[] = [
   {
     slug: 'scholar',
-    label: livePlans.find(p => p.id === 'scholar')?.name ?? 'Scholar',
-    description: 'Unlimited credits, ad-free, AI tutor, 10 chapters/day.',
-    monthlyInr: livePlans.find(p => p.id === 'scholar')?.price ?? 99,
-    yearlyInr: livePlans.find(p => p.id === 'scholar')?.yearlyPrice ?? 830,
+    label: livePlans.find(p => p.id === 'scholar')?.name ?? 'Starter',
+    description: 'Ad-free, AI tutor, 8 chapters/day, 6 AI images/day. Great to begin.',
+    monthlyInr: livePlans.find(p => p.id === 'scholar')?.price ?? 79,
+    yearlyInr: livePlans.find(p => p.id === 'scholar')?.yearlyPrice ?? 599,
   },
   {
     slug: 'aspirant',
-    label: livePlans.find(p => p.id === 'aspirant')?.name ?? 'Aspirant',
-    description: 'Unlimited everything + essay grading. Coming soon.',
-    monthlyInr: livePlans.find(p => p.id === 'aspirant')?.price ?? 299,
-    yearlyInr: livePlans.find(p => p.id === 'aspirant')?.yearlyPrice ?? 2510,
+    label: livePlans.find(p => p.id === 'aspirant')?.name ?? 'Pro',
+    description: 'More of everything + essay grading. For serious aspirants.',
+    monthlyInr: livePlans.find(p => p.id === 'aspirant')?.price ?? 249,
+    yearlyInr: livePlans.find(p => p.id === 'aspirant')?.yearlyPrice ?? 1899,
   },
   {
     slug: 'achiever',
-    label: livePlans.find(p => p.id === 'achiever')?.name ?? 'Achiever',
-    description: 'Everything in Aspirant + priority AI + dedicated support.',
+    label: livePlans.find(p => p.id === 'achiever')?.name ?? 'Elite',
+    description: 'Unlimited study + priority AI + mentor support. Go all-in.',
     monthlyInr: livePlans.find(p => p.id === 'achiever')?.price ?? 599,
-    yearlyInr: livePlans.find(p => p.id === 'achiever')?.yearlyPrice ?? 5030,
+    yearlyInr: livePlans.find(p => p.id === 'achiever')?.yearlyPrice ?? 4499,
   },
 ];
 
@@ -61,27 +61,39 @@ interface FeatureRow {
 const featureRows: FeatureRow[] = [
   {
     label: 'Daily MCQ',
-    values: { scholar: '30 / day', aspirant: 'Unlimited', achiever: 'Unlimited' },
+    values: { scholar: '30 / day', aspirant: '100 / day', achiever: 'Unlimited' },
   },
   {
     label: 'Chapters per day',
-    values: { scholar: '10', aspirant: 'Unlimited', achiever: 'Unlimited' },
+    values: { scholar: '8', aspirant: '25', achiever: 'Unlimited' },
   },
   {
     label: 'Mock tests',
-    values: { scholar: '5 / mo', aspirant: 'Unlimited', achiever: 'Unlimited' },
+    values: { scholar: '5 / mo', aspirant: '15 / mo', achiever: '40 / mo' },
   },
   {
     label: 'AI tutor (Q&A)',
-    values: { scholar: '✓', aspirant: '✓', achiever: '✓' },
+    values: { scholar: '30 / day', aspirant: '100 / day', achiever: '300 / day' },
+  },
+  {
+    label: 'Essay & answer grading',
+    values: { scholar: '3 / day', aspirant: '10 / day', achiever: 'Unlimited' },
+  },
+  {
+    label: 'AI image generation',
+    values: { scholar: '6 / day', aspirant: '15 / day', achiever: '50 / day' },
   },
   {
     label: 'Daily current affairs + quiz',
     values: { scholar: '✓', aspirant: '✓', achiever: '✓' },
   },
   {
-    label: 'Essay & answer grading',
+    label: 'Priority AI (GPT-4o)',
     values: { scholar: '—', aspirant: '✓', achiever: '✓' },
+  },
+  {
+    label: 'Mentor support',
+    values: { scholar: '—', aspirant: '—', achiever: '✓' },
   },
   {
     label: 'Credit deduction',

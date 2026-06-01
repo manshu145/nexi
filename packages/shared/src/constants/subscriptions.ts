@@ -10,12 +10,19 @@
 
 export interface PlanFeatures {
   dailyMCQ: number;          // -1 = unlimited
-  mockTests: number;         // -1 = unlimited
+  mockTests: number;         // mock tests per MONTH; -1 = unlimited
   aiTutor: boolean;
   currentAffairs: boolean;
   essayGrading: boolean;
   chaptersPerDay: number;    // -1 = unlimited
   creditDeduction: boolean;  // true = credits ARE deducted for features
+  // ── Freemium quota fields (PR — plan restructure) ──────────────────
+  // Per-day quotas for the AI-expensive features. -1 = unlimited (fair-use
+  // soft cap still applies via the daily USD spend backstop). 0 = blocked.
+  // Optional so older platformConfig docs / fixtures don't break on merge.
+  aiTutorPerDay?: number;    // AI chat messages per day; -1 = unlimited
+  essaysPerDay?: number;     // essay gradings per day; -1 = unlimited
+  imagesPerDay?: number;     // AI image generations per day; -1 = unlimited
 }
 
 export interface PlanConfig {
@@ -51,70 +58,101 @@ export const PLANS: Readonly<Record<PlanId, PlanConfig>> = {
     isActive: true,
     comingSoon: false,
     features: {
-      dailyMCQ: 5,
-      mockTests: 1,
-      aiTutor: false,
+      dailyMCQ: 10,
+      mockTests: 1,            // per month
+      aiTutor: false,          // gated by credits, not a flat allowance
       currentAffairs: true,
-      essayGrading: false,
+      essayGrading: true,      // 1/day (see essaysPerDay)
       chaptersPerDay: 2,
       creditDeduction: true,
+      aiTutorPerDay: 0,        // free uses credits for chat, no flat daily allowance
+      essaysPerDay: 1,
+      imagesPerDay: 1,
     },
   },
   scholar: {
     id: 'scholar',
-    name: 'Scholar',
-    nameHi: 'विद्वान',
-    price: 99,
-    yearlyPrice: 830,
+    name: 'Starter',
+    nameHi: 'स्टार्टर',
+    price: 79,
+    yearlyPrice: 599,
     isActive: true,
     comingSoon: false,
     features: {
       dailyMCQ: 30,
-      mockTests: 5,
+      mockTests: 5,            // per month
       aiTutor: true,
       currentAffairs: true,
-      essayGrading: false,
-      chaptersPerDay: 10,
+      essayGrading: true,
+      chaptersPerDay: 8,
       creditDeduction: false,
+      aiTutorPerDay: 30,
+      essaysPerDay: 3,
+      imagesPerDay: 6,
     },
   },
   aspirant: {
     id: 'aspirant',
-    name: 'Aspirant',
-    nameHi: 'अभ्यर्थी',
-    price: 299,
-    yearlyPrice: 2510,
+    name: 'Pro',
+    nameHi: 'प्रो',
+    price: 249,
+    yearlyPrice: 1899,
     isActive: true,
     comingSoon: false,
     features: {
-      dailyMCQ: -1,
-      mockTests: -1,
+      dailyMCQ: 100,
+      mockTests: 15,           // per month
       aiTutor: true,
       currentAffairs: true,
       essayGrading: true,
-      chaptersPerDay: -1,
+      chaptersPerDay: 25,
       creditDeduction: false,
+      aiTutorPerDay: 100,
+      essaysPerDay: 10,
+      imagesPerDay: 15,
     },
   },
   achiever: {
     id: 'achiever',
-    name: 'Achiever',
-    nameHi: 'उपलब्धिकर्ता',
+    name: 'Elite',
+    nameHi: 'एलीट',
     price: 599,
-    yearlyPrice: 5030,
+    yearlyPrice: 4499,
     isActive: true,
     comingSoon: false,
     features: {
-      dailyMCQ: -1,
-      mockTests: -1,
+      dailyMCQ: -1,            // unlimited (fair-use)
+      mockTests: 40,           // per month
       aiTutor: true,
       currentAffairs: true,
       essayGrading: true,
-      chaptersPerDay: -1,
+      chaptersPerDay: -1,      // unlimited (fair-use)
       creditDeduction: false,
+      aiTutorPerDay: 300,
+      essaysPerDay: -1,        // unlimited (fair-use)
+      imagesPerDay: 50,
     },
   },
 } as const;
+
+/**
+ * Student-facing display name for a plan id. Internal ids stay
+ * scholar/aspirant/achiever (DB + billing safe), but the UI shows the
+ * marketing names. Use this anywhere you render `user.plan` to a student.
+ */
+export const PLAN_DISPLAY_NAME: Record<PlanId, string> = {
+  free: 'Free',
+  scholar: 'Starter',
+  aspirant: 'Pro',
+  achiever: 'Elite',
+};
+
+/** Safe lookup — returns the display name for any plan id (falls back to the
+ *  capitalised id for unknown values). */
+export function planDisplayName(planId: string | null | undefined): string {
+  if (!planId) return 'Free';
+  return PLAN_DISPLAY_NAME[planId as PlanId] ?? (planId.charAt(0).toUpperCase() + planId.slice(1));
+}
 
 /** Check if a user's plan is currently active (not expired) */
 export function isPlanActive(plan: string, planExpiresAt: string | null): boolean {
@@ -156,8 +194,17 @@ export function computeNewExpiry(
   now: Date = new Date(),
 ): string {
   const days = PERIOD_DAYS[period];
-  const baseMs = isPlanActive(currentPlan, currentExpiresAt)
-    ? new Date(currentExpiresAt as string).getTime()
+  // Only extend from current expiry if user has an ACTIVE PAID plan with
+  // a valid future expiry date. Free plan has no expiry to extend from —
+  // upgrading from free always starts from now. This prevents the bug where
+  // isPlanActive('free', null) returns true → new Date(null).getTime() = 0
+  // → expiry computes to 1970 (immediately expired).
+  const shouldExtend =
+    currentPlan !== 'free' &&
+    currentExpiresAt !== null &&
+    isPlanActive(currentPlan, currentExpiresAt);
+  const baseMs = shouldExtend
+    ? new Date(currentExpiresAt!).getTime()
     : now.getTime();
   return new Date(baseMs + days * 24 * 60 * 60 * 1000).toISOString();
 }
