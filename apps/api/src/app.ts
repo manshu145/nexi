@@ -95,7 +95,10 @@ export function buildApp(deps: AppDeps): Hono {
   // Rate limiting for AI endpoints (Fix #29)
   const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
   app.use('/v1/chat/*', async (c, next) => {
-    const userId = c.req.header('authorization')?.slice(0, 40) ?? c.req.header('x-forwarded-for') ?? 'anon';
+    // Use the decoded principal userId if available (set by auth middleware
+    // above on the /v1 sub-router); for pre-auth routes fall back to IP.
+    const principal = c.get('principal' as never) as { userId: string } | undefined;
+    const userId = principal?.userId ?? c.req.header('x-forwarded-for') ?? 'anon';
     const now = Date.now();
     const entry = rateLimitMap.get(userId);
     if (entry && entry.resetAt > now) {
@@ -114,7 +117,8 @@ export function buildApp(deps: AppDeps): Hono {
   });
 
   app.use('/v1/study/*', async (c, next) => {
-    const userId = c.req.header('authorization')?.slice(0, 40) ?? c.req.header('x-forwarded-for') ?? 'anon';
+    const principal = c.get('principal' as never) as { userId: string } | undefined;
+    const userId = principal?.userId ?? c.req.header('x-forwarded-for') ?? 'anon';
     const now = Date.now();
     const key = `study_${userId}`;
     const entry = rateLimitMap.get(key);
@@ -225,6 +229,21 @@ export function buildApp(deps: AppDeps): Hono {
 
   const v1 = new Hono();
   v1.use('*', authMiddleware(firebaseAuth));
+
+  // ─── Banned user enforcement ────────────────────────────────────────
+  // If the Firestore user doc has `banned: true`, reject ALL requests.
+  // The admin /ban endpoint sets this flag; without this middleware a
+  // banned user's existing token still works until it expires.
+  v1.use('*', async (c, next) => {
+    const principal = c.get('principal' as never) as { userId: string } | undefined;
+    if (principal?.userId) {
+      const u = await users.get(principal.userId as never);
+      if (u && (u as unknown as { banned?: boolean }).banned) {
+        return c.json({ error: 'Your account has been suspended. Contact support for assistance.' }, 403);
+      }
+    }
+    await next();
+  });
 
   // ─── AI cost cap enforcement (lock §3.8) ────────────────────────────
   // Runs before any AI-heavy route. Reads the user's running daily

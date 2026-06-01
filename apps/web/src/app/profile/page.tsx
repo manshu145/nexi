@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { EXAM_BY_SLUG } from '@nexigrate/shared';
+import { EXAM_BY_SLUG, planDisplayName } from '@nexigrate/shared';
 import { Logo } from '~/components/Logo';
 import { useAuth } from '~/lib/auth-context';
 import { useUser } from '~/lib/userStore';
@@ -135,7 +135,19 @@ export default function ProfilePage() {
       // password is no longer valid + sign out + redirect.
       const { getFirebaseAuthClient } = await import('~/lib/firebase');
       const auth = getFirebaseAuthClient();
-      try { await auth.currentUser?.delete(); } catch { /* token may have expired during long erase; ignore */ }
+      try {
+        await auth.currentUser?.delete();
+      } catch (authErr: any) {
+        // If session is too old, Firebase requires re-authentication.
+        // Server-side deletion already succeeded (the important part) so
+        // just sign out locally — the auth record will be cleaned up by
+        // the server's deleteUser call in the same endpoint.
+        if (authErr?.code === 'auth/requires-recent-login') {
+          try { await auth.signOut(); } catch { /* best effort */ }
+        }
+        // Other errors (network, etc.) — server already deleted the user,
+        // so a stale auth record is acceptable and will be cleaned up.
+      }
       window.location.href = '/';
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to delete account. Please contact support.', { id: toastId });
@@ -188,13 +200,13 @@ export default function ProfilePage() {
             </div>
             <div className="flex rounded-lg bg-paper-200 p-1">
               <button
-                onClick={() => { localStorage.setItem('nexigrate-language', 'en'); document.cookie = 'nexigrate-language=en;path=/;max-age=31536000'; toast.success('Language set to English'); window.location.reload(); }}
+                onClick={() => { localStorage.setItem('nexigrate-language', 'en'); document.cookie = 'nexigrate-language=en;path=/;max-age=31536000'; toast.success('Language set to English'); router.refresh(); }}
                 className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${(localStorage.getItem('nexigrate-language') || 'en') === 'en' ? 'bg-paper-50 text-ink-900 shadow-sm' : 'text-muted-500'}`}
               >
                 English
               </button>
               <button
-                onClick={() => { localStorage.setItem('nexigrate-language', 'hi'); document.cookie = 'nexigrate-language=hi;path=/;max-age=31536000'; toast.success('भाषा हिंदी में बदली गई'); window.location.reload(); }}
+                onClick={() => { localStorage.setItem('nexigrate-language', 'hi'); document.cookie = 'nexigrate-language=hi;path=/;max-age=31536000'; toast.success('भाषा हिंदी में बदली गई'); router.refresh(); }}
                 className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${localStorage.getItem('nexigrate-language') === 'hi' ? 'bg-paper-50 text-ink-900 shadow-sm' : 'text-muted-500'}`}
               >
                 हिंदी
@@ -203,7 +215,7 @@ export default function ProfilePage() {
           </div>
         </div>
       </section>
-      <section className="mt-6"><h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">{t('accountInfo')}</h2><div className="mt-3"><Row label={t('plan')} value={me?.plan} /><Row label={t('credits')} value={String(me?.credits ?? 0)} /><Row label={t('memberSince')} value={me?.createdAt ? new Date(me.createdAt).toLocaleDateString() : '—'} /></div></section>
+      <section className="mt-6"><h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">{t('accountInfo')}</h2><div className="mt-3"><Row label={t('plan')} value={planDisplayName(me?.plan)} /><Row label={t('credits')} value={String(me?.credits ?? 0)} /><Row label={t('memberSince')} value={me?.createdAt ? new Date(me.createdAt).toLocaleDateString() : '—'} /></div></section>
 
       {/* Plan & Billing */}
       <section className="mt-6">
@@ -226,7 +238,7 @@ export default function ProfilePage() {
             <div className="mt-3 paper-card p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-ink-900 capitalize">{plan} Plan</p>
+                  <p className="text-sm font-medium text-ink-900">{planDisplayName(plan)} Plan</p>
                   <p className="text-xs text-muted-500">
                     {!isActive && !isPaid && 'Free forever'}
                     {!isActive && isPaid && 'Plan expired — renew to regain access'}
@@ -246,7 +258,7 @@ export default function ProfilePage() {
               {/* Cancelled-but-active explainer banner */}
               {isCancelledActive && expiryLabel && (
                 <div className="rounded-lg border border-line bg-paper-200 p-3 text-xs leading-relaxed text-muted-600 dark:text-muted-400">
-                  Your subscription is cancelled. You'll keep full <span className="capitalize font-medium text-ink-900">{plan}</span> access until <span className="font-medium text-ink-900">{expiryLabel}</span>, then drop to Free automatically. No further charges.
+                  Your subscription is cancelled. You'll keep full <span className="font-medium text-ink-900">{planDisplayName(plan)}</span> access until <span className="font-medium text-ink-900">{expiryLabel}</span>, then drop to Free automatically. No further charges.
                 </div>
               )}
 
@@ -322,7 +334,7 @@ export default function ProfilePage() {
         >
           <div className="paper-card w-full max-w-md p-5 sm:p-6 m-3 animate-in fade-in zoom-in-95">
             <h3 id="cancel-plan-title" className="font-serif text-xl font-semibold text-ink-900">
-              Cancel your {me?.plan} plan?
+              Cancel your {planDisplayName(me?.plan)} plan?
             </h3>
             <p className="mt-2 text-sm leading-relaxed text-muted-600 dark:text-muted-400">
               You'll keep full access until <span className="font-medium text-ink-900">
@@ -397,7 +409,7 @@ export default function ProfilePage() {
               {/* Share button */}
               <button
                 onClick={() => {
-                  const text = `Join me on Nexigrate! Use my code ${referralStats.code} to get 25 bonus credits. ${referralStats.referralUrl}`;
+                  const text = `Join me on Nexigrate! Use my code ${referralStats.code} to get 100 bonus credits. ${referralStats.referralUrl}`;
                   if (navigator.share) {
                     navigator.share({ title: 'Join Nexigrate', text, url: referralStats.referralUrl }).catch(() => {});
                   } else {

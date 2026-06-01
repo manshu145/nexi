@@ -3,7 +3,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useTheme } from 'next-themes';
-import { EXAM_BY_SLUG } from '@nexigrate/shared';
+import { EXAM_BY_SLUG, planDisplayName } from '@nexigrate/shared';
 import { Logo } from '~/components/Logo';
 import { useAuth } from '~/lib/auth-context';
 import { useUser } from '~/lib/userStore';
@@ -180,7 +180,7 @@ export default function DashboardPage() {
             {(me.plan ?? 'free') === 'free' ? (
               <><span>{t('freePlan')}</span><span className="text-amber-500">· {t('upgrade')} →</span></>
             ) : (
-              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-3 py-1 text-xs font-semibold text-stone-900">⭐ {(me.plan ?? 'free').charAt(0).toUpperCase() + (me.plan ?? 'free').slice(1)} {tc('plan')}{me.planExpiresAt ? ` · ${tc('expires')} ${new Date(me.planExpiresAt).toLocaleDateString(me.language === 'hi' ? 'hi-IN' : 'en-IN', { day: 'numeric', month: 'short' })}` : ''}</span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-3 py-1 text-xs font-semibold text-stone-900">⭐ {planDisplayName(me.plan)} {tc('plan')}{me.planExpiresAt ? ` · ${tc('expires')} ${new Date(me.planExpiresAt).toLocaleDateString(me.language === 'hi' ? 'hi-IN' : 'en-IN', { day: 'numeric', month: 'short' })}` : ''}</span>
             )}
           </button>
         )}
@@ -190,6 +190,29 @@ export default function DashboardPage() {
           <span className="flex items-center gap-1 cursor-pointer hover:opacity-80" onClick={() => router.push('/credits')}>💎 {me?.credits ?? 0} {tc('credits')}</span>
           <span className="flex items-center gap-1 capitalize">📊 {levelLabel}</span>
         </div>
+
+        {/* Zero-credits warning for free plan users */}
+        {(me?.plan === 'free' || !me?.plan) && (me?.credits ?? 0) <= 0 && (
+          <div className="mt-4 rounded-xl border border-ember-500/30 bg-ember-500/5 p-4">
+            <div className="flex items-start gap-3">
+              <span className="text-xl flex-shrink-0">⚠️</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-ink-900">Credits khatam ho gaye!</p>
+                <p className="mt-1 text-xs text-muted-500">
+                  Chapters, AI Tutor, aur quizzes use karne ke liye credits chahiye. Upgrade karo ya friends ko refer karo.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button onClick={() => router.push('/upgrade')} className="inline-flex items-center gap-1 rounded-full bg-ember-500 px-3.5 py-1.5 text-xs font-semibold text-paper-50 hover:bg-ember-600 transition-colors">
+                    ⭐ Upgrade Plan
+                  </button>
+                  <button onClick={() => router.push('/refer')} className="inline-flex items-center gap-1 rounded-full border border-line bg-paper-50 px-3.5 py-1.5 text-xs font-medium text-ink-900 hover:bg-paper-200 transition-colors">
+                    🎁 Refer & Earn
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </section>
 
       {/* Primary Study CTA - Full width hero card */}

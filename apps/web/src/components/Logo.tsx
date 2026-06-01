@@ -1,7 +1,17 @@
 'use client';
 
-import { useTheme } from 'next-themes';
-import { useEffect, useState } from 'react';
+/**
+ * Logo component — CSS-based dark/light switching (no hydration flash).
+ *
+ * Uses two <img> tags with Tailwind dark: classes so the correct logo
+ * renders immediately via CSS (html.dark triggers the swap). The old
+ * approach used `useTheme()` + `mounted` state which caused a flash
+ * of the wrong logo on dark-mode users' first paint.
+ *
+ * Rules:
+ *   - LIGHT background → nexigrate-logo-dark.svg (dark-colored text)
+ *   - DARK background  → nexigrate-logo-light.svg (cream-colored text)
+ */
 
 interface LogoProps {
   variant?: 'full' | 'icon';
@@ -16,44 +26,47 @@ export function Logo({
   href,
   className = '',
 }: LogoProps) {
-  const { resolvedTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
+  if (variant === 'icon') {
+    const img = (
+      <img
+        src="/brand/nexigrate-favicon.svg"
+        alt="Nexigrate"
+        width={height}
+        height={height}
+        className={`object-contain ${className}`}
+        style={{ height: `${height}px`, width: 'auto' }}
+      />
+    );
+    return href ? <a href={href} className="inline-flex items-center">{img}</a> : img;
+  }
 
-  useEffect(() => { setMounted(true); }, []);
-
-  // Before hydration, default to light theme to avoid flash
-  const isDark = mounted ? resolvedTheme === 'dark' : false;
-
-  const src =
-    variant === 'icon'
-      ? '/brand/nexigrate-favicon.svg'
-      : isDark
-      ? '/brand/nexigrate-logo-light.svg'
-      : '/brand/nexigrate-logo-dark.svg';
-
-  // Aspect ratios: full logo viewBox 480x120 = 4:1, icon viewBox 64x64 = 1:1
-  const width = variant === 'icon' ? height : height * 4;
-
-  const img = (
-    <img
-      src={src}
-      alt="Nexigrate"
-      width={width}
-      height={height}
-      className={`object-contain drop-shadow-sm dark:drop-shadow-none ${className}`}
-      style={{ height: `${height}px`, width: 'auto' }}
-    />
+  // Full logo: render both variants, toggle with CSS dark: class (zero flash)
+  const content = (
+    <span className={`inline-flex items-center ${className}`}>
+      {/* Light mode: show dark-colored logo */}
+      <img
+        src="/brand/nexigrate-logo-dark.svg"
+        alt="Nexigrate"
+        height={height}
+        className="block dark:hidden object-contain"
+        style={{ height: `${height}px`, width: 'auto' }}
+      />
+      {/* Dark mode: show light/cream-colored logo */}
+      <img
+        src="/brand/nexigrate-logo-light.svg"
+        alt="Nexigrate"
+        height={height}
+        className="hidden dark:block object-contain"
+        style={{ height: `${height}px`, width: 'auto' }}
+      />
+    </span>
   );
 
   if (href) {
-    return (
-      <a href={href} className="inline-flex items-center">
-        {img}
-      </a>
-    );
+    return <a href={href} className="inline-flex items-center">{content}</a>;
   }
 
-  return img;
+  return content;
 }
 
 export default Logo;

@@ -154,14 +154,19 @@ export class FirestoreCreditLedger implements CreditLedger {
   }
 
   async getBalance(userId: UserId): Promise<number> {
-    const ledger = await this.loadLedger(userId);
-    if (ledger.length === 0) {
-      // No ledger events yet (pre-PR-03 user). Fall back to the cached
-      // value so they don't see a sudden zero.
-      const userDoc = await this.db.collection(COL_USERS).doc(userId).get();
-      const cached = (userDoc.data()?.credits ?? 0) as number;
+    // Performance optimization: for read-only balance queries, prefer the
+    // cached `users/{uid}.credits` field (maintained by FieldValue.increment
+    // inside every award/spend transaction). Only fall back to computing
+    // from the full ledger if the cache is missing (edge case: pre-PR-03
+    // users who never had a ledger event AND their cache is explicitly 0).
+    const userDoc = await this.db.collection(COL_USERS).doc(userId).get();
+    const cached = userDoc.data()?.credits as number | undefined;
+    if (typeof cached === 'number') {
       return Math.max(0, cached);
     }
+    // Fallback: compute from ledger (cold start or migration case)
+    const ledger = await this.loadLedger(userId);
+    if (ledger.length === 0) return 0;
     const now = this.engineDeps.now();
     return computeBalance(ledger, userId, now).total;
   }
