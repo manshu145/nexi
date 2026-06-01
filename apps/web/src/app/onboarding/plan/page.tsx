@@ -180,7 +180,12 @@ export default function PlanSelectionPage() {
       // complete onboarding; we'll retry the flag on a future write.
     }
 
-    if (selected === 'free') {
+    // If the selected plan is Coming Soon, treat it as Free selection —
+    // don't route to /upgrade for a plan they can't buy yet.
+    const selectedPlan = plans.find(p => p.id === selected);
+    const isComingSoon = selectedPlan && ('comingSoon' in selectedPlan) && (selectedPlan as any).comingSoon;
+
+    if (selected === 'free' || isComingSoon) {
       router.replace('/dashboard');
     } else {
       router.replace(`/upgrade?plan=${selected}`);
