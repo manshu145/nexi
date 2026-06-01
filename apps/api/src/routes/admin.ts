@@ -214,11 +214,17 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
     if (body.role) allowed.role = body.role;
     if (body.plan) {
       allowed.plan = body.plan;
-      // Set planExpiresAt when upgrading to a paid plan
+      // Use the same extension logic as billing — if user has active time
+      // remaining, extend from their current expiry instead of losing days.
       if (body.plan !== 'free') {
-        const expiry = new Date();
-        expiry.setDate(expiry.getDate() + 30);
-        allowed.planExpiresAt = expiry.toISOString();
+        const existingUser = await deps.users.get(uid);
+        const currentPlan = existingUser?.plan ?? 'free';
+        const currentExpiresAt = (existingUser as unknown as { planExpiresAt?: string | null })?.planExpiresAt ?? null;
+        const { computeNewExpiry } = await import('@nexigrate/shared');
+        // Default to monthly grant from admin; admin can pass period in body
+        const period = (body.period === 'yearly' ? 'yearly' : 'monthly') as 'monthly' | 'yearly';
+        allowed.planExpiresAt = computeNewExpiry(currentPlan, currentExpiresAt, period);
+        allowed.planCancelledAt = null;
       } else {
         allowed.planExpiresAt = null;
       }
@@ -604,7 +610,7 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
   // ━━━ EMAIL ━━━
   // POST /v1/admin/email/send — send email to one user or bulk
   app.post('/email/send', async (c) => {
-    const body = await c.req.json().catch(() => null) as { to?: string; emails?: string[]; subject?: string; body?: string } | null;
+    const body = await c.req.json().catch(() => null) as { to?: string; emails?: string[]; subject?: string; body?: string; confirmBroadcast?: boolean } | null;
     if (!body?.subject || !body?.body) throw new HTTPException(400, { message: 'subject and body required' });
     const { createEmailService } = await import('../lib/emailService.js');
     const emailService = createEmailService(deps.env, deps.logger, deps.serviceKeys);
@@ -616,7 +622,14 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
       const result = await emailService.sendBulkEmail(body.emails, body.subject, body.body);
       return c.json(result);
     }
-    // If no 'to' and no 'emails[]', send to ALL users
+    // If no 'to' and no 'emails[]', send to ALL users — requires explicit
+    // confirmation flag to prevent accidental mass-send from misclicks or
+    // API testing tools hitting this endpoint without realizing the blast radius.
+    if (!body.confirmBroadcast) {
+      throw new HTTPException(400, {
+        message: 'Sending to ALL users requires confirmBroadcast: true in the request body. This will email every registered user.',
+      });
+    }
     const allUsers = await deps.users.listAll?.() ?? [];
     const allEmails = allUsers.map(u => u.email).filter(e => e && e.includes('@'));
     if (allEmails.length === 0) throw new HTTPException(400, { message: 'No user emails found' });

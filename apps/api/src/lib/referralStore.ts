@@ -110,7 +110,7 @@ export class InMemoryReferralStore implements ReferralStore {
       totalReferrals: myReferrals.length,
       pendingReferrals: myReferrals.filter(r => r.status === 'pending').length,
       completedReferrals: completed,
-      totalEarned: completed * 100, // 100 credits per completed referral
+      totalEarned: completed * 50, // referral_signup credits per completed referral (matches Firestore store)
     };
   }
 }
