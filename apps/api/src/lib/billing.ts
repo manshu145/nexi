@@ -116,10 +116,15 @@ export async function grantPlan(deps: GrantPlanDeps, input: GrantPlanInput): Pro
   //    Also clears planCancelledAt: a fresh paid period is, by definition,
   //    a "resume" -- the user is no longer in the cancelled-but-still-active
   //    transitional state.
+  //    Also sets onboardingPlanChosen: true — a successful payment is proof
+  //    the user chose a plan, so the dashboard guard should never bounce them
+  //    back to /onboarding/plan even if the markPlanChosen API call failed
+  //    during the onboarding flow.
   await users.update(input.uid, {
     plan: input.planId,
     planExpiresAt: newExpiry,
     planCancelledAt: null,
+    onboardingPlanChosen: true,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any);
 

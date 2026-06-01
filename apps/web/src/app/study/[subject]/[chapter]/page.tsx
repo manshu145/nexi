@@ -92,7 +92,16 @@ export default function KindleReaderPage() {
         // Split by ## headings into pages (each section = 1 page)
         const sections = res.chapter.content.split(/(?=^## )/m).filter(s => s.trim());
         setPages(sections.length > 0 ? sections : [res.chapter.content]);
-      } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load chapter'); }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Failed to load chapter';
+        // If server returned 402 insufficient_credits, show the PlanGate
+        // modal instead of a generic error so user gets upgrade/refer CTA.
+        if (msg.includes('insufficient_credits') || msg.includes('402')) {
+          setShowPlanGate(true);
+        } else {
+          setError(msg);
+        }
+      }
       finally { setPageLoading(false); }
     })();
   }, [user, me, subject, chapter]);

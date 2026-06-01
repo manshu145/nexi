@@ -156,8 +156,17 @@ export function computeNewExpiry(
   now: Date = new Date(),
 ): string {
   const days = PERIOD_DAYS[period];
-  const baseMs = isPlanActive(currentPlan, currentExpiresAt)
-    ? new Date(currentExpiresAt as string).getTime()
+  // Only extend from current expiry if user has an ACTIVE PAID plan with
+  // a valid future expiry date. Free plan has no expiry to extend from —
+  // upgrading from free always starts from now. This prevents the bug where
+  // isPlanActive('free', null) returns true → new Date(null).getTime() = 0
+  // → expiry computes to 1970 (immediately expired).
+  const shouldExtend =
+    currentPlan !== 'free' &&
+    currentExpiresAt !== null &&
+    isPlanActive(currentPlan, currentExpiresAt);
+  const baseMs = shouldExtend
+    ? new Date(currentExpiresAt!).getTime()
     : now.getTime();
   return new Date(baseMs + days * 24 * 60 * 60 * 1000).toISOString();
 }
