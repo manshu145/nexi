@@ -1,5 +1,6 @@
 'use client';
 import { usePathname, useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 
 const NAV_ITEMS = [
   { label: 'Home', path: '/dashboard', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
@@ -19,6 +20,16 @@ const HIDDEN_PATHS = ['/admin', '/onboarding', '/signin', '/verify-phone', '/cha
 export function BottomNav() {
   const pathname = usePathname();
   const router = useRouter();
+
+  // Perf: prefetch all 5 main routes on mount so tapping the nav navigates
+  // instantly instead of waiting on an RSC round-trip (the "har baar 5-6 sec
+  // loader" the founder reported). Next.js dedupes prefetches, so this is
+  // cheap and only fetches the route's RSC payload once.
+  useEffect(() => {
+    NAV_ITEMS.forEach((item) => {
+      try { router.prefetch(item.path); } catch { /* no-op */ }
+    });
+  }, [router]);
 
   // Hide on admin/onboarding/signin/chat
   if (HIDDEN_PATHS.some(p => pathname === p || pathname.startsWith(p + '/'))) return null;
