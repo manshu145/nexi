@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Script from 'next/script';
 import { useAuth } from '~/lib/auth-context';
-import { api, newIdempotencyKey, type Plan } from '~/lib/api';
+import { api, authedFetch, newIdempotencyKey, type Plan } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 
 declare global { interface Window { Razorpay: new (options: Record<string, unknown>) => { open(): void }; } }
@@ -125,13 +125,8 @@ export default function UpgradePage() {
     setValidatingCoupon(true);
     setCouponApplied(null);
     try {
-      const res = await fetch(`${process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com'}/v1/billing/validate-coupon`, {
+      const res = await authedFetch('/v1/billing/validate-coupon', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
-        // TODO(audit #34): when aspirant/achiever launch, thread the
-        // selected planId through here. Currently /upgrade only sells
-        // scholar so 'scholar' is correct, but coupons configured for
-        // aspirant/achiever cannot be validated against this page.
         body: JSON.stringify({ couponCode: couponCode.trim(), planId: 'scholar', period }),
       });
       const data = await res.json() as { valid: boolean; discount: number; finalAmount: number; error?: string };
@@ -149,18 +144,22 @@ export default function UpgradePage() {
     const planLabel = planId.charAt(0).toUpperCase() + planId.slice(1);
 
     try {
-      const orderRes = await fetch(`${process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com'}/v1/billing/order`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
-        body: JSON.stringify({ planId, period, couponCode: couponApplied?.valid ? couponCode.trim() : undefined }),
-      });
-      if (!orderRes.ok) { const e = await orderRes.json().catch(() => ({})) as { message?: string }; throw new Error(e.message || `Order failed: ${orderRes.status}`); }
-      const order = await orderRes.json() as { orderId: string; amount: number; currency: string; keyId: string; period: BillingPeriod };
+      const order = await api.createOrder(planId, period, couponApplied?.valid ? couponCode.trim() : undefined);
+
+      // If amount is 0 (100% coupon), the server grants the plan directly
+      // and returns { granted: true } — no Razorpay checkout needed.
+      if (order.amount === 0 && (order as any).granted) {
+        setSuccess('Plan activated! Redirecting...');
+        setCurrentPlan(planId);
+        setTimeout(() => router.push('/dashboard'), 2000);
+        setProcessing(false);
+        return;
+      }
 
       const displayAmount = order.amount / 100;
       const periodLabel = order.period === 'yearly' ? 'year' : 'month';
       const options = {
-        key: order.keyId,
+        key: order.keyId ?? order.key,
         amount: order.amount,
         currency: order.currency,
         name: 'Nexigrate',
@@ -168,17 +167,7 @@ export default function UpgradePage() {
         order_id: order.orderId,
         handler: async (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
           try {
-            const verifyRes = await fetch(`${process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com'}/v1/billing/verify`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${await getToken()}`,
-                // SAME key on retry → server returns the cached response.
-                'Idempotency-Key': idempotencyKey,
-              },
-              body: JSON.stringify(response),
-            });
-            if (!verifyRes.ok) throw new Error('Verification failed');
+            await api.verifyPayment(response, idempotencyKey);
             setSuccess('Plan activated! Redirecting...');
             setCurrentPlan(planId);
             setTimeout(() => router.push('/dashboard'), 2000);
@@ -467,8 +456,3 @@ export default function UpgradePage() {
   );
 }
 
-async function getToken(): Promise<string> {
-  const { getFirebaseAuthClient } = await import('~/lib/firebase');
-  const auth = getFirebaseAuthClient();
-  return (await auth.currentUser?.getIdToken()) ?? '';
-}
