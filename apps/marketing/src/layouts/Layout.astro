@@ -33,6 +33,26 @@ const ogImage = new URL('/og-image.svg', Astro.site ?? 'https://nexigrate.com').
     <meta name="theme-color" content="#2A241A" media="(prefers-color-scheme: dark)" />
     <meta name="color-scheme" content="light dark" />
 
+    {/*
+      Pre-paint theme init. MUST run before first paint so the correct
+      logo (dark logo on light bg / light logo on dark bg) and background
+      render together — no flash of the wrong logo. The Nav toggle script
+      reuses the same `nexi.theme` key. Founder reported the marketing
+      logo looked "white on white"; root cause was the theme class being
+      applied AFTER paint by the Nav script, so a dark-default device
+      briefly showed the cream logo on the light default background.
+    */}
+    <script is:inline>
+      (function () {
+        try {
+          var stored = localStorage.getItem('nexi.theme');
+          var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var theme = stored || (prefersDark ? 'dark' : 'light');
+          document.documentElement.classList.toggle('dark', theme === 'dark');
+        } catch (e) { /* no-op */ }
+      })();
+    </script>
+
     {/* Open Graph */}
     <meta property="og:type" content="website" />
     <meta property="og:url" content={canonical} />
