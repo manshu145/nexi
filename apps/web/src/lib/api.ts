@@ -444,6 +444,17 @@ export const api = {
   async adminGetPlans() {
     return (await authedFetch('/v1/admin/plans')).json() as Promise<{ plans: AdminPlan[] }>;
   },
+  /**
+   * Wipe accumulated analytics/test data (AI call logs, error logs,
+   * sessions) + reset counters so the dashboard shows real data from now.
+   * Users and payments are NOT affected. Requires confirm:'RESET'.
+   */
+  async adminResetAnalytics() {
+    return (await authedFetch('/v1/admin/reset-analytics', {
+      method: 'POST',
+      body: JSON.stringify({ confirm: 'RESET' }),
+    })).json() as Promise<{ success: boolean; deleted: Record<string, number> }>;
+  },
   async adminUpdatePlan(planId: string, patch: Partial<AdminPlanPatch>) {
     return (await authedFetch(`/v1/admin/plans/${planId}`, {
       method: 'PATCH',

@@ -125,6 +125,24 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
     return c.json(stats);
   });
 
+  // POST /v1/admin/reset-analytics — wipe accumulated test data so the
+  // dashboard reflects real usage from launch. Clears aiCallLogs /
+  // errorLogs / sessions + resets the pwaInstalls counter. Does NOT touch
+  // users or billingOrders. Requires { confirm: 'RESET' } in the body so a
+  // stray request can't nuke analytics by accident.
+  app.post('/reset-analytics', async (c) => {
+    const body = await c.req.json().catch(() => null) as { confirm?: string } | null;
+    if (body?.confirm !== 'RESET') {
+      throw new HTTPException(400, { message: "Send { confirm: 'RESET' } to confirm. This wipes analytics (AI logs, error logs, sessions) — users & payments are NOT affected." });
+    }
+    if (!deps.adminStore.resetAnalytics) {
+      throw new HTTPException(501, { message: 'Reset not supported on this store' });
+    }
+    const result = await deps.adminStore.resetAnalytics();
+    deps.logger.info('admin.analytics_reset', { deleted: result.deleted });
+    return c.json({ success: true, ...result });
+  });
+
   // GET /v1/admin/stats/realtime — DAU, active now, AI calls last hour
   app.get('/stats/realtime', async (c) => {
     const stats = await deps.adminStore.getFullStats();
