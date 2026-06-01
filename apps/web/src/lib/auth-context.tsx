@@ -1,5 +1,5 @@
 'use client';
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   onAuthStateChanged,
   signInWithPopup,
@@ -68,11 +68,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return cred.user;
   };
 
+  // Reuse a single RecaptchaVerifier per container to avoid Firebase's
+  // "reCAPTCHA already rendered in this element" error on resend OTP.
+  const recaptchaCache = useRef<Map<string, RecaptchaVerifier>>(new Map());
+
+  const getOrCreateRecaptcha = (containerId: string): RecaptchaVerifier => {
+    const auth = getFirebaseAuthClient();
+    const existing = recaptchaCache.current.get(containerId);
+    if (existing) return existing;
+    const verifier = new RecaptchaVerifier(auth, containerId, { size: 'invisible' });
+    recaptchaCache.current.set(containerId, verifier);
+    return verifier;
+  };
+
   const sendPhoneOtp = async (phoneNumber: string, recaptchaContainerId: string): Promise<ConfirmationResult> => {
     const auth = getFirebaseAuthClient();
-    const recaptchaVerifier = new RecaptchaVerifier(auth, recaptchaContainerId, {
-      size: 'invisible',
-    });
+    const recaptchaVerifier = getOrCreateRecaptcha(recaptchaContainerId);
     const provider = new PhoneAuthProvider(auth);
     const verificationId = await provider.verifyPhoneNumber(phoneNumber, recaptchaVerifier);
     // Return a ConfirmationResult-like object
@@ -91,9 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithPhone = async (phoneNumber: string, recaptchaContainerId: string): Promise<ConfirmationResult> => {
     const auth = getFirebaseAuthClient();
-    const recaptchaVerifier = new RecaptchaVerifier(auth, recaptchaContainerId, {
-      size: 'invisible',
-    });
+    const recaptchaVerifier = getOrCreateRecaptcha(recaptchaContainerId);
     const provider = new PhoneAuthProvider(auth);
     const verificationId = await provider.verifyPhoneNumber(phoneNumber, recaptchaVerifier);
     return {
