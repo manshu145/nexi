@@ -432,7 +432,16 @@ interface RazorpayPaymentEntity {
   status?: string;
   amount?: number;
   notes?: Record<string, string>;
+  method?: string;
 }
+
+/**
+ * Razorpay payment statuses that are safe to grant a plan on.
+ * ONLY 'captured' means money has actually moved. 'authorized' means the
+ * bank approved it but Razorpay hasn't captured funds yet — if capture
+ * fails later, the user would have a plan without paying.
+ */
+const SAFE_GRANT_STATUSES = new Set(['captured']);
 
 interface RazorpayWebhookPayload {
   event?: string;
@@ -481,6 +490,20 @@ export function makeBillingWebhookRoute(deps: BillingWebhookDeps): Hono {
 
     try {
       if (event === 'payment.captured' && payment?.order_id && payment.id) {
+        // SECURITY: Verify the payment entity's status field is actually
+        // 'captured'. The event type alone isn't sufficient — we must also
+        // confirm the entity status. This prevents granting plans on
+        // payment.authorized events or spoofed payloads where the event
+        // says 'captured' but entity says otherwise.
+        if (payment.status && !SAFE_GRANT_STATUSES.has(payment.status)) {
+          deps.logger.warn('billing.webhook_status_mismatch', {
+            event,
+            paymentId: payment.id,
+            entityStatus: payment.status,
+          });
+          return c.json({ ok: true, ignored: 'status_not_captured', entityStatus: payment.status });
+        }
+
         // Idempotency: skip if we've already processed this payment id.
         const cached = await deps.idempotency.get('billing.webhook', payment.id);
         if (cached && cached.status === 'completed') {
@@ -539,6 +562,25 @@ export function makeBillingWebhookRoute(deps: BillingWebhookDeps): Hono {
         });
 
         return c.json({ ok: true, plan: result.plan, expiresAt: result.expiresAt });
+      }
+
+      // payment.authorized — bank approved but NOT yet captured. Do NOT
+      // grant the plan here. If auto-capture is on, a payment.captured
+      // event will follow. If capture fails, the user must not get the plan.
+      if (event === 'payment.authorized' && payment?.order_id) {
+        deps.logger.info('billing.webhook_authorized_only', {
+          orderId: payment.order_id,
+          paymentId: payment.id,
+          status: payment.status,
+        });
+        // Mark order as 'authorized' for audit trail (NOT 'completed').
+        if (deps.db) {
+          await deps.db.collection('billingOrders').doc(payment.order_id).set({
+            lastEvent: 'payment.authorized',
+            authorizedAt: new Date().toISOString(),
+          }, { merge: true });
+        }
+        return c.json({ ok: true, noted: 'authorized_not_captured' });
       }
 
       if (event === 'payment.failed' && payment?.order_id) {

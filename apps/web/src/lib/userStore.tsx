@@ -142,8 +142,19 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   const lastUidRef = useRef<string | null>(null);
   const inFlightRef = useRef<Promise<MeResponse> | null>(null);
+  /** Timestamp of last successful fetch — used to skip revalidation if
+   *  data is still "fresh" (< STALE_TIME_MS old). Prevents the 5-6 sec
+   *  navigation lag when switching tabs or pages rapidly. */
+  const lastFetchedAtRef = useRef<number>(0);
+  const STALE_TIME_MS = 60_000; // 1 minute — data younger than this is considered fresh
 
-  const fetchMe = useCallback(async (uid: string): Promise<void> => {
+  const fetchMe = useCallback(async (uid: string, skipIfFresh = false): Promise<void> => {
+    // Skip refetch if data is younger than STALE_TIME_MS (perf fix:
+    // prevents redundant /me calls on rapid tab switches / navigations
+    // that caused the 5-6 sec perceived lag).
+    if (skipIfFresh && lastFetchedAtRef.current && (Date.now() - lastFetchedAtRef.current < STALE_TIME_MS)) {
+      return;
+    }
     if (inFlightRef.current) {
       try {
         await inFlightRef.current;
@@ -159,6 +170,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       setDailyStreak(res.dailyStreak ?? null);
       setError(null);
       writeCache(uid, res);
+      lastFetchedAtRef.current = Date.now();
       return res;
     });
     inFlightRef.current = promise;
@@ -207,7 +219,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!firebaseUser) return;
     const id = window.setInterval(() => {
-      void fetchMe(firebaseUser.uid);
+      void fetchMe(firebaseUser.uid, true); // skipIfFresh — only revalidate if stale
     }, REVALIDATE_INTERVAL_MS);
     return () => window.clearInterval(id);
   }, [firebaseUser, fetchMe]);
@@ -216,7 +228,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     if (!firebaseUser) return;
     const onVisible = () => {
       if (document.visibilityState === 'visible') {
-        void fetchMe(firebaseUser.uid);
+        void fetchMe(firebaseUser.uid, true); // skipIfFresh — don't refetch on every tab switch
       }
     };
     document.addEventListener('visibilitychange', onVisible);
@@ -224,7 +236,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   }, [firebaseUser, fetchMe]);
 
   const refresh = useCallback(async (): Promise<void> => {
-    if (firebaseUser) await fetchMe(firebaseUser.uid);
+    if (firebaseUser) await fetchMe(firebaseUser.uid, false); // explicit refresh always fetches
   }, [firebaseUser, fetchMe]);
 
   const mutate = useCallback((updater: (prev: StoredUser | null) => StoredUser | null): void => {
