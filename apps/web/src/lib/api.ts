@@ -569,7 +569,7 @@ export interface LeaderboardResponse { date: string; leaderboard: LeaderboardEnt
 export interface ChatMessage { role: 'user' | 'assistant'; content: string; timestamp: string; }
 export interface ChatSession { id: string; userId: string; title: string; messages: ChatMessage[]; createdAt: string; updatedAt: string; }
 export interface ChatSessionSummary { id: string; title: string; createdAt: string; updatedAt: string; messageCount: number; }
-export interface PlanFeatures { dailyMCQ: number; mockTests: number; aiTutor: boolean; currentAffairs: boolean; essayGrading: boolean; chaptersPerDay: number; creditDeduction: boolean; }
+export interface PlanFeatures { dailyMCQ: number; mockTests: number; aiTutor: boolean; currentAffairs: boolean; essayGrading: boolean; chaptersPerDay: number; creditDeduction: boolean; aiTutorPerDay?: number; essaysPerDay?: number; imagesPerDay?: number; }
 export interface Plan { id: string; name: string; nameHi: string; price: number; yearlyPrice: number; isActive?: boolean; comingSoon?: boolean; features?: PlanFeatures; dailyMcq?: number; mockTests?: number; aiTutor?: boolean; currentAffairs?: boolean; essayGrading?: boolean; }
 export interface ReferralStats { code: string; referralUrl: string; totalReferrals: number; pendingReferrals: number; completedReferrals: number; totalEarned: number; }
 
@@ -602,6 +602,10 @@ export interface AdminPlanFeatures {
   essayGrading: boolean;
   chaptersPerDay: number;
   creditDeduction: boolean;
+  // Per-day granular AI quotas (-1 = unlimited). Optional for back-compat.
+  aiTutorPerDay?: number;
+  essaysPerDay?: number;
+  imagesPerDay?: number;
 }
 
 export interface AdminPlan {
