@@ -55,9 +55,20 @@ export function makeEssayRoutes(deps: EssayRoutesDeps): Hono {
     const language = (body?.language as 'en' | 'hi') || user.language || 'en';
     const langInstr = language === 'hi' ? 'Generate the question, hints, and all text in Hindi (Devanagari script).' : 'Generate in English.';
 
+    // Variety: without a seed + rotating theme, Groq returns the SAME
+    // question every time (founder report: "har baar yahi question").
+    // A random seed + a randomly-picked focus area forces a fresh topic
+    // on each call.
+    const FOCUS_AREAS = ['polity & governance', 'economy & banking', 'environment & ecology', 'science & technology', 'social issues', 'international relations', 'history & culture', 'agriculture & rural development', 'education & health', 'ethics & society'];
+    const focus = FOCUS_AREAS[Math.floor(Math.random() * FOCUS_AREAS.length)];
+    const seed = Math.random().toString(36).slice(2, 8);
+
     const prompt = `Generate ONE essay/answer-writing question for ${exam} exam (student level: ${level}).
 ${langInstr}
+Variation seed: ${seed} — produce a DIFFERENT question from previous ones.
+Lean the question towards this theme: ${focus} (but keep it relevant to the ${exam} syllabus).
 The question should be:
+- Fresh and specific (avoid generic "role of technology in agriculture" type repeats)
 - Relevant to current affairs or the official syllabus
 - Appropriate word limit (150-300 words depending on difficulty)
 - Time appropriate (15-25 minutes)

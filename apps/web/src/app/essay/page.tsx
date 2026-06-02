@@ -39,6 +39,35 @@ interface EssayFeedback {
   rewrittenParagraphs: { original: string; improved: string; reason: string }[];
 }
 
+// Bilingual fallback question pool — used only if the API call fails.
+// Previously a SINGLE hardcoded English question was shown, so every user
+// (including Hindi users) always saw the same "technology in agriculture"
+// prompt. Now we pick randomly from a pool in the user's language.
+const FALLBACK_ESSAY_QUESTIONS: Record<'en' | 'hi', { topic: string; wordLimit: number; timeMinutes: number; hints: string[] }[]> = {
+  en: [
+    { topic: 'Examine the impact of digital payment systems (UPI) on financial inclusion in India.', wordLimit: 250, timeMinutes: 20, hints: ['Mention UPI growth numbers', 'Cover rural adoption', 'Discuss challenges'] },
+    { topic: "Discuss the significance of renewable energy in India's path to net-zero emissions.", wordLimit: 250, timeMinutes: 20, hints: ['Solar/wind targets', 'Policy initiatives', 'Transition challenges'] },
+    { topic: "Analyse the role of women's self-help groups in rural economic development.", wordLimit: 200, timeMinutes: 18, hints: ['Microfinance', 'Empowerment examples', 'Government support'] },
+    { topic: 'Evaluate how the National Education Policy 2020 aims to transform Indian education.', wordLimit: 250, timeMinutes: 20, hints: ['Key reforms', 'Multidisciplinary approach', 'Implementation challenges'] },
+    { topic: 'How can India balance rapid economic growth with environmental sustainability?', wordLimit: 250, timeMinutes: 20, hints: ['Sustainable development', 'Climate commitments', 'Real examples'] },
+    { topic: 'Assess the role of the gig economy in shaping employment in urban India.', wordLimit: 200, timeMinutes: 18, hints: ['Platform workers', 'Social security gaps', 'Policy response'] },
+  ],
+  hi: [
+    { topic: 'भारत में वित्तीय समावेशन पर डिजिटल भुगतान प्रणाली (UPI) के प्रभाव की जाँच करें।', wordLimit: 250, timeMinutes: 20, hints: ['UPI की वृद्धि के आँकड़े', 'ग्रामीण अपनाव', 'चुनौतियाँ'] },
+    { topic: 'भारत के नेट-ज़ीरो उत्सर्जन लक्ष्य में नवीकरणीय ऊर्जा के महत्व पर चर्चा करें।', wordLimit: 250, timeMinutes: 20, hints: ['सौर/पवन लक्ष्य', 'नीतिगत पहल', 'संक्रमण की चुनौतियाँ'] },
+    { topic: 'ग्रामीण आर्थिक विकास में महिला स्वयं सहायता समूहों की भूमिका का विश्लेषण करें।', wordLimit: 200, timeMinutes: 18, hints: ['सूक्ष्म वित्त', 'सशक्तिकरण के उदाहरण', 'सरकारी सहायता'] },
+    { topic: 'भारतीय शिक्षा को बदलने में राष्ट्रीय शिक्षा नीति 2020 के महत्व का मूल्यांकन करें।', wordLimit: 250, timeMinutes: 20, hints: ['मुख्य सुधार', 'बहु-विषयक दृष्टिकोण', 'कार्यान्वयन चुनौतियाँ'] },
+    { topic: 'भारत आर्थिक विकास और पर्यावरणीय स्थिरता के बीच संतुलन कैसे बना सकता है?', wordLimit: 250, timeMinutes: 20, hints: ['सतत विकास', 'जलवायु प्रतिबद्धताएँ', 'वास्तविक उदाहरण'] },
+    { topic: 'शहरी भारत में रोज़गार को आकार देने में गिग इकॉनमी की भूमिका का आकलन करें।', wordLimit: 200, timeMinutes: 18, hints: ['प्लेटफ़ॉर्म कर्मचारी', 'सामाजिक सुरक्षा की कमी', 'नीतिगत प्रतिक्रिया'] },
+  ],
+};
+
+function pickFallbackQuestion(exam: string, lang: 'en' | 'hi'): EssayQuestion {
+  const pool = FALLBACK_ESSAY_QUESTIONS[lang] ?? FALLBACK_ESSAY_QUESTIONS.en;
+  const q = pool[Math.floor(Math.random() * pool.length)]!;
+  return { ...q, examContext: exam };
+}
+
 export default function EssayPage() {
   const { user, loading } = useAuth();
   // PR-32: read the stored user from the shared store so the usage check
@@ -117,16 +146,10 @@ export default function EssayPage() {
         body: JSON.stringify({ language: lang }),
       });
       if (!res.ok) {
-        // Fallback: generate locally if endpoint doesn't exist. The exam
-        // slug comes from the shared user store — no extra /me round-trip.
-        const exam = me?.targetExam ?? 'upsc-cse';
-        setQuestion({
-          topic: `Discuss the role of technology in transforming Indian agriculture. Highlight key government initiatives and their impact. (${exam.toUpperCase()} context)`,
-          wordLimit: 250,
-          timeMinutes: 20,
-          examContext: exam,
-          hints: ['Cover recent schemes like PM-KISAN', 'Mention AI/drone usage in farming', 'Include statistics if possible'],
-        });
+        // API failed — show a RANDOM question from the bilingual pool
+        // (not a single hardcoded English one) so it varies and respects
+        // the user's language.
+        setQuestion(pickFallbackQuestion(me?.targetExam ?? 'upsc-cse', lang));
       } else {
         const data = await res.json() as { question: EssayQuestion };
         setQuestion(data.question);
@@ -135,14 +158,8 @@ export default function EssayPage() {
       setAnswer('');
       setFeedback(null);
     } catch {
-      // Fallback question
-      setQuestion({
-        topic: 'Discuss the importance of digital literacy in rural India. What steps can the government take to bridge the digital divide?',
-        wordLimit: 250,
-        timeMinutes: 20,
-        examContext: 'general',
-        hints: ['Cover BharatNet project', 'Mention education access', 'Discuss challenges'],
-      });
+      // Network error — random bilingual fallback question.
+      setQuestion(pickFallbackQuestion(me?.targetExam ?? 'general', getUserLanguage()));
       setStep('write');
     } finally { setGenerating(false); }
   };
