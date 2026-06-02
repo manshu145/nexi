@@ -6,8 +6,10 @@ import type { UserStore } from '../lib/userStore.js';
 import type { AIEngine } from '../lib/aiEngine.js';
 import type { ChatStore } from '../lib/chatStore.js';
 import type { Env } from '../env.js';
+import type { PlatformConfigStore } from '../lib/platformConfigStore.js';
+import type { FeatureUsageStore } from '../lib/featureUsageStore.js';
 
-export interface ChatRoutesDeps { users: UserStore; aiEngine: AIEngine; chat: ChatStore; logger: Logger; env?: Env; }
+export interface ChatRoutesDeps { users: UserStore; aiEngine: AIEngine; chat: ChatStore; logger: Logger; env?: Env; config?: PlatformConfigStore; usage?: FeatureUsageStore; }
 
 export function makeChatRoutes(deps: ChatRoutesDeps): Hono {
   const app = new Hono();
@@ -121,7 +123,40 @@ export function makeChatRoutes(deps: ChatRoutesDeps): Hono {
     try {
       const user = await deps.users.get(principal.userId);
       const exam = user?.targetExam ?? 'general';
+      const plan = user?.plan ?? 'free';
+
+      // Per-day image-generation limit (admin-configurable: plan.features
+      // .imagesPerDay; -1 = unlimited). Founder ask: "limit laga to message
+      // bhi milna chahiye." Fail-open if config/usage isn't wired.
+      if (deps.config && deps.usage) {
+        try {
+          const plans = await deps.config.getPlans();
+          const limit = plans[plan]?.features?.imagesPerDay ?? -1;
+          if (limit >= 0) {
+            const used = await deps.usage.getCount(principal.userId, 'image');
+            if (used >= limit) {
+              deps.logger.info('chat.image_limit_hit', { userId: principal.userId, plan, used, limit });
+              return c.json({
+                type: 'mermaid',
+                content: `graph TD\n  A["Daily image limit reached"] --> B["${used}/${limit} used today"]\n  B --> C["Upgrade for more images"]`,
+                fallback: true,
+                limitReached: true,
+                message: limit === 0
+                  ? `AI image generation isn't included in the ${plan} plan. Upgrade to generate images.`
+                  : `You've used all ${limit} AI image${limit === 1 ? '' : 's'} for today on the ${plan} plan. The limit resets tomorrow — upgrade for more.`,
+              });
+            }
+          }
+        } catch (limitErr) {
+          deps.logger.warn('chat.image_limit_check_failed', { error: limitErr instanceof Error ? limitErr.message : String(limitErr) });
+        }
+      }
+
       const result = await deps.aiEngine.generateVisualization(body.topic, 'general', exam, 'image');
+      // Count a successful generation against the daily quota.
+      if (deps.usage && result.type === 'image') {
+        await deps.usage.increment(principal.userId, 'image');
+      }
       deps.logger.info('chat.generate_image', { userId: principal.userId, topic: body.topic, type: result.type });
       return c.json({ type: result.type, content: result.content });
     } catch (err) {

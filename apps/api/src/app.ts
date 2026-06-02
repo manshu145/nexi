@@ -33,6 +33,7 @@ import { FirestoreAISpendStore, InMemoryAISpendStore, type AISpendStore, DEFAULT
 import { FirestoreBlogStore, InMemoryBlogStore, type BlogStore } from './lib/blogStore.js';
 import { FirestoreServiceKeyStore, InMemoryServiceKeyStore, type ServiceKeyStore } from './lib/serviceKeyStore.js';
 import { createPushService, type PushService } from './lib/pushService.js';
+import { FirestoreFeatureUsageStore, InMemoryFeatureUsageStore, type FeatureUsageStore } from './lib/featureUsageStore.js';
 import { FirestoreTeamInviteStore, InMemoryTeamInviteStore, type TeamInviteStore } from './lib/teamInviteStore.js';
 import { makePublicRoutes } from './routes/public.js';
 import { makeMockTestRoutes } from './routes/mockTests.js';
@@ -73,6 +74,8 @@ export function buildApp(deps: AppDeps): Hono {
   const push = deps.push ?? createPushService(env, logger, serviceKeys);
   // PR-40: team invite store for RBAC
   const teamInvites = deps.teamInvites ?? (fs ? new FirestoreTeamInviteStore(fs) : new InMemoryTeamInviteStore());
+  // Per-day feature usage counter (image / essay / AI-tutor quotas).
+  const featureUsage: FeatureUsageStore = fs ? new FirestoreFeatureUsageStore(fs) : new InMemoryFeatureUsageStore();
   const firebaseAuth = getFirebaseAuth(env);
 
   const app = new Hono();
@@ -290,7 +293,7 @@ export function buildApp(deps: AppDeps): Hono {
   v1.route('/assessment', makeAssessmentRoutes({ users, aiEngine, logger, env, ledger, serviceKeys }));
   v1.route('/study', makeStudyRoutes({ users, aiEngine, chapters, logger, db: fs, env, ledger, config, modelResolver }));
   v1.route('/current-affairs', cronRoutes);
-  v1.route('/chat', makeChatRoutes({ users, aiEngine, chat: chatStore, logger, env }));
+  v1.route('/chat', makeChatRoutes({ users, aiEngine, chat: chatStore, logger, env, config, usage: featureUsage }));
   v1.route('/credits', makeCreditsRoutes({ users, logger, db: fs, ledger, config }));
   v1.route('/billing', makeBillingRoutes({ users, env, logger, db: fs, coupons: couponStore, idempotency, config, serviceKeys }));
   v1.route('/admin', makeAdminRoutes({ users, adminStore, env, logger, coupons: couponStore, db: fs, config, aiSpend, firebaseAuth, blog, aiEngine, aiProviderStore, modelResolver, currentAffairs, serviceKeys, push, teamInvites }));
