@@ -60,7 +60,7 @@ export async function registerPushToken(): Promise<boolean> {
     const permission = await Notification.requestPermission();
     if (permission !== 'granted') { lastPushError = 'Notification permission was not granted.'; return false; }
 
-    const vapidKey = await getVapidKey();
+    const vapidKey = (await getVapidKey()).trim();
     if (!vapidKey) {
       lastPushError = 'VAPID key not configured. Admin → Service Keys → FCM → paste vapidKey.';
       console.warn('[push]', lastPushError);
@@ -106,10 +106,27 @@ export async function registerPushToken(): Promise<boolean> {
       return false;
     }
 
-    const token = await getToken(messaging, {
-      vapidKey,
-      serviceWorkerRegistration: swRegistration,
-    });
+    // getToken subscribes via the browser PushManager. On mobile this
+    // frequently fails with "Registration failed - push service error"
+    // when a STALE subscription exists (created with a different/older
+    // VAPID key, or before one was configured). The fix is to drop the
+    // stale subscription and retry once with the current key.
+    let token: string | null = null;
+    try {
+      token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: swRegistration });
+    } catch (tokenErr) {
+      const tmsg = tokenErr instanceof Error ? tokenErr.message : String(tokenErr);
+      if (/push service error|registration failed|applicationServerKey|InvalidStateError|different/i.test(tmsg)) {
+        try {
+          const existing = await swRegistration.pushManager.getSubscription();
+          if (existing) await existing.unsubscribe();
+        } catch { /* ignore — best effort */ }
+        await new Promise((r) => setTimeout(r, 600));
+        token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: swRegistration });
+      } else {
+        throw tokenErr;
+      }
+    }
 
     if (!token) {
       lastPushError = 'Token request returned empty — the browser blocked it or the VAPID key is invalid for this Firebase project.';
@@ -159,7 +176,12 @@ export async function registerPushToken(): Promise<boolean> {
     //  - "messaging/token-subscribe-failed" → VAPID key wrong for project
     //  - "applicationServerKey is not valid" → malformed VAPID key
     //  - missing messagingSenderId in the Firebase app config (fixed in #267)
-    lastPushError = err instanceof Error ? err.message : String(err);
+    const raw = err instanceof Error ? err.message : String(err);
+    // "Registration failed - push service error" is a cryptic browser/FCM
+    // error — give the user something actionable instead.
+    lastPushError = /push service error|registration failed/i.test(raw)
+      ? 'Could not reach the push service. Try again on Wi-Fi, make sure notifications are allowed for this site in your browser and phone settings, and that battery saver isn\'t blocking background activity. On iPhone, install the app to your Home Screen first.'
+      : raw;
     console.warn('[push] Failed to register token:', err);
     return false;
   }

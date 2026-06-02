@@ -1177,7 +1177,8 @@ End with: Important facts to remember for exam.`;
       // Env fallback (only if resolver path failed entirely)
       if (groq) {
         try {
-          const c = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 4096, response_format: { type: 'json_object' } });
+          const mcqGroq = await getGroqClient();
+          const c = await (mcqGroq?.client ?? groq!).chat.completions.create({ model: mcqGroq?.model ?? 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 4096, response_format: { type: 'json_object' } });
           const parsed = safeParseMCQs(c.choices[0]?.message?.content ?? '');
           if (parsed.length) { logger.info('ai.chapter_mcqs', { provider: 'groq-env', chapter, count: parsed.length }); return parsed; }
           errors.push('Groq (env) returned empty/unparseable');
@@ -1486,17 +1487,20 @@ Generate ONLY the Mermaid code, nothing else.`;
       // Try Groq first (fast), then OpenAI fallback, then Gemini fallback
       const errors: string[] = [];
 
-      // Attempt 1: Groq
-      if (groq) {
+      // Attempt 1: Groq (auto-switch model via resolver — no hardcode)
+      const caGroq = await getGroqClient();
+      if (caGroq) {
         try {
-          const c = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: 6000, response_format: { type: 'json_object' } });
+          const c = await caGroq.client.chat.completions.create({ model: caGroq.model, messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: 6000, response_format: { type: 'json_object' } });
           const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
           if (parsed.questions?.length) {
-            logger.info('ai.ca_quiz_generated', { provider: 'groq', count: parsed.questions.length });
+            if (resolver) void resolver.reportModelSuccess('groq', caGroq.model);
+            logger.info('ai.ca_quiz_generated', { provider: 'groq', model: caGroq.model, count: parsed.questions.length });
             return parsed.questions;
           }
           errors.push('Groq returned empty questions');
         } catch (err) {
+          if (resolver) await resolver.reportModelFailure('groq', caGroq.model, err instanceof Error ? err.message : String(err));
           errors.push(`Groq: ${err instanceof Error ? err.message : String(err)}`);
           logger.warn('ai.ca_quiz_groq_failed', { error: errors[errors.length - 1] });
         }
@@ -1572,7 +1576,8 @@ Rules for your responses:
         if (provider === 'groq' && groq) {
           try {
             const startTime = performance.now();
-            const c = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: chatMessages, temperature: 0.7, max_tokens: 1500 });
+            const chatGroq = await getGroqClient();
+            const c = await (chatGroq?.client ?? groq!).chat.completions.create({ model: chatGroq?.model ?? 'llama-3.3-70b-versatile', messages: chatMessages, temperature: 0.7, max_tokens: 1500 });
             const reply = c.choices[0]?.message?.content ?? '';
             if (reply) { const tokens = estimateTokens(reply); logAICallToStore(store, 'llama-3.3-70b-versatile', tokens, estimateCost('llama-3.3-70b-versatile', tokens), Math.round(performance.now() - startTime), undefined, { status: 'success', endpoint: 'chat', provider: 'groq', requestPreview: messages[messages.length - 1]?.content?.slice(0, 200), responsePreview: reply.slice(0, 300) }); logger.info('ai.chat', { provider: 'groq', length: reply.length, preferredModel }); return reply; }
           } catch (err) { logger.warn('ai.chat_groq_failed', { error: err instanceof Error ? err.message : String(err) }); }
@@ -1624,7 +1629,8 @@ Rules for your responses:
       // Fallback: Groq
       if (groq) {
         try {
-          const c = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.2, max_tokens: 3000, response_format: { type: 'json_object' } });
+          const trGroq = await getGroqClient();
+          const c = await (trGroq?.client ?? groq!).chat.completions.create({ model: trGroq?.model ?? 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.2, max_tokens: 3000, response_format: { type: 'json_object' } });
           const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { items: { headline: string; summary: string }[] };
           if (parsed.items?.length) {
             logger.info('ai.translate_hindi', { provider: 'groq', count: parsed.items.length });
@@ -1688,8 +1694,9 @@ ${langInstr}`;
         tries.push(async () => {
           try {
             const t0 = performance.now();
-            const c = await groq.chat.completions.create({
-              model: 'llama-3.3-70b-versatile',
+            const blogGroq = await getGroqClient();
+            const c = await (blogGroq?.client ?? groq!).chat.completions.create({
+              model: blogGroq?.model ?? 'llama-3.3-70b-versatile',
               messages: [{ role: 'user', content: userPrompt }],
               temperature: 0.7,
               max_tokens: 3500,
