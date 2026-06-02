@@ -126,15 +126,28 @@ export default function AdminPushPage() {
   const handleTest = async () => {
     setTesting(true);
     try {
-      // PR-45: auto-register this device first so test works
+      // PR-45: auto-register this device first so test works.
+      // Surface the ACTUAL failure reason (getLastPushError) instead of the
+      // old generic "VAPID may not be configured" message — that was hiding
+      // the real cause (e.g. invalid VAPID key for this project, unsupported
+      // browser, permission denied, or a stale cached service worker).
       let tokenRegistered = false;
+      let pushErr: string | null = null;
       try {
-        const { registerPushToken } = await import('~/lib/pushClient');
+        const { registerPushToken, getLastPushError } = await import('~/lib/pushClient');
         tokenRegistered = await registerPushToken();
-      } catch { /* non-fatal — permission denied or already registered */ }
+        if (!tokenRegistered) pushErr = getLastPushError();
+      } catch (e) {
+        pushErr = e instanceof Error ? e.message : String(e);
+      }
 
       if (!tokenRegistered) {
-        toast.error('Could not register device. Check: 1) Notification permission allowed, 2) VAPID key set in Admin → Service Keys → FCM.');
+        toast.error(
+          pushErr
+            ? `Device registration failed: ${pushErr}`
+            : 'Could not register device. Allow notifications, then retry. If it persists, the VAPID key in Service Keys → FCM may be wrong for this Firebase project.',
+          { duration: 9000 },
+        );
         setTesting(false);
         return;
       }
