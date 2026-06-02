@@ -267,7 +267,12 @@ export class FirestoreUserStore implements UserStore {
     // then sort freshest-first in memory (missing createdAt sorts last).
     const snap = await this.db.collection('users').limit(5000).get();
     const rows = snap.docs.map(d => d.data() as StoredUser);
-    rows.sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
+    // Coerce to String before comparing: some legacy/test docs store
+    // createdAt as a Firestore Timestamp or number, not an ISO string.
+    // Calling .localeCompare on a non-string THREW here — which 500'd
+    // /admin/push/send (the broadcast) while /push/status swallowed it in a
+    // try/catch and just showed 0. String() makes the sort crash-proof.
+    rows.sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')));
     return rows;
   }
 
