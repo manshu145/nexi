@@ -86,6 +86,19 @@ export async function registerPushToken(): Promise<boolean> {
     let swRegistration: ServiceWorkerRegistration | undefined;
     try {
       swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+      // Wait until the SW is ACTIVE before getToken — calling getToken while
+      // the worker is still "installing"/"waiting" is a common cause of a
+      // silent failure / empty token on the FIRST attempt (which then looked
+      // like "VAPID not configured"). Bounded by a 5s safety timeout.
+      const pending = swRegistration.installing || swRegistration.waiting;
+      if (pending && swRegistration.active == null) {
+        await new Promise<void>((resolve) => {
+          pending.addEventListener('statechange', () => {
+            if (pending.state === 'activated') resolve();
+          });
+          setTimeout(resolve, 5000);
+        });
+      }
     } catch (swErr) {
       lastPushError = `Service worker registration failed: ${swErr instanceof Error ? swErr.message : String(swErr)}`;
       console.warn('[push]', lastPushError);
