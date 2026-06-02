@@ -336,6 +336,9 @@ export default function AdminPlansPage() {
                     <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-500">Daily MCQ</th>
                     <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-500">Mocks</th>
                     <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-500">Chapters/day</th>
+                    <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-500">AI Tutor/day</th>
+                    <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-500">Essays/day</th>
+                    <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-500">Images/day</th>
                     <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-500">AI Tutor</th>
                     <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-500">Current Affairs</th>
                     <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-500">Essay Grade</th>
@@ -360,6 +363,21 @@ export default function AdminPlansPage() {
                         <input type="number" value={p.features.chaptersPerDay}
                           onChange={(e) => patchDraft(p.id, { features: { ...p.features, chaptersPerDay: Number(e.target.value) } })}
                           className="input w-16 text-xs" />
+                      </td>
+                      <td className="px-4 py-2">
+                        <input type="number" value={p.features.aiTutorPerDay ?? -1}
+                          onChange={(e) => patchDraft(p.id, { features: { ...p.features, aiTutorPerDay: Number(e.target.value) } })}
+                          className="input w-16 text-xs" title="AI tutor (Nexi chat) messages per day. -1 = unlimited, 0 = blocked." />
+                      </td>
+                      <td className="px-4 py-2">
+                        <input type="number" value={p.features.essaysPerDay ?? -1}
+                          onChange={(e) => patchDraft(p.id, { features: { ...p.features, essaysPerDay: Number(e.target.value) } })}
+                          className="input w-16 text-xs" title="Essay gradings per day. -1 = unlimited, 0 = blocked." />
+                      </td>
+                      <td className="px-4 py-2">
+                        <input type="number" value={p.features.imagesPerDay ?? -1}
+                          onChange={(e) => patchDraft(p.id, { features: { ...p.features, imagesPerDay: Number(e.target.value) } })}
+                          className="input w-16 text-xs" title="AI image generations per day. -1 = unlimited, 0 = blocked." />
                       </td>
                       <td className="px-4 py-2">
                         <input type="checkbox" checked={p.features.aiTutor}

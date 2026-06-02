@@ -45,8 +45,29 @@ export function planFeatureBullets(plan: Plan | undefined, lang: 'en' | 'hi'): s
       : (hi ? `${f.mockTests} मॉक टेस्ट / माह` : `${f.mockTests} Mock Tests / month`),
   );
 
-  if (f.aiTutor) bullets.push(hi ? 'AI ट्यूटर (Nexi)' : 'AI Tutor (Nexi)');
-  if (f.essayGrading) bullets.push(hi ? 'AI निबंध मूल्यांकन' : 'AI Essay Grading');
+  // AI Tutor (Nexi chat) — show the admin-configured per-day message cap.
+  if (f.aiTutor || (f.aiTutorPerDay ?? 0) !== 0) {
+    const n = f.aiTutorPerDay;
+    if (n === undefined) bullets.push(hi ? 'AI ट्यूटर (Nexi)' : 'AI Tutor (Nexi)');
+    else if (unlimited(n)) bullets.push(hi ? 'असीमित AI ट्यूटर चैट' : 'Unlimited AI Tutor chat');
+    else if (n > 0) bullets.push(hi ? `AI ट्यूटर — ${n} संदेश/दिन` : `AI Tutor — ${n} messages/day`);
+  }
+  // Essay grading — per-day count when configured.
+  if (f.essayGrading) {
+    const n = f.essaysPerDay;
+    if (n === undefined) bullets.push(hi ? 'AI निबंध मूल्यांकन' : 'AI Essay Grading');
+    else if (unlimited(n)) bullets.push(hi ? 'असीमित निबंध मूल्यांकन' : 'Unlimited Essay Grading');
+    else if (n > 0) bullets.push(hi ? `निबंध मूल्यांकन — ${n}/दिन` : `Essay Grading — ${n}/day`);
+  }
+  // AI image generation — per-day count (only when allowed).
+  {
+    const n = f.imagesPerDay;
+    if (n !== undefined && (unlimited(n) || n > 0)) {
+      bullets.push(unlimited(n)
+        ? (hi ? 'असीमित AI इमेज' : 'Unlimited AI Images')
+        : (hi ? `AI इमेज — ${n}/दिन` : `AI Images — ${n}/day`));
+    }
+  }
   if (f.currentAffairs) bullets.push(hi ? 'डेली करंट अफेयर्स' : 'Daily Current Affairs');
 
   return bullets;

@@ -290,14 +290,24 @@ function sanitisePlanPatch(patch: Partial<PlanConfig>): Partial<PlanConfig> {
   if (typeof patch.comingSoon === 'boolean') out.comingSoon = patch.comingSoon;
   if (patch.features && typeof patch.features === 'object') {
     const f = patch.features;
+    const clampInt = (v: unknown, fallback: number): number =>
+      typeof v === 'number' && Number.isFinite(v) ? Math.max(-1, Math.floor(v)) : fallback;
     out.features = {
-      dailyMCQ: typeof f.dailyMCQ === 'number' ? Math.max(-1, Math.floor(f.dailyMCQ)) : 0,
-      mockTests: typeof f.mockTests === 'number' ? Math.max(-1, Math.floor(f.mockTests)) : 0,
+      dailyMCQ: clampInt(f.dailyMCQ, 0),
+      mockTests: clampInt(f.mockTests, 0),
       aiTutor: !!f.aiTutor,
       currentAffairs: !!f.currentAffairs,
       essayGrading: !!f.essayGrading,
-      chaptersPerDay: typeof f.chaptersPerDay === 'number' ? Math.max(-1, Math.floor(f.chaptersPerDay)) : 0,
+      chaptersPerDay: clampInt(f.chaptersPerDay, 0),
       creditDeduction: !!f.creditDeduction,
+      // Per-day granular AI quotas — previously DROPPED here, so admin
+      // edits to these never persisted (the matrix UI couldn't expose
+      // them either). Persist them now so /admin/plans can edit image /
+      // essay / AI-tutor daily caps. Only included when present so older
+      // saves don't force a 0 onto a plan that meant "unlimited".
+      ...(f.aiTutorPerDay !== undefined ? { aiTutorPerDay: clampInt(f.aiTutorPerDay, 0) } : {}),
+      ...(f.essaysPerDay !== undefined ? { essaysPerDay: clampInt(f.essaysPerDay, 0) } : {}),
+      ...(f.imagesPerDay !== undefined ? { imagesPerDay: clampInt(f.imagesPerDay, 0) } : {}),
     };
   }
   return out;
