@@ -1742,8 +1742,14 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
         const before = u.fcmTokens ?? [];
         const after = before.filter(t => !invalid.has(t.token));
         if (after.length !== before.length) {
-          await deps.users.update(u.id, { fcmTokens: after });
-          pruned += before.length - after.length;
+          try {
+            await deps.users.update(u.id, { fcmTokens: after });
+            pruned += before.length - after.length;
+          } catch (e) {
+            // A single stale/missing user doc must NOT fail the whole
+            // broadcast (the messages were already sent at this point).
+            deps.logger.warn('admin.push_prune_failed', { uid: u.id, error: e instanceof Error ? e.message : String(e) });
+          }
         }
       }
       deps.logger.info('admin.push_invalid_tokens_pruned', { count: invalid.size, prunedFromUsers: pruned });
