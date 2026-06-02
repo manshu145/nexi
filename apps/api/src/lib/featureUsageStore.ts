@@ -1,13 +1,13 @@
 import type { Firestore } from 'firebase-admin/firestore';
 
 /**
- * Per-user, per-day feature usage counter.
+ * Per-user feature usage counter, bucketed by IST day (default) or IST hour.
  *
- * Backs the admin-configurable per-day AI quotas (imagesPerDay, essaysPerDay,
- * aiTutorPerDay in the plan matrix). Founder ask: "image generate free account
- * me kar raha tha, limit lag gaya hoga — lekin limit laga to uska message bhi
- * milna chahiye." So we count usage per IST day and the routes block + return a
- * clear message once the plan's cap is hit.
+ * Backs the admin-configurable per-day AI quotas (imagesPerDay, essaysPerDay
+ * in the plan matrix) and the free-tier AI-tutor hourly rate limit. Founder
+ * ask: "image generate free account me kar raha tha, limit lag gaya hoga —
+ * lekin limit laga to uska message bhi milna chahiye"; and for AI tutor:
+ * "free ko har ghante 5, baaki sab ko unlimited."
  *
  * Day boundary is IST (UTC+5:30) to match the rest of the app's daily resets
  * (streaks, AI spend cap). All methods are best-effort / fail-open: a counter
@@ -15,9 +15,16 @@ import type { Firestore } from 'firebase-admin/firestore';
  */
 export type UsageFeature = 'image' | 'essay' | 'aiTutor';
 
+/**
+ * Counter window. 'day' = per IST calendar day (default, used by image/essay
+ * quotas). 'hour' = per IST clock hour (used by the free-tier AI-tutor rate
+ * limit, e.g. 5 messages/hour).
+ */
+export type UsageGranularity = 'day' | 'hour';
+
 export interface FeatureUsageStore {
-  getCount(userId: string, feature: UsageFeature): Promise<number>;
-  increment(userId: string, feature: UsageFeature): Promise<void>;
+  getCount(userId: string, feature: UsageFeature, granularity?: UsageGranularity): Promise<number>;
+  increment(userId: string, feature: UsageFeature, granularity?: UsageGranularity): Promise<void>;
 }
 
 function istDayKey(): string {
@@ -25,26 +32,39 @@ function istDayKey(): string {
   return ist.toISOString().slice(0, 10); // YYYY-MM-DD
 }
 
+function istHourKey(): string {
+  const ist = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+  return ist.toISOString().slice(0, 13); // YYYY-MM-DDTHH
+}
+
+/** Bucket string for the given window. Day = 'YYYY-MM-DD', hour =
+ *  'YYYY-MM-DDTHH' — the 'T' guarantees the two never collide. */
+function bucketKey(granularity: UsageGranularity): string {
+  return granularity === 'hour' ? istHourKey() : istDayKey();
+}
+
 export class InMemoryFeatureUsageStore implements FeatureUsageStore {
   private counts = new Map<string, number>();
-  private key(userId: string, feature: string) { return `${userId}:${istDayKey()}:${feature}`; }
-  async getCount(userId: string, feature: UsageFeature) { return this.counts.get(this.key(userId, feature)) ?? 0; }
-  async increment(userId: string, feature: UsageFeature) {
-    const k = this.key(userId, feature);
+  private key(userId: string, feature: string, granularity: UsageGranularity) { return `${userId}:${bucketKey(granularity)}:${feature}`; }
+  async getCount(userId: string, feature: UsageFeature, granularity: UsageGranularity = 'day') { return this.counts.get(this.key(userId, feature, granularity)) ?? 0; }
+  async increment(userId: string, feature: UsageFeature, granularity: UsageGranularity = 'day') {
+    const k = this.key(userId, feature, granularity);
     this.counts.set(k, (this.counts.get(k) ?? 0) + 1);
   }
 }
 
 export class FirestoreFeatureUsageStore implements FeatureUsageStore {
   constructor(private readonly db: Firestore) {}
-  private ref(userId: string) {
-    // One doc per user per IST day; old docs are harmless and can be swept
-    // by a TTL/cleanup later. Counts live as integer fields keyed by feature.
-    return this.db.collection('featureUsage').doc(`${userId}_${istDayKey()}`);
+  private ref(userId: string, granularity: UsageGranularity) {
+    // One doc per user per bucket (IST day or IST hour); old docs are
+    // harmless and can be swept by a TTL/cleanup later. Counts live as
+    // integer fields keyed by feature. Day docs end in 'YYYY-MM-DD', hour
+    // docs in 'YYYY-MM-DDTHH', so the two never overwrite each other.
+    return this.db.collection('featureUsage').doc(`${userId}_${bucketKey(granularity)}`);
   }
-  async getCount(userId: string, feature: UsageFeature): Promise<number> {
+  async getCount(userId: string, feature: UsageFeature, granularity: UsageGranularity = 'day'): Promise<number> {
     try {
-      const snap = await this.ref(userId).get();
+      const snap = await this.ref(userId, granularity).get();
       const data = snap.data() as Record<string, unknown> | undefined;
       const v = data?.[feature];
       return typeof v === 'number' ? v : 0;
@@ -52,10 +72,10 @@ export class FirestoreFeatureUsageStore implements FeatureUsageStore {
       return 0; // fail-open: don't block on a read error
     }
   }
-  async increment(userId: string, feature: UsageFeature): Promise<void> {
+  async increment(userId: string, feature: UsageFeature, granularity: UsageGranularity = 'day'): Promise<void> {
     try {
       const { FieldValue } = await import('firebase-admin/firestore');
-      await this.ref(userId).set(
+      await this.ref(userId, granularity).set(
         { [feature]: FieldValue.increment(1), updatedAt: new Date().toISOString() },
         { merge: true },
       );
