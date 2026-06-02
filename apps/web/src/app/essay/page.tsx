@@ -84,6 +84,10 @@ export default function EssayPage() {
   const [timeLeft, setTimeLeft] = useState(0);
   const [timerActive, setTimerActive] = useState(false);
   const [usageInfo, setUsageInfo] = useState<{ used: number; limit: number; plan: string } | null>(null);
+  // Set when the server rejects a grading with 429 (daily essay limit). Shown
+  // as a banner; we deliberately do NOT fall back to chat-based grading on a
+  // limit, otherwise free users could bypass the cap.
+  const [limitMsg, setLimitMsg] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -94,19 +98,20 @@ export default function EssayPage() {
   useEffect(() => {
     if (!user || !me) return;
     (async () => {
+      const plan = me.plan;
       try {
-        const plan = me.plan;
         const token = await user.getIdToken();
         const res = await fetch(`${API}/v1/essay/usage`, { headers: { Authorization: `Bearer ${token}` } });
         if (res.ok) {
           const data = await res.json() as { used: number; limit: number };
           setUsageInfo({ ...data, plan });
         } else {
-          // Endpoint may not exist yet — use defaults
-          setUsageInfo({ used: 0, limit: plan === 'free' ? 2 : 15, plan });
+          // Endpoint may not exist yet — assume unlimited for paid, 1/day for
+          // free so we never wrongly block on a transient failure.
+          setUsageInfo({ used: 0, limit: plan === 'free' ? 1 : -1, plan });
         }
       } catch {
-        setUsageInfo({ used: 0, limit: 2, plan: 'free' });
+        setUsageInfo({ used: 0, limit: plan === 'free' ? 1 : -1, plan });
       }
     })();
   }, [user, me]);
@@ -137,6 +142,7 @@ export default function EssayPage() {
 
   const handleGenerateQuestion = async () => {
     setGenerating(true);
+    setLimitMsg(null);
     try {
       const token = await user!.getIdToken();
       const lang = getUserLanguage();
@@ -184,6 +190,15 @@ export default function EssayPage() {
         body: JSON.stringify({ topic: question.topic, answer, wordLimit: question.wordLimit, examContext: question.examContext, language: lang }),
       });
       if (!res.ok) {
+        // Daily essay limit (429): show the server's message and DON'T fall
+        // back to chat-based grading, otherwise the cap could be bypassed.
+        if (res.status === 429) {
+          const data = await res.json().catch(() => ({ message: '' })) as { message?: string };
+          setLimitMsg(data.message || "You've reached your essay grading limit for today. The limit resets tomorrow — upgrade for more.");
+          setStep('write');
+          setGrading(false);
+          return;
+        }
         // Fallback: use chat API for grading
         const gradePrompt = `You are a strict UPSC/competitive exam answer evaluator. Grade this answer critically.
 
@@ -222,6 +237,8 @@ Respond ONLY with valid JSON:
       } else {
         const data = await res.json() as { feedback: EssayFeedback };
         setFeedback(data.feedback);
+        // Keep the per-day counter visually accurate without a refetch.
+        setUsageInfo(prev => (prev && prev.limit >= 0 ? { ...prev, used: prev.used + 1 } : prev));
       }
       setStep('result');
     } catch {
@@ -252,9 +269,14 @@ Respond ONLY with valid JSON:
         <p className="mt-1 text-sm text-muted-500">{getUserLanguage() === 'hi' ? 'उत्तर लिखें, AI से विस्तृत मूल्यांकन पाएं' : 'Write answers, get AI-graded feedback with detailed analysis'}</p>
         {usageInfo && (
           <p className="mt-2 text-xs text-muted-400">
-            Usage: {usageInfo.used}/{usageInfo.limit} this {usageInfo.plan === 'free' ? 'week' : 'month'}
+            {usageInfo.limit < 0
+              ? 'Unlimited essay grading on your plan'
+              : `Usage: ${usageInfo.used}/${usageInfo.limit} today`}
             {usageInfo.plan === 'free' && <span className="text-ember-500 ml-1">· <button onClick={() => router.push('/upgrade')} className="underline">Upgrade for more</button></span>}
           </p>
+        )}
+        {limitMsg && (
+          <div className="banner banner-error mt-3 text-sm">{limitMsg}</div>
         )}
       </section>
 
@@ -266,13 +288,13 @@ Respond ONLY with valid JSON:
           <p className="mt-2 text-sm text-muted-500 max-w-sm">AI will generate a question based on your exam & syllabus. You write the answer, and 3 AI models will grade it like a real examiner.</p>
           <button
             onClick={handleGenerateQuestion}
-            disabled={generating || !!(usageInfo && usageInfo.used >= usageInfo.limit)}
+            disabled={generating || !!(usageInfo && usageInfo.limit >= 0 && usageInfo.used >= usageInfo.limit)}
             className="btn-primary mt-6 px-8"
           >
-            {generating ? 'Generating Question...' : usageInfo && usageInfo.used >= usageInfo.limit ? 'Limit Reached' : 'Generate Question'}
+            {generating ? 'Generating Question...' : usageInfo && usageInfo.limit >= 0 && usageInfo.used >= usageInfo.limit ? 'Limit Reached' : 'Generate Question'}
           </button>
-          {usageInfo && usageInfo.used >= usageInfo.limit && (
-            <p className="mt-3 text-xs text-red-500">You&apos;ve used all your attempts. {usageInfo.plan === 'free' ? 'Upgrade to get 15/month' : 'Resets next month'}.</p>
+          {usageInfo && usageInfo.limit >= 0 && usageInfo.used >= usageInfo.limit && (
+            <p className="mt-3 text-xs text-red-500">You&apos;ve used all your essays for today. {usageInfo.plan === 'free' ? 'Upgrade for a higher daily limit' : 'Resets tomorrow'}.</p>
           )}
         </section>
       )}
