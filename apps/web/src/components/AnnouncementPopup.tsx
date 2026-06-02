@@ -6,6 +6,13 @@ interface Announcement {
   title: string;
   body: string;
   date?: string;
+  /**
+   * Admin-configurable popup timing. Both optional — announcements
+   * created before this shipped (or banner-type) fall back to the old
+   * hardcoded defaults (10s visible, 2s delay) so nothing regresses.
+   */
+  durationSeconds?: number;
+  showDelaySeconds?: number;
 }
 
 /**
@@ -35,6 +42,12 @@ export function AnnouncementPopup({
   const [current, setCurrent] = useState<Announcement | null>(null);
   const [countdown, setCountdown] = useState(10);
 
+  // Resolve the active announcement's configured timing, falling back to
+  // the legacy 10s-visible / 2s-delay defaults. Clamped defensively so a
+  // bad/stale value can't divide-by-zero the progress bar or hang the
+  // modal (the API also clamps, this is belt-and-suspenders).
+  const durationSecs = Math.min(120, Math.max(3, current?.durationSeconds ?? 10));
+
   // PR-44: stabilize effect dependency. Previously `[announcements]` caused
   // re-fires on every parent re-render (new array ref). Using the first
   // announcement's ID as the dep ensures the timer only resets when the
@@ -51,10 +64,13 @@ export function AnnouncementPopup({
     // dismissed announcements before passing them in.
     const active = announcements[0]!;
     setCurrent(active);
-    // Reset countdown each time a new announcement arrives.
-    setCountdown(10);
-    // Show after 2s delay
-    const timer = setTimeout(() => setVisible(true), 2000);
+    // Reset countdown to the admin-configured visible duration (or the
+    // 10s default) each time a new announcement arrives.
+    const duration = Math.min(120, Math.max(3, active.durationSeconds ?? 10));
+    const delayMs = Math.min(30, Math.max(0, active.showDelaySeconds ?? 2)) * 1000;
+    setCountdown(duration);
+    // Show after the admin-configured delay (default 2s).
+    const timer = setTimeout(() => setVisible(true), delayMs);
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firstId]);
@@ -95,7 +111,7 @@ export function AnnouncementPopup({
             {isHindi ? `${countdown} सेकंड में बंद होगा...` : `Closing in ${countdown} seconds...`}
           </p>
           <div className="h-1 w-full overflow-hidden rounded-full bg-paper-300">
-            <div className="h-full rounded-full bg-ember-500 transition-all duration-1000 ease-linear" style={{ width: `${(countdown / 10) * 100}%` }} />
+            <div className="h-full rounded-full bg-ember-500 transition-all duration-1000 ease-linear" style={{ width: `${(countdown / durationSecs) * 100}%` }} />
           </div>
         </div>
       </div>

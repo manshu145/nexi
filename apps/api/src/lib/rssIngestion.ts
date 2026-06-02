@@ -47,15 +47,21 @@ export interface RawNewsItem {
  * Tries to load feeds from Firestore first, falls back to hardcoded NEWS_SOURCES.
  */
 async function fetchRssFeeds(logger: Logger, firestoreDb?: import('firebase-admin/firestore').Firestore): Promise<RawNewsItem[]> {
-  // Try loading feeds from Firestore first
-  let feedSources = NEWS_SOURCES.map(s => ({ name: s.name, rss: s.rss }));
+  // Try loading feeds from Firestore first. We now carry the Firestore
+  // doc `id` alongside name+rss so each feed's fetch result can be
+  // written BACK to its doc (lastFetched / itemsFetched / status). That
+  // makes the admin "News Feed Management" table show, per row, exactly
+  // what each source brought in on the last run — the founder asked to
+  // see "kya kya fetch hoke app me kya kya content gaya... row kya aaya".
+  let feedSources: Array<{ id?: string; name: string; rss: string }> =
+    NEWS_SOURCES.map(s => ({ name: s.name, rss: s.rss }));
   if (firestoreDb) {
     try {
       const snap = await firestoreDb.collection('newsFeeds').where('isActive', '==', true).get();
       if (!snap.empty) {
         const firestoreFeeds = snap.docs.map(d => {
           const data = d.data();
-          return { name: data.name as string, rss: data.url as string };
+          return { id: d.id, name: data.name as string, rss: data.url as string };
         }).filter(f => f.name && f.rss);
         if (firestoreFeeds.length > 0) {
           // Merge: Firestore feeds + hardcoded (deduplicate by RSS URL)
@@ -71,9 +77,20 @@ async function fetchRssFeeds(logger: Logger, firestoreDb?: import('firebase-admi
     }
   }
 
+  // Best-effort per-feed status writeback. Only Firestore-sourced feeds
+  // (those with a doc id) get updated; the hardcoded NEWS_SOURCES don't
+  // appear in the admin table so there's nothing to write for them.
+  // Failures here are swallowed — a status-write hiccup must never break
+  // the actual ingestion.
+  const writeFeedStatus = (id: string | undefined, patch: Record<string, unknown>) => {
+    if (!firestoreDb || !id) return;
+    firestoreDb.collection('newsFeeds').doc(id).set(patch, { merge: true }).catch(() => {});
+  };
+
   const allItems: RawNewsItem[] = [];
   const results = await Promise.allSettled(
     feedSources.map(async (source) => {
+      const fetchedAt = new Date().toISOString();
       try {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 15000);
@@ -82,10 +99,28 @@ async function fetchRssFeeds(logger: Logger, firestoreDb?: import('firebase-admi
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const text = await res.text();
         // Simple XML parsing for RSS items
-        const items = parseRssXml(text, source.name);
-        return items.slice(0, 10); // Max 10 items per source
+        const items = parseRssXml(text, source.name).slice(0, 10); // Max 10 items per source
+        // Record what this feed brought in: timestamp, item count, a few
+        // sample headlines (so the admin sees the actual content, not just
+        // a number), and a clear ok/empty status.
+        writeFeedStatus(source.id, {
+          lastFetched: fetchedAt,
+          itemsFetched: items.length,
+          lastStatus: items.length > 0 ? 'ok' : 'empty',
+          lastError: null,
+          lastSampleTitles: items.slice(0, 3).map(it => it.title),
+        });
+        return items;
       } catch (err) {
-        logger.warn('rss.fetch_failed', { source: source.name, error: err instanceof Error ? err.message : String(err) });
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.warn('rss.fetch_failed', { source: source.name, error: msg });
+        writeFeedStatus(source.id, {
+          lastFetched: fetchedAt,
+          itemsFetched: 0,
+          lastStatus: 'error',
+          lastError: msg.slice(0, 200),
+          lastSampleTitles: [],
+        });
         return [];
       }
     })

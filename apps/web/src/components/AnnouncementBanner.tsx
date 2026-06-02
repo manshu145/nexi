@@ -14,6 +14,9 @@ interface RawAnnouncement {
   bodyHi?: string;
   type: 'banner' | 'modal' | 'email' | 'all';
   date?: string;
+  /** Admin-configurable popup timing (modal/all only). */
+  durationSeconds?: number;
+  showDelaySeconds?: number;
 }
 
 interface RenderedAnnouncement {
@@ -22,6 +25,8 @@ interface RenderedAnnouncement {
   body: string;
   type: 'banner' | 'modal' | 'email' | 'all';
   date?: string;
+  durationSeconds?: number;
+  showDelaySeconds?: number;
 }
 
 const API = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com';
@@ -93,6 +98,8 @@ export function AnnouncementBanner() {
         id: a.id,
         type: a.type,
         date: a.date,
+        durationSeconds: a.durationSeconds,
+        showDelaySeconds: a.showDelaySeconds,
         // Prefer the Hindi version IFF user language = hi AND the field
         // is present. If only one of titleHi/bodyHi is filled, the missing
         // one falls back to its English counterpart so we never render a

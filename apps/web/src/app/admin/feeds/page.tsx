@@ -17,6 +17,27 @@ interface Feed {
   lastFetched: string | null;
   itemsFetched: number;
   createdAt: string;
+  // Per-feed result of the most recent ingestion run (written back by
+  // the API's fetchRssFeeds). Optional because feeds added before this
+  // shipped won't have them until the next ingest.
+  lastStatus?: 'ok' | 'empty' | 'error';
+  lastError?: string | null;
+  lastSampleTitles?: string[];
+}
+
+/** Compact "x min ago" formatter for the Last fetched column. */
+function timeAgo(iso: string | null): string {
+  if (!iso) return 'never';
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return 'never';
+  const secs = Math.max(0, Math.floor((Date.now() - t) / 1000));
+  if (secs < 60) return `${secs}s ago`;
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
 }
 
 export default function AdminFeedsPage() {
@@ -309,23 +330,62 @@ export default function AdminFeedsPage() {
               <thead>
                 <tr className="border-b border-stone-800">
                   <th className="pb-2 text-left text-xs font-medium text-stone-500">Name</th>
-                  <th className="pb-2 text-left text-xs font-medium text-stone-500">URL</th>
                   <th className="pb-2 text-left text-xs font-medium text-stone-500">Category</th>
-                  <th className="pb-2 text-center text-xs font-medium text-stone-500">Status</th>
+                  <th className="pb-2 text-left text-xs font-medium text-stone-500">Last fetched</th>
+                  <th className="pb-2 text-center text-xs font-medium text-stone-500">Items</th>
+                  <th className="pb-2 text-center text-xs font-medium text-stone-500">Result</th>
+                  <th className="pb-2 text-center text-xs font-medium text-stone-500">Active</th>
                   <th className="pb-2 text-right text-xs font-medium text-stone-500">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {feeds.map(feed => (
                   <tr key={feed.id} className="border-b border-stone-800/50">
-                    <td className="py-3 text-stone-200 font-medium">{feed.name}</td>
-                    <td className="py-3 text-stone-400 text-xs font-mono max-w-[200px] truncate">{feed.url}</td>
-                    <td className="py-3">
+                    <td className="py-3 align-top">
+                      <div className="text-stone-200 font-medium">{feed.name}</div>
+                      <div className="text-stone-500 text-xs font-mono max-w-[220px] truncate" title={feed.url}>{feed.url}</div>
+                    </td>
+                    <td className="py-3 align-top">
                       <span className="inline-flex rounded-full bg-stone-800 px-2 py-0.5 text-xs text-stone-300 capitalize">
                         {feed.category}
                       </span>
                     </td>
-                    <td className="py-3 text-center">
+                    <td className="py-3 align-top text-stone-400 text-xs whitespace-nowrap" title={feed.lastFetched ?? 'never fetched'}>
+                      {timeAgo(feed.lastFetched)}
+                    </td>
+                    <td className="py-3 align-top text-center">
+                      <span
+                        className="text-stone-200 text-sm font-medium"
+                        title={
+                          feed.lastSampleTitles && feed.lastSampleTitles.length > 0
+                            ? `Last fetched headlines:\n• ${feed.lastSampleTitles.join('\n• ')}`
+                            : 'No sample headlines from the last run'
+                        }
+                      >
+                        {feed.lastFetched ? (feed.itemsFetched ?? 0) : '—'}
+                      </span>
+                    </td>
+                    <td className="py-3 align-top text-center">
+                      {!feed.lastFetched ? (
+                        <span className="text-xs text-stone-600">not run</span>
+                      ) : feed.lastStatus === 'error' ? (
+                        <span
+                          className="inline-flex rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-400"
+                          title={feed.lastError ?? 'fetch failed'}
+                        >
+                          ⚠ error
+                        </span>
+                      ) : feed.lastStatus === 'empty' || (feed.itemsFetched ?? 0) === 0 ? (
+                        <span className="inline-flex rounded-full bg-stone-800 px-2 py-0.5 text-xs font-medium text-stone-400">
+                          0 items
+                        </span>
+                      ) : (
+                        <span className="inline-flex rounded-full bg-amber-500/20 px-2 py-0.5 text-xs font-medium text-amber-500">
+                          ✓ ok
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-3 align-top text-center">
                       <button
                         onClick={() => handleToggleFeed(feed.id, feed.isActive)}
                         className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium transition-colors ${
@@ -337,7 +397,7 @@ export default function AdminFeedsPage() {
                         {feed.isActive ? '🟢 Active' : '⚪ Paused'}
                       </button>
                     </td>
-                    <td className="py-3 text-right">
+                    <td className="py-3 align-top text-right">
                       {deleteConfirm === feed.id ? (
                         <div className="inline-flex items-center gap-1">
                           <button

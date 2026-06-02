@@ -266,7 +266,14 @@ export class FirestoreUserStore implements UserStore {
     // Fetch WITHOUT orderBy (document-id order) so no doc is ever dropped,
     // then sort freshest-first in memory (missing createdAt sorts last).
     const snap = await this.db.collection('users').limit(5000).get();
-    const rows = snap.docs.map(d => d.data() as StoredUser);
+    // Always derive `id` from the Firestore doc id. Some legacy/migrated
+    // docs don't carry an `id` FIELD inside the document body; mapping
+    // d.data() alone left those users with id === undefined, which then
+    // blew up the push-broadcast prune loop (deps.users.update(u.id, ...)
+    // → "Value for argument documentPath is not a valid resource path.
+    // Path must be a non-empty string."). Spreading d.id last guarantees
+    // every row has a usable id for downstream writes.
+    const rows = snap.docs.map(d => ({ ...(d.data() as StoredUser), id: d.id as UserId }));
     // Coerce to String before comparing: some legacy/test docs store
     // createdAt as a Firestore Timestamp or number, not an ISO string.
     // Calling .localeCompare on a non-string THREW here — which 500'd
