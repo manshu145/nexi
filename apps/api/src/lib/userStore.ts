@@ -254,15 +254,21 @@ export class FirestoreUserStore implements UserStore {
   }
   async update(uid: UserId, data: Partial<StoredUser>) { const ref = this.db.collection(COL).doc(uid); await ref.set({ ...data, updatedAt: new Date().toISOString() }, { merge: true }); return (await ref.get()).data() as StoredUser; }
   async listAll() {
-    // PR-38: bumped from 100 → 5000 + sorted by createdAt desc so the
-    // admin panel sees the freshest users first. Per-call query cost
-    // grows linearly with user count, but at 5k docs it's still well
-    // under the 10MB Firestore page limit.
-    const snap = await this.db.collection('users')
-      .orderBy('createdAt', 'desc')
-      .limit(5000)
-      .get();
-    return snap.docs.map(d => d.data() as StoredUser);
+    // CRITICAL: do NOT use .orderBy('createdAt') here. Firestore's orderBy
+    // SILENTLY DROPS any document that lacks the ordered field — so users
+    // created before `createdAt` existed (phone-only / migrated / some test
+    // users) were invisible to EVERY listAll consumer: the admin users list,
+    // the push subscriber count, AND the push broadcast. That's why a device
+    // that registered fine (the /push/test path reads me.fcmTokens directly
+    // and worked: "1 of 1") showed up as "0 subscribers · 0 devices" in the
+    // broadcast/status path (which enumerates via listAll).
+    //
+    // Fetch WITHOUT orderBy (document-id order) so no doc is ever dropped,
+    // then sort freshest-first in memory (missing createdAt sorts last).
+    const snap = await this.db.collection('users').limit(5000).get();
+    const rows = snap.docs.map(d => d.data() as StoredUser);
+    rows.sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
+    return rows;
   }
 
   async getStreakLeaderboard(limit: number) {
