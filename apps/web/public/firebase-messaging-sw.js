@@ -28,10 +28,14 @@ messaging.onBackgroundMessage((payload) => {
   self.registration.showNotification(title, options);
 });
 
-// Handle notification click — open the app
+// Handle notification click — open the app at the click-through URL.
+// The backend (pushService.buildMessage) puts the target URL in
+// data.click_action; older/foreground paths may use data.url. Read both
+// so a tap always lands on the intended page instead of falling back to '/'.
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = event.notification.data?.url ?? '/';
+  const data = event.notification.data || {};
+  const url = data.click_action || data.url || data.link || '/';
   event.waitUntil(
     self.clients.matchAll({ type: 'window' }).then((clients) => {
       for (const client of clients) {

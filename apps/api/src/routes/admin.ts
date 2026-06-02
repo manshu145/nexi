@@ -557,6 +557,14 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
   // These are mounted on users routes but we add them here for admin store integration
 
   // ━━━ ANNOUNCEMENTS ━━━
+  // Clamp a user-supplied seconds value to a sane integer range, with a
+  // default when missing/invalid. Shared by the create + update routes
+  // so popup timing can never be set to a value that hangs the modal
+  // forever or flashes it instantly.
+  const clampSeconds = (v: unknown, def: number, min: number, max: number): number => {
+    const n = typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : def;
+    return Math.min(max, Math.max(min, n));
+  };
   // POST /v1/admin/announcements — create announcement
   app.post('/announcements', async (c) => {
     const body = await c.req.json().catch(() => null) as {
@@ -564,6 +572,7 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
       titleHi?: string; bodyHi?: string;
       type?: 'banner' | 'modal' | 'email' | 'all';
       targetAudience?: 'all' | string; expiresAt?: string;
+      durationSeconds?: number; showDelaySeconds?: number;
     } | null;
     if (!body?.title || !body?.body) throw new HTTPException(400, { message: 'title and body required' });
     const principal = requireAuth(c);
@@ -579,6 +588,14 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
       createdBy: principal.userId,
       createdAt: new Date().toISOString(),
       expiresAt: body.expiresAt ?? null,
+      // PR: admin-configurable popup timing (founder ask — "kitne time me
+      // dikhna chahiye ye set karne ka option do... akdum se kholte hi
+      // rah hai"). durationSeconds = how long the modal stays before
+      // auto-closing; showDelaySeconds = delay before it appears. Clamped
+      // server-side so a bad value can't make the popup hang forever or
+      // flash instantly. Defaults match the old hardcoded 10s / 2s.
+      durationSeconds: clampSeconds(body.durationSeconds, 10, 3, 120),
+      showDelaySeconds: clampSeconds(body.showDelaySeconds, 2, 0, 30),
       isActive: true, sentViaEmail: false, sentCount: 0,
     };
     if (body.titleHi && body.titleHi.trim()) announcement['titleHi'] = body.titleHi.trim();
@@ -620,6 +637,10 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
       const v = typeof body['bodyHi'] === 'string' ? body['bodyHi'].trim() : '';
       if (v) body['bodyHi'] = v; else delete body['bodyHi'];
     }
+    // Clamp popup timing on update too, so an edit can't sneak past the
+    // create-time validation.
+    if ('durationSeconds' in body) body['durationSeconds'] = clampSeconds(body['durationSeconds'], 10, 3, 120);
+    if ('showDelaySeconds' in body) body['showDelaySeconds'] = clampSeconds(body['showDelaySeconds'], 2, 0, 30);
     await deps.adminStore.saveAnnouncement({ ...body, id });
     deps.logger.info('admin.announcement_updated', { id });
     return c.json({ success: true });
@@ -1739,6 +1760,11 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
     if (invalid.size > 0) {
       let pruned = 0;
       for (const u of users) {
+        // Defensive: never call update() with an empty/missing id — that
+        // throws Firestore's "documentPath must be a non-empty string" and
+        // (pre-fix) 500'd the whole /push/send. listAll() now always sets
+        // id from the doc id, but guard here too so a bad row is skipped.
+        if (!u.id) continue;
         const before = u.fcmTokens ?? [];
         const after = before.filter(t => !invalid.has(t.token));
         if (after.length !== before.length) {

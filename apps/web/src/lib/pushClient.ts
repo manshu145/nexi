@@ -17,6 +17,7 @@
 import { api } from './api';
 
 let tokenRegistered = false;
+let foregroundHandlerAttached = false;
 let cachedVapidKey: string | null = null;
 /** Last failure reason from registerPushToken — surfaced to the UI so the
  *  user/admin sees the ACTUAL cause instead of a generic "VAPID missing". */
@@ -120,6 +121,38 @@ export async function registerPushToken(): Promise<boolean> {
     await api.registerPushToken(token, 'web');
     tokenRegistered = true;
     lastPushError = null;
+
+    // Attach the FOREGROUND message handler (once). This is the fix for
+    // "push success dikhata hai par device pe nahi aata": when the app
+    // tab is open/focused, FCM delivers the message to the page via
+    // onMessage and does NOT auto-display a system notification or fire
+    // the service worker's onBackgroundMessage. Without this listener,
+    // nothing visible happens — exactly what an admin sees when they hit
+    // "send test to me" with the app open. We re-display it via the SW
+    // registration so it lands in the system tray AND routes through the
+    // notificationclick handler on tap.
+    if (!foregroundHandlerAttached) {
+      try {
+        const { onMessage } = await import('firebase/messaging');
+        onMessage(messaging, (payload) => {
+          const title = payload.notification?.title ?? payload.data?.['title'] ?? 'Nexigrate';
+          const body = payload.notification?.body ?? payload.data?.['body'] ?? '';
+          const link = payload.data?.['click_action'] ?? payload.fcmOptions?.link ?? '/';
+          try {
+            swRegistration?.showNotification(title, {
+              body,
+              icon: '/brand/nexigrate-favicon.svg',
+              badge: '/brand/nexigrate-favicon.svg',
+              // Carry both keys so the SW click handler resolves the URL
+              // whether it reads click_action or url.
+              data: { ...(payload.data ?? {}), url: link, click_action: link },
+            });
+          } catch { /* notification display blocked in this context — ignore */ }
+        });
+        foregroundHandlerAttached = true;
+      } catch { /* onMessage wiring failed (non-fatal) — background push still works */ }
+    }
+
     return true;
   } catch (err) {
     // getToken throws here for the most common real failures:

@@ -9,6 +9,7 @@ import type { UserContext } from './chapterStore.js';
 import type { AIModelResolver, ResolvedModel } from './aiModelResolver.js';
 import { isModelDeprecationError } from './aiModelResolver.js';
 import { getCostPer1k } from './aiProviderRegistry.js';
+import { getFallbackQuestions } from './fallbackQuestions.js';
 
 export interface MCQOption { key: 'A' | 'B' | 'C' | 'D'; text: string; }
 export interface GeneratedMCQ { id: string; question: string; options: MCQOption[]; correctOption: 'A' | 'B' | 'C' | 'D'; explanation: string; difficulty: 'easy' | 'medium' | 'hard'; subject?: string; topic?: string; }
@@ -491,11 +492,17 @@ export function createAIEngine(
     }
 
     // ── Provider 1: Groq (fastest path) ──────────────────────────────
-    if (groq) {
+    // No hardcoded model (founder directive: "kisi bhi model ko fix mt
+    // krna... jo available ho usme auto switch ho jaye"). getGroqClient()
+    // resolves the topmost non-blacklisted Groq model from the registry
+    // chain; we report success/failure so a deprecated model auto-
+    // blacklists for the next call and the chain steps forward on its own.
+    const groqResolved = await getGroqClient();
+    if (groqResolved) {
       try {
         const completion = await withRetryOnTransient('groq', () =>
-          groq.chat.completions.create({
-            model: 'llama-3.3-70b-versatile',
+          groqResolved.client.chat.completions.create({
+            model: groqResolved.model,
             messages: [{ role: 'user', content: prompt }],
             temperature: 0.7,
             max_tokens: MAX_TOKENS,
@@ -506,25 +513,38 @@ export function createAIEngine(
         const finishReason = completion.choices[0]?.finish_reason ?? 'unknown';
         const recovered = recoverQuestions(raw);
         if (recovered) {
+          if (resolver) void resolver.reportModelSuccess('groq', groqResolved.model);
           const tokens = estimateTokens(raw);
-          logAICallToStore(store, 'llama-3.3-70b-versatile', tokens, estimateCost('llama-3.3-70b-versatile', tokens), 0, undefined, { status: 'success', endpoint, provider: 'groq', requestPreview: prompt.slice(0, 200), responsePreview: raw.slice(0, 300) });
-          logger.info('ai.questions_generated', { provider: 'groq', endpoint, examSlug, language, count: recovered.length, finishReason });
+          logAICallToStore(store, groqResolved.model, tokens, estimateCost(groqResolved.model, tokens), 0, undefined, { status: 'success', endpoint, provider: 'groq', requestPreview: prompt.slice(0, 200), responsePreview: raw.slice(0, 300) });
+          logger.info('ai.questions_generated', { provider: 'groq', model: groqResolved.model, endpoint, examSlug, language, count: recovered.length, finishReason });
           return recovered;
         }
-        errors.push(`Groq returned ${raw.length} chars, no parseable questions (finish=${finishReason}, preview="${raw.slice(0, 120).replace(/\s+/g, ' ')}")`);
+        errors.push(`Groq(${groqResolved.model}) returned ${raw.length} chars, no parseable questions (finish=${finishReason}, preview="${raw.slice(0, 120).replace(/\s+/g, ' ')}")`);
       } catch (err) {
-        errors.push(`Groq: ${err instanceof Error ? err.message : String(err)}`);
+        const msg = err instanceof Error ? err.message : String(err);
+        if (resolver) await resolver.reportModelFailure('groq', groqResolved.model, msg);
+        errors.push(`Groq(${groqResolved.model}): ${msg}`);
       }
     } else {
       errors.push('Groq not configured');
     }
 
-    // ── Provider 2: OpenAI (slower, more reliable) ───────────────────
-    if (openai) {
+    // ── Provider 2: OpenAI (reliable JSON) ───────────────────────────
+    // No hardcoded model. The previous code hardcoded 'gpt-4o', which
+    // 404'd ("model does not exist / you do not have access") on the
+    // active key/plan — per /diag/ai/test the key only has gpt-4o-mini
+    // access. That silently knocked OpenAI out of the fallback chain and
+    // left only Groq (which truncates Hindi JSON) → ~8/10 assessment
+    // failures for new users. getOpenAIClientFlash() resolves the topmost
+    // non-blacklisted OpenAI *flash* model (gpt-4o-mini) which is
+    // confirmed reachable and produces reliable MCQ JSON; if it ever gets
+    // deprecated the resolver auto-switches to the next chain entry.
+    const openaiResolved = await getOpenAIClientFlash();
+    if (openaiResolved) {
       try {
         const completion = await withRetryOnTransient('openai', () =>
-          openai.chat.completions.create({
-            model: 'gpt-4o',
+          openaiResolved.client.chat.completions.create({
+            model: openaiResolved.model,
             messages: [{ role: 'user', content: prompt }],
             temperature: 0.7,
             max_tokens: MAX_TOKENS,
@@ -535,12 +555,17 @@ export function createAIEngine(
         const finishReason = completion.choices[0]?.finish_reason ?? 'unknown';
         const recovered = recoverQuestions(raw);
         if (recovered) {
-          logger.info('ai.questions_generated', { provider: 'openai', endpoint, examSlug, language, count: recovered.length, finishReason });
+          if (resolver) void resolver.reportModelSuccess('openai', openaiResolved.model);
+          const tokens = estimateTokens(raw);
+          logAICallToStore(store, openaiResolved.model, tokens, estimateCost(openaiResolved.model, tokens), 0, undefined, { status: 'success', endpoint, provider: 'openai', requestPreview: prompt.slice(0, 200), responsePreview: raw.slice(0, 300) });
+          logger.info('ai.questions_generated', { provider: 'openai', model: openaiResolved.model, endpoint, examSlug, language, count: recovered.length, finishReason });
           return recovered;
         }
-        errors.push(`OpenAI returned ${raw.length} chars, no parseable questions (finish=${finishReason}, preview="${raw.slice(0, 120).replace(/\s+/g, ' ')}")`);
+        errors.push(`OpenAI(${openaiResolved.model}) returned ${raw.length} chars, no parseable questions (finish=${finishReason}, preview="${raw.slice(0, 120).replace(/\s+/g, ' ')}")`);
       } catch (err) {
-        errors.push(`OpenAI: ${err instanceof Error ? err.message : String(err)}`);
+        const msg = err instanceof Error ? err.message : String(err);
+        if (resolver) await resolver.reportModelFailure('openai', openaiResolved.model, msg);
+        errors.push(`OpenAI(${openaiResolved.model}): ${msg}`);
       }
     } else {
       errors.push('OpenAI not configured');
@@ -707,7 +732,15 @@ export function createAIEngine(
       const langInstr = language === 'hi' ? 'Generate all questions and options in Hindi (Devanagari script).' : 'Generate all questions and options in English.';
       const buildPrompt = (n: number) => `${JSON_ONLY_PREFIX}You are an expert Indian competitive exam question creator.\n\nGenerate exactly ${n} MCQs for "${examSlug}" exam.\n${langInstr}\n\nRequirements:\n- Mix difficulty levels (easy, medium, hard)\n- 4 options (A-D), correct answer, brief explanation\n- Different subjects/topics\n\nRespond ONLY with JSON:\n{"questions":[{"id":"q1","question":"...","options":[{"key":"A","text":"..."},{"key":"B","text":"..."},{"key":"C","text":"..."},{"key":"D","text":"..."}],"correctOption":"A","explanation":"...","difficulty":"easy","subject":"...","topic":"..."}]}`;
       // 15 questions → 3 batches of 5. Single-shot first; batched only on failure.
-      return _generateQuestionsBatched(buildPrompt, count, 3, 'generateAssessmentQuestions', examSlug, language, 'a');
+      try {
+        return await _generateQuestionsBatched(buildPrompt, count, 3, 'generateAssessmentQuestions', examSlug, language, 'a');
+      } catch (err) {
+        // Last-resort safety net: every AI provider failed. Rather than
+        // dead-ending a brand-new user on the onboarding assessment, serve
+        // a static bilingual question set so onboarding still completes.
+        logger.error('ai.assessment_static_fallback', { endpoint: 'generateAssessmentQuestions', examSlug, language, count, error: err instanceof Error ? err.message.slice(0, 200) : String(err) });
+        return getFallbackQuestions({ language: language === 'hi' ? 'hi' : 'en', count, idPrefix: 'a', offset: 0 });
+      }
     },
 
     async generateStage1Questions(examSlug, language = 'en') {
@@ -717,7 +750,12 @@ export function createAIEngine(
         return `${JSON_ONLY_PREFIX}You are an expert Indian competitive exam question creator.\n\nGenerate exactly ${n} MCQs for "${examSlug}" exam — Stage 1 Core Subjects assessment${batchIdx > 0 ? ` (continuation batch ${batchIdx + 1})` : ''}.\n${langInstr}\n\n${subjectGuidance}\n\nRequirements:\n- Mix of easy and medium difficulty\n- 4 options (A-D), correct answer, brief explanation\n- MUST include subject and topic fields for each question\n- Questions must be relevant to the SPECIFIC exam syllabus\n\nRespond ONLY with JSON:\n{"questions":[{"id":"s1-q1","question":"...","options":[{"key":"A","text":"..."},{"key":"B","text":"..."},{"key":"C","text":"..."},{"key":"D","text":"..."}],"correctOption":"A","explanation":"...","difficulty":"medium","subject":"history","topic":"modern-india"}]}`;
       };
       // 10 questions → fallback: 2 batches of 5. Single-shot fast-path stays.
-      return _generateQuestionsBatched(buildPrompt, 10, 2, 'generateStage1Questions', examSlug, language, 's1');
+      try {
+        return await _generateQuestionsBatched(buildPrompt, 10, 2, 'generateStage1Questions', examSlug, language, 's1');
+      } catch (err) {
+        logger.error('ai.assessment_static_fallback', { endpoint: 'generateStage1Questions', examSlug, language, error: err instanceof Error ? err.message.slice(0, 200) : String(err) });
+        return getFallbackQuestions({ language: language === 'hi' ? 'hi' : 'en', count: 10, idPrefix: 's1', offset: 0 });
+      }
     },
 
     async generateStage2Questions(examSlug, language = 'en', stage1Results) {
@@ -736,7 +774,12 @@ export function createAIEngine(
       const langInstr = language === 'hi' ? 'Generate all questions and options in Hindi (Devanagari script).' : 'Generate all questions and options in English.';
       const buildPrompt = (n: number, batchIdx: number) => `${JSON_ONLY_PREFIX}You are an expert Indian competitive exam question creator.\n\nGenerate exactly ${n} MCQs for "${examSlug}" exam — Stage 2 Difficulty Calibration${batchIdx > 0 ? ` (continuation batch ${batchIdx + 1})` : ''}.\n${langInstr}\n\nThe student scored ${correct}/${stage1Results.questions.length} (${stage1Pct.toFixed(0)}%) in Stage 1.\nBased on this performance, generate ${difficulty.toUpperCase()} level questions.\n\nRequirements:\n- All ${n} questions should be ${difficulty} difficulty\n- Cover multiple subjects from the exam syllabus\n- ${difficulty === 'hard' ? 'Analytical, require deep understanding. All 4 options plausible.' : difficulty === 'medium' ? 'Application-based, require careful thought. 2 close options.' : 'Factual recall, straightforward. Clear correct answer.'}\n- 4 options (A-D), correct answer, brief explanation\n- Include subject and topic fields\n\nRespond ONLY with JSON:\n{"questions":[{"id":"s2-q1","question":"...","options":[{"key":"A","text":"..."},{"key":"B","text":"..."},{"key":"C","text":"..."},{"key":"D","text":"..."}],"correctOption":"A","explanation":"...","difficulty":"${difficulty}","subject":"...","topic":"..."}]}`;
       // 8 questions → fallback: 2 batches of 4.
-      return _generateQuestionsBatched(buildPrompt, 8, 2, 'generateStage2Questions', examSlug, language, 's2');
+      try {
+        return await _generateQuestionsBatched(buildPrompt, 8, 2, 'generateStage2Questions', examSlug, language, 's2');
+      } catch (err) {
+        logger.error('ai.assessment_static_fallback', { endpoint: 'generateStage2Questions', examSlug, language, error: err instanceof Error ? err.message.slice(0, 200) : String(err) });
+        return getFallbackQuestions({ language: language === 'hi' ? 'hi' : 'en', count: 8, idPrefix: 's2', offset: 4 });
+      }
     },
 
     async generateStage3Questions(examSlug, language = 'en', stage1Results, _stage2Results) {
@@ -761,7 +804,12 @@ export function createAIEngine(
       // Stage 3 stays single-shot: only 5 questions, well within Groq's reliable
       // single-call ceiling even in Hindi. The JSON_ONLY_PREFIX still helps with
       // markdown-fence prevention.
-      return _generateQuestions(prompt, 'generateStage3Questions', examSlug, language);
+      try {
+        return await _generateQuestions(prompt, 'generateStage3Questions', examSlug, language);
+      } catch (err) {
+        logger.error('ai.assessment_static_fallback', { endpoint: 'generateStage3Questions', examSlug, language, error: err instanceof Error ? err.message.slice(0, 200) : String(err) });
+        return getFallbackQuestions({ language: language === 'hi' ? 'hi' : 'en', count: 5, idPrefix: 's3', offset: 8 });
+      }
     },
 
     async scoreMultiStageAssessment(stage1, stage2, stage3) {

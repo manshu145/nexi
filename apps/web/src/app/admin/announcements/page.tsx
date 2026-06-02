@@ -34,6 +34,9 @@ interface Announcement {
   targetAudience: string;
   createdAt: string;
   isActive: boolean;
+  /** Admin-configurable popup timing (modal/all only). */
+  durationSeconds?: number;
+  showDelaySeconds?: number;
 }
 
 const API = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com';
@@ -50,7 +53,8 @@ export default function AdminAnnouncementsPage() {
     titleHi: string; bodyHi: string;
     type: 'banner' | 'modal' | 'email' | 'all';
     targetAudience: string;
-  }>({ title: '', body: '', titleHi: '', bodyHi: '', type: 'all', targetAudience: 'all' });
+    durationSeconds: number; showDelaySeconds: number;
+  }>({ title: '', body: '', titleHi: '', bodyHi: '', type: 'all', targetAudience: 'all', durationSeconds: 10, showDelaySeconds: 2 });
   const [showHindi, setShowHindi] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -94,6 +98,8 @@ export default function AdminAnnouncementsPage() {
         body: form.body,
         type: form.type,
         targetAudience: form.targetAudience,
+        durationSeconds: form.durationSeconds,
+        showDelaySeconds: form.showDelaySeconds,
       };
       if (form.titleHi.trim()) payload['titleHi'] = form.titleHi.trim();
       if (form.bodyHi.trim()) payload['bodyHi'] = form.bodyHi.trim();
@@ -120,7 +126,7 @@ export default function AdminAnnouncementsPage() {
         const data = (await res.json()) as { announcement: Announcement };
         setAnnouncements(prev => [data.announcement, ...prev]);
       }
-      setForm({ title: '', body: '', titleHi: '', bodyHi: '', type: 'banner', targetAudience: 'all' });
+      setForm({ title: '', body: '', titleHi: '', bodyHi: '', type: 'banner', targetAudience: 'all', durationSeconds: 10, showDelaySeconds: 2 });
       setShowHindi(false);
       setShowForm(false);
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed to save'); }
@@ -179,6 +185,8 @@ export default function AdminAnnouncementsPage() {
       bodyHi: a.bodyHi ?? '',
       type: a.type,
       targetAudience: a.targetAudience,
+      durationSeconds: a.durationSeconds ?? 10,
+      showDelaySeconds: a.showDelaySeconds ?? 2,
     });
     setShowHindi(!!(a.titleHi || a.bodyHi));
     setEditingId(a.id);
@@ -208,7 +216,7 @@ export default function AdminAnnouncementsPage() {
           >
             Reset my dismissals
           </button>
-          <button onClick={() => { setShowForm(!showForm); setEditingId(null); setShowHindi(false); setForm({ title: '', body: '', titleHi: '', bodyHi: '', type: 'banner', targetAudience: 'all' }); }} className="btn-primary text-sm">
+          <button onClick={() => { setShowForm(!showForm); setEditingId(null); setShowHindi(false); setForm({ title: '', body: '', titleHi: '', bodyHi: '', type: 'banner', targetAudience: 'all', durationSeconds: 10, showDelaySeconds: 2 }); }} className="btn-primary text-sm">
             {showForm ? 'Cancel' : '+ New Announcement'}
           </button>
         </div>
@@ -280,7 +288,7 @@ export default function AdminAnnouncementsPage() {
               </select>
               <p className="mt-1 text-[11px] text-muted-500">
                 {form.type === 'banner' && 'A thin strip at the top of every page. Dismissible. Best for ongoing promos.'}
-                {form.type === 'modal' && 'Centred popup that auto-dismisses after 10 seconds. Best for one-time messages.'}
+                {form.type === 'modal' && 'Centred popup that auto-dismisses after the duration you set below (default 10s). Best for one-time messages.'}
                 {form.type === 'all' && 'Shows both — popup first on load, banner stays.'}
                 {form.type === 'email' && 'Email-only — no in-app surface. Use the Email tab to send.'}
               </p>
@@ -294,6 +302,40 @@ export default function AdminAnnouncementsPage() {
               </select>
             </div>
           </div>
+
+          {/* Popup timing — only meaningful for the centred popup (modal/all). */}
+          {(form.type === 'modal' || form.type === 'all') && (
+            <div className="rounded-lg border border-line bg-paper-100 p-3">
+              <p className="text-xs font-medium text-ink-700">Popup timing</p>
+              <p className="mt-0.5 text-[11px] text-muted-500">Controls the centred popup only — the banner strip ignores these.</p>
+              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-medium text-ink-700">
+                    Visible for: <span className="text-ember-600 font-semibold">{form.durationSeconds}s</span>
+                  </label>
+                  <input
+                    type="range" min={3} max={120} step={1}
+                    value={form.durationSeconds}
+                    onChange={e => setForm(f => ({ ...f, durationSeconds: Number(e.target.value) }))}
+                    className="mt-2 w-full accent-ember-500"
+                  />
+                  <p className="text-[11px] text-muted-500">How long the popup stays before auto-closing (3–120s).</p>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-ink-700">
+                    Appears after: <span className="text-ember-600 font-semibold">{form.showDelaySeconds}s</span>
+                  </label>
+                  <input
+                    type="range" min={0} max={30} step={1}
+                    value={form.showDelaySeconds}
+                    onChange={e => setForm(f => ({ ...f, showDelaySeconds: Number(e.target.value) }))}
+                    className="mt-2 w-full accent-ember-500"
+                  />
+                  <p className="text-[11px] text-muted-500">Delay before the popup appears on app open (0–30s).</p>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="flex gap-3">
             <button onClick={handleCreate} disabled={creating || !form.title.trim() || !form.body.trim()} className="btn-primary flex-1">
               {creating ? 'Saving...' : editingId ? 'Update Announcement' : 'Send Announcement'}
@@ -411,7 +453,7 @@ export default function AdminAnnouncementsPage() {
                 <div className="mt-3 h-1 w-full rounded-full bg-paper-300 dark:bg-paper-700">
                   <div className="h-full w-[70%] rounded-full bg-ember-500" />
                 </div>
-                <p className="mt-1 text-[10px] text-muted-400">Closing in 7 seconds...</p>
+                <p className="mt-1 text-[10px] text-muted-400">Closing in {form.durationSeconds} seconds...</p>
               </div>
             ) : null}
             {showHindi && form.titleHi && (
