@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { useUser } from '~/lib/userStore';
 import { api, type Plan, type StoredUser } from '~/lib/api';
+import { planFeatureBullets } from '~/lib/planDisplay';
 import { AILoader } from '~/components/ui/AILoader';
 
 type PlanId = 'free' | 'scholar' | 'aspirant' | 'achiever';
@@ -64,23 +65,15 @@ function recommendPlan(_level: StoredUser['onboardingLevel']): PlanId {
  * for mockTests). "Unlimited" stays as-is so we don't flip an admin
  * change of -1 into a misleading literal. */
 function highlightsFor(planId: PlanId, plan: Plan | undefined, lang: 'en' | 'hi'): string[] {
-  const base = PLAN_HIGHLIGHTS[planId][lang];
-  if (!plan) return base;
-  return base.map((line) => {
-    // -1 / 0 → keep the static "Unlimited" copy intact
-    const isUnlimited = (n: number) => !Number.isFinite(n) || n <= 0;
-
-    if (line.toLowerCase().includes('unlimited') || line.includes('असीमित')) {
-      return line;
-    }
-    // MCQ count override — only when the live count is finite + positive.
-    if ((line.includes('MCQ') || line.includes('MCQ')) && !isUnlimited(plan.dailyMcq)) {
-      return lang === 'hi'
-        ? `${plan.dailyMcq} दैनिक MCQ`
-        : `${plan.dailyMcq} daily MCQs`;
-    }
-    return line;
-  });
+  // Prefer the LIVE admin-configured feature caps (plan.features) so the
+  // bullets always match /admin/plans. The previous version read
+  // `plan.dailyMcq` (a flat field the API never returns — it returns
+  // `features.dailyMCQ`), so the injection was a silent no-op and the
+  // authored numbers drifted from admin. Fall back to authored copy only
+  // when the matrix is unavailable.
+  const derived = planFeatureBullets(plan, lang);
+  if (derived.length > 0) return derived;
+  return PLAN_HIGHLIGHTS[planId][lang];
 }
 
 export default function PlanSelectionPage() {

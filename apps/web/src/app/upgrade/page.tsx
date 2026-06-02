@@ -1,9 +1,10 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Script from 'next/script';
 import { useAuth } from '~/lib/auth-context';
 import { api, authedFetch, newIdempotencyKey, type Plan } from '~/lib/api';
+import { planFeatureBullets, planDisplayName } from '~/lib/planDisplay';
 import { Logo } from '~/components/Logo';
 
 declare global { interface Window { Razorpay: new (options: Record<string, unknown>) => { open(): void }; } }
@@ -83,6 +84,18 @@ export default function UpgradePage() {
     }
     return PRICING_FALLBACK[planId];
   };
+
+  /** Feature bullets derived from the LIVE admin matrix (features object),
+   *  falling back to the static lists only if the matrix is unreachable.
+   *  This is what makes /admin/plans edits actually show up here. */
+  const featuresOf = (planId: string, fallback: string[]): string[] => {
+    const live = livePlans?.find((p) => p.id === planId);
+    const derived = planFeatureBullets(live, 'en');
+    return derived.length > 0 ? derived : fallback;
+  };
+  /** Live (admin-editable) plan display name with a static fallback. */
+  const nameOf = (planId: string, fallback: string): string =>
+    planDisplayName(livePlans, planId, fallback);
 
   function yearlyEquivMonthly(p: BillingPeriod, planKey: PlanKey): number {
     const px = pricingFor(planKey);
@@ -206,6 +219,25 @@ export default function UpgradePage() {
     }
   };
 
+  // Onboarding → direct payment (founder ask: "plan select kiya to sidha
+  // pay gateway khul ke proceed ho"). /onboarding/plan routes here as
+  // /upgrade?plan=X; open the Razorpay checkout for X automatically so the
+  // user doesn't have to re-pick. Fires exactly once, only for a
+  // purchasable plan that isn't already the user's current plan.
+  const autoPayFired = useRef(false);
+  useEffect(() => {
+    if (autoPayFired.current) return;
+    if (loading || !user || livePlans === null) return;
+    const wanted = new URLSearchParams(window.location.search).get('plan');
+    if (!wanted || !['scholar', 'aspirant', 'achiever'].includes(wanted)) return;
+    if (wanted === currentPlan) return;
+    const wantedPlan = livePlans.find((p) => p.id === wanted);
+    if (wantedPlan && (wantedPlan as { comingSoon?: boolean }).comingSoon) return;
+    autoPayFired.current = true;
+    void handleBuyPlan(wanted as 'scholar' | 'aspirant' | 'achiever');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [livePlans, currentPlan, loading, user]);
+
   const yearlySavings = useMemo(() => {
     const px = pricingFor('scholar');
     const monthly12 = px.monthly * 12;
@@ -289,13 +321,12 @@ export default function UpgradePage() {
       <div className="mt-8 grid gap-5 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
         {/* FREE */}
         <div className={`paper-card relative flex flex-col p-5 ${currentPlan === 'free' ? 'border-2 border-amber-400 dark:border-amber-600' : ''}`}>
-          <h3 className="font-serif text-lg font-bold text-ink-900">Free</h3>
+          <h3 className="font-serif text-lg font-bold text-ink-900">{nameOf('free', 'Free')}</h3>
           <p className="mt-2"><span className="font-serif text-3xl font-bold text-ink-900">₹0</span></p>
           <ul className="mt-4 flex-1 space-y-2 text-sm text-muted-600 dark:text-muted-400">
-            <li className="flex items-start gap-2"><span className="text-muted-400">•</span>10 Daily MCQs</li>
-            <li className="flex items-start gap-2"><span className="text-muted-400">•</span>2 free chapters/day</li>
-            <li className="flex items-start gap-2"><span className="text-muted-400">•</span>Credits deducted per feature</li>
-            <li className="flex items-start gap-2"><span className="text-muted-400">•</span>Basic access</li>
+            {featuresOf('free', ['10 Daily MCQs', '2 free chapters/day', 'Credits deducted per feature', 'Basic access']).map(f => (
+              <li key={f} className="flex items-start gap-2"><span className="text-muted-400">•</span>{f}</li>
+            ))}
           </ul>
           <button disabled className="mt-5 w-full rounded-xl py-3 text-sm font-semibold bg-paper-200 text-muted-500 cursor-not-allowed">
             {currentPlan === 'free' ? '✓ Your Current Plan' : 'Free Plan'}
@@ -304,7 +335,7 @@ export default function UpgradePage() {
 
         {/* STARTER — ACTIVE */}
         <div className={`paper-card relative flex flex-col p-5 ${isCurrentScholar ? 'border-2 border-amber-400' : ''}`}>
-          <h3 className="font-serif text-lg font-bold text-ink-900">Starter</h3>
+          <h3 className="font-serif text-lg font-bold text-ink-900">{nameOf('scholar', 'Scholar')}</h3>
           <p className="mt-2">
             <span className="font-serif text-3xl font-bold text-ink-900">₹{scholarDisplayPrice}</span>
             <span className="text-sm text-muted-500">/{period === 'yearly' ? 'yr' : 'mo'}</span>
@@ -318,7 +349,7 @@ export default function UpgradePage() {
             </p>
           )}
           <ul className="mt-4 flex-1 space-y-2">
-            {SCHOLAR_FEATURES.map(f => (
+            {featuresOf('scholar', SCHOLAR_FEATURES).map(f => (
               <li key={f} className="flex items-start gap-2 text-sm text-ink-800">
                 <span className="text-amber-500 mt-0.5 flex-shrink-0">✓</span>{f}
               </li>
@@ -369,13 +400,13 @@ export default function UpgradePage() {
         {/* PRO (aspirant) — RECOMMENDED (industry-standard middle-tier highlight) */}
         <div className={`paper-card relative flex flex-col p-5 border-amber-500 shadow-[0_0_0_2px_rgba(245,158,11,0.3)] ${currentPlan === 'aspirant' ? 'border-2 border-amber-400' : ''}`}>
           <span className="absolute -top-2.5 right-3 rounded-full bg-amber-500 px-3 py-0.5 text-xs font-semibold text-ink-900">Recommended</span>
-          <h3 className="font-serif text-lg font-bold text-ink-900">Pro</h3>
+          <h3 className="font-serif text-lg font-bold text-ink-900">{nameOf('aspirant', 'Pro')}</h3>
           <p className="mt-2">
             <span className="font-serif text-3xl font-bold text-ink-900">₹{pricingFor('aspirant')[period]}</span>
             <span className="text-sm text-muted-500">/{period === 'yearly' ? 'yr' : 'mo'}</span>
           </p>
           <ul className="mt-4 flex-1 space-y-2">
-            {ASPIRANT_FEATURES.map(f => (
+            {featuresOf('aspirant', ASPIRANT_FEATURES).map(f => (
               <li key={f} className="flex items-start gap-2 text-sm text-ink-800">
                 <span className="text-ember-500 mt-0.5 flex-shrink-0">✓</span>{f}
               </li>
@@ -389,7 +420,7 @@ export default function UpgradePage() {
               <button
                 onClick={() => handleBuyPlan('aspirant')}
                 disabled={isDisabled}
-                className={`mt-5 w-full rounded-xl py-3 text-sm font-semibold transition-colors ${isComingSoon ? 'bg-paper-200 text-muted-500 cursor-not-allowed' : 'bg-ink-900 dark:bg-ink-100 dark:text-ink-900 text-paper-50 hover:bg-ember-600 disabled:opacity-50 disabled:cursor-not-allowed'}`}
+                className={`mt-5 w-full rounded-xl py-3 text-sm font-semibold transition-colors ${isComingSoon ? 'bg-paper-200 text-muted-500 cursor-not-allowed' : 'bg-ink-900 text-white hover:bg-ember-600 disabled:opacity-50 disabled:cursor-not-allowed'}`}
               >
                 {currentPlan === 'aspirant'
                   ? '✓ Current Plan'
@@ -405,13 +436,13 @@ export default function UpgradePage() {
 
         {/* ELITE (achiever) — ACTIVE */}
         <div className="paper-card relative flex flex-col p-5">
-          <h3 className="font-serif text-lg font-bold text-ink-900">Elite</h3>
+          <h3 className="font-serif text-lg font-bold text-ink-900">{nameOf('achiever', 'Elite')}</h3>
           <p className="mt-2">
             <span className="font-serif text-3xl font-bold text-ink-900">₹{pricingFor('achiever')[period]}</span>
             <span className="text-sm text-muted-500">/{period === 'yearly' ? 'yr' : 'mo'}</span>
           </p>
           <ul className="mt-4 flex-1 space-y-2">
-            {ACHIEVER_FEATURES.map(f => (
+            {featuresOf('achiever', ACHIEVER_FEATURES).map(f => (
               <li key={f} className="flex items-start gap-2 text-sm text-ink-800">
                 <span className="text-ember-500 mt-0.5 flex-shrink-0">✓</span>{f}
               </li>
@@ -425,7 +456,7 @@ export default function UpgradePage() {
               <button
                 onClick={() => handleBuyPlan('achiever')}
                 disabled={isDisabled}
-                className={`mt-5 w-full rounded-xl py-3 text-sm font-semibold transition-colors ${isComingSoon ? 'bg-paper-200 text-muted-500 cursor-not-allowed' : 'bg-ink-900 dark:bg-ink-100 dark:text-ink-900 text-paper-50 hover:bg-ember-600 disabled:opacity-50 disabled:cursor-not-allowed'}`}
+                className={`mt-5 w-full rounded-xl py-3 text-sm font-semibold transition-colors ${isComingSoon ? 'bg-paper-200 text-muted-500 cursor-not-allowed' : 'bg-ink-900 text-white hover:bg-ember-600 disabled:opacity-50 disabled:cursor-not-allowed'}`}
               >
                 {currentPlan === 'achiever'
                   ? '✓ Current Plan'

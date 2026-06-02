@@ -167,9 +167,15 @@ export default function StudyPage() {
                     const chKey = `${subject.slug}/${ch.slug}`;
                     const isCompleted = completedSet.has(chKey);
                     const score = scores[chKey];
-                    // Unlock logic: first 2 chapters always unlocked, rest need previous completed
+                    // Unlock logic (founder rule): first 2 chapters per subject
+                    // are always open; every later chapter unlocks only when the
+                    // PREVIOUS chapter's test was passed with >= 80%. Previously
+                    // this only required "previous completed" (a 70% pass), which
+                    // didn't match the stated 80% gate. (Paid-plan gating is
+                    // handled separately by isPlanLocked below.)
                     const prevKey = idx > 0 ? `${subject.slug}/${subject.chapters[idx - 1]!.slug}` : null;
-                    const isUnlocked = idx < 2 || completedSet.has(prevKey!);
+                    const prevScore = prevKey ? scores[prevKey] : undefined;
+                    const isUnlocked = idx < 2 || (prevScore !== undefined && prevScore >= 80);
                     // Free plan: lock chapters beyond the first 2 per subject unless already completed
                     const isPlanLocked = currentPlan === 'free' && idx >= 2 && !isCompleted;
 
