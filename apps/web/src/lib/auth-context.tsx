@@ -18,25 +18,6 @@ import {
 } from 'firebase/auth';
 import { getFirebaseAuthClient } from './firebase';
 
-/**
- * Google sign-in popups are unreliable on mobile browsers and (especially)
- * installed PWAs in standalone display mode: the popup opens, the user picks
- * an account, but the result can't post back to the opener — so the account
- * picker reappears and the flow appears to "loop" 2-3 times (founder report).
- *
- * On those environments we use the REDIRECT flow instead, which navigates the
- * whole page to Google and back — rock-solid everywhere. Desktop keeps the
- * popup (nicer UX, no full-page nav).
- */
-function shouldUseRedirect(): boolean {
-  if (typeof window === 'undefined') return false;
-  const standalone =
-    window.matchMedia?.('(display-mode: standalone)').matches ||
-    (window.navigator as unknown as { standalone?: boolean }).standalone === true;
-  const mobile = /Android|iPhone|iPad|iPod|Mobile|Silk|Kindle/i.test(navigator.userAgent);
-  return Boolean(standalone || mobile);
-}
-
 interface AuthCtx {
   user: User | null;
   loading: boolean;
@@ -83,32 +64,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInWithGoogle = async () => {
     const auth = getFirebaseAuthClient();
     const provider = new GoogleAuthProvider();
-    // Always show the account chooser (prevents silent re-use of a stale
-    // session that can also trigger the re-select loop).
+    // Always show the account chooser (avoids silent stale-session re-use).
     provider.setCustomParameters({ prompt: 'select_account' });
 
-    // Mobile / PWA → redirect (reliable). Page navigates away; the result is
-    // picked up by getRedirectResult + onAuthStateChanged on return.
-    if (shouldUseRedirect()) {
-      await signInWithRedirect(auth, provider);
-      return;
-    }
-
-    // Desktop → popup, with a redirect fallback if the popup is blocked,
-    // closed, or superseded (the conditions behind the "opens again" loop).
+    // POPUP-FIRST on every device. The app runs on app.nexigrate.com while
+    // the Firebase authDomain is nexigrate-prod.firebaseapp.com — and
+    // signInWithRedirect is broken by modern browsers' third-party storage
+    // partitioning in that cross-domain setup (getRedirectResult can't read
+    // the pending result → user returns to /signin NOT signed in: the loop).
+    // signInWithPopup delivers the credential DIRECTLY to the opener window,
+    // which writes it to app.nexigrate.com's own IndexedDB — so it works
+    // regardless of the authDomain. We only fall back to redirect when the
+    // popup itself can't open (blocked / in-app webview that bans popups).
     try {
       await signInWithPopup(auth, provider);
     } catch (err) {
       const code = (err as { code?: string })?.code ?? '';
       if (
         code === 'auth/popup-blocked' ||
-        code === 'auth/popup-closed-by-user' ||
-        code === 'auth/cancelled-popup-request' ||
-        code === 'auth/operation-not-supported-in-this-environment'
+        code === 'auth/operation-not-supported-in-this-environment' ||
+        code === 'auth/cancelled-popup-request'
       ) {
+        // Popup couldn't open — last resort. (Most in-app browsers that
+        // block popups also handle the full-page redirect fine.)
         await signInWithRedirect(auth, provider);
         return;
       }
+      // auth/popup-closed-by-user etc. → surface to the caller (the signin
+      // page shows the message + re-enables the button). NOT a silent loop.
       throw err;
     }
   };

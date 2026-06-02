@@ -1,5 +1,12 @@
 import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
-import { getAuth, type Auth } from 'firebase/auth';
+import {
+  initializeAuth,
+  getAuth,
+  indexedDBLocalPersistence,
+  browserLocalPersistence,
+  browserPopupRedirectResolver,
+  type Auth,
+} from 'firebase/auth';
 
 // Firebase web config.
 //
@@ -30,4 +37,30 @@ function getFirebaseApp(): FirebaseApp {
   return app;
 }
 
-export function getFirebaseAuthClient(): Auth { return getAuth(getFirebaseApp()); }
+// Auth client — initialised ONCE with explicit persistence + popup/redirect
+// resolver.
+//
+// Why explicit (not bare getAuth): the app runs on app.nexigrate.com while
+// the Firebase authDomain is nexigrate-prod.firebaseapp.com. With that
+// cross-domain setup, auth state MUST persist in IndexedDB (survives reloads
+// + the OAuth round-trip) and the popup/redirect resolver must be wired, or
+// Google sign-in can complete at Google but fail to land back signed-in —
+// the user bounces back to /signin (the loop the founder hit). We pin
+// indexedDB→localStorage persistence and the popup resolver up front so the
+// flow is deterministic on every device.
+let authInstance: Auth | null = null;
+export function getFirebaseAuthClient(): Auth {
+  if (authInstance) return authInstance;
+  const fbApp = getFirebaseApp();
+  try {
+    authInstance = initializeAuth(fbApp, {
+      persistence: [indexedDBLocalPersistence, browserLocalPersistence],
+      popupRedirectResolver: browserPopupRedirectResolver,
+    });
+  } catch {
+    // initializeAuth throws if auth was already initialised for this app
+    // (e.g. Fast Refresh / double import) — fall back to the existing instance.
+    authInstance = getAuth(fbApp);
+  }
+  return authInstance;
+}
