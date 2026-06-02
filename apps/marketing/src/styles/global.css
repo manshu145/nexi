@@ -9,6 +9,14 @@
 @import '@fontsource/inter/600.css';
 
 /*
+ * CRITICAL (Tailwind v4): bind the `dark:` variant to the `.dark` CLASS the
+ * marketing theme script sets on <html>, not the OS prefers-color-scheme
+ * default. Without this the logo (dark:hidden / dark:block) followed the OS
+ * while the background followed the toggle → "logo white-on-white" bug.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
  * Nexigrate brand tokens \u2014 Kindle-inspired warm-paper palette.
  *
  *   paper   : main background, evokes parchment / e-ink page
