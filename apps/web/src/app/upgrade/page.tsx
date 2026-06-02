@@ -302,9 +302,8 @@ export default function UpgradePage() {
           </button>
         </div>
 
-        {/* SCHOLAR — ACTIVE */}
-        <div className={`paper-card relative flex flex-col p-5 border-amber-500 shadow-[0_0_0_2px_rgba(245,158,11,0.3)] ${isCurrentScholar ? 'border-2 border-amber-400' : ''}`}>
-          <span className="absolute -top-2.5 right-3 rounded-full bg-amber-500 px-3 py-0.5 text-xs font-semibold text-ink-900">Recommended</span>
+        {/* STARTER — ACTIVE */}
+        <div className={`paper-card relative flex flex-col p-5 ${isCurrentScholar ? 'border-2 border-amber-400' : ''}`}>
           <h3 className="font-serif text-lg font-bold text-ink-900">Starter</h3>
           <p className="mt-2">
             <span className="font-serif text-3xl font-bold text-ink-900">₹{scholarDisplayPrice}</span>
@@ -367,9 +366,10 @@ export default function UpgradePage() {
           </button>
         </div>
 
-        {/* ASPIRANT — ACTIVE */}
-        <div className="paper-card relative flex flex-col p-5">
-          <h3 className="font-serif text-lg font-bold text-ink-900">Aspirant</h3>
+        {/* PRO (aspirant) — RECOMMENDED (industry-standard middle-tier highlight) */}
+        <div className={`paper-card relative flex flex-col p-5 border-amber-500 shadow-[0_0_0_2px_rgba(245,158,11,0.3)] ${currentPlan === 'aspirant' ? 'border-2 border-amber-400' : ''}`}>
+          <span className="absolute -top-2.5 right-3 rounded-full bg-amber-500 px-3 py-0.5 text-xs font-semibold text-ink-900">Recommended</span>
+          <h3 className="font-serif text-lg font-bold text-ink-900">Pro</h3>
           <p className="mt-2">
             <span className="font-serif text-3xl font-bold text-ink-900">₹{pricingFor('aspirant')[period]}</span>
             <span className="text-sm text-muted-500">/{period === 'yearly' ? 'yr' : 'mo'}</span>
@@ -397,15 +397,15 @@ export default function UpgradePage() {
                     ? 'Coming Soon'
                     : processing
                       ? 'Processing...'
-                      : `Choose Aspirant — ₹${pricingFor('aspirant')[period]}/${period === 'yearly' ? 'yr' : 'mo'}`}
+                      : `Choose Pro — ₹${pricingFor('aspirant')[period]}/${period === 'yearly' ? 'yr' : 'mo'}`}
               </button>
             );
           })()}
         </div>
 
-        {/* ACHIEVER — ACTIVE */}
+        {/* ELITE (achiever) — ACTIVE */}
         <div className="paper-card relative flex flex-col p-5">
-          <h3 className="font-serif text-lg font-bold text-ink-900">Achiever</h3>
+          <h3 className="font-serif text-lg font-bold text-ink-900">Elite</h3>
           <p className="mt-2">
             <span className="font-serif text-3xl font-bold text-ink-900">₹{pricingFor('achiever')[period]}</span>
             <span className="text-sm text-muted-500">/{period === 'yearly' ? 'yr' : 'mo'}</span>
@@ -433,7 +433,7 @@ export default function UpgradePage() {
                     ? 'Coming Soon'
                     : processing
                       ? 'Processing...'
-                      : `Choose Achiever — ₹${pricingFor('achiever')[period]}/${period === 'yearly' ? 'yr' : 'mo'}`}
+                      : `Choose Elite — ₹${pricingFor('achiever')[period]}/${period === 'yearly' ? 'yr' : 'mo'}`}
               </button>
             );
           })()}

@@ -42,21 +42,15 @@ const RECOMMENDED_BADGE = {
 };
 
 /**
- * Smart recommendation based on the assessment level the server returned
- * for this user.
+ * Plan recommendation shown during onboarding.
  *
- * PR-34b (audit #43): the previous version returned `'aspirant'` for
- * advanced users, but Aspirant is gated as "Coming Soon" on /upgrade and
- * the upgrade page only handles scholar — routing advanced users to
- * `/upgrade?plan=aspirant` ended in a dead end. Until Aspirant launches,
- * recommend Scholar for ALL non-free tiers as a safe fallback. Once the
- * Aspirant gate flips, swap the line below to bring back the level-based
- * branch.
+ * Industry standard (and founder ask): promote the mid "Pro" tier as the
+ * recommended/highlighted plan EVERY time — it's the best value-for-money
+ * anchor and what most sites push. All tiers are now purchasable
+ * (isActive: true), so recommending Pro no longer dead-ends.
  */
 function recommendPlan(_level: StoredUser['onboardingLevel']): PlanId {
-  // TODO(audit #43): when Aspirant becomes purchasable, restore:
-  //   if (_level === 'advanced') return 'aspirant';
-  return 'scholar';
+  return 'aspirant'; // "Pro" — internal id stays 'aspirant' for DB/billing
 }
 
 /**
