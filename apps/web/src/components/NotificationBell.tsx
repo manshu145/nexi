@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
-import { registerPushToken } from '~/lib/pushClient';
+import { registerPushToken, getLastPushError } from '~/lib/pushClient';
 
 /**
  * PR-43: Notification bell — requests push permission on first tap,
@@ -30,12 +30,13 @@ export function NotificationBell() {
       setPermission('granted');
       toast.success('Notifications enabled!');
     } else {
-      // Check if permission was denied by the user vs VAPID key missing
+      // Surface the ACTUAL reason instead of always blaming the VAPID key.
       if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'denied') {
         setPermission('denied');
         toast.error('Notification permission denied. Enable it in browser settings.');
       } else {
-        toast.error('Could not enable notifications. VAPID key may not be configured — contact admin.');
+        const reason = getLastPushError();
+        toast.error(reason ? `Could not enable notifications: ${reason}` : 'Could not enable notifications. Please try again.');
       }
     }
     setRegistering(false);

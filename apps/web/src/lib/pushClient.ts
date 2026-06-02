@@ -18,6 +18,13 @@ import { api } from './api';
 
 let tokenRegistered = false;
 let cachedVapidKey: string | null = null;
+/** Last failure reason from registerPushToken — surfaced to the UI so the
+ *  user/admin sees the ACTUAL cause instead of a generic "VAPID missing". */
+let lastPushError: string | null = null;
+
+export function getLastPushError(): string | null {
+  return lastPushError;
+}
 
 /** Fetch VAPID key from branding endpoint (cached after first call) */
 async function getVapidKey(): Promise<string> {
@@ -45,22 +52,31 @@ async function getVapidKey(): Promise<string> {
 export async function registerPushToken(): Promise<boolean> {
   if (tokenRegistered) return true;
   if (typeof window === 'undefined') return false;
-  if (!('Notification' in window)) return false;
+  if (!('Notification' in window)) { lastPushError = 'This browser does not support notifications.'; return false; }
+  lastPushError = null;
 
   try {
     const permission = await Notification.requestPermission();
-    if (permission !== 'granted') return false;
+    if (permission !== 'granted') { lastPushError = 'Notification permission was not granted.'; return false; }
 
     const vapidKey = await getVapidKey();
     if (!vapidKey) {
-      console.warn('[push] VAPID key not available — set it in Admin → Service Keys → FCM');
+      lastPushError = 'VAPID key not configured. Admin → Service Keys → FCM → paste vapidKey.';
+      console.warn('[push]', lastPushError);
       return false;
     }
 
     // Dynamic import to avoid loading firebase/messaging on pages that
     // don't need push (keeps main bundle small).
-    const { getMessaging, getToken } = await import('firebase/messaging');
+    const { getMessaging, getToken, isSupported } = await import('firebase/messaging');
     const { getApp } = await import('firebase/app');
+
+    // Some browsers (iOS Safari < 16.4, certain in-app webviews) don't
+    // support FCM web push at all — surface that clearly.
+    if (!(await isSupported())) {
+      lastPushError = 'Push notifications are not supported in this browser (try Chrome, or install the app).';
+      return false;
+    }
 
     const app = getApp();
     const messaging = getMessaging(app);
@@ -71,7 +87,8 @@ export async function registerPushToken(): Promise<boolean> {
     try {
       swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
     } catch (swErr) {
-      console.warn('[push] Service worker registration failed:', swErr);
+      lastPushError = `Service worker registration failed: ${swErr instanceof Error ? swErr.message : String(swErr)}`;
+      console.warn('[push]', lastPushError);
       return false;
     }
 
@@ -81,15 +98,22 @@ export async function registerPushToken(): Promise<boolean> {
     });
 
     if (!token) {
-      console.warn('[push] getToken returned empty — browser may have blocked it');
+      lastPushError = 'Token request returned empty — the browser blocked it or the VAPID key is invalid for this Firebase project.';
+      console.warn('[push]', lastPushError);
       return false;
     }
 
     // Register with backend
     await api.registerPushToken(token, 'web');
     tokenRegistered = true;
+    lastPushError = null;
     return true;
   } catch (err) {
+    // getToken throws here for the most common real failures:
+    //  - "messaging/token-subscribe-failed" → VAPID key wrong for project
+    //  - "applicationServerKey is not valid" → malformed VAPID key
+    //  - missing messagingSenderId in the Firebase app config (fixed in #267)
+    lastPushError = err instanceof Error ? err.message : String(err);
     console.warn('[push] Failed to register token:', err);
     return false;
   }
