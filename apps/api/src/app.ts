@@ -298,7 +298,7 @@ export function buildApp(deps: AppDeps): Hono {
   v1.route('/billing', makeBillingRoutes({ users, env, logger, db: fs, coupons: couponStore, idempotency, config, serviceKeys }));
   v1.route('/admin', makeAdminRoutes({ users, adminStore, env, logger, coupons: couponStore, db: fs, config, aiSpend, firebaseAuth, blog, aiEngine, aiProviderStore, modelResolver, currentAffairs, serviceKeys, push, teamInvites }));
   v1.route('/support', makeSupportRoutes({ users, db: fs, logger }));
-  v1.route('/essay', makeEssayRoutes({ users, aiEngine, logger, db: fs }));
+  v1.route('/essay', makeEssayRoutes({ users, aiEngine, logger, db: fs, config, usage: featureUsage }));
   v1.route('/mock-tests', makeMockTestRoutes({ users, aiEngine, mockTests, ledger, config, logger }));
 
   // (POST /v1/logs/error and GET /v1/branding are now mounted on the

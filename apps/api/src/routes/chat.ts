@@ -11,6 +11,11 @@ import type { FeatureUsageStore } from '../lib/featureUsageStore.js';
 
 export interface ChatRoutesDeps { users: UserStore; aiEngine: AIEngine; chat: ChatStore; logger: Logger; env?: Env; config?: PlatformConfigStore; usage?: FeatureUsageStore; }
 
+/** Free-tier AI-tutor allowance: messages per IST hour. All paid plans
+ *  (scholar/aspirant/achiever) are unlimited. Founder: "free ko har ghante
+ *  5, baaki sab ko unlimited." */
+const FREE_AI_TUTOR_PER_HOUR = 5;
+
 export function makeChatRoutes(deps: ChatRoutesDeps): Hono {
   const app = new Hono();
 
@@ -35,6 +40,29 @@ export function makeChatRoutes(deps: ChatRoutesDeps): Hono {
       // Get session history for context
       const session = await deps.chat.getSession(principal.userId, sessionId);
       const messages = (session?.messages ?? []).map(m => ({ role: m.role, content: m.content }));
+
+      // Free-tier AI-tutor rate limit: 5 messages per IST hour. All paid plans
+      // are unlimited. The per-day aiTutorPerDay matrix field doesn't fit an
+      // hourly window, so this uses a dedicated hourly counter. We check BEFORE
+      // calling the model (so a blocked message costs nothing) and persist the
+      // notice as an assistant message so the chat stays coherent. Fail-open.
+      const plan = user?.plan ?? 'free';
+      if (plan === 'free' && deps.usage) {
+        try {
+          const usedThisHour = await deps.usage.getCount(principal.userId, 'aiTutor', 'hour');
+          if (usedThisHour >= FREE_AI_TUTOR_PER_HOUR) {
+            const lang = user?.language ?? 'en';
+            const limitMsg = lang === 'hi'
+              ? `आपने इस घंटे के सभी ${FREE_AI_TUTOR_PER_HOUR} फ्री AI-ट्यूटर संदेश इस्तेमाल कर लिए हैं। थोड़ी देर बाद दोबारा कोशिश करें, या अनलिमिटेड चैट के लिए अपग्रेड करें।`
+              : `You've used all ${FREE_AI_TUTOR_PER_HOUR} free AI-tutor messages for this hour. Please try again a bit later, or upgrade for unlimited AI tutoring.`;
+            await deps.chat.addMessage(principal.userId, sessionId, 'assistant', limitMsg);
+            deps.logger.info('chat.tutor_limit_hit', { userId: principal.userId, usedThisHour });
+            return c.json({ sessionId, response: limitMsg, title: session?.title ?? body.message.slice(0, 50), limitReached: true });
+          }
+        } catch (limitErr) {
+          deps.logger.warn('chat.tutor_limit_check_failed', { error: limitErr instanceof Error ? limitErr.message : String(limitErr) });
+        }
+      }
 
       const userContext = { exam: user?.targetExam ?? 'general', level: user?.onboardingLevel ?? 'intermediate', language: (user?.language ?? 'en') as 'en' | 'hi' };
 
@@ -72,6 +100,12 @@ export function makeChatRoutes(deps: ChatRoutesDeps): Hono {
 
       // Save AI response
       await deps.chat.addMessage(principal.userId, sessionId, 'assistant', response);
+
+      // Count this answered message against the free hourly allowance (only
+      // on success, so a failed generation doesn't burn the user's quota).
+      if (plan === 'free' && deps.usage) {
+        await deps.usage.increment(principal.userId, 'aiTutor', 'hour');
+      }
 
       deps.logger.info('chat.response', { userId: principal.userId, sessionId, responseLen: response.length, hasImage: imageAttachments.length > 0 });
       return c.json({ sessionId, response, title: session?.title ?? body.message.slice(0, 50) });
