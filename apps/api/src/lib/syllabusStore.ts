@@ -972,7 +972,8 @@ Return valid JSON in this exact format:
 ${SYLLABUS_JSON_FORMAT}`;
 
   const c = await openai.chat.completions.create({
-    model: 'gpt-4o',
+    // gpt-4o-mini (was 'gpt-4o', which 404s on keys lacking gpt-4o access).
+    model: 'gpt-4o-mini',
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.3,
     max_tokens: 6000,

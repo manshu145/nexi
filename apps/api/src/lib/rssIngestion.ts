@@ -227,6 +227,24 @@ async function summarizeItems(
     if (m) geminiModel = m;
   }
 
+  // Groq fallback (key + model) for summarization when Gemini is down or
+  // quota-exhausted (429). Founder report: "current affairs Hindi me thik
+  // se kaam nahi kar raha / latest content show nahi ho raha." Root cause:
+  // summarizeItems was Gemini-ONLY with no cross-provider fallback, so a
+  // Gemini 429 produced zero AI summaries and the feed fell back to thin
+  // raw headlines (and Hindi users saw even less after the strict-Hindi
+  // filter). Resolving via the registry chain keeps the model un-hardcoded.
+  let groqKey = env.GROQ_API_KEY;
+  let groqModel = 'llama-3.3-70b-versatile';
+  if (resolver) {
+    const gr = await resolver.resolve('groq', { tier: 'flash' });
+    if (gr) { groqKey = gr.apiKey; groqModel = gr.model; }
+  } else {
+    const { pickPreferredModel } = await import('./aiProviderRegistry.js');
+    const gm = pickPreferredModel('groq', 'flash');
+    if (gm) groqModel = gm;
+  }
+
   // Batch items into groups of 10 for efficient AI calls
   const batches: RawNewsItem[][] = [];
   for (let i = 0; i < items.length; i += 10) {
@@ -282,19 +300,52 @@ Respond ONLY with valid JSON:
         }),
       });
 
-      if (!res.ok) {
+      let rawText = '';
+      if (res.ok) {
+        const data = await res.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+        rawText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+        if (resolver && rawText) await resolver.reportModelSuccess('gemini', geminiModel);
+      } else {
         const errText = await res.text().catch(() => '');
         logger.warn('rss.gemini_error', { status: res.status, model: geminiModel, body: errText.slice(0, 200) });
         // Report so the resolver can blacklist a deprecated model.
         if (resolver) await resolver.reportModelFailure('gemini', geminiModel, `HTTP ${res.status}: ${errText.slice(0, 200)}`);
-        continue;
       }
 
-      const data = await res.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
-      const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+      // Cross-provider fallback: if Gemini gave us nothing (429 quota,
+      // outage, empty), summarize this batch with Groq instead so the
+      // current-affairs feed (and its Hindi translation downstream) still
+      // gets real AI summaries rather than thin raw headlines.
+      if (!rawText && groqKey) {
+        try {
+          const gres = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: groqModel,
+              messages: [{ role: 'user', content: prompt }],
+              temperature: 0.3,
+              max_tokens: 8000,
+              response_format: { type: 'json_object' },
+            }),
+          });
+          if (gres.ok) {
+            const gdata = await gres.json() as { choices?: { message?: { content?: string } }[] };
+            rawText = gdata.choices?.[0]?.message?.content ?? '';
+            if (rawText) logger.info('rss.summarize_groq_fallback', { model: groqModel, chars: rawText.length });
+          } else {
+            const gErr = await gres.text().catch(() => '');
+            logger.warn('rss.groq_error', { status: gres.status, model: groqModel, body: gErr.slice(0, 200) });
+          }
+        } catch (gErr) {
+          logger.warn('rss.groq_exception', { error: gErr instanceof Error ? gErr.message : String(gErr) });
+        }
+      }
+
+      if (!rawText) { continue; }
       // Extract JSON from response (may have markdown fences)
       const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) { logger.warn('rss.gemini_no_json', { raw: rawText.slice(0, 200) }); continue; }
+      if (!jsonMatch) { logger.warn('rss.summarize_no_json', { raw: rawText.slice(0, 200) }); continue; }
       const parsed = JSON.parse(jsonMatch[0]) as { items: { id: string; headline: string; summary: string; bullets?: string[]; category: CurrentAffairsCategory; sources: string[]; factChecked: boolean; srcIndex?: number }[] };
 
       for (const item of (parsed.items ?? [])) {

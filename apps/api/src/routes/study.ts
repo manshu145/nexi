@@ -423,7 +423,10 @@ Return ONLY valid JSON array: [{"name":"Chapter Name","slug":"chapter-slug","nam
         const OpenAI = (await import('openai')).default;
         const openai = new OpenAI({ apiKey: deps.env.OPENAI_API_KEY });
         const completion = await openai.chat.completions.create({
-          model: 'gpt-4o',
+          // Was hardcoded 'gpt-4o' which 404s on keys without gpt-4o access.
+          // gpt-4o-mini is the confirmed-available model and is plenty for
+          // generating a short list of chapter topics.
+          model: 'gpt-4o-mini',
           messages: [{ role: 'user', content: prompt }],
           temperature: 0.7,
           max_tokens: 1500,

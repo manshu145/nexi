@@ -285,6 +285,47 @@ export function createAIEngine(
   }
 
   /**
+   * Auto-switching OpenAI chat-completion. THE fix for the platform-wide
+   * "503 / Internal Server Error" outage where chapter content, essay
+   * grading, mock tests, syllabus + diagram generation all died: every
+   * call site hardcoded `model: 'gpt-4o'`, but the active OpenAI key/plan
+   * only has `gpt-4o-mini` access, so gpt-4o returned 404 "model does not
+   * exist / you do not have access" and the whole call threw.
+   *
+   * This helper resolves the best AVAILABLE OpenAI model — pro tier
+   * (gpt-4o) first, then flash tier (gpt-4o-mini) — calls the completion,
+   * and reports success/failure so a deprecated/unavailable model gets
+   * blacklisted and skipped next time. Returns the SAME ChatCompletion
+   * shape as openai.chat.completions.create so call sites only drop the
+   * hardcoded `model` field and keep reading `.choices[0].message.content`.
+   *
+   * Founder directive honoured: no model is hardcoded anywhere — the
+   * registry chain + resolver decide what runs.
+   */
+  async function oaCreate(
+    params: Omit<OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming, 'model'>,
+  ): Promise<OpenAI.Chat.Completions.ChatCompletion> {
+    const attempts: Array<{ client: OpenAI; model: string }> = [];
+    const pro = await getOpenAIClient();
+    if (pro) attempts.push(pro);
+    const flash = await getOpenAIClientFlash();
+    if (flash && !attempts.some(a => a.model === flash.model)) attempts.push(flash);
+    if (attempts.length === 0) throw new Error('OPENAI_API_KEY not configured');
+    let lastErr: unknown;
+    for (const a of attempts) {
+      try {
+        const c = await a.client.chat.completions.create({ ...params, model: a.model });
+        if (resolver) void resolver.reportModelSuccess('openai', a.model);
+        return c;
+      } catch (err) {
+        lastErr = err;
+        if (resolver) await resolver.reportModelFailure('openai', a.model, err instanceof Error ? err.message : String(err));
+      }
+    }
+    throw lastErr ?? new Error('OpenAI completion failed for every available model');
+  }
+
+  /**
    * Generic per-call fallback wrapper for the SDK-based providers.
    * If the call throws a deprecation-flavoured error, blacklist the
    * model and retry once with the next chain entry. Transient errors
@@ -865,7 +906,7 @@ export function createAIEngine(
       try {
         const prompt = `Student completed a 3-stage assessment for Indian competitive exam.\nTotal weighted score: ${totalPct.toFixed(1)}% (${totalCorrect}/${totalQuestions} questions correct)\nLevel assigned: ${level}\nWeak areas: ${weakAreas.join(', ') || 'none'}\nStrong areas: ${strongAreas.join(', ') || 'none'}\n\nProvide an encouraging message about their performance. Respond ONLY JSON:\n{"message":"English (2-3 sentences)","messageHi":"Hindi Devanagari (2-3 sentences)"}`;
         if (openai) {
-          const completion = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 300, response_format: { type: 'json_object' } });
+          const completion = await oaCreate({ messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 300, response_format: { type: 'json_object' } });
           const parsed = JSON.parse(completion.choices[0]?.message?.content ?? '{}') as { message: string; messageHi: string };
           return { score: totalCorrect, total: totalQuestions, level, message: parsed.message, messageHi: parsed.messageHi, weakAreas, strongAreas };
         }
@@ -892,7 +933,7 @@ export function createAIEngine(
       const pct = (correct / total) * 100;
       try {
         const prompt = `Student scored ${correct}/${total} (${pct.toFixed(1)}%) on Indian competitive exam assessment.\nAssign level and provide encouraging message.\nRespond ONLY JSON: {"level":"beginner"|"intermediate"|"advanced","message":"English (1-2 sentences)","messageHi":"Hindi Devanagari"}`;
-        if (!openai) throw new Error("OPENAI_API_KEY not configured"); const completion = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 300, response_format: { type: 'json_object' } });
+        const completion = await oaCreate({ messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 300, response_format: { type: 'json_object' } });
         const parsed = JSON.parse(completion.choices[0]?.message?.content ?? '{}') as { level: 'beginner'|'intermediate'|'advanced'; message: string; messageHi: string };
         logger.info('ai.scored', { correct, total, level: parsed.level });
         return { score: correct, total, ...parsed };
@@ -944,10 +985,11 @@ End with: Important facts to remember for exam.`;
       // can call it twice if the verifier flags low confidence on the
       // first pass (regenerate-with-feedback loop).
       async function generateOnce(extraInstr?: string): Promise<string> {
-        if (!openai) throw new Error('OPENAI_API_KEY not configured');
         const finalPrompt = extraInstr ? `${prompt}\n\nADDITIONAL CONSTRAINTS FROM VERIFIER:\n${extraInstr}` : prompt;
-        const c = await openai.chat.completions.create({
-          model: 'gpt-4o',
+        // Auto-switch model (gpt-4o → gpt-4o-mini). Previously hardcoded
+        // 'gpt-4o' which 404'd on the active key → "Failed to generate
+        // chapter content" 500 on every chapter open for new users.
+        const c = await oaCreate({
           messages: [{ role: 'user', content: finalPrompt }],
           temperature: 0.6,
           max_tokens: 8000,
@@ -1195,7 +1237,7 @@ End with: Important facts to remember for exam.`;
         }
         // Fallback to OpenAI if Gemini fails
         if (!openai) throw new Error("No AI API key configured");
-        const c = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 800 });
+        const c = await oaCreate({ messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 800 });
         const raw = c.choices[0]?.message?.content ?? '';
         const cleaned = raw.replace(/```mermaid\n?/g, '').replace(/```\n?/g, '').trim();
         logger.info('ai.mermaid_openai_fallback', { chapter, subject, exam });
@@ -1395,7 +1437,7 @@ Generate ONLY the Mermaid code, nothing else.`;
         }
         // Fallback to OpenAI
         if (!openai) throw new Error('No AI API key configured');
-        const c = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 1000 });
+        const c = await oaCreate({ messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 1000 });
         const raw = c.choices[0]?.message?.content ?? '';
         const cleaned = raw.replace(/```mermaid\n?/g, '').replace(/```\n?/g, '').trim();
         logger.info('ai.visualization_mermaid', { type, topic, subject, exam, provider: 'openai' });
@@ -1409,8 +1451,7 @@ Generate ONLY the Mermaid code, nothing else.`;
     async generateSyllabus(examSlug: string, examName: string, level: string) {
       const prompt = `You are an expert Indian education curriculum designer.\n\nGenerate a complete study syllabus for "${examName}" exam.\nStudent level: ${level}.\n\nRequirements:\n- 3-5 subjects relevant to this exam\n- 5-8 chapters per subject, ordered from basic to advanced\n- Each chapter: slug (kebab-case), name (English), nameHi (Hindi Devanagari), estimated study time in minutes\n- Each subject: slug, name, nameHi, icon (single emoji)\n- Order chapters logically for progressive learning\n\nRespond ONLY with valid JSON:\n{"exam":"${examSlug}","examName":"${examName}","subjects":[{"slug":"subject-slug","name":"Subject Name","nameHi":"विषय नाम","icon":"📚","chapters":[{"slug":"chapter-slug","name":"Chapter Name","nameHi":"अध्याय नाम","order":1,"estimatedMinutes":40}]}]}`;
       try {
-        if (!openai) throw new Error("OPENAI_API_KEY not configured");
-        const c = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: 4000, response_format: { type: 'json_object' } });
+        const c = await oaCreate({ messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: 4000, response_format: { type: 'json_object' } });
         const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as GeneratedSyllabus;
         logger.info('ai.syllabus_generated', { examSlug, subjects: parsed.subjects?.length ?? 0 });
         return parsed;
@@ -1431,7 +1472,7 @@ Generate ONLY the Mermaid code, nothing else.`;
         }
         // Fallback to OpenAI
         if (!openai) throw new Error("No AI API key configured");
-        const c = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 600 });
+        const c = await oaCreate({ messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 600 });
         const raw = c.choices[0]?.message?.content ?? '';
         logger.info('ai.selection_diagram_openai_fallback', { subject, language });
         return raw.replace(/```mermaid\n?/g, '').replace(/```\n?/g, '').trim();
@@ -1464,7 +1505,7 @@ Generate ONLY the Mermaid code, nothing else.`;
       // Attempt 2: OpenAI
       if (openai) {
         try {
-          const c = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: 6000, response_format: { type: 'json_object' } });
+          const c = await oaCreate({ messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: 6000, response_format: { type: 'json_object' } });
           const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
           if (parsed.questions?.length) {
             logger.info('ai.ca_quiz_generated', { provider: 'openai', count: parsed.questions.length });
@@ -1539,7 +1580,7 @@ Rules for your responses:
         if (provider === 'openai' && openai) {
           try {
             const startTime = performance.now();
-            const c = await openai.chat.completions.create({ model: 'gpt-4o', messages: chatMessages, temperature: 0.7, max_tokens: 1500 });
+            const c = await oaCreate({ messages: chatMessages, temperature: 0.7, max_tokens: 1500 });
             const reply = c.choices[0]?.message?.content ?? '';
             if (reply) { const tokens = estimateTokens(reply); logAICallToStore(store, 'gpt-4o', tokens, estimateCost('gpt-4o', tokens), Math.round(performance.now() - startTime), undefined, { status: 'success', endpoint: 'chat', provider: 'openai', requestPreview: messages[messages.length - 1]?.content?.slice(0, 200), responsePreview: reply.slice(0, 300) }); logger.info('ai.chat', { provider: 'openai', length: reply.length, preferredModel }); return reply; }
           } catch (err) { logger.warn('ai.chat_openai_failed', { error: err instanceof Error ? err.message : String(err) }); }
@@ -1595,7 +1636,7 @@ Rules for your responses:
       // Fallback: OpenAI
       if (openai) {
         try {
-          const c = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.2, max_tokens: 3000, response_format: { type: 'json_object' } });
+          const c = await oaCreate({ messages: [{ role: 'user', content: prompt }], temperature: 0.2, max_tokens: 3000, response_format: { type: 'json_object' } });
           const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { items: { headline: string; summary: string }[] };
           if (parsed.items?.length) {
             logger.info('ai.translate_hindi', { provider: 'openai', count: parsed.items.length });
@@ -1670,8 +1711,7 @@ ${langInstr}`;
         tries.push(async () => {
           try {
             const t0 = performance.now();
-            const c = await openai.chat.completions.create({
-              model: 'gpt-4o',
+            const c = await oaCreate({
               messages: [{ role: 'user', content: userPrompt }],
               temperature: 0.7,
               max_tokens: 3500,
