@@ -235,7 +235,7 @@ function ChatPage() {
   };
 
   const [generatingImage, setGeneratingImage] = useState(false);
-  const [generatedImage, setGeneratedImage] = useState<{ type: string; content: string; fallback?: boolean } | null>(null);
+  const [generatedImage, setGeneratedImage] = useState<{ type: string; content: string; fallback?: boolean; message?: string } | null>(null);
 
   // Escape key closes modals
   useEffect(() => {
@@ -257,8 +257,13 @@ function ChatPage() {
     try {
       const res = await api.generateImage(topic);
       if (res.fallback) {
-        // API returned a mermaid fallback — show with a message
-        setGeneratedImage({ type: 'mermaid', content: res.content });
+        // API returned a mermaid fallback — show it WITH the reason so the
+        // user isn't left wondering why they got a diagram instead of an
+        // image (e.g. limit reached / generation temporarily unavailable),
+        // instead of silently swapping in a diagram.
+        const msg = (res as { message?: string }).message
+          ?? 'Image generation is unavailable right now — showing a diagram instead.';
+        setGeneratedImage({ type: 'mermaid', content: res.content, fallback: true, message: msg });
       } else {
         setGeneratedImage(res);
         // PR-42: save generated image to gallery (PR-47: with watermark)
@@ -713,11 +718,16 @@ function ChatPage() {
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fadeIn" onClick={() => setGeneratedImage(null)}>
           <div className="paper-card max-w-lg w-full max-h-[80vh] overflow-auto p-6 animate-scaleIn" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-serif text-lg font-bold text-ink-900">Generated Image</h3>
+              <h3 className="font-serif text-lg font-bold text-ink-900">{generatedImage.fallback ? 'Diagram' : 'Generated Image'}</h3>
               <button onClick={() => setGeneratedImage(null)} className="h-8 w-8 rounded-lg bg-paper-200 flex items-center justify-center text-muted-500 hover:text-ink-900 hover:bg-paper-300 transition-colors">
                 <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
+            {generatedImage.fallback && generatedImage.message && (
+              <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
+                {generatedImage.message}
+              </div>
+            )}
             {generatedImage.type === 'image' ? (
               <img src={generatedImage.content} alt="AI Generated" className="w-full rounded-xl border border-line" />
             ) : (

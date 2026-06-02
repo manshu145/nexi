@@ -420,7 +420,7 @@ export default function UpgradePage() {
               <button
                 onClick={() => handleBuyPlan('aspirant')}
                 disabled={isDisabled}
-                className={`mt-5 w-full rounded-xl py-3 text-sm font-semibold transition-colors ${isComingSoon ? 'bg-paper-200 text-muted-500 cursor-not-allowed' : 'bg-ink-900 text-white hover:bg-ember-600 disabled:opacity-50 disabled:cursor-not-allowed'}`}
+                className={`mt-5 w-full rounded-xl py-3 text-sm font-semibold transition-colors ${isComingSoon ? 'bg-paper-200 text-muted-500 cursor-not-allowed' : 'bg-ink-900 text-paper-100 hover:bg-ember-600 disabled:opacity-50 disabled:cursor-not-allowed'}`}
               >
                 {currentPlan === 'aspirant'
                   ? '✓ Current Plan'
@@ -456,7 +456,7 @@ export default function UpgradePage() {
               <button
                 onClick={() => handleBuyPlan('achiever')}
                 disabled={isDisabled}
-                className={`mt-5 w-full rounded-xl py-3 text-sm font-semibold transition-colors ${isComingSoon ? 'bg-paper-200 text-muted-500 cursor-not-allowed' : 'bg-ink-900 text-white hover:bg-ember-600 disabled:opacity-50 disabled:cursor-not-allowed'}`}
+                className={`mt-5 w-full rounded-xl py-3 text-sm font-semibold transition-colors ${isComingSoon ? 'bg-paper-200 text-muted-500 cursor-not-allowed' : 'bg-ink-900 text-paper-100 hover:bg-ember-600 disabled:opacity-50 disabled:cursor-not-allowed'}`}
               >
                 {currentPlan === 'achiever'
                   ? '✓ Current Plan'
