@@ -54,6 +54,11 @@ type PlanKey = keyof typeof PRICING_FALLBACK;
 
 type CouponResult = { valid: boolean; discount: number; finalAmount: number; error?: string };
 
+// Static display-name + feature fallbacks per purchasable plan, used by the
+// focused checkout view when the live admin matrix is unavailable.
+const FALLBACK_NAME: Record<PlanKey, string> = { scholar: 'Scholar', aspirant: 'Pro', achiever: 'Elite' };
+const FALLBACK_FEATURES: Record<PlanKey, string[]> = { scholar: SCHOLAR_FEATURES, aspirant: ASPIRANT_FEATURES, achiever: ACHIEVER_FEATURES };
+
 export default function UpgradePage() {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -73,6 +78,13 @@ export default function UpgradePage() {
   const [couponCodes, setCouponCodes] = useState<Record<PlanKey, string>>(emptyCoupons);
   const [couponResults, setCouponResults] = useState<Record<PlanKey, CouponResult | null>>(emptyResults);
   const [validatingPlan, setValidatingPlan] = useState<PlanKey | null>(null);
+
+  // When set (from /upgrade?plan=X, e.g. the onboarding flow), the page shows
+  // a FOCUSED single-plan checkout — chosen plan + coupon box + an explicit
+  // Pay button — instead of the full grid + an auto-opened gateway. This is
+  // what lets onboarding users enter a coupon and avoids the busy plan grid
+  // flashing behind Razorpay.
+  const [checkoutPlan, setCheckoutPlan] = useState<PlanKey | null>(null);
 
   // Live admin-edited plan matrix. PR-34b (audit #41) — the page used to
   // hardcode prices, which silently drifted from whatever the admin set in
@@ -255,22 +267,23 @@ export default function UpgradePage() {
     }
   };
 
-  // Onboarding → direct payment (founder ask: "plan select kiya to sidha
-  // pay gateway khul ke proceed ho"). /onboarding/plan routes here as
-  // /upgrade?plan=X; open the Razorpay checkout for X automatically so the
-  // user doesn't have to re-pick. Fires exactly once, only for a
-  // purchasable plan that isn't already the user's current plan.
-  const autoPayFired = useRef(false);
+  // Onboarding / deep-link checkout. /onboarding/plan routes here as
+  // /upgrade?plan=X. Previously we auto-opened Razorpay for X — but that gave
+  // the user no chance to enter a coupon and rendered the full plan grid
+  // behind the gateway. Instead we surface a FOCUSED checkout view for plan X
+  // (coupon box + explicit Pay button). Runs once, only for a purchasable
+  // plan that isn't already the user's current plan.
+  const checkoutInit = useRef(false);
   useEffect(() => {
-    if (autoPayFired.current) return;
+    if (checkoutInit.current) return;
     if (loading || !user || livePlans === null) return;
     const wanted = new URLSearchParams(window.location.search).get('plan');
     if (!wanted || !['scholar', 'aspirant', 'achiever'].includes(wanted)) return;
     if (wanted === currentPlan) return;
     const wantedPlan = livePlans.find((p) => p.id === wanted);
     if (wantedPlan && (wantedPlan as { comingSoon?: boolean }).comingSoon) return;
-    autoPayFired.current = true;
-    void handleBuyPlan(wanted as 'scholar' | 'aspirant' | 'achiever');
+    checkoutInit.current = true;
+    setCheckoutPlan(wanted as PlanKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [livePlans, currentPlan, loading, user]);
 
@@ -325,6 +338,96 @@ export default function UpgradePage() {
       </div>
     );
   };
+
+  // ── Focused single-plan checkout (onboarding / deep-link ?plan=X) ──
+  // Shows just the chosen plan, a coupon box, and an explicit Pay button.
+  // No auto-opened gateway and no busy grid behind it.
+  if (checkoutPlan) {
+    const goBackToPlans = () => {
+      setCheckoutPlan(null);
+      // Drop the ?plan= param so a refresh / back doesn't re-enter checkout.
+      router.replace('/upgrade');
+    };
+    const planName = nameOf(checkoutPlan, FALLBACK_NAME[checkoutPlan]);
+    return (
+      <main className="mx-auto flex min-h-dvh max-w-md flex-col px-5 pt-6 pb-28">
+        <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="lazyOnload" />
+
+        <header className="flex items-center justify-between">
+          <Logo height={36} />
+          <button onClick={() => router.push('/dashboard')} className="btn-ghost-sm">← Back</button>
+        </header>
+
+        <section className="mt-8 text-center">
+          <h1 className="font-serif text-2xl font-bold text-ink-900">Complete your upgrade</h1>
+          <p className="mt-2 text-sm text-muted-500">Review your plan and apply a coupon before you pay.</p>
+        </section>
+
+        {/* Monthly / Yearly toggle */}
+        <div className="mx-auto mt-6 inline-flex items-center gap-1 rounded-full border border-line-200 bg-paper-50 p-1 self-center">
+          <button
+            onClick={() => setPeriod('monthly')}
+            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${period === 'monthly' ? 'bg-ember-500 text-white' : 'text-muted-600 hover:text-ink-900'}`}
+          >
+            Monthly
+          </button>
+          <button
+            onClick={() => setPeriod('yearly')}
+            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors flex items-center gap-2 ${period === 'yearly' ? 'bg-ember-500 text-white' : 'text-muted-600 hover:text-ink-900'}`}
+          >
+            Yearly
+            <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 ${period === 'yearly' ? 'bg-white text-ember-600' : 'bg-ember-500 text-white'}`}>
+              SAVE {yearlySavings.pct}%
+            </span>
+          </button>
+        </div>
+
+        {success && <div className="mt-6 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-4 text-center text-sm font-medium text-amber-700 dark:text-amber-300">{success}</div>}
+        {error && <div className="banner banner-error mt-6">{error}</div>}
+
+        <div className="paper-card mt-6 p-5">
+          <div className="flex items-start justify-between">
+            <h3 className="font-serif text-lg font-bold text-ink-900">{planName}</h3>
+            <p className="text-right">
+              <span className="font-serif text-2xl font-bold text-ink-900">₹{finalPriceFor(checkoutPlan)}</span>
+              <span className="text-sm text-muted-500">/{period === 'yearly' ? 'yr' : 'mo'}</span>
+              {strikeFor(checkoutPlan) !== null && (
+                <span className="ml-2 text-sm line-through text-muted-400">₹{strikeFor(checkoutPlan)}</span>
+              )}
+            </p>
+          </div>
+          {period === 'yearly' && (
+            <p className="text-xs text-muted-500 mt-1">
+              ≈ ₹{yearlyEquivMonthly('yearly', checkoutPlan)}/mo · Save ₹{yearlySavings.saved} per year
+            </p>
+          )}
+          <ul className="mt-4 space-y-2">
+            {featuresOf(checkoutPlan, FALLBACK_FEATURES[checkoutPlan]).map(f => (
+              <li key={f} className="flex items-start gap-2 text-sm text-ink-800">
+                <span className="text-amber-500 mt-0.5 flex-shrink-0">✓</span>{f}
+              </li>
+            ))}
+          </ul>
+
+          {renderCoupon(checkoutPlan)}
+
+          <button
+            onClick={() => handleBuyPlan(checkoutPlan)}
+            disabled={processing}
+            className="btn-primary mt-5 w-full disabled:opacity-60"
+          >
+            {processing ? 'Processing...' : `Pay ₹${finalPriceFor(checkoutPlan)} — ${planName}`}
+          </button>
+        </div>
+
+        <button onClick={goBackToPlans} className="btn-ghost-sm mt-4 self-center text-sm">← Choose a different plan</button>
+
+        <p className="mt-6 text-center text-xs text-muted-400">
+          Payments processed securely via Razorpay. Plans are one-time charges for the period chosen — there is no auto-renewal. <strong className="text-muted-500">No refunds</strong> on paid plans.
+        </p>
+      </main>
+    );
+  }
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-4xl flex-col px-5 pt-6 pb-28">
