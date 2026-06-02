@@ -85,6 +85,9 @@ export interface CurrentAffairsItem {
   relevantExams: ExamSlug[];
   /** 3-6 keywords used by search + the dashboard hint. */
   tags: string[];
+  /** Real article image URL extracted from the source RSS feed, if any.
+   *  The reel/detail UI falls back to a category stock image when absent. */
+  imageUrl?: string;
 }
 
 export interface CurrentAffairsVerifierScore {

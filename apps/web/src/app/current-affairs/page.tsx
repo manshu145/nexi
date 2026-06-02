@@ -143,11 +143,32 @@ export default function CurrentAffairsShortsPage() {
   };
 
   const handleShare = async (item: CurrentAffairsItem) => {
-    const text = `${item.headline}\n\nRead more on Nexigrate`;
+    const url = window.location.origin + `/current-affairs/${item.id}`;
+    const text = `${item.headline}\n\n📰 via Nexigrate — ${url}`;
+
+    // 1. Try sharing a branded "news flash" IMAGE (WhatsApp-status friendly).
+    //    Uses Web Share API Level 2 (files). Falls back gracefully below.
+    try {
+      const { buildNewsCardImage } = await import('~/lib/newsCard');
+      const points = extractKeyPoints(item.summary || item.body).slice(0, 3);
+      const file = await buildNewsCardImage({
+        headline: item.headline,
+        points,
+        category: item.category,
+        url,
+        lang: getLang(),
+      });
+      if (file && typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], text, title: item.headline });
+        return;
+      }
+    } catch { /* image generation/share unsupported or cancelled → fall through */ }
+
+    // 2. Fallback: text + link share.
     if (navigator.share) {
-      try { await navigator.share({ title: item.headline, text, url: window.location.origin + `/current-affairs/${item.id}` }); } catch { /* cancelled */ }
+      try { await navigator.share({ title: item.headline, text, url }); } catch { /* cancelled */ }
     } else {
-      await navigator.clipboard.writeText(`${item.headline}\n${window.location.origin}/current-affairs/${item.id}`);
+      await navigator.clipboard.writeText(text);
     }
   };
 
@@ -347,8 +368,12 @@ interface ShortCardProps {
 function ShortCard({ item, isActive, liked, bookmarked, likeCount, onLike, onBookmark, onShare, onTap, onAskNexi }: ShortCardProps) {
   const emoji = CATEGORY_EMOJIS[item.category] ?? '📰';
   const keyPoints = extractKeyPoints(item.summary || item.body);
-  const imageUrl = CATEGORY_IMAGES[item.category] ?? CATEGORY_IMAGES['national']!;
+  // Prefer the REAL article image extracted from the source RSS feed;
+  // fall back to a category stock image, then (on load error) the emoji tile.
+  const categoryImage = CATEGORY_IMAGES[item.category] ?? CATEGORY_IMAGES['national']!;
   const [imgError, setImgError] = useState(false);
+  const [usedFallback, setUsedFallback] = useState(false);
+  const imageUrl = (item.imageUrl && !usedFallback) ? item.imageUrl : categoryImage;
 
   return (
     <div className="h-full w-full flex items-center justify-center px-3 py-2 lg:px-0 lg:py-3">
@@ -361,7 +386,7 @@ function ShortCard({ item, isActive, liked, bookmarked, likeCount, onLike, onBoo
         {/* Image header */}
         <div className="relative h-[35%] min-h-[140px] max-h-[200px] overflow-hidden">
           {!imgError ? (
-            <img src={imageUrl} alt={item.category} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 ease-out" style={{ transform: isActive ? 'scale(1)' : 'scale(1.1)' }} loading="lazy" onError={() => setImgError(true)} />
+            <img src={imageUrl} alt={item.category} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 ease-out" style={{ transform: isActive ? 'scale(1)' : 'scale(1.1)' }} loading="lazy" onError={() => { if (!usedFallback && item.imageUrl) { setUsedFallback(true); } else { setImgError(true); } }} />
           ) : (
             <div className="absolute inset-0 w-full h-full bg-gradient-to-br from-paper-200 to-paper-300 dark:from-ink-800 dark:to-ink-900 flex items-center justify-center">
               <span className="text-4xl">{emoji}</span>
@@ -434,6 +459,11 @@ function ShortCard({ item, isActive, liked, bookmarked, likeCount, onLike, onBoo
 }
 
 /* ─── Helpers ─── */
+function getLang(): 'en' | 'hi' {
+  if (typeof window === 'undefined') return 'en';
+  return (localStorage.getItem('nexigrate-language') as 'en' | 'hi') || 'en';
+}
+
 function extractKeyPoints(text: string): string[] {
   if (!text) return [];
   const bullets = text.split(/[•\-\*]\s+/).filter(s => s.trim().length > 10);

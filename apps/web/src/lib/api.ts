@@ -560,7 +560,7 @@ export const api = {
   },
 };
 
-export interface CurrentAffairsItem { id: string; headline: string; body: string; category: string; sources: string[]; summary: string; factChecked: boolean; date: string; publishedAt: string; }
+export interface CurrentAffairsItem { id: string; headline: string; body: string; category: string; sources: string[]; summary: string; factChecked: boolean; date: string; publishedAt: string; imageUrl?: string; }
 export interface LeaderboardEntry { userId: string; userName: string; score: number; timeTaken: number; date: string; }
 export interface CurrentAffairsResponse { date: string; items: CurrentAffairsItem[]; yesterdayWinner: LeaderboardEntry | null; userLikes?: string[]; userBookmarks?: string[]; likeCounts?: Record<string, number>; isFromYesterday?: boolean; }
 export interface QuizSubmitResult { score: number; correct: number; total: number; timeTaken: number; rank: number; }
