@@ -8,6 +8,18 @@
 @import '@fontsource/inter/600.css';
 
 /*
+ * CRITICAL: bind Tailwind v4's `dark:` variant to the `.dark` CLASS that
+ * next-themes sets on <html>, NOT the OS prefers-color-scheme (which is
+ * Tailwind v4's default). Without this, every `dark:` utility followed the
+ * OS while the page background (driven by `html.dark` CSS vars below)
+ * followed the in-app theme toggle — so whenever OS theme ≠ app theme the
+ * logo + other dark: utilities rendered for the WRONG background (the
+ * recurring "logo dark-on-dark / white-on-white" bug). This one line makes
+ * `dark:` and the background switch together.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
  * Brand tokens shared with the marketing site.
  *
  *   paper   : warm parchment background

@@ -94,7 +94,7 @@ export default function PlanSelectionPage() {
   const router = useRouter();
   // PR-32: read the assessment level + onboarding state from the shared
   // user store so the recommendation is computed without firing /me again.
-  const { user: me, loading: meLoading } = useUser();
+  const { user: me, loading: meLoading, mutate } = useUser();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [signupBonus, setSignupBonus] = useState(100);
   const [selected, setSelected] = useState<PlanId>('scholar');
@@ -175,9 +175,18 @@ export default function PlanSelectionPage() {
       // even if the user picks Scholar and bails out of /upgrade without
       // paying, they aren't bounced back here on the next dashboard load.
       await api.markPlanChosen(selected);
+      // CRITICAL FIX (double-plan bug): patch the SHARED user store cache
+      // immediately so the dashboard guard sees onboardingPlanChosen=true
+      // on the very next render. Previously we only updated the server, but
+      // the dashboard reads `me` from the sessionStorage-backed store —
+      // which still had onboardingPlanChosen=false → it bounced the user
+      // straight back to /onboarding/plan (the "plan page 2 baar" bug).
+      mutate((prev) => (prev ? { ...prev, onboardingPlanChosen: true } : prev));
     } catch {
       // Don't block the user on a non-critical write -- they can still
       // complete onboarding; we'll retry the flag on a future write.
+      // Optimistically flip the local flag anyway so they aren't bounced.
+      mutate((prev) => (prev ? { ...prev, onboardingPlanChosen: true } : prev));
     }
 
     // If the selected plan is Coming Soon, treat it as Free selection —
