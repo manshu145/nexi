@@ -52,6 +52,8 @@ const PRICING_FALLBACK = {
 
 type PlanKey = keyof typeof PRICING_FALLBACK;
 
+type CouponResult = { valid: boolean; discount: number; finalAmount: number; error?: string };
+
 export default function UpgradePage() {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -61,9 +63,16 @@ export default function UpgradePage() {
   const [processing, setProcessing] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [couponCode, setCouponCode] = useState('');
-  const [couponApplied, setCouponApplied] = useState<{ valid: boolean; discount: number; finalAmount: number; error?: string } | null>(null);
-  const [validatingCoupon, setValidatingCoupon] = useState(false);
+  // Per-plan coupon state. A coupon can be restricted (by the admin, via
+  // `applicablePlans`) to specific plans, so each purchasable plan gets its
+  // own code box + validation result. Keyed by PlanKey (scholar/aspirant/
+  // achiever). Previously this was a single Scholar-only field, so coupons
+  // could never be applied to Pro/Elite even when the admin allowed them.
+  const emptyCoupons = (): Record<PlanKey, string> => ({ scholar: '', aspirant: '', achiever: '' });
+  const emptyResults = (): Record<PlanKey, CouponResult | null> => ({ scholar: null, aspirant: null, achiever: null });
+  const [couponCodes, setCouponCodes] = useState<Record<PlanKey, string>>(emptyCoupons);
+  const [couponResults, setCouponResults] = useState<Record<PlanKey, CouponResult | null>>(emptyResults);
+  const [validatingPlan, setValidatingPlan] = useState<PlanKey | null>(null);
 
   // Live admin-edited plan matrix. PR-34b (audit #41) — the page used to
   // hardcode prices, which silently drifted from whatever the admin set in
@@ -124,29 +133,54 @@ export default function UpgradePage() {
     }).catch(() => {});
   }, [user]);
 
-  // Reset coupon state whenever period changes — coupon discounts apply to the
-  // base price for that period, so we re-validate on switch.
+  // Reset all coupon results whenever the billing period changes — discounts
+  // apply to the base price for that period, so a re-validate is required.
   useEffect(() => {
-    setCouponApplied(null);
+    setCouponResults(emptyResults());
   }, [period]);
 
-  const scholarBasePaise = pricingFor('scholar')[period] * 100;
-  const scholarFinalPaise = couponApplied?.valid ? couponApplied.finalAmount : scholarBasePaise;
+  /** Update a single plan's coupon code, clearing any stale result. */
+  const setCouponCode = (planId: PlanKey, value: string) => {
+    setCouponCodes((prev) => ({ ...prev, [planId]: value }));
+    setCouponResults((prev) => ({ ...prev, [planId]: null }));
+  };
 
-  const handleApplyCoupon = async () => {
-    if (!couponCode.trim()) return;
-    setValidatingCoupon(true);
-    setCouponApplied(null);
+  /** Validate the entered coupon for a specific plan. Sends the plan's own
+   *  planId + period so the backend can honour `applicablePlans` and the
+   *  per-plan discount. */
+  const applyCoupon = async (planId: PlanKey) => {
+    const code = couponCodes[planId].trim();
+    if (!code) return;
+    setValidatingPlan(planId);
+    setCouponResults((prev) => ({ ...prev, [planId]: null }));
     try {
       const res = await authedFetch('/v1/billing/validate-coupon', {
         method: 'POST',
-        body: JSON.stringify({ couponCode: couponCode.trim(), planId: 'scholar', period }),
+        body: JSON.stringify({ couponCode: code, planId, period }),
       });
-      const data = await res.json() as { valid: boolean; discount: number; finalAmount: number; error?: string };
-      setCouponApplied(data);
-    } catch { setCouponApplied({ valid: false, discount: 0, finalAmount: scholarBasePaise, error: 'Failed to validate coupon' }); }
-    finally { setValidatingCoupon(false); }
+      const data = await res.json() as CouponResult;
+      setCouponResults((prev) => ({ ...prev, [planId]: data }));
+    } catch {
+      setCouponResults((prev) => ({
+        ...prev,
+        [planId]: { valid: false, discount: 0, finalAmount: pricingFor(planId)[period] * 100, error: 'Failed to validate coupon' },
+      }));
+    } finally {
+      setValidatingPlan(null);
+    }
   };
+
+  /** Final (possibly discounted) price in ₹ for a plan's current period. */
+  const finalPriceFor = (planId: PlanKey): number => {
+    const basePaise = pricingFor(planId)[period] * 100;
+    const result = couponResults[planId];
+    const paise = result?.valid ? result.finalAmount : basePaise;
+    return paise / 100;
+  };
+
+  /** Original (struck-through) ₹ price when a valid coupon is applied, else null. */
+  const strikeFor = (planId: PlanKey): number | null =>
+    couponResults[planId]?.valid ? pricingFor(planId)[period] : null;
 
   const handleBuyPlan = async (planId: 'scholar' | 'aspirant' | 'achiever') => {
     if (processing) return;
@@ -157,7 +191,9 @@ export default function UpgradePage() {
     const planLabel = planId.charAt(0).toUpperCase() + planId.slice(1);
 
     try {
-      const order = await api.createOrder(planId, period, couponApplied?.valid ? couponCode.trim() : undefined);
+      const couponResult = couponResults[planId];
+      const couponToSend = couponResult?.valid ? couponCodes[planId].trim() : undefined;
+      const order = await api.createOrder(planId, period, couponToSend);
 
       // If amount is 0 (100% coupon), the server grants the plan directly
       // and returns { granted: true } — no Razorpay checkout needed.
@@ -255,9 +291,40 @@ export default function UpgradePage() {
     </main>
   );
 
-  const scholarDisplayPrice = scholarFinalPaise / 100;
-  const scholarStrikethrough = couponApplied?.valid ? pricingFor('scholar')[period] : null;
   const isCurrentScholar = currentPlan === 'scholar';
+
+  /** Reusable coupon input + result for a purchasable plan. Each plan keeps
+   *  its own code/result so an admin-restricted coupon validates against the
+   *  right planId. */
+  const renderCoupon = (planId: PlanKey) => {
+    const result = couponResults[planId];
+    return (
+      <div className="mt-4 space-y-2">
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={couponCodes[planId]}
+            onChange={(e) => setCouponCode(planId, e.target.value.toUpperCase())}
+            placeholder="Coupon code"
+            className="input flex-1 text-sm"
+          />
+          <button
+            onClick={() => applyCoupon(planId)}
+            disabled={!couponCodes[planId].trim() || validatingPlan === planId}
+            className="btn-ghost-sm text-xs px-3 disabled:opacity-50"
+          >
+            {validatingPlan === planId ? '...' : 'Apply'}
+          </button>
+        </div>
+        {result?.valid && (
+          <p className="text-xs text-amber-600 dark:text-amber-400">✓ Code applied! ₹{result.discount / 100} off</p>
+        )}
+        {result && !result.valid && (
+          <p className="text-xs text-red-500">✗ {result.error || 'Invalid code'}</p>
+        )}
+      </div>
+    );
+  };
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-4xl flex-col px-5 pt-6 pb-28">
@@ -337,10 +404,10 @@ export default function UpgradePage() {
         <div className={`paper-card relative flex flex-col p-5 ${isCurrentScholar ? 'border-2 border-amber-400' : ''}`}>
           <h3 className="font-serif text-lg font-bold text-ink-900">{nameOf('scholar', 'Scholar')}</h3>
           <p className="mt-2">
-            <span className="font-serif text-3xl font-bold text-ink-900">₹{scholarDisplayPrice}</span>
+            <span className="font-serif text-3xl font-bold text-ink-900">₹{finalPriceFor('scholar')}</span>
             <span className="text-sm text-muted-500">/{period === 'yearly' ? 'yr' : 'mo'}</span>
-            {scholarStrikethrough !== null && (
-              <span className="ml-2 text-sm line-through text-muted-400">₹{scholarStrikethrough}</span>
+            {strikeFor('scholar') !== null && (
+              <span className="ml-2 text-sm line-through text-muted-400">₹{strikeFor('scholar')}</span>
             )}
           </p>
           {period === 'yearly' && (
@@ -357,32 +424,7 @@ export default function UpgradePage() {
           </ul>
 
           {/* Coupon input */}
-          {!isCurrentScholar && (
-            <div className="mt-4 space-y-2">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={couponCode}
-                  onChange={e => { setCouponCode(e.target.value.toUpperCase()); setCouponApplied(null); }}
-                  placeholder="Coupon code"
-                  className="input flex-1 text-sm"
-                />
-                <button
-                  onClick={handleApplyCoupon}
-                  disabled={!couponCode.trim() || validatingCoupon}
-                  className="btn-ghost-sm text-xs px-3 disabled:opacity-50"
-                >
-                  {validatingCoupon ? '...' : 'Apply'}
-                </button>
-              </div>
-              {couponApplied?.valid && (
-                <p className="text-xs text-amber-600 dark:text-amber-400">✓ Code applied! ₹{couponApplied.discount / 100} off</p>
-              )}
-              {couponApplied && !couponApplied.valid && (
-                <p className="text-xs text-red-500">✗ {couponApplied.error || 'Invalid code'}</p>
-              )}
-            </div>
-          )}
+          {!isCurrentScholar && renderCoupon('scholar')}
 
           <button
             onClick={() => handleBuyPlan('scholar')}
@@ -393,7 +435,7 @@ export default function UpgradePage() {
               ? 'Processing...'
               : isCurrentScholar
                 ? '✓ Your Current Plan'
-                : `Buy Now — ₹${scholarDisplayPrice}/${period === 'yearly' ? 'yr' : 'mo'}`}
+                : `Buy Now — ₹${finalPriceFor('scholar')}/${period === 'yearly' ? 'yr' : 'mo'}`}
           </button>
         </div>
 
@@ -402,8 +444,11 @@ export default function UpgradePage() {
           <span className="absolute -top-2.5 right-3 rounded-full bg-amber-500 px-3 py-0.5 text-xs font-semibold text-ink-900">Recommended</span>
           <h3 className="font-serif text-lg font-bold text-ink-900">{nameOf('aspirant', 'Pro')}</h3>
           <p className="mt-2">
-            <span className="font-serif text-3xl font-bold text-ink-900">₹{pricingFor('aspirant')[period]}</span>
+            <span className="font-serif text-3xl font-bold text-ink-900">₹{finalPriceFor('aspirant')}</span>
             <span className="text-sm text-muted-500">/{period === 'yearly' ? 'yr' : 'mo'}</span>
+            {strikeFor('aspirant') !== null && (
+              <span className="ml-2 text-sm line-through text-muted-400">₹{strikeFor('aspirant')}</span>
+            )}
           </p>
           <ul className="mt-4 flex-1 space-y-2">
             {featuresOf('aspirant', ASPIRANT_FEATURES).map(f => (
@@ -417,19 +462,22 @@ export default function UpgradePage() {
             const isComingSoon = aspirantPlan && ('comingSoon' in aspirantPlan) && (aspirantPlan as any).comingSoon;
             const isDisabled = currentPlan === 'aspirant' || processing || isComingSoon;
             return (
-              <button
-                onClick={() => handleBuyPlan('aspirant')}
-                disabled={isDisabled}
-                className={`mt-5 w-full rounded-xl py-3 text-sm font-semibold transition-colors ${isComingSoon ? 'bg-paper-200 text-muted-500 cursor-not-allowed' : 'bg-ink-900 text-paper-100 hover:bg-ember-600 disabled:opacity-50 disabled:cursor-not-allowed'}`}
-              >
-                {currentPlan === 'aspirant'
-                  ? '✓ Current Plan'
-                  : isComingSoon
-                    ? 'Coming Soon'
-                    : processing
-                      ? 'Processing...'
-                      : `Choose Pro — ₹${pricingFor('aspirant')[period]}/${period === 'yearly' ? 'yr' : 'mo'}`}
-              </button>
+              <>
+                {currentPlan !== 'aspirant' && !isComingSoon && renderCoupon('aspirant')}
+                <button
+                  onClick={() => handleBuyPlan('aspirant')}
+                  disabled={isDisabled}
+                  className={`mt-4 w-full rounded-xl py-3 text-sm font-semibold transition-colors ${isComingSoon ? 'bg-paper-200 text-muted-500 cursor-not-allowed' : 'bg-ink-900 text-paper-100 hover:bg-ember-600 disabled:opacity-50 disabled:cursor-not-allowed'}`}
+                >
+                  {currentPlan === 'aspirant'
+                    ? '✓ Current Plan'
+                    : isComingSoon
+                      ? 'Coming Soon'
+                      : processing
+                        ? 'Processing...'
+                        : `Choose Pro — ₹${finalPriceFor('aspirant')}/${period === 'yearly' ? 'yr' : 'mo'}`}
+                </button>
+              </>
             );
           })()}
         </div>
@@ -438,8 +486,11 @@ export default function UpgradePage() {
         <div className="paper-card relative flex flex-col p-5">
           <h3 className="font-serif text-lg font-bold text-ink-900">{nameOf('achiever', 'Elite')}</h3>
           <p className="mt-2">
-            <span className="font-serif text-3xl font-bold text-ink-900">₹{pricingFor('achiever')[period]}</span>
+            <span className="font-serif text-3xl font-bold text-ink-900">₹{finalPriceFor('achiever')}</span>
             <span className="text-sm text-muted-500">/{period === 'yearly' ? 'yr' : 'mo'}</span>
+            {strikeFor('achiever') !== null && (
+              <span className="ml-2 text-sm line-through text-muted-400">₹{strikeFor('achiever')}</span>
+            )}
           </p>
           <ul className="mt-4 flex-1 space-y-2">
             {featuresOf('achiever', ACHIEVER_FEATURES).map(f => (
@@ -453,19 +504,22 @@ export default function UpgradePage() {
             const isComingSoon = achieverPlan && ('comingSoon' in achieverPlan) && (achieverPlan as any).comingSoon;
             const isDisabled = currentPlan === 'achiever' || processing || isComingSoon;
             return (
-              <button
-                onClick={() => handleBuyPlan('achiever')}
-                disabled={isDisabled}
-                className={`mt-5 w-full rounded-xl py-3 text-sm font-semibold transition-colors ${isComingSoon ? 'bg-paper-200 text-muted-500 cursor-not-allowed' : 'bg-ink-900 text-paper-100 hover:bg-ember-600 disabled:opacity-50 disabled:cursor-not-allowed'}`}
-              >
-                {currentPlan === 'achiever'
-                  ? '✓ Current Plan'
-                  : isComingSoon
-                    ? 'Coming Soon'
-                    : processing
-                      ? 'Processing...'
-                      : `Choose Elite — ₹${pricingFor('achiever')[period]}/${period === 'yearly' ? 'yr' : 'mo'}`}
-              </button>
+              <>
+                {currentPlan !== 'achiever' && !isComingSoon && renderCoupon('achiever')}
+                <button
+                  onClick={() => handleBuyPlan('achiever')}
+                  disabled={isDisabled}
+                  className={`mt-4 w-full rounded-xl py-3 text-sm font-semibold transition-colors ${isComingSoon ? 'bg-paper-200 text-muted-500 cursor-not-allowed' : 'bg-ink-900 text-paper-100 hover:bg-ember-600 disabled:opacity-50 disabled:cursor-not-allowed'}`}
+                >
+                  {currentPlan === 'achiever'
+                    ? '✓ Current Plan'
+                    : isComingSoon
+                      ? 'Coming Soon'
+                      : processing
+                        ? 'Processing...'
+                        : `Choose Elite — ₹${finalPriceFor('achiever')}/${period === 'yearly' ? 'yr' : 'mo'}`}
+                </button>
+              </>
             );
           })()}
         </div>
