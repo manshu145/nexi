@@ -36,6 +36,9 @@ export interface RawNewsItem {
   description: string;
   pubDate: string;
   source: string;
+  /** Real article image extracted from the RSS item (media:content /
+   *  enclosure / og-image in description), if any. */
+  imageUrl?: string;
 }
 
 /**
@@ -105,10 +108,35 @@ function parseRssXml(xml: string, sourceName: string): RawNewsItem[] {
     const description = extractTag(content, 'description');
     const pubDate = extractTag(content, 'pubDate');
     if (title && title.length > 10) {
-      items.push({ title: cleanHtml(title), link: link ?? '', description: cleanHtml(description ?? ''), pubDate: pubDate ?? '', source: sourceName });
+      items.push({ title: cleanHtml(title), link: link ?? '', description: cleanHtml(description ?? ''), pubDate: pubDate ?? '', source: sourceName, imageUrl: extractImageUrl(content, description ?? '') });
     }
   }
   return items;
+}
+
+/**
+ * Extract a real article image from an RSS <item>. RSS feeds expose images
+ * in several ways; we try them in order of reliability:
+ *   1. <media:content url="..."> / <media:thumbnail url="...">  (Media RSS)
+ *   2. <enclosure url="..." type="image/...">
+ *   3. first <img src="..."> inside content:encoded / description HTML
+ * Returns undefined if none found (the UI falls back to a category image).
+ */
+function extractImageUrl(itemXml: string, descriptionRaw: string): string | undefined {
+  const patterns = [
+    /<media:content[^>]*\burl=["']([^"']+)["']/i,
+    /<media:thumbnail[^>]*\burl=["']([^"']+)["']/i,
+    /<enclosure[^>]*\burl=["']([^"']+)["'][^>]*type=["']image\//i,
+    /<enclosure[^>]*type=["']image\/[^"']*["'][^>]*\burl=["']([^"']+)["']/i,
+  ];
+  for (const re of patterns) {
+    const m = re.exec(itemXml);
+    if (m?.[1] && /^https?:\/\//i.test(m[1])) return m[1].replace(/&amp;/g, '&');
+  }
+  // Fallback: first <img> inside the (HTML) description / content:encoded.
+  const imgMatch = /<img[^>]*\bsrc=["']([^"']+)["']/i.exec(itemXml) || /<img[^>]*\bsrc=["']([^"']+)["']/i.exec(descriptionRaw);
+  if (imgMatch?.[1] && /^https?:\/\//i.test(imgMatch[1])) return imgMatch[1].replace(/&amp;/g, '&');
+  return undefined;
 }
 
 function extractTag(xml: string, tag: string): string | null {
@@ -202,12 +230,13 @@ LAYER 3 — BULLET POINTS (MANDATORY EXACTLY 3-5 BULLETS):
 For each item output:
 - Keep the headline concise (max 80 chars)
 - Write in simple, clear language suitable for students
+- Include "srcIndex": the NUMBER (from the list below) of the primary news item this summary is based on (for image attribution)
 
 News items:
 ${batch.map((item, i) => `${i + 1}. [${item.source}] ${item.title} — ${item.description.slice(0, 150)}`).join('\n')}
 
 Respond ONLY with valid JSON:
-{"items":[{"id":"ca-1","headline":"...","summary":"...","bullets":["fact 1","fact 2","fact 3"],"category":"national","sources":["Source Name"],"factChecked":true}]}`;
+{"items":[{"id":"ca-1","headline":"...","summary":"...","bullets":["fact 1","fact 2","fact 3"],"category":"national","sources":["Source Name"],"factChecked":true,"srcIndex":1}]}`;
 
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiKey}`, {
         method: 'POST',
@@ -231,7 +260,7 @@ Respond ONLY with valid JSON:
       // Extract JSON from response (may have markdown fences)
       const jsonMatch = rawText.match(/\{[\s\S]*\}/);
       if (!jsonMatch) { logger.warn('rss.gemini_no_json', { raw: rawText.slice(0, 200) }); continue; }
-      const parsed = JSON.parse(jsonMatch[0]) as { items: { id: string; headline: string; summary: string; bullets?: string[]; category: CurrentAffairsCategory; sources: string[]; factChecked: boolean }[] };
+      const parsed = JSON.parse(jsonMatch[0]) as { items: { id: string; headline: string; summary: string; bullets?: string[]; category: CurrentAffairsCategory; sources: string[]; factChecked: boolean; srcIndex?: number }[] };
 
       for (const item of (parsed.items ?? [])) {
         // PR-39: enforce 500-word minimum + 3-5 bullets server-side.
@@ -271,6 +300,14 @@ Respond ONLY with valid JSON:
           bullets = bullets.slice(0, 5);
         }
 
+        // Attribute a real image: prefer the AI-reported primary source
+        // item's image, else the first item in the batch that has one.
+        const srcIdx = typeof item.srcIndex === 'number' ? item.srcIndex - 1 : -1;
+        const imageUrl =
+          batch[srcIdx]?.imageUrl ||
+          batch.find(b => b.imageUrl)?.imageUrl ||
+          undefined;
+
         allSummarized.push({
           id: `${today}-${item.id}-${Math.random().toString(36).slice(2, 6)}`,
           headline: item.headline,
@@ -279,6 +316,7 @@ Respond ONLY with valid JSON:
           sources: item.sources,
           relevantExams: [],
           tags: [],
+          ...(imageUrl ? { imageUrl } : {}),
           date: today,
           summary,
           factChecked: item.factChecked,
@@ -370,6 +408,7 @@ export async function ingestCurrentAffairs(
       sources: [item.source],
       relevantExams: [],
       tags: [],
+      ...(item.imageUrl ? { imageUrl: item.imageUrl } : {}),
       date: today,
       summary: item.description.slice(0, 200) || item.title,
       factChecked: false,
@@ -397,7 +436,14 @@ export async function ingestCurrentAffairs(
   // pick up missing items the next time the ingestion fires.
   if (aiEngine && itemsToSave.length > 0) {
     try {
-      const toTranslate = itemsToSave.map(it => ({ headline: it.headline, summary: it.summary }));
+      // Translate the FULL body (which contains the "**Key Points:**" bullets),
+      // not just the short summary. Previously only `summary` was translated,
+      // so the Hindi `body` (= summaryHi) had NO bullets → Hindi users saw the
+      // summary but the 3 quick-revision pointers were missing (founder report:
+      // "english me 3 pointers de raha hai lekin hindi me nahi"). Translating
+      // `body` means summaryHi now carries the Hindi bullets, and the reel's
+      // extractKeyPoints() finds them just like the English feed.
+      const toTranslate = itemsToSave.map(it => ({ headline: it.headline, summary: it.body }));
       const translated = await aiEngine.translateToHindi(toTranslate);
       if (translated.length > 0) {
         const today = new Date().toISOString().split('T')[0]!;
