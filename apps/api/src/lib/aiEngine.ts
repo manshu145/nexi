@@ -43,6 +43,16 @@ export interface AIEngine {
   generateSyllabus(examSlug: string, examName: string, level: string): Promise<GeneratedSyllabus>;
   generateSelectionDiagram(selectedText: string, subject: string, language: 'en' | 'hi'): Promise<string>;
   generateCurrentAffairsQuiz(headlines: string, count?: number, language?: 'en' | 'hi'): Promise<GeneratedMCQ[]>;
+  /**
+   * Reconstruct a "previous year pattern" question paper for an exam's
+   * given session year. Grounded (web search when available) on the real
+   * topics, weightage, and difficulty of that exam — returned as MCQs
+   * with answers + explanations. This is an AI-reconstructed PRACTICE set
+   * modelled on the previous-year pattern, NOT a verbatim copy of the
+   * copyrighted original; the route + UI label it as such. Shared +
+   * cached per (exam, year, language) by the PYQ store.
+   */
+  generatePYQPaper(examSlug: string, examName: string, year: number, language: 'en' | 'hi', count?: number): Promise<GeneratedMCQ[]>;
   translateToHindi(items: { headline: string; summary: string }[]): Promise<{ headline: string; summary: string }[]>;
   chat(messages: { role: 'user' | 'assistant'; content: string }[], userContext: { exam: string; level: string; language: 'en' | 'hi' }, preferredModel?: 'gpt4o' | 'groq' | 'gemini'): Promise<string>;
   /**
@@ -1697,6 +1707,107 @@ Respond ONLY with valid JSON (no markdown fences):
 
       logger.error('ai.ca_quiz_all_failed', { errors });
       throw new Error(`All AI providers failed for quiz generation: ${errors.join('; ')}`);
+    },
+
+    async generatePYQPaper(examSlug: string, examName: string, year: number, language: 'en' | 'hi', count = 25): Promise<GeneratedMCQ[]> {
+      const langInstr = language === 'hi'
+        ? 'Write ALL questions, options, and explanations in Hindi (Devanagari script).'
+        : 'Write in clear English.';
+      const prompt = `You are an exam-paper analyst for Indian competitive & board exams.
+
+Reconstruct a PREVIOUS-YEAR PATTERN question paper for the exam "${examName}" (slug: ${examSlug}) as it appeared in its ${year} session.
+
+CRITICAL — accuracy + honesty:
+- Base the questions on the REAL syllabus, topic weightage, question style, and difficulty distribution of ${examName}'s ${year} exam. If you have knowledge of the actual topics asked that year, mirror them closely.
+- Do NOT fabricate a verbatim copy claim. These are practice questions modelled on the previous-year pattern.
+- Match the exam's real subject mix (e.g. for UPSC Prelims: Polity, History, Geography, Economy, Environment, Science, Current Affairs).
+
+Generate exactly ${count} multiple-choice questions.
+${langInstr}
+
+Requirements:
+- 4 options (A-D), exactly one correct.
+- Realistic difficulty spread matching this exam (roughly 30% easy, 45% medium, 25% hard).
+- Each question MUST include a concise explanation of the correct answer (1-3 sentences).
+- Tag each with the subject and a specific topic.
+
+Respond ONLY with valid JSON, no prose:
+{"questions":[{"id":"pyq-1","question":"...","options":[{"key":"A","text":"..."},{"key":"B","text":"..."},{"key":"C","text":"..."},{"key":"D","text":"..."}],"correctOption":"A","explanation":"...","difficulty":"medium","subject":"...","topic":"..."}]}`;
+
+      const errors: string[] = [];
+
+      const parseQuestions = (raw: string): GeneratedMCQ[] | null => {
+        if (!raw) return null;
+        const match = raw.match(/\{[\s\S]*\}/);
+        if (!match) return null;
+        try {
+          const parsed = JSON.parse(match[0]) as { questions?: GeneratedMCQ[] };
+          return Array.isArray(parsed.questions) && parsed.questions.length > 0 ? parsed.questions : null;
+        } catch { return null; }
+      };
+
+      // Attempt 1: Gemini PRO with Google Search grounding — best for
+      // recalling a specific year's real topics. Grounding may inject
+      // prose, so we regex-extract the JSON block.
+      if (env.GEMINI_API_KEY) {
+        try {
+          const r = await callGemini({
+            prompt,
+            generationConfig: { temperature: 0.4, maxOutputTokens: 8000 },
+            tier: 'pro',
+            tools: [{ googleSearch: {} }],
+          });
+          if (r.ok) {
+            const qs = parseQuestions(r.text);
+            if (qs) {
+              logger.info('ai.pyq_generated', { provider: 'gemini', model: r.model, grounded: true, examSlug, year, count: qs.length });
+              return qs;
+            }
+            errors.push('Gemini(pro+grounding) returned no parseable questions');
+          } else { errors.push(`Gemini(pro): ${r.error}`); }
+        } catch (err) {
+          errors.push(`Gemini(pro): ${err instanceof Error ? err.message : String(err)}`);
+          logger.warn('ai.pyq_gemini_failed', { error: errors[errors.length - 1] });
+        }
+      } else { errors.push('GEMINI_API_KEY not configured'); }
+
+      // Attempt 2: Groq (fast, no grounding).
+      const pyqGroq = await getGroqClient();
+      if (pyqGroq) {
+        try {
+          const c = await pyqGroq.client.chat.completions.create({ model: pyqGroq.model, messages: [{ role: 'user', content: prompt }], temperature: 0.4, max_tokens: 8000, response_format: { type: 'json_object' } });
+          const qs = parseQuestions(c.choices[0]?.message?.content ?? '');
+          if (qs) {
+            if (resolver) void resolver.reportModelSuccess('groq', pyqGroq.model);
+            logger.info('ai.pyq_generated', { provider: 'groq', model: pyqGroq.model, examSlug, year, count: qs.length });
+            return qs;
+          }
+          errors.push('Groq returned no parseable questions');
+        } catch (err) {
+          if (resolver) await resolver.reportModelFailure('groq', pyqGroq.model, err instanceof Error ? err.message : String(err));
+          errors.push(`Groq: ${err instanceof Error ? err.message : String(err)}`);
+          logger.warn('ai.pyq_groq_failed', { error: errors[errors.length - 1] });
+        }
+      } else { errors.push('GROQ_API_KEY not configured'); }
+
+      // Attempt 3: OpenAI.
+      if (openai) {
+        try {
+          const c = await oaCreate({ messages: [{ role: 'user', content: prompt }], temperature: 0.4, max_tokens: 8000, response_format: { type: 'json_object' } });
+          const qs = parseQuestions(c.choices[0]?.message?.content ?? '');
+          if (qs) {
+            logger.info('ai.pyq_generated', { provider: 'openai', examSlug, year, count: qs.length });
+            return qs;
+          }
+          errors.push('OpenAI returned no parseable questions');
+        } catch (err) {
+          errors.push(`OpenAI: ${err instanceof Error ? err.message : String(err)}`);
+          logger.warn('ai.pyq_openai_failed', { error: errors[errors.length - 1] });
+        }
+      } else { errors.push('OPENAI_API_KEY not configured'); }
+
+      logger.error('ai.pyq_all_failed', { examSlug, year, errors });
+      throw new Error(`All AI providers failed for PYQ generation: ${errors.join('; ')}`);
     },
 
     async chat(messages: { role: 'user' | 'assistant'; content: string }[], userContext: { exam: string; level: string; language: 'en' | 'hi' }, preferredModel?: 'gpt4o' | 'groq' | 'gemini'): Promise<string> {

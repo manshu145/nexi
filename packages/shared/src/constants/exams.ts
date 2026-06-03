@@ -62,6 +62,8 @@ export const EXAMS: readonly Exam[] = [
   { id: asExamSlug('jpsc'),           name: 'JPSC (Jharkhand)',   category: 'state',          status: 'live' },
   { id: asExamSlug('ukpsc'),          name: 'UKPSC (Uttarakhand)', category: 'state',         status: 'live' },
   { id: asExamSlug('cgpsc'),          name: 'CGPSC (Chhattisgarh)', category: 'state',        status: 'live' },
+  { id: asExamSlug('cg-vyapam'),      name: 'CG Vyapam (CGPEB)',  category: 'state',          status: 'live' },
+  { id: asExamSlug('cg-shikshak-bharti'), name: 'CG Shikshak Bharti', category: 'state',      status: 'live' },
 
   // ─── Banking ───
   { id: asExamSlug('ibps-po'),        name: 'IBPS PO',            category: 'banking',        status: 'live' },

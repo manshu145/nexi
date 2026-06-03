@@ -51,6 +51,9 @@ export interface CurrentAffairsStore {
   getUserLikes(userId: string): Promise<string[]>;
   /** Get like count for items */
   getLikeCounts(itemIds: string[]): Promise<Record<string, number>>;
+  /** Get the list of state/UT slugs the admin has marked "live" for the
+   *  Current Affairs state selector. Empty = national-only (default). */
+  getLiveStates(): Promise<string[]>;
 }
 
 // ---------- in-memory implementation ----------------------------------------
@@ -147,6 +150,9 @@ export class InMemoryCurrentAffairsStore implements CurrentAffairsStore {
     for (const id of itemIds) { counts[id] = this.likes.get(id)?.size ?? 0; }
     return counts;
   }
+
+  private liveStates: string[] = [];
+  async getLiveStates() { return this.liveStates; }
 }
 
 // ---------- firestore implementation ----------------------------------------
@@ -340,5 +346,13 @@ export class FirestoreCurrentAffairsStore implements CurrentAffairsStore {
       }
     } catch { /* fallback to zeros */ }
     return counts;
+  }
+
+  async getLiveStates(): Promise<string[]> {
+    try {
+      const snap = await this.db.collection('currentAffairsConfig').doc('states').get();
+      const raw = snap.exists ? (snap.data()?.liveStates as unknown) : null;
+      return Array.isArray(raw) ? raw.filter((s): s is string => typeof s === 'string') : [];
+    } catch { return []; }
   }
 }

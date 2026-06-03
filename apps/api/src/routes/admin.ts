@@ -5,7 +5,7 @@ import type { Logger } from '../logger.js';
 import type { UserStore, StoredUser } from '../lib/userStore.js';
 import type { AdminStore } from '../lib/adminStore.js';
 import type { Env } from '../env.js';
-import { asUserId } from '@nexigrate/shared';
+import { asUserId, INDIAN_STATES, isStateSlug } from '@nexigrate/shared';
 import type { Auth } from 'firebase-admin/auth';
 
 import type { CouponStore } from '../lib/couponStore.js';
@@ -943,14 +943,22 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
   });
 
   app.post('/feeds', async (c) => {
-    const body = await c.req.json().catch(() => null) as { url?: string; name?: string; category?: string } | null;
+    const body = await c.req.json().catch(() => null) as { url?: string; name?: string; category?: string; state?: string } | null;
     if (!body?.url || !body?.name) throw new HTTPException(400, { message: 'url and name required' });
     if (!deps.db) throw new HTTPException(500, { message: 'DB not available' });
+    // `state` is optional. When present it must be a known state/UT slug
+    // (see INDIAN_STATES). A feed without a state produces national
+    // current-affairs items (the default), so omitting it is fully
+    // backward-compatible with every feed added before this shipped.
+    if (body.state && !isStateSlug(body.state)) {
+      throw new HTTPException(400, { message: `Unknown state slug: ${body.state}` });
+    }
     const ref = await deps.db.collection('newsFeeds').add({
       url: body.url, name: body.name, category: body.category ?? 'national',
+      ...(body.state ? { state: body.state } : {}),
       isActive: true, lastFetched: null, itemsFetched: 0, createdAt: new Date().toISOString(),
     });
-    deps.logger.info('admin.feed_added', { id: ref.id, name: body.name });
+    deps.logger.info('admin.feed_added', { id: ref.id, name: body.name, state: body.state ?? null });
     return c.json({ success: true, id: ref.id });
   });
 
@@ -1017,6 +1025,54 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
         message: `Ingestion failed: ${msg}`,
       });
     }
+  });
+
+  // ━━━ CURRENT AFFAIRS — STATE EDITIONS ━━━
+  // The platform knows every Indian state/UT (INDIAN_STATES in shared),
+  // but only the ones the admin marks "live" are exposed to students in
+  // the Current Affairs state selector. This lets the founder roll out
+  // one state at a time (e.g. start with Chhattisgarh) without code
+  // changes. Live state slugs are stored as an array in the Firestore
+  // doc currentAffairsConfig/states. Default = empty array, which keeps
+  // the feed national-only exactly as before this shipped.
+  const STATES_CONFIG_DOC = { collection: 'currentAffairsConfig', doc: 'states' } as const;
+
+  async function readLiveStates(): Promise<string[]> {
+    if (!deps.db) return [];
+    try {
+      const snap = await deps.db.collection(STATES_CONFIG_DOC.collection).doc(STATES_CONFIG_DOC.doc).get();
+      const raw = snap.exists ? (snap.data()?.liveStates as unknown) : null;
+      if (!Array.isArray(raw)) return [];
+      // Defensive: only keep known slugs so a stale/renamed slug can't
+      // leak a phantom state into the UI.
+      return raw.filter((s): s is string => typeof s === 'string' && isStateSlug(s));
+    } catch { return []; }
+  }
+
+  // GET /admin/current-affairs/states — full catalog with live flags.
+  app.get('/current-affairs/states', async (c) => {
+    const live = new Set(await readLiveStates());
+    const states = INDIAN_STATES.map((s) => ({
+      slug: s.slug, name: s.name, nameHi: s.nameHi, isUT: s.isUT, isLive: live.has(s.slug),
+    }));
+    return c.json({ states, liveCount: live.size });
+  });
+
+  // PATCH /admin/current-affairs/states/:slug — toggle one state live/off.
+  app.patch('/current-affairs/states/:slug', async (c) => {
+    const slug = c.req.param('slug');
+    if (!isStateSlug(slug)) throw new HTTPException(400, { message: `Unknown state slug: ${slug}` });
+    if (!deps.db) throw new HTTPException(500, { message: 'DB not available' });
+    const body = await c.req.json().catch(() => null) as { isLive?: boolean } | null;
+    if (typeof body?.isLive !== 'boolean') throw new HTTPException(400, { message: 'isLive (boolean) required' });
+
+    const current = new Set(await readLiveStates());
+    if (body.isLive) current.add(slug); else current.delete(slug);
+    const liveStates = Array.from(current);
+    await deps.db.collection(STATES_CONFIG_DOC.collection).doc(STATES_CONFIG_DOC.doc)
+      .set({ liveStates, updatedAt: new Date().toISOString() }, { merge: true });
+    deps.logger.info('admin.ca_state_toggled', { slug, isLive: body.isLive, liveCount: liveStates.length });
+    return c.json({ success: true, slug, isLive: body.isLive, liveStates });
   });
 
   // ━━━ EMAIL LOGS ━━━

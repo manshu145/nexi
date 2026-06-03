@@ -12,6 +12,7 @@ export * from './referral.js';
 export * from './audit.js';
 export * from './currentAffairs.js';
 export * from './longAnswer.js';
+export * from './pyq.js';
 
 export * from './comms.js';
 export * from './syllabus.js';
