@@ -39,6 +39,9 @@ export interface RawNewsItem {
   /** Real article image extracted from the RSS item (media:content /
    *  enclosure / og-image in description), if any. */
   imageUrl?: string;
+  /** Indian state/UT slug inherited from the source feed when the feed
+   *  is tagged to a state. Absent = national (the default). */
+  state?: string;
 }
 
 /**
@@ -53,7 +56,7 @@ async function fetchRssFeeds(logger: Logger, firestoreDb?: import('firebase-admi
   // makes the admin "News Feed Management" table show, per row, exactly
   // what each source brought in on the last run — the founder asked to
   // see "kya kya fetch hoke app me kya kya content gaya... row kya aaya".
-  let feedSources: Array<{ id?: string; name: string; rss: string }> =
+  let feedSources: Array<{ id?: string; name: string; rss: string; state?: string }> =
     NEWS_SOURCES.map(s => ({ name: s.name, rss: s.rss }));
   if (firestoreDb) {
     try {
@@ -61,7 +64,7 @@ async function fetchRssFeeds(logger: Logger, firestoreDb?: import('firebase-admi
       if (!snap.empty) {
         const firestoreFeeds = snap.docs.map(d => {
           const data = d.data();
-          return { id: d.id, name: data.name as string, rss: data.url as string };
+          return { id: d.id, name: data.name as string, rss: data.url as string, state: (data.state as string | undefined) || undefined };
         }).filter(f => f.name && f.rss);
         if (firestoreFeeds.length > 0) {
           // Merge: Firestore feeds + hardcoded (deduplicate by RSS URL)
@@ -99,7 +102,10 @@ async function fetchRssFeeds(logger: Logger, firestoreDb?: import('firebase-admi
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const text = await res.text();
         // Simple XML parsing for RSS items
-        const items = parseRssXml(text, source.name).slice(0, 10); // Max 10 items per source
+        const parsed = parseRssXml(text, source.name).slice(0, 10); // Max 10 items per source
+        // Inherit the feed's state tag (if any) onto every item it
+        // produced. National feeds leave `state` undefined.
+        const items = source.state ? parsed.map(it => ({ ...it, state: source.state })) : parsed;
         // Record what this feed brought in: timestamp, item count, a few
         // sample headlines (so the admin sees the actual content, not just
         // a number), and a clear ok/empty status.
@@ -394,6 +400,18 @@ Respond ONLY with valid JSON:
           batch.find(b => b.imageUrl)?.imageUrl ||
           undefined;
 
+        // Attribute a state tag. Prefer the AI-reported primary source
+        // item's state (precise). If the AI didn't report a usable
+        // srcIndex, only fall back to the batch state when the ENTIRE
+        // batch is a single state — that way a mixed national/state
+        // batch never mis-tags a national story as regional. Items
+        // grouped by state upstream (see ingestCurrentAffairs) make the
+        // homogeneous-batch fallback the common, correct case.
+        const batchStates = new Set(batch.map(b => b.state).filter((s): s is string => !!s));
+        const stateTag = (srcIdx >= 0 && batch[srcIdx]?.state)
+          ? batch[srcIdx]!.state
+          : (batchStates.size === 1 ? [...batchStates][0] : undefined);
+
         allSummarized.push({
           id: `${today}-${item.id}-${Math.random().toString(36).slice(2, 6)}`,
           headline: item.headline,
@@ -403,6 +421,7 @@ Respond ONLY with valid JSON:
           relevantExams: [],
           tags: [],
           ...(imageUrl ? { imageUrl } : {}),
+          ...(stateTag ? { state: stateTag } : {}),
           date: today,
           summary,
           factChecked: item.factChecked,
@@ -453,6 +472,14 @@ export async function ingestCurrentAffairs(
     return !isNaN(d) ? d > oneDayAgo : true;
   }).slice(0, 50); // Max 50 items to summarize
 
+  // Group items by state so the AI-summarisation batches (sequential
+  // slices of 10) stay coherent: items sharing a state cluster into the
+  // same batch, which keeps the per-item state attribution accurate.
+  // National items (no state) sort first, then each state clusters
+  // together. Stable enough for our purpose — a single mixed boundary
+  // batch falls back to "national" rather than mis-tagging.
+  recentItems.sort((a, b) => (a.state ?? '').localeCompare(b.state ?? ''));
+
   // 3. AI summarize (or fallback to raw items if AI fails)
   let itemsToSave: CurrentAffairsStoreItem[];
   const summarized = await summarizeItems(recentItems, env, logger, resolver);
@@ -495,6 +522,7 @@ export async function ingestCurrentAffairs(
       relevantExams: [],
       tags: [],
       ...(item.imageUrl ? { imageUrl: item.imageUrl } : {}),
+      ...(item.state ? { state: item.state } : {}),
       date: today,
       summary: item.description.slice(0, 200) || item.title,
       factChecked: false,
