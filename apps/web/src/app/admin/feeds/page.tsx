@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '~/lib/auth-context';
 import { getFirebaseAuthClient } from '~/lib/firebase';
@@ -78,6 +78,9 @@ export default function AdminFeedsPage() {
   const [statesLoading, setStatesLoading] = useState(true);
   const [savingState, setSavingState] = useState<string | null>(null);
   const [stateFilter, setStateFilter] = useState('');
+  // Poll timer for the background ingestion job (cleared on unmount).
+  const pollRef = useRef<number | null>(null);
+  useEffect(() => () => { if (pollRef.current) window.clearTimeout(pollRef.current); }, []);
   // PR-34a: inline confirm-row state, mirrors the pattern from
   // admin/announcements/page.tsx so the admin doesn't get a native
   // confirm() dialog when deleting a feed.
@@ -208,86 +211,72 @@ export default function AdminFeedsPage() {
     } catch { /* ignore */ }
   };
 
-  const handleIngestNow = async () => {
-    setIngesting(true);
-    setIngestResult(null);
-    // PR-35: RSS + AI summarisation can take 30-90 seconds. Without an
-    // explicit client-side timeout, mobile/flaky networks drop the idle
-    // socket and the browser throws TypeError("Failed to fetch") with no
-    // context. Use the same AbortController + progressive-message pattern
-    // PR-32 introduced for mock-tests; bump the ceiling to 150s because
-    // ingestion is heavier (6 feeds × multi-item AI summarisation).
-    const INGEST_TIMEOUT_MS = 150_000;
-    const controller = new AbortController();
-    const progressMessages: Array<{ at: number; msg: string }> = [
-      { at: 0, msg: 'Fetching RSS feeds…' },
-      { at: 12_000, msg: 'Summarising new items with AI…' },
-      { at: 45_000, msg: 'Saving items to Firestore…' },
-      { at: 90_000, msg: 'Almost done — finalising…' },
-      { at: 130_000, msg: 'Taking longer than expected, hang on…' },
-    ];
-    const progressTimers = progressMessages.map((p) =>
-      window.setTimeout(() => setIngestResult(p.msg), p.at),
-    );
-    const timeoutId = window.setTimeout(() => controller.abort(), INGEST_TIMEOUT_MS);
+  // Poll the background ingestion job until it finishes. Replaces the old
+  // 150s blocking request that timed out on slow-AI runs and made the
+  // button feel broken. The POST below returns instantly; this drives the
+  // progress + final result by reading /feeds/ingest-status every 3s.
+  const pollIngestStatus = async (attempt = 0) => {
+    const MAX_ATTEMPTS = 120; // 120 × 3s ≈ 6 min ceiling
     try {
       const token = await getToken();
+      const res = await fetch(`${API}/v1/admin/feeds/ingest-status`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        status?: { state: 'idle' | 'running' | 'error'; fetched: number | null; saved: number | null; error: string | null } | null;
+      };
+      const st = data.status;
+      if (st && st.state === 'running' && attempt < MAX_ATTEMPTS) {
+        setIngestResult('⏳ Running in background — fetching feeds & summarising with AI…');
+        pollRef.current = window.setTimeout(() => { void pollIngestStatus(attempt + 1); }, 3000);
+        return;
+      }
+      if (st && st.state === 'error') {
+        setIngestResult(`Ingestion failed: ${st.error ?? 'unknown error'}`);
+      } else if (st && st.state === 'idle' && typeof st.saved === 'number') {
+        setIngestResult(`✓ Ingestion complete — ${st.saved} saved out of ${st.fetched ?? '?'} fetched.`);
+      } else if (attempt >= MAX_ATTEMPTS) {
+        setIngestResult('Still running after ~6 minutes — check the feed table shortly.');
+      } else {
+        setIngestResult('Ingestion finished.');
+      }
+      await fetchFeeds();
+      setIngesting(false);
+    } catch {
+      // Transient poll hiccup — retry a few more times before giving up.
+      if (attempt < MAX_ATTEMPTS) {
+        pollRef.current = window.setTimeout(() => { void pollIngestStatus(attempt + 1); }, 4000);
+      } else {
+        setIngestResult('Lost connection while polling status. Refresh the page to check the result.');
+        setIngesting(false);
+      }
+    }
+  };
+
+  const handleIngestNow = async () => {
+    setIngesting(true);
+    setIngestResult('Starting ingestion…');
+    if (pollRef.current) window.clearTimeout(pollRef.current);
+    try {
+      const token = await getToken();
+      // The endpoint kicks the job off in the background and returns
+      // instantly — no more 150s blocking wait / timeout.
       const res = await fetch(`${API}/v1/admin/feeds/ingest-now`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
-        signal: controller.signal,
       });
       const data = (await res.json().catch(() => ({}))) as {
-        success?: boolean;
-        message?: string;
-        error?: string;
-        fetched?: number;
-        saved?: number;
+        started?: boolean; alreadyRunning?: boolean; message?: string; error?: string;
       };
-      if (res.ok) {
-        // PR-33: pre-PR-33 the backend was a stub that always returned
-        // {success:true,message:'Ingestion triggered'} without doing
-        // anything, so the UI showed a green message even when nothing
-        // happened. Now the backend returns the real fetched/saved
-        // counts -- surface them so the admin sees actual numbers.
-        const counts =
-          typeof data.saved === 'number' && typeof data.fetched === 'number'
-            ? ` (${data.saved} saved out of ${data.fetched} fetched)`
-            : '';
-        setIngestResult((data.message ?? 'Ingestion complete') + counts);
-        // Refresh the feed list after a successful ingestion so the
-        // "lastFetched" + "itemsFetched" counters update without a
-        // manual page reload.
-        await fetchFeeds();
-      } else {
-        setIngestResult(data.error ?? data.message ?? `Ingestion failed (HTTP ${res.status})`);
+      if (!res.ok) {
+        setIngestResult(data.error ?? data.message ?? `Could not start ingestion (HTTP ${res.status})`);
+        setIngesting(false);
+        return;
       }
+      setIngestResult(data.message ?? (data.alreadyRunning ? 'Ingestion already running…' : 'Ingestion started…'));
+      void pollIngestStatus(0);
     } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        setIngestResult(
-          `Ingestion took longer than ${INGEST_TIMEOUT_MS / 1000}s and was cancelled. ` +
-            `It may still be running on the server — refresh the feed list in a minute to check.`,
-        );
-        // Background recovery: the request might still complete server-side.
-        // Re-fetch once after a short delay so a successful late completion
-        // updates the lastFetched counters even though the client gave up.
-        window.setTimeout(() => { void fetchFeeds(); }, 30_000);
-      } else if (err instanceof TypeError && /fetch/i.test(err.message)) {
-        setIngestResult(
-          'Network error — your connection dropped while ingestion was running. ' +
-            'It may still be running on the server. Wait a minute, then check the feed table for updated "Last fetched" timestamps before retrying.',
-        );
-        window.setTimeout(() => { void fetchFeeds(); }, 30_000);
-      } else {
-        setIngestResult(
-          err instanceof Error
-            ? `Failed to trigger ingestion: ${err.message}`
-            : 'Failed to trigger ingestion',
-        );
-      }
-    } finally {
-      progressTimers.forEach((t) => window.clearTimeout(t));
-      window.clearTimeout(timeoutId);
+      setIngestResult(err instanceof Error ? `Failed to start ingestion: ${err.message}` : 'Failed to start ingestion');
       setIngesting(false);
     }
   };
