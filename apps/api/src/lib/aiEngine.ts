@@ -981,20 +981,63 @@ End with: Important facts to remember for exam.`;
       const prompt = `You are an expert Indian education content writer.\nYou are generating educational content for ${exam}.\nThis content must strictly follow the official ${exam} syllabus.\nOnly cover topics that are part of the official curriculum.\nGround all factual content in NCERT textbooks where applicable.\nDo not add topics outside the official syllabus.\n\nGenerate a chapter on "${chapter}" (subject: ${subject}) for ${exam} preparation.\n${langInstr}\n\n${personalizationInstr}\n\nAdditional Requirements:\n- Use Markdown format with ## headings for each major section\n- Use ## headings generously — each sub-topic should have its own ## heading\n- Include real-world Indian examples\n- Exam-focused: highlight frequently-asked areas\n- For science/math: include formulas in $...$\n- Reference NCERT concepts and terminology where applicable\n- Be thorough and cover every aspect needed for this level.\n\nWrite ONLY the Markdown content.`;
       const startTime = performance.now();
 
-      // Inner: one attempt at the primary generator. Pulled out so we
+      // Inner: one attempt at content generation. Resilient across
+      // providers (OpenAI auto-switch -> Groq -> Gemini) so a single
+      // provider outage/quota doesn't 500 "Failed to generate chapter
+      // content" — mirrors the syllabus generation chain. Pulled out so we
       // can call it twice if the verifier flags low confidence on the
       // first pass (regenerate-with-feedback loop).
       async function generateOnce(extraInstr?: string): Promise<string> {
         const finalPrompt = extraInstr ? `${prompt}\n\nADDITIONAL CONSTRAINTS FROM VERIFIER:\n${extraInstr}` : prompt;
-        // Auto-switch model (gpt-4o → gpt-4o-mini). Previously hardcoded
-        // 'gpt-4o' which 404'd on the active key → "Failed to generate
-        // chapter content" 500 on every chapter open for new users.
-        const c = await oaCreate({
-          messages: [{ role: 'user', content: finalPrompt }],
-          temperature: 0.6,
-          max_tokens: 8000,
-        });
-        return c.choices[0]?.message?.content ?? '';
+        const errors: string[] = [];
+        const ok = (t: string) => t.trim().length > 0;
+
+        // Attempt 1: OpenAI (auto-switch gpt-4o -> gpt-4o-mini). Previously
+        // the only path and hardcoded 'gpt-4o', which 404'd on the active
+        // key -> a 500 on every chapter open for new users.
+        if (openai) {
+          try {
+            const c = await oaCreate({ messages: [{ role: 'user', content: finalPrompt }], temperature: 0.6, max_tokens: 8000 });
+            const text = c.choices[0]?.message?.content ?? '';
+            if (ok(text)) return text;
+            errors.push('OpenAI returned empty content');
+          } catch (err) {
+            errors.push(`OpenAI: ${err instanceof Error ? err.message : String(err)}`);
+            logger.warn('ai.chapter_openai_failed', { error: errors[errors.length - 1] });
+          }
+        } else { errors.push('OPENAI_API_KEY not configured'); }
+
+        // Attempt 2: Groq (resolver-picked model, no hardcode).
+        const groq = await getGroqClient();
+        if (groq) {
+          try {
+            const c = await groq.client.chat.completions.create({ model: groq.model, messages: [{ role: 'user', content: finalPrompt }], temperature: 0.6, max_tokens: 8000 });
+            const text = c.choices[0]?.message?.content ?? '';
+            if (ok(text)) {
+              if (resolver) void resolver.reportModelSuccess('groq', groq.model);
+              return text;
+            }
+            errors.push('Groq returned empty content');
+          } catch (err) {
+            if (resolver) await resolver.reportModelFailure('groq', groq.model, err instanceof Error ? err.message : String(err));
+            errors.push(`Groq: ${err instanceof Error ? err.message : String(err)}`);
+            logger.warn('ai.chapter_groq_failed', { error: errors[errors.length - 1] });
+          }
+        } else { errors.push('GROQ_API_KEY not configured'); }
+
+        // Attempt 3: Gemini.
+        if (env.GEMINI_API_KEY) {
+          try {
+            const r = await callGemini({ prompt: finalPrompt, generationConfig: { temperature: 0.6, maxOutputTokens: 8000 }, tier: 'flash' });
+            if (r.ok && ok(r.text)) return r.text;
+            errors.push(r.ok ? 'Gemini returned empty content' : `Gemini: ${r.error}`);
+          } catch (err) {
+            errors.push(`Gemini: ${err instanceof Error ? err.message : String(err)}`);
+            logger.warn('ai.chapter_gemini_failed', { error: errors[errors.length - 1] });
+          }
+        } else { errors.push('GEMINI_API_KEY not configured'); }
+
+        throw new Error(`All AI providers failed for chapter content: ${errors.join('; ')}`);
       }
 
       try {

@@ -819,6 +819,19 @@ export interface SyllabusFallbackDeps {
 }
 
 /**
+ * A syllabus is only "full" if it has real breadth: multiple subjects and
+ * a few chapters total. This guards against the degenerate stub
+ * (1 subject "General Studies" / 1 chapter "Introduction") ever being
+ * served or cached — whether it came from a stale cache entry or a thin
+ * AI response. When this returns false we regenerate instead.
+ */
+export function isFullSyllabus(s: SyllabusTree | null | undefined): boolean {
+  if (!s || !Array.isArray(s.subjects) || s.subjects.length < 2) return false;
+  const totalChapters = s.subjects.reduce((n, sub) => n + (sub.chapters?.length ?? 0), 0);
+  return totalChapters >= 4;
+}
+
+/**
  * 3-tier syllabus lookup with aggressive Firestore caching.
  * Returns a SyllabusTree or null if completely unable to generate.
  */
@@ -832,12 +845,18 @@ export async function getSyllabusWithFallback(
   if (hardcoded) return hardcoded;
 
   // ─── Check Firestore cache ────────────────────────────────────────────
+  // Only trust a cached syllabus if it's actually full. A thin/stale entry
+  // (e.g. an old 1-subject result cached before this fix) is ignored so the
+  // resilient AI tier below regenerates — and overwrites — a complete one.
   if (deps.db) {
     try {
       const cached = await getFromCache(deps.db, examSlug);
-      if (cached) {
-        deps.logger.info('syllabus.cache_hit', { examSlug, source: cached.source });
+      if (cached && isFullSyllabus(cached.syllabus)) {
+        deps.logger.info('syllabus.cache_hit', { examSlug, source: cached.source, subjects: cached.syllabus.subjects.length });
         return cached.syllabus;
+      }
+      if (cached) {
+        deps.logger.warn('syllabus.cache_thin_ignored', { examSlug, subjects: cached.syllabus.subjects?.length ?? 0 });
       }
     } catch (err) {
       deps.logger.warn('syllabus.cache_read_error', { examSlug, error: err instanceof Error ? err.message : String(err) });
@@ -857,12 +876,18 @@ export async function getSyllabusWithFallback(
       const gen = await deps.aiEngine.generateSyllabus(examSlug, examName, 'intermediate');
       if (gen?.subjects?.length) {
         const tree = generatedToSyllabusTree(examSlug, gen);
-        if (deps.db) await saveToCache(deps.db, examSlug, tree, 'ai_engine', 30);
-        logAdminFallback(deps, examSlug, 'ai_engine', true);
-        deps.logger.info('syllabus.ai_engine_ok', { examSlug, subjects: tree.subjects.length });
-        return tree;
+        // Only accept a FULL syllabus here; a thin result falls through to
+        // the Gemini-search / GPT-4o tiers rather than being cached.
+        if (isFullSyllabus(tree)) {
+          if (deps.db) await saveToCache(deps.db, examSlug, tree, 'ai_engine', 30);
+          logAdminFallback(deps, examSlug, 'ai_engine', true);
+          deps.logger.info('syllabus.ai_engine_ok', { examSlug, subjects: tree.subjects.length });
+          return tree;
+        }
+        deps.logger.warn('syllabus.ai_engine_thin', { examSlug, subjects: tree.subjects.length });
+      } else {
+        deps.logger.warn('syllabus.ai_engine_empty', { examSlug });
       }
-      deps.logger.warn('syllabus.ai_engine_empty', { examSlug });
     } catch (err) {
       deps.logger.error('syllabus.ai_engine_failed', { examSlug, error: err instanceof Error ? err.message : String(err) });
     }
