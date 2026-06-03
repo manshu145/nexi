@@ -5,8 +5,8 @@ import type { Logger } from '../logger.js';
 import type { UserStore } from '../lib/userStore.js';
 import type { AIEngine } from '../lib/aiEngine.js';
 import type { ChapterStore, UserContext } from '../lib/chapterStore.js';
-import { getSyllabus, getSyllabusWithFallback, type SyllabusFallbackDeps } from '../lib/syllabusStore.js';
-import { asISODateTime, asUserId, type SyllabusTree } from '@nexigrate/shared';
+import { getSyllabusWithFallback, type SyllabusFallbackDeps } from '../lib/syllabusStore.js';
+import { asISODateTime, asUserId, EXAM_BY_SLUG, type SyllabusTree } from '@nexigrate/shared';
 import type { Firestore } from 'firebase-admin/firestore';
 import type { Env } from '../env.js';
 import { InMemoryMCQPoolStore, FirestoreMCQPoolStore, type MCQPoolStore } from '../lib/mcqPoolStore.js';
@@ -30,6 +30,12 @@ export interface StudyRoutesDeps {
    * Optional for tests; production wiring in app.ts always supplies it.
    */
   modelResolver?: import('../lib/aiModelResolver.js').AIModelResolver | null;
+}
+
+/** Human-readable exam name from the curated registry, with a slug-derived fallback. */
+function resolveExamName(examSlug: string): string {
+  const info = EXAM_BY_SLUG.get(examSlug as Parameters<typeof EXAM_BY_SLUG.get>[0]);
+  return info?.name ?? examSlug.replace(/-/g, ' ').replace(/\b\w/g, (ch) => ch.toUpperCase());
 }
 
 /**
@@ -85,9 +91,7 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
     const principal = requireAuth(c);
     const examSlug = c.req.param('examSlug');
 
-    const { EXAM_BY_SLUG } = await import('@nexigrate/shared');
-    const examInfo = EXAM_BY_SLUG.get(examSlug as any);
-    const examName = examInfo?.name ?? examSlug.replace(/-/g, ' ').replace(/\b\w/g, (ch: string) => ch.toUpperCase());
+    const examName = resolveExamName(examSlug);
 
     const fallbackDeps: SyllabusFallbackDeps = { env: deps.env, db: deps.db, logger: deps.logger, resolver: deps.modelResolver, aiEngine: deps.aiEngine };
     const baseSyllabus = await getSyllabusWithFallback(examSlug, examName, fallbackDeps);
@@ -349,18 +353,26 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
       creditsAwarded,
     });
 
-    // Determine next chapter (unlock requires a passing score).
-    const syllabus = getSyllabus(exam);
+    // Determine next chapter (unlock requires a passing score). Use the
+    // cache-backed fallback so AI-generated exams (e.g. CGPSC) also resolve
+    // a next chapter, not just hardcoded ones. This is a Firestore cache hit
+    // in the normal case (the syllabus was cached when the study page loaded).
     let nextChapter: string | null = null;
     let unlocked = false;
-    if (syllabus && passed) {
-      const subjectData = syllabus.subjects.find(s => s.slug === subject);
-      if (subjectData) {
-        const currentIdx = subjectData.chapters.findIndex(ch => ch.slug === chapter);
-        if (currentIdx >= 0 && currentIdx < subjectData.chapters.length - 1) {
-          nextChapter = subjectData.chapters[currentIdx + 1]!.slug;
-          unlocked = true;
+    if (passed) {
+      try {
+        const fallbackDeps: SyllabusFallbackDeps = { env: deps.env, db: deps.db, logger: deps.logger, resolver: deps.modelResolver, aiEngine: deps.aiEngine };
+        const syllabus = await getSyllabusWithFallback(exam, resolveExamName(exam), fallbackDeps);
+        const subjectData = syllabus?.subjects.find(s => s.slug === subject);
+        if (subjectData) {
+          const currentIdx = subjectData.chapters.findIndex(ch => ch.slug === chapter);
+          if (currentIdx >= 0 && currentIdx < subjectData.chapters.length - 1) {
+            nextChapter = subjectData.chapters[currentIdx + 1]!.slug;
+            unlocked = true;
+          }
         }
+      } catch (err) {
+        deps.logger.warn('study.next_chapter_lookup_failed', { exam, error: err instanceof Error ? err.message : String(err) });
       }
     }
 
@@ -381,9 +393,12 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
     const principal = requireAuth(c);
     const examSlug = c.req.param('examSlug');
 
+    // Use the cache-backed fallback so analysis works for AI-generated exams
+    // (e.g. CGPSC) too, not only hardcoded ones.
+    const fallbackDeps: SyllabusFallbackDeps = { env: deps.env, db: deps.db, logger: deps.logger, resolver: deps.modelResolver, aiEngine: deps.aiEngine };
     const [progress, syllabus] = await Promise.all([
       deps.chapters.getProgress(principal.userId, examSlug),
-      Promise.resolve(getSyllabus(examSlug)),
+      getSyllabusWithFallback(examSlug, resolveExamName(examSlug), fallbackDeps).catch(() => null),
     ]);
 
     if (!syllabus) {
@@ -449,9 +464,7 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
 
     // Get current syllabus via the full AI fallback (not hardcoded-only) so
     // AI-generated exams like CGPSC also work instead of 404-ing here.
-    const { EXAM_BY_SLUG } = await import('@nexigrate/shared');
-    const examInfo = EXAM_BY_SLUG.get(body.examSlug as any);
-    const examName = examInfo?.name ?? body.examSlug.replace(/-/g, ' ').replace(/\b\w/g, (ch: string) => ch.toUpperCase());
+    const examName = resolveExamName(body.examSlug);
     const fallbackDeps: SyllabusFallbackDeps = { env: deps.env, db: deps.db, logger: deps.logger, resolver: deps.modelResolver, aiEngine: deps.aiEngine };
     const baseSyllabus = await getSyllabusWithFallback(body.examSlug, examName, fallbackDeps);
     const syllabus = await mergeAppendedChapters(deps.db, body.examSlug, baseSyllabus);
