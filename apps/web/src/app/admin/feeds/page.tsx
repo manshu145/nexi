@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '~/lib/auth-context';
 import { getFirebaseAuthClient } from '~/lib/firebase';
+import { INDIAN_STATES } from '@nexigrate/shared';
 
 const API = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com';
 
@@ -13,6 +14,9 @@ interface Feed {
   url: string;
   name: string;
   category: string;
+  /** Optional state/UT slug — when set, items from this feed are tagged
+   *  to that state and only surface in the matching state edition. */
+  state?: string | null;
   isActive: boolean;
   lastFetched: string | null;
   itemsFetched: number;
@@ -24,6 +28,20 @@ interface Feed {
   lastError?: string | null;
   lastSampleTitles?: string[];
 }
+
+/** Admin view of one state/UT toggle row. */
+interface CAStateRow {
+  slug: string;
+  name: string;
+  nameHi: string;
+  isUT: boolean;
+  isLive: boolean;
+}
+
+/** Lookup: state slug -> English name (for the feeds table badge). */
+const STATE_NAME_BY_SLUG: Record<string, string> = Object.fromEntries(
+  INDIAN_STATES.map((s) => [s.slug, s.name]),
+);
 
 /** Compact "x min ago" formatter for the Last fetched column. */
 function timeAgo(iso: string | null): string {
@@ -48,11 +66,18 @@ export default function AdminFeedsPage() {
   const [newUrl, setNewUrl] = useState('');
   const [newName, setNewName] = useState('');
   const [newCategory, setNewCategory] = useState('National');
+  const [newState, setNewState] = useState('');  // '' = National (no state tag)
   const [adding, setAdding] = useState(false);
   const [ingesting, setIngesting] = useState(false);
   const [ingestResult, setIngestResult] = useState<string | null>(null);
   const [testingUrl, setTestingUrl] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
+  // State editions (current affairs). Admin toggles which states students
+  // can pick in the Current Affairs state selector.
+  const [caStates, setCaStates] = useState<CAStateRow[]>([]);
+  const [statesLoading, setStatesLoading] = useState(true);
+  const [savingState, setSavingState] = useState<string | null>(null);
+  const [stateFilter, setStateFilter] = useState('');
   // PR-34a: inline confirm-row state, mirrors the pattern from
   // admin/announcements/page.tsx so the admin doesn't get a native
   // confirm() dialog when deleting a feed.
@@ -79,7 +104,40 @@ export default function AdminFeedsPage() {
     finally { setPageLoading(false); }
   };
 
-  useEffect(() => { if (user) fetchFeeds(); }, [user]);
+  const fetchStates = async () => {
+    try {
+      const token = await getToken();
+      const res = await fetch(`${API}/v1/admin/current-affairs/states`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { states: CAStateRow[] };
+        setCaStates(data.states ?? []);
+      }
+    } catch { /* ignore */ }
+    finally { setStatesLoading(false); }
+  };
+
+  const handleToggleState = async (slug: string, isLive: boolean) => {
+    setSavingState(slug);
+    // Optimistic update — revert on failure.
+    setCaStates(prev => prev.map(s => s.slug === slug ? { ...s, isLive } : s));
+    try {
+      const token = await getToken();
+      const res = await fetch(`${API}/v1/admin/current-affairs/states/${slug}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ isLive }),
+      });
+      if (!res.ok) throw new Error('save failed');
+    } catch {
+      setCaStates(prev => prev.map(s => s.slug === slug ? { ...s, isLive: !isLive } : s));
+    } finally {
+      setSavingState(null);
+    }
+  };
+
+  useEffect(() => { if (user) { fetchFeeds(); fetchStates(); } }, [user]);
 
   const handleTestUrl = async () => {
     if (!newUrl.trim()) return;
@@ -102,17 +160,24 @@ export default function AdminFeedsPage() {
       const res = await fetch(`${API}/v1/admin/feeds`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ url: newUrl, name: newName, category: newCategory.toLowerCase() }),
+        body: JSON.stringify({
+          url: newUrl,
+          name: newName,
+          category: newCategory.toLowerCase(),
+          ...(newState ? { state: newState } : {}),
+        }),
       });
       if (res.ok) {
         const data = (await res.json()) as { id: string };
         setFeeds(prev => [{
           id: data.id, url: newUrl, name: newName, category: newCategory.toLowerCase(),
+          ...(newState ? { state: newState } : {}),
           isActive: true, lastFetched: null, itemsFetched: 0, createdAt: new Date().toISOString(),
         }, ...prev]);
         setNewUrl('');
         setNewName('');
         setNewCategory('National');
+        setNewState('');
         setTestResult(null);
       }
     } catch { /* ignore */ }
@@ -286,6 +351,31 @@ export default function AdminFeedsPage() {
             </div>
           </div>
           <div>
+            <label className="text-xs font-medium text-stone-400">State Edition</label>
+            <select
+              value={newState}
+              onChange={e => setNewState(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-stone-700 bg-stone-950 px-3 py-2 text-sm text-stone-200 focus:border-amber-500 focus:outline-none"
+            >
+              <option value="">🇮🇳 National (no state)</option>
+              <optgroup label="States">
+                {INDIAN_STATES.filter(s => !s.isUT).map(s => (
+                  <option key={s.slug} value={s.slug}>{s.name}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Union Territories">
+                {INDIAN_STATES.filter(s => s.isUT).map(s => (
+                  <option key={s.slug} value={s.slug}>{s.name}</option>
+                ))}
+              </optgroup>
+            </select>
+            <p className="mt-1 text-[11px] text-stone-500">
+              Tag this feed to a state so its news appears only in that state edition.
+              Leave as National for country-wide feeds. Make sure the state is
+              <span className="text-amber-500"> live</span> below for students to see it.
+            </p>
+          </div>
+          <div>
             <label className="text-xs font-medium text-stone-400">RSS URL</label>
             <input
               value={newUrl}
@@ -331,6 +421,7 @@ export default function AdminFeedsPage() {
                 <tr className="border-b border-stone-800">
                   <th className="pb-2 text-left text-xs font-medium text-stone-500">Name</th>
                   <th className="pb-2 text-left text-xs font-medium text-stone-500">Category</th>
+                  <th className="pb-2 text-left text-xs font-medium text-stone-500">State</th>
                   <th className="pb-2 text-left text-xs font-medium text-stone-500">Last fetched</th>
                   <th className="pb-2 text-center text-xs font-medium text-stone-500">Items</th>
                   <th className="pb-2 text-center text-xs font-medium text-stone-500">Result</th>
@@ -349,6 +440,15 @@ export default function AdminFeedsPage() {
                       <span className="inline-flex rounded-full bg-stone-800 px-2 py-0.5 text-xs text-stone-300 capitalize">
                         {feed.category}
                       </span>
+                    </td>
+                    <td className="py-3 align-top">
+                      {feed.state ? (
+                        <span className="inline-flex rounded-full bg-amber-500/15 px-2 py-0.5 text-xs text-amber-400">
+                          {STATE_NAME_BY_SLUG[feed.state] ?? feed.state}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-stone-600">National</span>
+                      )}
                     </td>
                     <td className="py-3 align-top text-stone-400 text-xs whitespace-nowrap" title={feed.lastFetched ?? 'never fetched'}>
                       {timeAgo(feed.lastFetched)}
@@ -427,6 +527,64 @@ export default function AdminFeedsPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+      </section>
+
+      {/* State Editions Manager */}
+      <section className="mt-6 rounded-xl border border-stone-800 bg-stone-900 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="font-serif text-lg font-semibold text-stone-100">🗺️ State Editions</h2>
+            <p className="mt-1 text-sm text-stone-500">
+              Toggle which states students can pick in the Current Affairs state selector.
+              Only <span className="text-amber-500">live</span> states appear on the app.
+            </p>
+          </div>
+          <span className="rounded-full bg-amber-500/15 px-3 py-1 text-xs font-medium text-amber-400">
+            {caStates.filter(s => s.isLive).length} live
+          </span>
+        </div>
+
+        <input
+          value={stateFilter}
+          onChange={e => setStateFilter(e.target.value)}
+          placeholder="Search state…"
+          className="mt-4 w-full rounded-lg border border-stone-700 bg-stone-950 px-3 py-2 text-sm text-stone-100 placeholder-stone-600 focus:border-amber-500 focus:outline-none sm:max-w-xs"
+        />
+
+        {statesLoading ? (
+          <div className="mt-4 h-24 rounded bg-stone-800 animate-pulse" />
+        ) : (
+          <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {caStates
+              .filter(s =>
+                !stateFilter.trim() ||
+                s.name.toLowerCase().includes(stateFilter.toLowerCase()) ||
+                s.nameHi.includes(stateFilter),
+              )
+              .map(s => (
+                <button
+                  key={s.slug}
+                  onClick={() => handleToggleState(s.slug, !s.isLive)}
+                  disabled={savingState === s.slug}
+                  className={`flex items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition-colors disabled:opacity-50 ${
+                    s.isLive
+                      ? 'border-amber-500/40 bg-amber-500/10 text-stone-100'
+                      : 'border-stone-800 bg-stone-950 text-stone-400 hover:border-stone-700'
+                  }`}
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{s.name}</span>
+                    <span className="block truncate text-[11px] text-stone-500">{s.nameHi}{s.isUT ? ' · UT' : ''}</span>
+                  </span>
+                  <span className={`ml-2 flex-shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                    s.isLive ? 'bg-amber-500/20 text-amber-400' : 'bg-stone-800 text-stone-500'
+                  }`}>
+                    {savingState === s.slug ? '…' : s.isLive ? '🟢 Live' : '⚪ Off'}
+                  </span>
+                </button>
+              ))}
           </div>
         )}
       </section>

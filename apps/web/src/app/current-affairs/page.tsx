@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '~/lib/auth-context';
-import { api, type CurrentAffairsItem } from '~/lib/api';
+import { api, type CurrentAffairsItem, type CAStateOption } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 import { Skeleton } from '~/components/Skeleton';
 import { AILoader } from '~/components/ui/AILoader';
@@ -49,6 +49,11 @@ export default function CurrentAffairsShortsPage() {
   const router = useRouter();
   const [items, setItems] = useState<CurrentAffairsItem[]>([]);
   const [activeTab, setActiveTab] = useState('all');
+  // State editions: 'national' (default, items without a state tag) or a
+  // state slug. The selector only renders when the admin has marked at
+  // least one state live, so national-only deployments are unchanged.
+  const [states, setStates] = useState<CAStateOption[]>([]);
+  const [activeState, setActiveState] = useState('national');
   const [currentIdx, setCurrentIdx] = useState(0);
   const [pageLoading, setPageLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -60,23 +65,42 @@ export default function CurrentAffairsShortsPage() {
 
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
 
+  // Fetch the live state editions once. Empty list = national-only, in
+  // which case the selector stays hidden and nothing changes for users.
   useEffect(() => {
     if (!user) return;
     (async () => {
       try {
+        const res = await api.getCurrentAffairsStates();
+        setStates(res.states ?? []);
+      } catch { /* selector simply stays hidden */ }
+    })();
+  }, [user]);
+
+  // Load the feed for the active state edition. Re-runs when the user
+  // switches state. National (default) passes state='national' which the
+  // API maps to "items without a state tag" — i.e. the original feed.
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    setPageLoading(true);
+    (async () => {
+      try {
         const lang = (localStorage.getItem('nexigrate-language') as 'en' | 'hi') || 'en';
-        const res = await api.getCurrentAffairs(lang);
+        const res = await api.getCurrentAffairs(lang, activeState);
+        if (cancelled) return;
         setItems(res.items);
         if (res.userLikes) setUserLikes(new Set(res.userLikes));
         if (res.userBookmarks) setUserBookmarks(new Set(res.userBookmarks));
         if (res.likeCounts) setLikeCounts(res.likeCounts);
         // PR-34b (audit #36): drop the `as any` cast — the field is now
         // typed on CurrentAffairsResponse so the optional read is safe.
-        if (res.isFromYesterday) setIsFromYesterday(true);
-      } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load'); }
-      finally { setPageLoading(false); }
+        setIsFromYesterday(Boolean(res.isFromYesterday));
+      } catch (e) { if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load'); }
+      finally { if (!cancelled) setPageLoading(false); }
     })();
-  }, [user]);
+    return () => { cancelled = true; };
+  }, [user, activeState]);
 
   const filtered = activeTab === 'all' ? items : items.filter(i => i.category === activeTab);
 
@@ -121,11 +145,11 @@ export default function CurrentAffairsShortsPage() {
     return () => window.removeEventListener('keydown', handler);
   }, [currentIdx, scrollToIndex]);
 
-  // Reset to top when category changes.
+  // Reset to top when category or state edition changes.
   useEffect(() => {
     setCurrentIdx(0);
     if (scrollerRef.current) scrollerRef.current.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
-  }, [activeTab]);
+  }, [activeTab, activeState]);
 
   const handleLike = async (id: string) => {
     try {
@@ -208,6 +232,39 @@ export default function CurrentAffairsShortsPage() {
           </div>
         </div>
       </header>
+
+      {/* State edition selector — only shown when admin has enabled at
+          least one state, so the default national feed is unchanged. */}
+      {states.length > 0 && (
+        <div className="relative z-20 px-3 pt-1 flex items-center gap-2">
+          <span className="flex-shrink-0 text-[11px] font-semibold uppercase tracking-wide text-muted-500">📍 Edition</span>
+          <div className="flex gap-2 overflow-x-auto scrollbar-hide">
+            <button
+              onClick={() => setActiveState('national')}
+              className={`flex-shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium transition-all active:scale-95 ${
+                activeState === 'national'
+                  ? 'bg-ember-500 text-paper-50 shadow-sm'
+                  : 'bg-paper-50 text-ink-700 border border-line hover:bg-paper-300'
+              }`}
+            >
+              🇮🇳 National
+            </button>
+            {states.map(s => (
+              <button
+                key={s.slug}
+                onClick={() => setActiveState(s.slug)}
+                className={`flex-shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium transition-all active:scale-95 ${
+                  activeState === s.slug
+                    ? 'bg-ember-500 text-paper-50 shadow-sm'
+                    : 'bg-paper-50 text-ink-700 border border-line hover:bg-paper-300'
+                }`}
+              >
+                {getLang() === 'hi' ? s.nameHi : s.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Category pills — below heading like news websites */}
       <div className="relative z-20 px-3 pb-2 pt-1 flex gap-2 overflow-x-auto scrollbar-hide">

@@ -88,6 +88,10 @@ export interface CurrentAffairsItem {
   /** Real article image URL extracted from the source RSS feed, if any.
    *  The reel/detail UI falls back to a category stock image when absent. */
   imageUrl?: string;
+  /** Indian state/UT slug (see INDIAN_STATES) when this item is a
+   *  region-specific story. Absent / undefined = national (the default).
+   *  Inherited from the source feed's `state` tag at ingestion time. */
+  state?: string;
 }
 
 export interface CurrentAffairsVerifierScore {

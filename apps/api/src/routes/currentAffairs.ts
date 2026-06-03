@@ -7,6 +7,7 @@ import type { AIEngine } from '../lib/aiEngine.js';
 import type { CurrentAffairsStore } from '../lib/currentAffairsStore.js';
 import type { Env } from '../env.js';
 import { ingestCurrentAffairs } from '../lib/rssIngestion.js';
+import { INDIAN_STATES } from '@nexigrate/shared';
 
 /**
  * Deduplicate current affairs items by normalized headline.
@@ -64,6 +65,21 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
       try { winner = await deps.currentAffairs.getYesterdayWinner(); } catch (e) { deps.logger.error('ca.getWinner_error', { error: String(e) }); }
 
       items = deduplicateItems(items);
+
+      // State edition filter. The state selector on the client sends:
+      //   • no param / 'all'  → show everything (back-compat default)
+      //   • 'national'        → only items WITHOUT a state tag
+      //   • <state-slug>      → only items tagged to that state
+      // National items (no `state` field) are the historical default, so
+      // an old client that never sends `state` keeps seeing the full feed.
+      const stateParam = c.req.query('state');
+      if (stateParam && stateParam !== 'all') {
+        if (stateParam === 'national') {
+          items = items.filter((it: any) => !it.state);
+        } else {
+          items = items.filter((it: any) => it.state === stateParam);
+        }
+      }
 
       // 30-min refresh check: trigger background re-ingestion if stale
       try {
@@ -236,6 +252,25 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
     const principal = requireAuth(c);
     const bookmarks = await deps.currentAffairs.getUserBookmarks(principal.userId);
     return c.json({ bookmarks });
+  });
+
+  // GET /v1/current-affairs/states — live state editions for the selector.
+  // Returns ONLY the states the admin has marked live (currentAffairsConfig/
+  // states). The client always prepends a "National" option itself, so an
+  // empty list here simply means "national only" — the pre-existing
+  // behaviour. Defined BEFORE the '/:id' route so 'states' isn't captured
+  // as an article id.
+  app.get('/states', async (c) => {
+    requireAuth(c);
+    let liveSlugs: string[] = [];
+    try { liveSlugs = await deps.currentAffairs.getLiveStates(); }
+    catch (e) { deps.logger.warn('ca.live_states_error', { error: String(e) }); }
+    const live = new Set(liveSlugs);
+    // Preserve INDIAN_STATES order; map to public shape.
+    const states = INDIAN_STATES
+      .filter((s) => live.has(s.slug))
+      .map((s) => ({ slug: s.slug, name: s.name, nameHi: s.nameHi, isUT: s.isUT }));
+    return c.json({ states });
   });
 
   // GET /v1/current-affairs/:id — single item detail

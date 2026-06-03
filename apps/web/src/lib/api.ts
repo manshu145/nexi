@@ -1,5 +1,5 @@
 'use client';
-import type { ExamSlug } from '@nexigrate/shared';
+import type { ExamSlug, PYQPaper, PYQPaperSummary } from '@nexigrate/shared';
 import { getFirebaseAuthClient } from './firebase';
 
 const API = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com';
@@ -136,7 +136,14 @@ export const api = {
   async getStudyProgress(examSlug: string) { return (await authedFetch(`/v1/study/progress/${examSlug}`)).json() as Promise<{progress:StudyProgress}>; },
 
   // Current Affairs
-  async getCurrentAffairs(lang: 'en' | 'hi' = 'en') { return (await authedFetch(`/v1/current-affairs?lang=${lang}`)).json() as Promise<CurrentAffairsResponse>; },
+  async getCurrentAffairs(lang: 'en' | 'hi' = 'en', state?: string) {
+    const params = new URLSearchParams({ lang });
+    if (state) params.set('state', state);
+    return (await authedFetch(`/v1/current-affairs?${params.toString()}`)).json() as Promise<CurrentAffairsResponse>;
+  },
+  async getCurrentAffairsStates() {
+    return (await authedFetch('/v1/current-affairs/states')).json() as Promise<{ states: CAStateOption[] }>;
+  },
   async getCurrentAffairsDetail(id: string, lang: 'en' | 'hi' = 'en') { return (await authedFetch(`/v1/current-affairs/${id}?lang=${lang}`)).json() as Promise<{item: CurrentAffairsItem}>; },
   async toggleNewsLike(id: string) { return (await authedFetch(`/v1/current-affairs/${id}/like`, { method: 'POST' })).json() as Promise<{liked: boolean; count: number}>; },
   async toggleNewsBookmark(id: string) { return (await authedFetch(`/v1/current-affairs/${id}/bookmark`, { method: 'POST' })).json() as Promise<{bookmarked: boolean}>; },
@@ -339,6 +346,38 @@ export const api = {
         score: number|null; percentage: number|null; durationMinutes: number;
       }>;
     }>;
+  },
+
+  // ─── Previous Year Questions (PYQ) ──────────────────────────────────────
+  /** Available year-papers for an exam (auto-seeds the latest year server-side). */
+  async getPYQYears(examSlug: string, lang: 'en' | 'hi' = 'en') {
+    return (await authedFetch(`/v1/pyq/${encodeURIComponent(examSlug)}?lang=${lang}`)).json() as Promise<{
+      examSlug: string; examName: string; years: PYQPaperSummary[];
+    }>;
+  },
+  /** Full paper for an exam + year (generated + cached on demand). */
+  async getPYQPaper(examSlug: string, year: number, lang: 'en' | 'hi' = 'en', opts?: { signal?: AbortSignal }) {
+    return (await authedFetch(`/v1/pyq/${encodeURIComponent(examSlug)}/${year}?lang=${lang}`, {
+      ...(opts?.signal ? { signal: opts.signal } : {}),
+    })).json() as Promise<{ paper: PYQPaper }>;
+  },
+  // Admin curation
+  async adminListPYQ() {
+    return (await authedFetch('/v1/pyq/admin/all')).json() as Promise<{ papers: PYQPaperSummary[] }>;
+  },
+  async adminGeneratePYQ(input: { examSlug: string; year?: number; language?: 'en' | 'hi'; force?: boolean }, opts?: { signal?: AbortSignal }) {
+    return (await authedFetch('/v1/pyq/admin/generate', {
+      method: 'POST', body: JSON.stringify(input),
+      ...(opts?.signal ? { signal: opts.signal } : {}),
+    })).json() as Promise<{ paper: PYQPaper }>;
+  },
+  async adminUpdatePYQ(id: string, patch: Partial<Pick<PYQPaper, 'questions' | 'verified' | 'source' | 'note'>>) {
+    return (await authedFetch(`/v1/pyq/admin/${encodeURIComponent(id)}`, {
+      method: 'PUT', body: JSON.stringify(patch),
+    })).json() as Promise<{ paper: PYQPaper }>;
+  },
+  async adminDeletePYQ(id: string) {
+    return (await authedFetch(`/v1/pyq/admin/${encodeURIComponent(id)}`, { method: 'DELETE' })).json() as Promise<{ success: boolean }>;
   },
 
   // Session tracking
@@ -560,9 +599,10 @@ export const api = {
   },
 };
 
-export interface CurrentAffairsItem { id: string; headline: string; body: string; category: string; sources: string[]; summary: string; factChecked: boolean; date: string; publishedAt: string; imageUrl?: string; }
+export interface CurrentAffairsItem { id: string; headline: string; body: string; category: string; sources: string[]; summary: string; factChecked: boolean; date: string; publishedAt: string; imageUrl?: string; state?: string; }
 export interface LeaderboardEntry { userId: string; userName: string; score: number; timeTaken: number; date: string; }
 export interface CurrentAffairsResponse { date: string; items: CurrentAffairsItem[]; yesterdayWinner: LeaderboardEntry | null; userLikes?: string[]; userBookmarks?: string[]; likeCounts?: Record<string, number>; isFromYesterday?: boolean; }
+export interface CAStateOption { slug: string; name: string; nameHi: string; isUT: boolean; }
 export interface QuizSubmitResult { score: number; correct: number; total: number; timeTaken: number; rank: number; }
 export interface LeaderboardResponse { date: string; leaderboard: LeaderboardEntry[]; yesterdayWinner: LeaderboardEntry | null; }
 
