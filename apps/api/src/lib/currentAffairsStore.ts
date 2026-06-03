@@ -28,6 +28,23 @@ export interface LeaderboardEntry {
   date: string;
 }
 
+/**
+ * Async ingestion job status. Persisted on the `system/ingestionStatus`
+ * doc alongside `lastIngestedAt`, so the admin "Ingest now" button can
+ * kick the job off in the background and poll for progress instead of
+ * blocking a 60-150s HTTP request (which used to time out on slow-AI
+ * runs and made the button feel broken).
+ */
+export interface IngestStatus {
+  state: 'idle' | 'running' | 'error';
+  startedAt: string | null;
+  finishedAt: string | null;
+  fetched: number | null;
+  saved: number | null;
+  error: string | null;
+  lastIngestedAt: string | null;
+}
+
 export interface CurrentAffairsStore {
   getTodayItems(date: string): Promise<CurrentAffairsStoreItem[]>;
   getItemById(date: string, itemId: string): Promise<CurrentAffairsStoreItem | null>;
@@ -54,7 +71,17 @@ export interface CurrentAffairsStore {
   /** Get the list of state/UT slugs the admin has marked "live" for the
    *  Current Affairs state selector. Empty = national-only (default). */
   getLiveStates(): Promise<string[]>;
+  /** Read the current/last ingestion job status (for async "Ingest now"). */
+  getIngestStatus(): Promise<IngestStatus>;
+  /** Merge a partial patch into the ingestion job status. */
+  setIngestStatus(patch: Partial<IngestStatus>): Promise<void>;
 }
+
+/** Default status when nothing has run yet. */
+export const DEFAULT_INGEST_STATUS: IngestStatus = {
+  state: 'idle', startedAt: null, finishedAt: null,
+  fetched: null, saved: null, error: null, lastIngestedAt: null,
+};
 
 // ---------- in-memory implementation ----------------------------------------
 
@@ -153,6 +180,12 @@ export class InMemoryCurrentAffairsStore implements CurrentAffairsStore {
 
   private liveStates: string[] = [];
   async getLiveStates() { return this.liveStates; }
+
+  private ingestStatus: IngestStatus = { ...DEFAULT_INGEST_STATUS };
+  async getIngestStatus() { return { ...this.ingestStatus }; }
+  async setIngestStatus(patch: Partial<IngestStatus>) {
+    this.ingestStatus = { ...this.ingestStatus, ...patch };
+  }
 }
 
 // ---------- firestore implementation ----------------------------------------
@@ -354,5 +387,27 @@ export class FirestoreCurrentAffairsStore implements CurrentAffairsStore {
       const raw = snap.exists ? (snap.data()?.liveStates as unknown) : null;
       return Array.isArray(raw) ? raw.filter((s): s is string => typeof s === 'string') : [];
     } catch { return []; }
+  }
+
+  async getIngestStatus(): Promise<IngestStatus> {
+    try {
+      const snap = await this.db.collection('system').doc('ingestionStatus').get();
+      const d = snap.exists ? snap.data() : null;
+      return {
+        state: (d?.state as IngestStatus['state']) ?? 'idle',
+        startedAt: d?.startedAt ?? null,
+        finishedAt: d?.finishedAt ?? null,
+        fetched: typeof d?.fetched === 'number' ? d.fetched : null,
+        saved: typeof d?.saved === 'number' ? d.saved : null,
+        error: d?.error ?? null,
+        lastIngestedAt: d?.lastIngestedAt ?? null,
+      };
+    } catch { return { ...DEFAULT_INGEST_STATUS }; }
+  }
+
+  async setIngestStatus(patch: Partial<IngestStatus>): Promise<void> {
+    try {
+      await this.db.collection('system').doc('ingestionStatus').set(patch, { merge: true });
+    } catch { /* status write is best-effort; never block ingestion */ }
   }
 }
