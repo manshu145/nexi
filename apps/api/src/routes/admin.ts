@@ -979,52 +979,64 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
   });
 
   app.post('/feeds/ingest-now', async (c) => {
-    // PR-33 fix: pre-PR-33 this endpoint logged a success message and
-    // returned without actually running ingestion. The admin's "Ingest
-    // now" button was therefore decorative -- the only path that ever
-    // populated the news collection was the 4-hour Cloud Scheduler
-    // cron at POST /v1/current-affairs/ingest. The founder reported
-    // this as "feeds Admin ke through krne ka baat hua tha vo abhi tak
-    // nhi hua".
+    // Async ingestion (replaces the old await-the-whole-thing handler).
     //
-    // We now thread the same dependencies the cron uses (currentAffairs
-    // store, aiEngine, modelResolver) into the admin route bag and call
-    // the real ingestion function in-process. The call is awaited (not
-    // fire-and-forget) so the admin sees a real result -- "ingested 17
-    // items" or an error message -- instead of an immediate green tick
-    // followed by silence.
+    // Why: ingestion does RSS fetch + multi-batch AI summarisation +
+    // Hindi translation, which takes 60-150s. The old handler awaited
+    // all of it inside the HTTP request, so on slow-AI runs the client's
+    // 150s timeout (and any proxy timeout) fired and the admin saw
+    // "cancelled / network error" even though it was fine — the founder's
+    // "kabhi kabhi kaam nhi karta, fir kaam hi nhi karta" report.
+    //
+    // Now the button kicks the job off in the BACKGROUND (same
+    // fire-and-forget pattern the GET /v1/current-affairs 30-min
+    // auto-refresh already uses) and returns instantly. The admin UI
+    // polls GET /feeds/ingest-status for progress + the final counts.
     if (!deps.currentAffairs || !deps.aiEngine) {
       throw new HTTPException(503, {
         message: 'Ingestion subsystem is not wired into this build (currentAffairs store or AI engine missing).',
       });
     }
-    deps.logger.info('admin.manual_ingest_triggered');
-    try {
-      const { ingestCurrentAffairs } = await import('../lib/rssIngestion.js');
-      // modelResolver is part of the resolver pipeline (PR-29). Pass it
-      // through so the ingestion uses the auto-resolver chain rather
-      // than hardcoded model names.
-      const result = await ingestCurrentAffairs(
-        deps.currentAffairs,
-        deps.env,
-        deps.logger,
-        deps.aiEngine,
-        deps.modelResolver,
-      );
-      await deps.currentAffairs.setLastIngestedAt(new Date().toISOString());
-      deps.logger.info('admin.manual_ingest_done', { result });
-      return c.json({
-        success: true,
-        message: `Ingestion complete — ${result.saved} items saved (out of ${result.fetched} fetched)`,
-        ...result,
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      deps.logger.error('admin.manual_ingest_failed', { error: msg });
-      throw new HTTPException(500, {
-        message: `Ingestion failed: ${msg}`,
-      });
+    const ca = deps.currentAffairs;
+    const aiEngine = deps.aiEngine;
+
+    // Don't stack jobs: if one started under 10 min ago and is still
+    // flagged running, treat the click as a no-op and report it.
+    const current = await ca.getIngestStatus();
+    const STALE_MS = 10 * 60 * 1000;
+    if (current.state === 'running' && current.startedAt && (Date.now() - Date.parse(current.startedAt)) < STALE_MS) {
+      return c.json({ started: false, alreadyRunning: true, message: 'Ingestion is already running — watch the status.' });
     }
+
+    const startedAt = new Date().toISOString();
+    await ca.setIngestStatus({ state: 'running', startedAt, finishedAt: null, fetched: null, saved: null, error: null });
+    deps.logger.info('admin.manual_ingest_triggered');
+
+    // Fire-and-forget. NOT awaited, so the HTTP response returns now.
+    void (async () => {
+      try {
+        const { ingestCurrentAffairs } = await import('../lib/rssIngestion.js');
+        const result = await ingestCurrentAffairs(ca, deps.env, deps.logger, aiEngine, deps.modelResolver);
+        const finishedAt = new Date().toISOString();
+        await ca.setIngestStatus({
+          state: 'idle', finishedAt, fetched: result.fetched, saved: result.saved, error: null, lastIngestedAt: finishedAt,
+        });
+        deps.logger.info('admin.manual_ingest_done', { result });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        await ca.setIngestStatus({ state: 'error', finishedAt: new Date().toISOString(), error: msg.slice(0, 300) });
+        deps.logger.error('admin.manual_ingest_failed', { error: msg });
+      }
+    })();
+
+    return c.json({ started: true, message: 'Ingestion started in the background. Watch the status for progress.' });
+  });
+
+  // GET /feeds/ingest-status — poll the background ingestion job.
+  app.get('/feeds/ingest-status', async (c) => {
+    if (!deps.currentAffairs) return c.json({ status: null });
+    const status = await deps.currentAffairs.getIngestStatus();
+    return c.json({ status });
   });
 
   // ━━━ CURRENT AFFAIRS — STATE EDITIONS ━━━
