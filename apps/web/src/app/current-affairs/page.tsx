@@ -49,11 +49,12 @@ export default function CurrentAffairsShortsPage() {
   const router = useRouter();
   const [items, setItems] = useState<CurrentAffairsItem[]>([]);
   const [activeTab, setActiveTab] = useState('all');
-  // State editions: 'national' (default, items without a state tag) or a
-  // state slug. The selector only renders when the admin has marked at
-  // least one state live, so national-only deployments are unchanged.
+  // State editions: 'all' (default — national + every live state's news),
+  // 'national' (only untagged items), or a specific state slug. The
+  // selector only renders when the admin has marked at least one state
+  // live, so national-only deployments are visually unchanged.
   const [states, setStates] = useState<CAStateOption[]>([]);
-  const [activeState, setActiveState] = useState('national');
+  const [activeState, setActiveState] = useState('all');
   const [currentIdx, setCurrentIdx] = useState(0);
   const [pageLoading, setPageLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -240,6 +241,16 @@ export default function CurrentAffairsShortsPage() {
           <span className="flex-shrink-0 text-[11px] font-semibold uppercase tracking-wide text-muted-500">📍 Edition</span>
           <div className="flex gap-2 overflow-x-auto scrollbar-hide">
             <button
+              onClick={() => setActiveState('all')}
+              className={`flex-shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium transition-all active:scale-95 ${
+                activeState === 'all'
+                  ? 'bg-ember-500 text-paper-50 shadow-sm'
+                  : 'bg-paper-50 text-ink-700 border border-line hover:bg-paper-300'
+              }`}
+            >
+              🗞️ {getLang() === 'hi' ? 'सभी' : 'All'}
+            </button>
+            <button
               onClick={() => setActiveState('national')}
               className={`flex-shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium transition-all active:scale-95 ${
                 activeState === 'national'
@@ -247,7 +258,7 @@ export default function CurrentAffairsShortsPage() {
                   : 'bg-paper-50 text-ink-700 border border-line hover:bg-paper-300'
               }`}
             >
-              🇮🇳 National
+              🇮🇳 {getLang() === 'hi' ? 'राष्ट्रीय' : 'National'}
             </button>
             {states.map(s => (
               <button

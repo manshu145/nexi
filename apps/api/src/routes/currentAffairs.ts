@@ -67,18 +67,25 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
       items = deduplicateItems(items);
 
       // State edition filter. The state selector on the client sends:
-      //   • no param / 'all'  → show everything (back-compat default)
-      //   • 'national'        → only items WITHOUT a state tag
-      //   • <state-slug>      → only items tagged to that state
-      // National items (no `state` field) are the historical default, so
-      // an old client that never sends `state` keeps seeing the full feed.
+      //   • 'all' / no param → national items + items from LIVE state
+      //     editions (so a state's news surfaces as soon as the admin
+      //     enables it — this is the default the app now uses)
+      //   • 'national'       → only items WITHOUT a state tag
+      //   • <state-slug>     → only items tagged to that state
+      // Items tagged to a state that is NOT live stay hidden everywhere,
+      // so the admin's "live" toggle is the single gate that controls
+      // whether a state edition's news reaches students.
       const stateParam = c.req.query('state');
-      if (stateParam && stateParam !== 'all') {
-        if (stateParam === 'national') {
-          items = items.filter((it: any) => !it.state);
-        } else {
-          items = items.filter((it: any) => it.state === stateParam);
-        }
+      if (stateParam === 'national') {
+        items = items.filter((it: any) => !it.state);
+      } else if (stateParam && stateParam !== 'all') {
+        items = items.filter((it: any) => it.state === stateParam);
+      } else {
+        // 'all' or no param → national + live-state news only.
+        let live = new Set<string>();
+        try { live = new Set(await deps.currentAffairs.getLiveStates()); }
+        catch (e) { deps.logger.warn('ca.live_states_filter_error', { error: String(e) }); }
+        items = items.filter((it: any) => !it.state || live.has(it.state));
       }
 
       // 30-min refresh check: trigger background re-ingestion if stale
