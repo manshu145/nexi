@@ -756,22 +756,25 @@ export function getAllSyllabusExams(): string[] {
 
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 3-TIER SYLLABUS FALLBACK SYSTEM
-// Tier 1: Hardcoded (instant, official)
-// Tier 2: Gemini Pro + Google Search grounding (verified via web)
-// Tier 3: GPT-4o fallback (less reliable)
+// SYLLABUS FALLBACK SYSTEM
+// Tier 1: Hardcoded (instant, official curated set)
+// Tier 2: Resilient AI engine — Groq -> OpenAI -> Gemini auto-switch (primary AI path)
+// Tier 3: Gemini Pro + Google Search grounding (web-verified source URL)
+// Tier 4: GPT-4o(-mini) fallback
+// Last resort: minimal stub
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 import type { Firestore } from 'firebase-admin/firestore';
 import OpenAI from 'openai';
 import type { Env } from '../env.js';
 import type { Logger } from '../logger.js';
+import type { AIEngine, GeneratedSyllabus } from './aiEngine.js';
 
 interface SyllabusCacheDoc {
   syllabus: SyllabusTree;
   createdAt: string;
   ttlDays: number;
-  source: 'gemini_search' | 'gpt4o_fallback';
+  source: 'ai_engine' | 'gemini_search' | 'gpt4o_fallback';
 }
 
 const SYLLABUS_JSON_FORMAT = `{
@@ -795,6 +798,14 @@ export interface SyllabusFallbackDeps {
   env: Env;
   db: Firestore | null;
   logger: Logger;
+  /**
+   * Resilient AI engine (Groq -> OpenAI -> Gemini auto-switch). When
+   * supplied, syllabus generation goes through `aiEngine.generateSyllabus`
+   * as the PRIMARY AI tier — the same multi-provider chain chat/chapter
+   * generation use — so a single Gemini 429 no longer drops the user to
+   * the minimal "General Studies / Introduction" stub. Optional for tests.
+   */
+  aiEngine?: AIEngine | null;
   /**
    * Optional auto-resolver (PR-29). When supplied, the gemini-pro
    * Search-grounded call uses the resolver to pick the topmost
@@ -833,7 +844,31 @@ export async function getSyllabusWithFallback(
     }
   }
 
-  // ─── TIER 2: Gemini Pro + Google Search grounding ─────────────────────
+  // ─── TIER 2: Resilient AI engine (PRIMARY AI path) ────────────────────
+  // Groq -> OpenAI -> Gemini auto-switch with robust JSON parsing — the
+  // same chain chat/chapter generation use. This replaces the single
+  // flaky Gemini-search call as the first AI attempt, so a transient
+  // Gemini 429 no longer drops the user to the minimal stub. The prompt
+  // explicitly demands real exam-specific subjects (not generic "General
+  // Studies"), which fixes exams like CGPSC showing only 1 subject.
+  if (deps.aiEngine) {
+    try {
+      deps.logger.info('syllabus.ai_engine_attempt', { examSlug, examName });
+      const gen = await deps.aiEngine.generateSyllabus(examSlug, examName, 'intermediate');
+      if (gen?.subjects?.length) {
+        const tree = generatedToSyllabusTree(examSlug, gen);
+        if (deps.db) await saveToCache(deps.db, examSlug, tree, 'ai_engine', 30);
+        logAdminFallback(deps, examSlug, 'ai_engine', true);
+        deps.logger.info('syllabus.ai_engine_ok', { examSlug, subjects: tree.subjects.length });
+        return tree;
+      }
+      deps.logger.warn('syllabus.ai_engine_empty', { examSlug });
+    } catch (err) {
+      deps.logger.error('syllabus.ai_engine_failed', { examSlug, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  // ─── TIER 3: Gemini Pro + Google Search grounding ─────────────────────
   // Auto-resolver path (PR-29): when wired, the resolver picks the
   // topmost-currently-working model in the gemini PRO chain. Falls
   // back to env-key + hardcoded gemini-1.5-pro if no resolver, so
@@ -869,7 +904,7 @@ export async function getSyllabusWithFallback(
     }
   }
 
-  // ─── TIER 3: GPT-4o fallback ──────────────────────────────────────────
+  // ─── TIER 4: GPT-4o fallback ──────────────────────────────────────────
   if (deps.env.OPENAI_API_KEY && deps.env.OPENAI_API_KEY.length > 5) {
     try {
       deps.logger.info('syllabus.gpt4o_fallback_attempt', { examSlug, examName });
@@ -987,6 +1022,29 @@ ${SYLLABUS_JSON_FORMAT}`;
   return parsed;
 }
 
+/** Convert the AI engine's GeneratedSyllabus into a SyllabusTree. */
+function generatedToSyllabusTree(examSlug: string, gen: GeneratedSyllabus): SyllabusTree {
+  return {
+    exam: asExamSlug(examSlug),
+    examName: gen.examName || examSlug,
+    sourceUrl: '',
+    lastVerified: new Date().toISOString().split('T')[0]!,
+    subjects: gen.subjects.map((s) => ({
+      slug: s.slug,
+      name: s.name,
+      nameHi: s.nameHi ?? s.name,
+      icon: s.icon ?? '📚',
+      chapters: s.chapters.map((ch, i) => ({
+        slug: ch.slug,
+        name: ch.name,
+        nameHi: ch.nameHi ?? ch.name,
+        order: ch.order ?? i + 1,
+        estimatedMinutes: ch.estimatedMinutes ?? 40,
+      })),
+    })),
+  };
+}
+
 function geminiResultToSyllabusTree(examSlug: string, result: GeminiSyllabusResult): SyllabusTree {
   return {
     exam: asExamSlug(examSlug),
@@ -1025,7 +1083,7 @@ async function saveToCache(
   db: Firestore,
   examSlug: string,
   syllabus: SyllabusTree,
-  source: 'gemini_search' | 'gpt4o_fallback',
+  source: 'ai_engine' | 'gemini_search' | 'gpt4o_fallback',
   ttlDays: number,
 ): Promise<void> {
   const doc: SyllabusCacheDoc = {
