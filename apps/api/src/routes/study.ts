@@ -311,8 +311,10 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
     // Two distinct earn sources, both idempotent on `(userId, exam/subject/chapter)`:
     //   1. chapter_complete -- granted once per chapter regardless of score,
     //      so genuine engagement is rewarded even when the quiz is hard.
-    //   2. mcq_pass         -- additionally granted when score >= 70%, the
-    //      founder-locked passing threshold for credit awards.
+    //   2. mcq_pass         -- additionally granted when score >= 80%, the
+    //      founder-locked passing threshold (same 80% gate the frontend uses
+    //      to unlock the next chapter and that chapterStore uses to mark a
+    //      chapter completed — kept consistent so "pass" means one thing).
     //
     // Amounts are read from platformConfig (admin-editable); the locked PR-03
     // defaults stay as the fallback if no override is configured. Replays of
@@ -331,7 +333,12 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
     });
     if (completeResult.kind === 'awarded') creditsAwarded += completeResult.event.amount;
 
-    const passed = score >= 70;
+    // 80% is the single passing threshold across the app: it gates the
+    // mcq_pass credit, the next-chapter unlock below, the frontend lock UI,
+    // and chapterStore's completedChapters. (Was 70% here, which let a 70-79%
+    // quiz award "pass" + claim unlock while the frontend still showed the
+    // next chapter locked — the mismatch this aligns.)
+    const passed = score >= 80;
     if (passed) {
       const passResult = await deps.ledger.award({
         userId: asUserId(principal.userId),
