@@ -238,12 +238,8 @@ export default function DashboardPage() {
         </button>
       </section>
 
-      {/* Core features — Current Affairs · Nexi AI · Mock Tests · PYQ.
-          PR (PYQ launch): promoted Mock Tests + PYQ from the small
-          quick-action chips into first-class feature cards so the two
-          test-prep surfaces sit alongside Current Affairs + Nexi AI.
-          2-up on phones, 4-up on laptops. */}
-      <section className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {/* Two Action Cards - Current Affairs + Nexi AI */}
+      <section className="mt-3 grid grid-cols-2 gap-3">
         <button
           type="button"
           onClick={() => router.push('/current-affairs')}
@@ -277,42 +273,17 @@ export default function DashboardPage() {
             <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="group-hover:translate-x-0.5 transition-transform"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
           </div>
         </button>
-
-        <button
-          type="button"
-          onClick={() => router.push('/mock-tests')}
-          className="paper-card card-selectable p-5 text-left animate-fadeIn-delay-2 hover:shadow-md transition-all group"
-        >
-          <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ember-500/10 text-xl">🧪</span>
-          <h3 className="mt-3 font-serif text-base font-bold text-ink-900">{t('mockTests')}</h3>
-          <p className="mt-1 text-xs text-muted-500 line-clamp-1">{t('mockTestsDesc')}</p>
-          <div className="mt-2 flex items-center gap-1 text-xs font-medium text-ember-500">
-            {me?.language === 'hi' ? 'शुरू करें' : 'Start'} →
-            <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="group-hover:translate-x-0.5 transition-transform"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-          </div>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => router.push('/pyq')}
-          className="paper-card card-selectable p-5 text-left animate-fadeIn-delay-2 hover:shadow-md transition-all group"
-        >
-          <div className="flex items-center gap-2">
-            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ember-500/10 text-xl">📄</span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-ember-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ember-600">New</span>
-          </div>
-          <h3 className="mt-3 font-serif text-base font-bold text-ink-900">{me?.language === 'hi' ? 'पिछले वर्ष' : 'PYQ Papers'}</h3>
-          <p className="mt-1 text-xs text-muted-500 line-clamp-1">{me?.language === 'hi' ? 'पिछले वर्ष के प्रश्न' : 'Previous year questions'}</p>
-          <div className="mt-2 flex items-center gap-1 text-xs font-medium text-ember-500">
-            {t('read')} →
-            <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="group-hover:translate-x-0.5 transition-transform"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-          </div>
-        </button>
       </section>
 
-      {/* Quick Actions - Grid layout. Mock Tests + PYQ live in the
-          "Core features" grid above; these are the secondary shortcuts. */}
+      {/* Quick Actions - Grid layout */}
       <section className="mt-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 animate-fadeIn-delay-2">
+        <button type="button" onClick={() => router.push('/mock-tests')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3 min-h-[68px]">
+          <span className="text-base flex-shrink-0">🧪</span>
+          <div className="text-left min-w-0">
+            <p className="text-sm font-semibold text-ink-900 whitespace-nowrap">{t('mockTests')}</p>
+            <p className="text-[10px] text-muted-500 truncate">{t('mockTestsDesc')}</p>
+          </div>
+        </button>
         <button type="button" onClick={() => router.push('/leaderboard')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3 min-h-[68px]">
           <span className="text-base flex-shrink-0">🏆</span>
           <div className="text-left min-w-0">
