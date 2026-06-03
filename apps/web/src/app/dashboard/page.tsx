@@ -284,6 +284,13 @@ export default function DashboardPage() {
             <p className="text-[10px] text-muted-500 truncate">{t('mockTestsDesc')}</p>
           </div>
         </button>
+        <button type="button" onClick={() => router.push('/pyq')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3 min-h-[68px]">
+          <span className="text-base flex-shrink-0">📄</span>
+          <div className="text-left min-w-0">
+            <p className="text-sm font-semibold text-ink-900 whitespace-nowrap">{me?.language === 'hi' ? 'पिछले वर्ष' : 'PYQ Papers'}</p>
+            <p className="text-[10px] text-muted-500 truncate">{me?.language === 'hi' ? 'पिछले वर्ष के प्रश्न' : 'Previous year Qs'}</p>
+          </div>
+        </button>
         <button type="button" onClick={() => router.push('/leaderboard')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3 min-h-[68px]">
           <span className="text-base flex-shrink-0">🏆</span>
           <div className="text-left min-w-0">

@@ -45,6 +45,7 @@ const NAV_ITEMS = [
   { label: 'Service Keys', href: '/admin/service-keys', icon: '🔐' },
   { label: 'Push', href: '/admin/push', icon: '🔔' },
   { label: 'News Feeds', href: '/admin/feeds', icon: '📡' },
+  { label: 'PYQ Papers', href: '/admin/pyq', icon: '📄' },
   { label: 'AI & Logs', href: '/admin/logs', icon: '🤖' },
   { label: 'SEO & Branding', href: '/admin/seo', icon: '🔍' },
   { label: 'Announcements', href: '/admin/announcements', icon: '📢' },
