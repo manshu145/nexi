@@ -22,7 +22,6 @@ export default function AdminRevenuePage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const [payments, setPayments] = useState<Payment[]>([]);
-  const [total, setTotal] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [fetching, setFetching] = useState(true);
 
@@ -41,7 +40,7 @@ export default function AdminRevenuePage() {
         const res = await fetch(`${API}/v1/admin/revenue`, { headers: { Authorization: `Bearer ${token}` } });
         if (!res.ok) throw new Error(`Failed: ${res.status}`);
         const data = await res.json() as { payments: Payment[]; total: number };
-        if (!cancelled) { setPayments(data.payments); setTotal(data.total); }
+        if (!cancelled) { setPayments(data.payments); }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load revenue data');
       } finally {
@@ -53,14 +52,22 @@ export default function AdminRevenuePage() {
 
   if (loading || !user) return <div className="flex items-center justify-center py-20"><AILoader context="general" /></div>;
 
-  // Calculate summary stats
-  const totalRevenue = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
+  // Razorpay stores amounts in PAISE (₹1 = 100 paise). Every other surface
+  // (user billing history, admin getStats) divides by 100 — this page was
+  // the one place that forgot, so ₹39.50 rendered as "₹3950" and the totals
+  // came out 100x inflated. Convert paise → rupees here.
+  const toRupees = (paise: number) => (paise || 0) / 100;
+  const fmtINR = (paise: number) =>
+    toRupees(paise).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+
+  // Calculate summary stats (in rupees)
+  const totalRevenue = payments.reduce((sum, p) => sum + toRupees(p.amount), 0);
   const thisMonth = payments.filter(p => {
     const d = new Date(p.createdAt);
     const now = new Date();
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
   });
-  const monthRevenue = thisMonth.reduce((sum, p) => sum + (p.amount || 0), 0);
+  const monthRevenue = thisMonth.reduce((sum, p) => sum + toRupees(p.amount), 0);
 
   return (
     <div>
@@ -73,15 +80,15 @@ export default function AdminRevenuePage() {
       <div className="mt-6 grid gap-4 sm:grid-cols-3">
         <div className="paper-card p-5">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">Total Revenue</p>
-          <p className="font-serif mt-2 text-3xl font-bold text-ink-900">₹{totalRevenue.toLocaleString('en-IN')}</p>
+          <p className="font-serif mt-2 text-3xl font-bold text-ink-900">₹{totalRevenue.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
         </div>
         <div className="paper-card p-5">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">This Month</p>
-          <p className="font-serif mt-2 text-3xl font-bold text-ink-900">₹{monthRevenue.toLocaleString('en-IN')}</p>
+          <p className="font-serif mt-2 text-3xl font-bold text-ink-900">₹{monthRevenue.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
         </div>
         <div className="paper-card p-5">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">Total Transactions</p>
-          <p className="font-serif mt-2 text-3xl font-bold text-ink-900">{total || payments.length}</p>
+          <p className="font-serif mt-2 text-3xl font-bold text-ink-900">{payments.length}</p>
         </div>
       </div>
 
@@ -107,7 +114,7 @@ export default function AdminRevenuePage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  <span className="font-serif font-bold text-ink-900">₹{p.amount}</span>
+                  <span className="font-serif font-bold text-ink-900">₹{fmtINR(p.amount)}</span>
                   <span className={`pill text-xs ${p.status === 'success' || p.status === 'verified' ? 'pill-success' : p.status === 'failed' ? 'pill-warn' : ''}`}>
                     {p.status}
                   </span>
