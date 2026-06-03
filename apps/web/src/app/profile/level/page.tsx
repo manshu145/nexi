@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '~/lib/auth-context';
 import { useUser } from '~/lib/userStore';
+import { api } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 import { AILoader } from '~/components/ui/AILoader';
 
@@ -17,6 +18,7 @@ export default function LevelPage() {
   const { user: userInfo, loading: meLoading } = useUser();
   const router = useRouter();
   const [analysis, setAnalysis] = useState<AnalysisData | null>(null);
+  const [mockStats, setMockStats] = useState<{ count: number; best: number } | null>(null);
   const [pageLoading, setPageLoading] = useState(true);
 
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
@@ -30,6 +32,16 @@ export default function LevelPage() {
         const token = await user.getIdToken();
         const res = await fetch(`${API}/v1/study/analysis/${exam}`, { headers: { Authorization: `Bearer ${token}` } });
         if (res.ok) setAnalysis(await res.json());
+        // Mock-test activity (a now-prominent feature) — best-effort, never
+        // blocks the page. Counts submitted attempts + best percentage.
+        try {
+          const mh = await api.getMockTestHistory();
+          const done = mh.attempts.filter(a => a.status === 'submitted' && typeof a.percentage === 'number');
+          setMockStats({
+            count: done.length,
+            best: done.reduce((m, a) => Math.max(m, a.percentage ?? 0), 0),
+          });
+        } catch { /* mock stats are optional */ }
       } catch { /* ignore */ }
       finally { setPageLoading(false); }
     })();
@@ -94,6 +106,38 @@ export default function LevelPage() {
         <div className="paper-card p-3 text-center">
           <p className="text-xl font-bold text-ink-900">{userInfo?.credits ?? 0}</p>
           <p className="text-[10px] text-muted-500 mt-0.5">Credits</p>
+        </div>
+      </div>
+
+      {/* Keep practicing — surface the exam-prep features (PYQ is new). */}
+      <div className="paper-card mt-4 p-5">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">Sharpen Up</h2>
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => router.push('/pyq')}
+            className="flex items-center gap-2.5 rounded-lg border border-line bg-paper-50 px-3 py-2.5 text-left transition-colors hover:border-ember-500/40 hover:bg-ember-500/5"
+          >
+            <span className="text-lg">📄</span>
+            <div className="min-w-0">
+              <p className="flex items-center gap-1 text-sm font-semibold text-ink-900">
+                PYQ
+                <span className="rounded-full bg-ember-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-ember-600">New</span>
+              </p>
+              <p className="text-[10px] text-muted-500">Previous year questions</p>
+            </div>
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push('/mock-tests')}
+            className="flex items-center gap-2.5 rounded-lg border border-line bg-paper-50 px-3 py-2.5 text-left transition-colors hover:border-ember-500/40 hover:bg-ember-500/5"
+          >
+            <span className="text-lg">🧪</span>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-ink-900">Mock Tests</p>
+              <p className="text-[10px] text-muted-500">Full-length practice</p>
+            </div>
+          </button>
         </div>
       </div>
 
@@ -185,6 +229,22 @@ export default function LevelPage() {
             </div>
             <span className="text-sm font-bold text-ink-900">{analysis?.strongChapters.length ?? 0}</span>
           </div>
+          <div className="flex items-center justify-between border-b border-line pb-2">
+            <div className="flex items-center gap-2">
+              <span className="text-sm">🧪</span>
+              <span className="text-xs text-ink-800">Mock Tests Taken</span>
+            </div>
+            <span className="text-sm font-bold text-ink-900">{mockStats?.count ?? 0}</span>
+          </div>
+          {mockStats && mockStats.count > 0 && (
+            <div className="flex items-center justify-between border-b border-line pb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-sm">🏆</span>
+                <span className="text-xs text-ink-800">Best Mock Score</span>
+              </div>
+              <span className="text-sm font-bold text-ink-900">{mockStats.best}%</span>
+            </div>
+          )}
           <div className="flex items-center justify-between border-b border-line pb-2">
             <div className="flex items-center gap-2">
               <span className="text-sm">📰</span>
