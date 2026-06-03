@@ -1449,14 +1449,122 @@ Generate ONLY the Mermaid code, nothing else.`;
       }
     },
 
-    async generateSyllabus(examSlug: string, examName: string, level: string) {
-      const prompt = `You are an expert Indian education curriculum designer.\n\nGenerate a complete study syllabus for "${examName}" exam.\nStudent level: ${level}.\n\nRequirements:\n- 3-5 subjects relevant to this exam\n- 5-8 chapters per subject, ordered from basic to advanced\n- Each chapter: slug (kebab-case), name (English), nameHi (Hindi Devanagari), estimated study time in minutes\n- Each subject: slug, name, nameHi, icon (single emoji)\n- Order chapters logically for progressive learning\n\nRespond ONLY with valid JSON:\n{"exam":"${examSlug}","examName":"${examName}","subjects":[{"slug":"subject-slug","name":"Subject Name","nameHi":"विषय नाम","icon":"📚","chapters":[{"slug":"chapter-slug","name":"Chapter Name","nameHi":"अध्याय नाम","order":1,"estimatedMinutes":40}]}]}`;
-      try {
-        const c = await oaCreate({ messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: 4000, response_format: { type: 'json_object' } });
-        const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as GeneratedSyllabus;
-        logger.info('ai.syllabus_generated', { examSlug, subjects: parsed.subjects?.length ?? 0 });
-        return parsed;
-      } catch (err) { logger.error('ai.syllabus_error', { error: err instanceof Error ? err.message : String(err) }); throw new Error('Failed to generate syllabus'); }
+    async generateSyllabus(examSlug: string, examName: string, level: string): Promise<GeneratedSyllabus> {
+      const prompt = `You are an expert Indian competitive-exam curriculum designer.
+
+Generate a COMPLETE, exam-specific study syllabus for the "${examName}" exam (slug: ${examSlug}).
+Student level: ${level}.
+
+CRITICAL requirements:
+- Use the REAL subjects that actually appear in THIS exam's official syllabus. Do NOT collapse everything into a single generic "General Studies" subject — break it into the actual papers/subjects this exam tests (e.g. History, Polity, Geography, Economy, plus the state-specific subjects for a state PSC such as state history/geography/current affairs).
+- 4-7 subjects relevant to THIS specific exam.
+- 5-8 chapters per subject, ordered from basic to advanced.
+- Each chapter: slug (kebab-case, ascii), name (English), nameHi (Hindi Devanagari), order (1-based integer), estimatedMinutes (20-60).
+- Each subject: slug (kebab-case, ascii), name (English), nameHi (Hindi Devanagari), icon (single emoji).
+
+Respond ONLY with valid JSON (no markdown fences):
+{"exam":"${examSlug}","examName":"${examName}","subjects":[{"slug":"subject-slug","name":"Subject Name","nameHi":"विषय नाम","icon":"📚","chapters":[{"slug":"chapter-slug","name":"Chapter Name","nameHi":"अध्याय नाम","order":1,"estimatedMinutes":40}]}]}`;
+
+      // Robust JSON parse: handle markdown fences and surrounding prose.
+      const parseSyllabus = (raw: string): GeneratedSyllabus | null => {
+        if (!raw) return null;
+        const txt = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+        const tryParse = (s: string): GeneratedSyllabus | null => {
+          try {
+            const p = JSON.parse(s) as GeneratedSyllabus;
+            return p?.subjects?.length ? p : null;
+          } catch { return null; }
+        };
+        return tryParse(txt) ?? (txt.match(/\{[\s\S]*\}/) ? tryParse(txt.match(/\{[\s\S]*\}/)![0]) : null);
+      };
+
+      // Normalize/defend against missing optional fields.
+      const normalize = (s: GeneratedSyllabus): GeneratedSyllabus => ({
+        exam: s.exam || examSlug,
+        examName: s.examName || examName,
+        subjects: (s.subjects ?? [])
+          .filter((sub) => sub && Array.isArray(sub.chapters) && sub.chapters.length > 0)
+          .map((sub) => ({
+            slug: sub.slug,
+            name: sub.name,
+            nameHi: sub.nameHi ?? sub.name,
+            icon: sub.icon ?? '📚',
+            chapters: sub.chapters.map((ch, i) => ({
+              slug: ch.slug,
+              name: ch.name,
+              nameHi: ch.nameHi ?? ch.name,
+              order: ch.order ?? i + 1,
+              estimatedMinutes: ch.estimatedMinutes ?? 40,
+            })),
+          })),
+      });
+
+      const errors: string[] = [];
+
+      // Attempt 1: Groq (fast, rarely rate-limited; auto-switch model via resolver — no hardcode)
+      const groq = await getGroqClient();
+      if (groq) {
+        try {
+          const c = await groq.client.chat.completions.create({ model: groq.model, messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 6000, response_format: { type: 'json_object' } });
+          const parsed = parseSyllabus(c.choices[0]?.message?.content ?? '');
+          if (parsed) {
+            const out = normalize(parsed);
+            if (out.subjects.length) {
+              if (resolver) void resolver.reportModelSuccess('groq', groq.model);
+              logger.info('ai.syllabus_generated', { provider: 'groq', model: groq.model, examSlug, subjects: out.subjects.length });
+              return out;
+            }
+          }
+          errors.push('Groq returned no usable subjects');
+        } catch (err) {
+          if (resolver) await resolver.reportModelFailure('groq', groq.model, err instanceof Error ? err.message : String(err));
+          errors.push(`Groq: ${err instanceof Error ? err.message : String(err)}`);
+          logger.warn('ai.syllabus_groq_failed', { error: errors[errors.length - 1] });
+        }
+      } else { errors.push('GROQ_API_KEY not configured'); }
+
+      // Attempt 2: OpenAI (oaCreate handles pro->flash auto-switch internally)
+      if (openai) {
+        try {
+          const c = await oaCreate({ messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 6000, response_format: { type: 'json_object' } });
+          const parsed = parseSyllabus(c.choices[0]?.message?.content ?? '');
+          if (parsed) {
+            const out = normalize(parsed);
+            if (out.subjects.length) {
+              logger.info('ai.syllabus_generated', { provider: 'openai', examSlug, subjects: out.subjects.length });
+              return out;
+            }
+          }
+          errors.push('OpenAI returned no usable subjects');
+        } catch (err) {
+          errors.push(`OpenAI: ${err instanceof Error ? err.message : String(err)}`);
+          logger.warn('ai.syllabus_openai_failed', { error: errors[errors.length - 1] });
+        }
+      } else { errors.push('OPENAI_API_KEY not configured'); }
+
+      // Attempt 3: Gemini (auto-resolved chain)
+      if (env.GEMINI_API_KEY) {
+        try {
+          const r = await callGemini({ prompt, generationConfig: { temperature: 0.5, maxOutputTokens: 6000 }, tier: 'flash' });
+          if (r.ok) {
+            const parsed = parseSyllabus(r.text);
+            if (parsed) {
+              const out = normalize(parsed);
+              if (out.subjects.length) {
+                logger.info('ai.syllabus_generated', { provider: 'gemini', model: r.model, examSlug, subjects: out.subjects.length });
+                return out;
+              }
+            }
+            errors.push('Gemini returned no usable subjects');
+          } else { errors.push(`Gemini: ${r.error}`); }
+        } catch (err) {
+          errors.push(`Gemini: ${err instanceof Error ? err.message : String(err)}`);
+          logger.warn('ai.syllabus_gemini_failed', { error: errors[errors.length - 1] });
+        }
+      } else { errors.push('GEMINI_API_KEY not configured'); }
+
+      logger.error('ai.syllabus_all_failed', { examSlug, errors });
+      throw new Error(`All AI providers failed for syllabus generation: ${errors.join('; ')}`);
     },
 
     async generateSelectionDiagram(selectedText: string, subject: string, language: 'en' | 'hi') {

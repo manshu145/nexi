@@ -6,7 +6,7 @@ import type { UserStore } from '../lib/userStore.js';
 import type { AIEngine } from '../lib/aiEngine.js';
 import type { ChapterStore, UserContext } from '../lib/chapterStore.js';
 import { getSyllabus, getSyllabusWithFallback, type SyllabusFallbackDeps } from '../lib/syllabusStore.js';
-import { asISODateTime, asUserId } from '@nexigrate/shared';
+import { asISODateTime, asUserId, type SyllabusTree } from '@nexigrate/shared';
 import type { Firestore } from 'firebase-admin/firestore';
 import type { Env } from '../env.js';
 import { InMemoryMCQPoolStore, FirestoreMCQPoolStore, type MCQPoolStore } from '../lib/mcqPoolStore.js';
@@ -32,6 +32,50 @@ export interface StudyRoutesDeps {
   modelResolver?: import('../lib/aiModelResolver.js').AIModelResolver | null;
 }
 
+/**
+ * Merge AI-appended chapters (stored at `syllabi/{examSlug}_{subjectSlug}`
+ * by POST /generate-chapters) into a syllabus tree so that "Generate More
+ * Chapters" results actually show up on reload. Existing chapters win on
+ * slug collision; new ones are appended and the list is re-sorted by order.
+ * Fail-soft: any Firestore error leaves the subject untouched.
+ */
+async function mergeAppendedChapters(
+  db: Firestore | null,
+  examSlug: string,
+  syllabus: SyllabusTree,
+): Promise<SyllabusTree> {
+  if (!db) return syllabus;
+  const subjects = await Promise.all(
+    syllabus.subjects.map(async (sub) => {
+      try {
+        const snap = await db.collection('syllabi').doc(`${examSlug}_${sub.slug}`).get();
+        if (!snap.exists) return sub;
+        const stored = (snap.data()?.chapters ?? []) as {
+          slug?: string; name?: string; nameHi?: string; order?: number; estimatedMinutes?: number;
+        }[];
+        if (!Array.isArray(stored) || stored.length === 0) return sub;
+        const bySlug = new Map(sub.chapters.map((ch) => [ch.slug, ch]));
+        let nextOrder = sub.chapters.length;
+        for (const ch of stored) {
+          if (!ch?.slug || bySlug.has(ch.slug)) continue;
+          bySlug.set(ch.slug, {
+            slug: ch.slug,
+            name: ch.name ?? ch.slug,
+            nameHi: ch.nameHi ?? ch.name ?? ch.slug,
+            order: ch.order ?? ++nextOrder,
+            estimatedMinutes: ch.estimatedMinutes ?? 40,
+          });
+        }
+        const merged = Array.from(bySlug.values()).sort((a, b) => a.order - b.order);
+        return { ...sub, chapters: merged };
+      } catch {
+        return sub;
+      }
+    }),
+  );
+  return { ...syllabus, subjects };
+}
+
 export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
   const app = new Hono();
   const mcqPool = deps.mcqPool ?? (deps.db ? new FirestoreMCQPoolStore(deps.db) : new InMemoryMCQPoolStore());
@@ -45,8 +89,11 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
     const examInfo = EXAM_BY_SLUG.get(examSlug as any);
     const examName = examInfo?.name ?? examSlug.replace(/-/g, ' ').replace(/\b\w/g, (ch: string) => ch.toUpperCase());
 
-    const fallbackDeps: SyllabusFallbackDeps = { env: deps.env, db: deps.db, logger: deps.logger, resolver: deps.modelResolver };
-    const syllabus = await getSyllabusWithFallback(examSlug, examName, fallbackDeps);
+    const fallbackDeps: SyllabusFallbackDeps = { env: deps.env, db: deps.db, logger: deps.logger, resolver: deps.modelResolver, aiEngine: deps.aiEngine };
+    const baseSyllabus = await getSyllabusWithFallback(examSlug, examName, fallbackDeps);
+    // Merge any AI-appended chapters (from "Generate More Chapters") so they
+    // actually appear on reload.
+    const syllabus = await mergeAppendedChapters(deps.db, examSlug, baseSyllabus);
 
     return c.json({ syllabus });
   });
@@ -400,8 +447,14 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
       throw new HTTPException(403, { message: 'Scholar plan required to generate advanced chapters. Upgrade at /upgrade' });
     }
 
-    // Get current syllabus
-    const syllabus = getSyllabus(body.examSlug);
+    // Get current syllabus via the full AI fallback (not hardcoded-only) so
+    // AI-generated exams like CGPSC also work instead of 404-ing here.
+    const { EXAM_BY_SLUG } = await import('@nexigrate/shared');
+    const examInfo = EXAM_BY_SLUG.get(body.examSlug as any);
+    const examName = examInfo?.name ?? body.examSlug.replace(/-/g, ' ').replace(/\b\w/g, (ch: string) => ch.toUpperCase());
+    const fallbackDeps: SyllabusFallbackDeps = { env: deps.env, db: deps.db, logger: deps.logger, resolver: deps.modelResolver, aiEngine: deps.aiEngine };
+    const baseSyllabus = await getSyllabusWithFallback(body.examSlug, examName, fallbackDeps);
+    const syllabus = await mergeAppendedChapters(deps.db, body.examSlug, baseSyllabus);
     if (!syllabus) throw new HTTPException(404, { message: 'Syllabus not found for this exam' });
 
     const subjectData = syllabus.subjects.find(s => s.slug === body.subjectSlug);
