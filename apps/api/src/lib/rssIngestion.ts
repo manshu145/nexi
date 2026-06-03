@@ -19,13 +19,10 @@ export const NEWS_SOURCES = [
   { name: 'Business Standard', domain: 'business-standard.com', rss: 'https://www.business-standard.com/rss/home_page_top_stories.rss' },
   { name: 'Mint', domain: 'livemint.com', rss: 'https://www.livemint.com/rss/news' },
   { name: 'The Print', domain: 'theprint.in', rss: 'https://theprint.in/feed/' },
-  { name: 'Scroll.in', domain: 'scroll.in', rss: 'https://scroll.in/rss/all' },
   { name: 'Deccan Herald', domain: 'deccanherald.com', rss: 'https://www.deccanherald.com/rss/india' },
   { name: 'The Wire', domain: 'thewire.in', rss: 'https://thewire.in/feed' },
-  { name: 'Down To Earth', domain: 'downtoearth.org.in', rss: 'https://www.downtoearth.org.in/rss' },
   { name: 'Dainik Bhaskar', domain: 'bhaskar.com', rss: 'https://www.bhaskar.com/rss-feed/1061' },
   { name: 'Amar Ujala', domain: 'amarujala.com', rss: 'https://www.amarujala.com/rss/breaking-news.xml' },
-  { name: 'Dainik Jagran', domain: 'jagran.com', rss: 'https://www.jagran.com/rss/news-national.xml' },
   { name: 'BBC Hindi', domain: 'bbc.com/hindi', rss: 'https://feeds.bbci.co.uk/hindi/rss.xml' },
   { name: 'Mongabay India', domain: 'mongabayindia.com', rss: 'https://india.mongabay.com/feed/' },
 ];
