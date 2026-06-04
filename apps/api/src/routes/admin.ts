@@ -966,6 +966,15 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
     const id = c.req.param('id');
     const body = await c.req.json().catch(() => null) as Record<string, unknown> | null;
     if (!body || !deps.db) throw new HTTPException(400, { message: 'Body required' });
+    // If the edit touches `state`, validate it like POST /feeds does.
+    // Without this, a feed could be edited to a non-canonical slug (e.g.
+    // 'cg' / 'mp' instead of 'chhattisgarh' / 'madhya-pradesh'), which
+    // can never be toggled live or matched by the state filter — so its
+    // news would be silently invisible. An empty string / null clears it
+    // (national), which is allowed.
+    if ('state' in body && body.state != null && body.state !== '' && !isStateSlug(body.state)) {
+      throw new HTTPException(400, { message: `Unknown state slug: ${String(body.state)}` });
+    }
     await deps.db.collection('newsFeeds').doc(id).update(body);
     return c.json({ success: true });
   });

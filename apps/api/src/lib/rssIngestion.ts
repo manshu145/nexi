@@ -248,16 +248,52 @@ async function summarizeItems(
     if (gm) groqModel = gm;
   }
 
-  // Batch items into groups of 10 for efficient AI calls
-  const batches: RawNewsItem[][] = [];
-  for (let i = 0; i < items.length; i += 10) {
-    batches.push(items.slice(i, i + 10));
+  // Build summarisation batches that NEVER mix states. Each raw item
+  // carries the `state` it inherited from its source feed; by grouping
+  // items per state before slicing into 10s, every batch is homogeneous
+  // (exactly one state, or all-national). That makes the per-item state
+  // attribution below — "the whole batch is one state ⇒ tag that state"
+  // — reliable, instead of depending on the AI echoing a srcIndex (the
+  // prompt is state-unaware, so it usually doesn't).
+  //
+  // This is THE core fix for "CG/MP feed news never showed": a few
+  // regional items used to land in a mixed national+state boundary batch
+  // (batchStates.size > 1) and silently lost their state tag, so they
+  // got saved as national and never appeared under the state edition.
+  //
+  // State groups are batched FIRST and capped per-group so the handful of
+  // regional items always get summarised within the batch budget instead
+  // of being crowded out by the ~16 national sources.
+  const PER_STATE_ITEM_CAP = 20; // up to 2 batches per state edition
+  const NATIONAL_ITEM_CAP = 40;  // up to 4 batches of national news
+  const MAX_BATCHES = 8;
+
+  const stateGroups = new Map<string, RawNewsItem[]>();
+  const nationalItems: RawNewsItem[] = [];
+  for (const it of items) {
+    if (it.state) {
+      const g = stateGroups.get(it.state);
+      if (g) g.push(it);
+      else stateGroups.set(it.state, [it]);
+    } else {
+      nationalItems.push(it);
+    }
   }
+
+  const batches: RawNewsItem[][] = [];
+  // State editions first so they're never starved by the national volume.
+  for (const groupItems of stateGroups.values()) {
+    const capped = groupItems.slice(0, PER_STATE_ITEM_CAP);
+    for (let i = 0; i < capped.length; i += 10) batches.push(capped.slice(i, i + 10));
+  }
+  // National fills the remaining budget.
+  const cappedNational = nationalItems.slice(0, NATIONAL_ITEM_CAP);
+  for (let i = 0; i < cappedNational.length; i += 10) batches.push(cappedNational.slice(i, i + 10));
 
   const today = new Date().toISOString().split('T')[0]!;
   const allSummarized: CurrentAffairsStoreItem[] = [];
 
-  for (const batch of batches.slice(0, 5)) { // Max 5 batches = 50 items
+  for (const batch of batches.slice(0, MAX_BATCHES)) { // state batches first, then national
     try {
       const prompt = `You are a current affairs summarizer for Indian competitive exam students (UPSC, SSC, Banking, NEET, JEE).
 
@@ -397,13 +433,12 @@ Respond ONLY with valid JSON:
           batch.find(b => b.imageUrl)?.imageUrl ||
           undefined;
 
-        // Attribute a state tag. Prefer the AI-reported primary source
-        // item's state (precise). If the AI didn't report a usable
-        // srcIndex, only fall back to the batch state when the ENTIRE
-        // batch is a single state — that way a mixed national/state
-        // batch never mis-tags a national story as regional. Items
-        // grouped by state upstream (see ingestCurrentAffairs) make the
-        // homogeneous-batch fallback the common, correct case.
+        // Attribute a state tag. Batches are now homogeneous (built
+        // per-state above), so the reliable signal is "the whole batch
+        // belongs to one state ⇒ tag every summarised item with it".
+        // We still prefer the AI-reported primary source item's state
+        // when present (it agrees with the batch state anyway), and a
+        // pure-national batch has no states ⇒ undefined (= national).
         const batchStates = new Set(batch.map(b => b.state).filter((s): s is string => !!s));
         const stateTag = (srcIdx >= 0 && batch[srcIdx]?.state)
           ? batch[srcIdx]!.state
@@ -467,15 +502,25 @@ export async function ingestCurrentAffairs(
     if (!item.pubDate) return true; // Include if no date
     const d = new Date(item.pubDate).getTime();
     return !isNaN(d) ? d > oneDayAgo : true;
-  }).slice(0, 50); // Max 50 items to summarize
+  }).slice(0, 300); // generous safety cap; summarizeItems does the
+                    // state-aware per-group capping + batching below.
 
-  // Group items by state so the AI-summarisation batches (sequential
-  // slices of 10) stay coherent: items sharing a state cluster into the
-  // same batch, which keeps the per-item state attribution accurate.
-  // National items (no state) sort first, then each state clusters
-  // together. Stable enough for our purpose — a single mixed boundary
-  // batch falls back to "national" rather than mis-tagging.
-  recentItems.sort((a, b) => (a.state ?? '').localeCompare(b.state ?? ''));
+  // Order STATE-tagged items first (clustered by state), national last.
+  //
+  // Why state-first (this is half of the "CG/MP feed news never showed"
+  // fix): there are ~16 national RSS sources but only a handful of
+  // regional ones, so the few CG/MP items used to be (a) cut by the old
+  // blind `.slice(0, 50)` and (b) starved of the summarisation budget.
+  // Sorting them to the front guarantees they survive both this cap and
+  // the raw-fallback `.slice(0, 30)` further down, so a state edition is
+  // never silently empty just because national news outnumbered it.
+  recentItems.sort((a, b) => {
+    const sa = a.state ?? '';
+    const sb = b.state ?? '';
+    if (sa && !sb) return -1; // state items before national
+    if (!sa && sb) return 1;
+    return sa.localeCompare(sb); // cluster same states together
+  });
 
   // 3. AI summarize (or fallback to raw items if AI fails)
   let itemsToSave: CurrentAffairsStoreItem[];
