@@ -16,6 +16,22 @@ import type { Logger } from '../logger.js';
  * 3. Pick `count` questions NOT in usedMCQs (random selection)
  * 4. If remaining unused < count: generate more via AI, add to pool
  * 5. Save selected IDs to user's usedMCQs
+ *
+ * ─── Why IDs are derived from question CONTENT (the "pool empty" fix) ───
+ * The AI prompt asks for questions with ids "q1".."q10", so EVERY
+ * generation returns the SAME ids. The pool-expansion step dedups new
+ * questions by id (`existingIds.has(q.id)`), which meant freshly
+ * generated questions ALWAYS collided with the originals → `uniqueNew`
+ * was always empty → the pool could never grow past 10. Once a user had
+ * seen all 10, regeneration added nothing, the unused set was empty, and
+ * the route threw "MCQ pool empty ... AI may have returned 0 questions"
+ * on every subsequent quiz for that chapter.
+ *
+ * The fix: ignore the AI's ids entirely and assign each question a
+ * STABLE id hashed from its (normalized) question text. Two genuinely
+ * different questions now get different ids (so the pool grows), while
+ * an AI that happens to repeat a question collapses to one entry (so we
+ * never store the same question twice). See `withStableIds` below.
  */
 
 export interface MCQPool {
@@ -72,10 +88,19 @@ export class InMemoryMCQPoolStore implements MCQPoolStore {
     let pool = this.pools.get(pKey);
     if (!pool) {
       const seed = crypto.randomUUID().slice(0, 8);
-      const questions = await aiEngine.generateChapterMCQs(chapterSlug, subjectSlug, examSlug, language, 10, seed, chapterContent, userLevel);
+      const generated = await aiEngine.generateChapterMCQs(chapterSlug, subjectSlug, examSlug, language, 10, seed, chapterContent, userLevel);
+      const questions = withStableIds(generated);
       pool = { questions, poolSize: questions.length, generatedAt: new Date().toISOString() };
       this.pools.set(pKey, pool);
       logger.info('mcqpool.created', { examSlug, subjectSlug, chapterSlug, poolSize: pool.poolSize });
+    } else {
+      // Backfill stable ids for pools created before the content-hash fix.
+      const reIded = withStableIds(pool.questions);
+      if (poolNeedsReId(pool.questions, reIded)) {
+        pool.questions = reIded;
+        pool.poolSize = reIded.length;
+        this.pools.set(pKey, pool);
+      }
     }
 
     // Get user's used question IDs
@@ -87,19 +112,34 @@ export class InMemoryMCQPoolStore implements MCQPoolStore {
     // If not enough unused questions, generate more
     if (available.length < count) {
       const seed = crypto.randomUUID().slice(0, 8);
-      const newQuestions = await aiEngine.generateChapterMCQs(chapterSlug, subjectSlug, examSlug, language, 10, seed, chapterContent, userLevel);
-      // Deduplicate by ID
+      const generated = await aiEngine.generateChapterMCQs(chapterSlug, subjectSlug, examSlug, language, 10, seed, chapterContent, userLevel);
+      const newQuestions = withStableIds(generated);
+      // Deduplicate by stable (content-derived) ID — genuinely new
+      // questions survive, repeats collapse, so the pool actually grows.
       const existingIds = new Set(pool.questions.map(q => q.id));
       const uniqueNew = newQuestions.filter(q => !existingIds.has(q.id));
-      pool.questions.push(...uniqueNew);
-      pool.poolSize = pool.questions.length;
-      this.pools.set(pKey, pool);
+      if (uniqueNew.length) {
+        pool.questions.push(...uniqueNew);
+        pool.poolSize = pool.questions.length;
+        this.pools.set(pKey, pool);
+        logger.info('mcqpool.expanded', { examSlug, subjectSlug, chapterSlug, newPoolSize: pool.poolSize, added: uniqueNew.length });
+      }
       available = pool.questions.filter(q => !usedIds.has(q.id));
-      logger.info('mcqpool.expanded', { examSlug, subjectSlug, chapterSlug, newPoolSize: pool.poolSize, added: uniqueNew.length });
     }
 
     // Randomly select `count` questions from available
-    const selected = shuffleArray(available).slice(0, count);
+    let selected = shuffleArray(available).slice(0, count);
+
+    // Graceful recycle: the user has exhausted every UNIQUE question we
+    // could generate for this chapter. Serve from the full pool (allowing
+    // repeats) and restart their cycle — a repeated question beats a hard
+    // error / blank quiz page.
+    if (selected.length === 0 && pool.questions.length > 0) {
+      logger.warn('mcqpool.recycled', { examSlug, subjectSlug, chapterSlug, language, poolSize: pool.questions.length });
+      selected = shuffleArray(pool.questions).slice(0, count);
+      this.usedMCQs.set(uKey, selected.map(q => q.id));
+      return selected;
+    }
 
     // Save selected IDs to user's used list
     const newUsedIds = [...Array.from(usedIds), ...selected.map(q => q.id)];
@@ -140,12 +180,23 @@ export class FirestoreMCQPoolStore implements MCQPoolStore {
 
     if (!poolSnap.exists) {
       const seed = crypto.randomUUID().slice(0, 8);
-      const questions = await aiEngine.generateChapterMCQs(chapterSlug, subjectSlug, examSlug, language, 10, seed, chapterContent, userLevel);
+      const generated = await aiEngine.generateChapterMCQs(chapterSlug, subjectSlug, examSlug, language, 10, seed, chapterContent, userLevel);
+      const questions = withStableIds(generated);
       pool = { questions, poolSize: questions.length, generatedAt: new Date().toISOString() };
       await poolRef.set(pool);
       logger.info('mcqpool.created', { examSlug, subjectSlug, chapterSlug, poolSize: pool.poolSize });
     } else {
       pool = poolSnap.data() as MCQPool;
+      // Backfill stable ids for legacy pools (questions still carry the
+      // colliding "q1".."q10" ids). Re-id in place so dedup + used-tracking
+      // work going forward, and persist once so we don't redo it every load.
+      const reIded = withStableIds(pool.questions ?? []);
+      if (poolNeedsReId(pool.questions ?? [], reIded)) {
+        pool.questions = reIded;
+        pool.poolSize = reIded.length;
+        await poolRef.set(pool).catch(() => {});
+        logger.info('mcqpool.reided', { examSlug, subjectSlug, chapterSlug, poolSize: pool.poolSize });
+      }
     }
 
     // Get user's used question IDs
@@ -158,25 +209,42 @@ export class FirestoreMCQPoolStore implements MCQPoolStore {
     // If not enough, generate more and expand pool
     if (available.length < count) {
       const seed = crypto.randomUUID().slice(0, 8);
-      const newQuestions = await aiEngine.generateChapterMCQs(chapterSlug, subjectSlug, examSlug, language, 10, seed, chapterContent, userLevel);
+      const generated = await aiEngine.generateChapterMCQs(chapterSlug, subjectSlug, examSlug, language, 10, seed, chapterContent, userLevel);
+      const newQuestions = withStableIds(generated);
+      // Dedup by stable (content-derived) id so genuinely-new questions
+      // are added and the pool grows instead of forever collapsing to 10.
       const existingIds = new Set(pool.questions.map(q => q.id));
       const uniqueNew = newQuestions.filter(q => !existingIds.has(q.id));
-      pool.questions.push(...uniqueNew);
-      pool.poolSize = pool.questions.length;
-      await poolRef.set(pool);
+      if (uniqueNew.length) {
+        pool.questions.push(...uniqueNew);
+        pool.poolSize = pool.questions.length;
+        await poolRef.set(pool);
+        logger.info('mcqpool.expanded', { examSlug, subjectSlug, chapterSlug, newPoolSize: pool.poolSize, added: uniqueNew.length });
+      }
       available = pool.questions.filter(q => !usedIds.has(q.id));
-      logger.info('mcqpool.expanded', { examSlug, subjectSlug, chapterSlug, newPoolSize: pool.poolSize, added: uniqueNew.length });
     }
 
     // Randomly select `count` questions
-    const selected = shuffleArray(available).slice(0, count);
+    let selected = shuffleArray(available).slice(0, count);
 
-    // PR-48: If pool is empty after regeneration, throw so the user sees
-    // a meaningful error instead of a blank "Quiz not available" page.
-    // Also delete the stale pool doc so next attempt gets fresh generation.
+    // Graceful recycle: the user has already seen every UNIQUE question we
+    // can generate for this chapter. Rather than hard-failing with a blank
+    // quiz, serve from the full pool (repeats allowed) and reset their used
+    // list so the cycle restarts. A repeated question is strictly better
+    // than a dead-end error page.
+    if (selected.length === 0 && pool.questions.length > 0) {
+      logger.warn('mcqpool.recycled', { examSlug, subjectSlug, chapterSlug, language, poolSize: pool.questions.length });
+      selected = shuffleArray(pool.questions).slice(0, count);
+      await usedRef.set({ questionIds: selected.map(q => q.id) });
+      return selected;
+    }
+
+    // True failure: the AI genuinely produced nothing usable, so the pool
+    // is empty. Delete the stale doc so the next attempt regenerates from
+    // scratch, and surface a meaningful (retryable) error.
     if (selected.length === 0) {
       await poolRef.delete().catch(() => {});
-      throw new Error(`MCQ pool empty for ${examSlug}/${subjectSlug}/${chapterSlug} (${language}). AI may have returned 0 questions. Retry — the stale cache has been cleared.`);
+      throw new Error(`MCQ pool empty for ${examSlug}/${subjectSlug}/${chapterSlug} (${language}). AI returned 0 questions — the stale cache has been cleared, please retry.`);
     }
 
     // Save selected IDs to user's used list
@@ -196,4 +264,64 @@ function shuffleArray<T>(arr: T[]): T[] {
     [shuffled[i], shuffled[j]] = [shuffled[j]!, shuffled[i]!];
   }
   return shuffled;
+}
+
+/** Normalize a question's text for stable hashing / dedup: lowercase,
+ *  collapse whitespace, trim. Returns '' for missing text. */
+function normalizeQuestionText(q: GeneratedMCQ): string {
+  return (q?.question ?? '').toString().toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/** Deterministic FNV-1a 32-bit hash → 8-char hex. Stable across runs and
+ *  processes for the same input, so the same question text always maps to
+ *  the same id (enabling content-level dedup) while different questions map
+ *  to different ids (so the pool grows). */
+function stableId(text: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  // Mix in the length to further reduce the (already tiny) collision odds
+  // for the short pools we deal with.
+  return `q_${(h >>> 0).toString(16).padStart(8, '0')}${text.length.toString(36)}`;
+}
+
+/** Basic structural validity check — drops malformed questions that would
+ *  otherwise be stored and rendered as broken quiz items. */
+function isUsableQuestion(q: GeneratedMCQ): boolean {
+  if (!q || typeof q.question !== 'string' || q.question.trim().length === 0) return false;
+  if (!Array.isArray(q.options) || q.options.length < 2) return false;
+  if (!q.correctOption || !['A', 'B', 'C', 'D'].includes(q.correctOption)) return false;
+  return true;
+}
+
+/**
+ * Assign each question a stable, content-derived id and dedup within the
+ * batch. Malformed questions are dropped. This is the single chokepoint
+ * that fixes the "pool never grows / pool empty" bug: by deriving ids from
+ * content we stop trusting the AI's repeated "q1".."q10" ids.
+ */
+function withStableIds(questions: GeneratedMCQ[]): GeneratedMCQ[] {
+  const seen = new Set<string>();
+  const out: GeneratedMCQ[] = [];
+  for (const q of questions ?? []) {
+    if (!isUsableQuestion(q)) continue;
+    const id = stableId(normalizeQuestionText(q));
+    if (seen.has(id)) continue; // collapse duplicate questions
+    seen.add(id);
+    out.push({ ...q, id });
+  }
+  return out;
+}
+
+/** True if the re-id'd list differs from the current pool (different count
+ *  or any id changed), meaning a legacy pool needs persisting with stable
+ *  ids. Avoids needless Firestore writes when the pool is already current. */
+function poolNeedsReId(current: GeneratedMCQ[], reIded: GeneratedMCQ[]): boolean {
+  if (current.length !== reIded.length) return true;
+  for (let i = 0; i < current.length; i++) {
+    if (current[i]?.id !== reIded[i]?.id) return true;
+  }
+  return false;
 }
