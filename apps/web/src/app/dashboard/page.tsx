@@ -215,6 +215,9 @@ export default function DashboardPage() {
         )}
       </section>
 
+      {/* Exam countdown — days remaining to the user's target exam */}
+      {me?.targetExam && <ExamCountdown examSlug={me.targetExam} onOpen={() => router.push('/exam-calendar')} />}
+
       {/* Primary Study CTA - Full width hero card */}
       <section className="mt-8 animate-fadeIn">
         <button
@@ -393,5 +396,73 @@ export default function DashboardPage() {
 
       {error && <div className="banner banner-error mt-6">{error}</div>}
     </main>
+  );
+}
+
+
+/**
+ * Compact exam-countdown card. Self-contained (fetches its own data) so it
+ * never blocks the dashboard's main load. Shows days remaining to the
+ * nearest upcoming event for the user's target exam, or the estimate when
+ * the date isn't officially confirmed yet.
+ */
+function ExamCountdown({ examSlug, onOpen }: { examSlug: string; onOpen: () => void }) {
+  const [info, setInfo] = useState<{ examName: string; eventName: string; days: number | null; estimate: string; confirmed: boolean } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await api.getExamDatesFor(examSlug);
+        if (cancelled || !data.events || data.events.length === 0) return;
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const withDays = data.events.map((e) => {
+          const d = e.date ? Math.ceil((new Date(e.date).getTime() - today.getTime()) / 86_400_000) : null;
+          return { e, d };
+        });
+        // Prefer the nearest future confirmed date; else the first event.
+        const upcoming = withDays.filter(x => x.d !== null && x.d >= 0).sort((a, b) => (a.d! - b.d!))[0] ?? withDays[0];
+        if (!upcoming) return;
+        setInfo({
+          examName: data.examName,
+          eventName: upcoming.e.name,
+          days: upcoming.d,
+          estimate: upcoming.e.estimatedMonth || 'TBA',
+          confirmed: upcoming.e.isConfirmed,
+        });
+      } catch { /* non-critical widget — stay hidden on error */ }
+    })();
+    return () => { cancelled = true; };
+  }, [examSlug]);
+
+  if (!info) return null;
+
+  return (
+    <section className="mt-4">
+      <button type="button" onClick={onOpen} className="paper-card card-selectable w-full p-4 text-left hover:shadow-md transition-all">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-ember-500/10 text-xl">📅</span>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-ink-900">{info.examName} · {info.eventName}</p>
+              <p className="mt-0.5 text-xs text-muted-500">
+                {info.confirmed && info.days !== null
+                  ? `${info.days} days to go`
+                  : `Estimated: ${info.estimate}`}
+                {!info.confirmed && <span className="ml-1.5 rounded-full bg-gold-500/10 px-1.5 py-0.5 text-[10px] text-gold-700">estimate</span>}
+              </p>
+            </div>
+          </div>
+          {info.confirmed && info.days !== null && info.days >= 0 ? (
+            <div className="text-right">
+              <p className="font-serif text-2xl font-bold text-ember-600">{info.days}</p>
+              <p className="text-[10px] uppercase tracking-wider text-muted-400">days left</p>
+            </div>
+          ) : (
+            <span className="text-sm font-semibold text-ember-500">View →</span>
+          )}
+        </div>
+      </button>
+    </section>
   );
 }
