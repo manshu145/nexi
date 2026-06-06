@@ -5,6 +5,7 @@ import Script from 'next/script';
 import { useAuth } from '~/lib/auth-context';
 import { api, authedFetch, newIdempotencyKey, type Plan } from '~/lib/api';
 import { planFeatureBullets, planDisplayName } from '~/lib/planDisplay';
+import { track } from '~/lib/analytics';
 import { Logo } from '~/components/Logo';
 
 declare global { interface Window { Razorpay: new (options: Record<string, unknown>) => { open(): void }; } }
@@ -125,6 +126,7 @@ export default function UpgradePage() {
   }
 
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
+  useEffect(() => { if (user) track('upgrade_view'); }, [user]);
 
   // PR-34b (audit #41): fetch the live admin-edited price matrix on mount
   // so the page never shows hardcoded prices that drifted from /admin/plans.
@@ -195,6 +197,7 @@ export default function UpgradePage() {
     couponResults[planId]?.valid ? pricingFor(planId)[period] : null;
 
   const handleBuyPlan = async (planId: 'scholar' | 'aspirant' | 'achiever') => {
+    track('upgrade_click', { plan: planId, period });
     if (processing) return;
     setError(null);
     setProcessing(true);

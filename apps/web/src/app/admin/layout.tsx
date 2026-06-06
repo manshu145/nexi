@@ -34,6 +34,7 @@ import { toast } from 'sonner';
  */
 const NAV_ITEMS = [
   { label: 'Stats', href: '/admin', icon: '📊' },
+  { label: 'Analytics', href: '/admin/analytics', icon: '📈' },
   { label: 'Users', href: '/admin/users', icon: '👥' },
   { label: 'Live Sessions', href: '/admin/sessions', icon: '🟢' },
   { label: 'Plans', href: '/admin/plans', icon: '💳' },

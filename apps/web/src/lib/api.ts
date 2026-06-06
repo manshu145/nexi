@@ -45,6 +45,13 @@ export interface StoredUser { id: string; email: string; name: string; phone: st
 export interface MeResponse { user: StoredUser; dailyStreak: { streak: number; creditsEarned: number }; }
 export interface MCQOption { key: 'A'|'B'|'C'|'D'; text: string; }
 export interface GeneratedMCQ { id: string; question: string; options: MCQOption[]; correctOption: 'A'|'B'|'C'|'D'; explanation: string; difficulty: 'easy'|'medium'|'hard'; subject?: string; topic?: string; }
+export interface AnalyticsOverview {
+  overview: { totalUsers: number; dau: number; mau: number; newUsersToday: number; newUsersThisWeek: number; revenue30d: number; revenueTotal: number; activeSessions: number; stickiness: number };
+  series: Array<{ date: string; total: number; events: Record<string, number> }>;
+  featureTotals: Record<string, number>;
+  funnel: { upgradeViews: number; upgradeClicks: number; payments: number };
+  rangeDays: number;
+}
 export interface MailboxMessage { id: string; direction: 'inbound'|'outbound'; from: string; to: string; subject: string; text: string; html?: string; status?: string; authorAdminEmail?: string; createdAt: string; }
 export interface MailboxThread { id: string; participantEmail: string; participantName?: string; subject: string; status: 'open'|'closed'; unreadByAdmin: boolean; lastMessageAt: string; lastDirection: 'inbound'|'outbound'; preview: string; createdAt: string; }
 export interface ExamEvent { name: string; date: string | null; estimatedMonth: string; isConfirmed: boolean; sourceUrl: string; registrationStart: string | null; registrationEnd: string | null; }
@@ -145,6 +152,10 @@ export const api = {
   },
   async submitMultiStageAssessment(stage1: {questions:GeneratedMCQ[]; answers:{questionId:string;chosen:string|null}[]}, stage2: {questions:GeneratedMCQ[]; answers:{questionId:string;chosen:string|null}[]}, stage3: {questions:GeneratedMCQ[]; answers:{questionId:string;chosen:string|null}[]}) { return (await authedFetch('/v1/assessment/submit', { method: 'POST', body: JSON.stringify({ multiStage: true, stage1, stage2, stage3 }) })).json() as Promise<AssessmentResult>; },
 
+  // ─── Admin analytics ────────────────────────────────────────────────────
+  async getAnalyticsOverview(days = 30) {
+    return (await authedFetch(`/v1/analytics/overview?days=${days}`)).json() as Promise<AnalyticsOverview>;
+  },
   // ─── Admin mailbox (two-way email conversations) ────────────────────────
   async getMailboxThreads(status?: 'open'|'closed') {
     const q = status ? `?status=${status}` : '';
