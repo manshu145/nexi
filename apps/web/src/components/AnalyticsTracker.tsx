@@ -3,7 +3,8 @@
 import { useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '~/lib/auth-context';
-import { track, flush, setAnalyticsEnabled } from '~/lib/analytics';
+import { useUser } from '~/lib/userStore';
+import { track, flush, setAnalyticsEnabled, setAnalyticsContext } from '~/lib/analytics';
 
 /**
  * Mounts once (in Providers). Enables tracking when authenticated, records a
@@ -20,9 +21,16 @@ function normalizePath(pathname: string): string {
 
 export function AnalyticsTracker() {
   const { user } = useAuth();
+  const { user: me } = useUser();
   const pathname = usePathname();
 
   useEffect(() => { setAnalyticsEnabled(!!user); }, [user]);
+
+  // Keep ambient dimensions (exam, language) fresh for every event so the
+  // admin can see exam-wise engagement and the English/Hindi split.
+  useEffect(() => {
+    setAnalyticsContext({ exam: me?.targetExam ?? null, lang: me?.language ?? null });
+  }, [me?.targetExam, me?.language]);
 
   useEffect(() => {
     if (!user || !pathname) return;
