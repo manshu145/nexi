@@ -54,6 +54,12 @@ export interface MockTestAttempt {
   subjectBreakdown: Record<string, { correct: number; total: number }> | null;
   /** Credits charged for starting this attempt. Stored for audit / refund. */
   creditCost: number;
+  /** Negative marking applied per wrong answer (e.g. 0.25). Optional for backward-compat with older attempts. */
+  negativeMarkPerWrong?: number;
+  /** Count of wrong (non-skipped) answers — populated after submission. */
+  wrongCount?: number;
+  /** Net marks after negative marking (correct*1 − wrong*neg) — populated after submission. */
+  netMarks?: number;
 }
 
 export interface MockTestStore {
