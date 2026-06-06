@@ -183,6 +183,8 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
         u.targetExam?.toLowerCase().includes(search)
       );
     }
+    // Newest users first — admins want to see fresh signups at the top.
+    users.sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
     const paginated = users.slice((page - 1) * limit, page * limit);
     return c.json({ users: paginated, total: users.length, page, limit });
   });
