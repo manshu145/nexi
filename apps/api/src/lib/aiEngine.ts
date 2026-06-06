@@ -2263,53 +2263,109 @@ Rules for your responses:
 
     async translateToHindi(items: { headline: string; summary: string }[]) {
       if (items.length === 0) return [];
-      const prompt = `Translate the following news items to Hindi (Devanagari script). Keep them concise and factual.\n\nItems:\n${items.map((it, i) => `${i + 1}. Headline: ${it.headline}\n   Summary: ${it.summary}`).join('\n')}\n\nRespond ONLY with valid JSON:\n{"items":[{"headline":"हिंदी headline","summary":"हिंदी summary"}]}`;
 
-      // Try Gemini first (cheap + fast for translation, auto-resolved)
-      if (env.GEMINI_API_KEY) {
-        try {
-          const r = await callGemini({ prompt, generationConfig: { temperature: 0.2, maxOutputTokens: 3000 }, tier: 'flash' });
-          if (r.ok) {
-            const rawText = r.text;
-            const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-            if (jsonMatch) {
-              const parsed = JSON.parse(jsonMatch[0]) as { items: { headline: string; summary: string }[] };
-              if (parsed.items?.length) {
-                logger.info('ai.translate_hindi', { provider: 'gemini', count: parsed.items.length, model: r.model });
-                return parsed.items;
+      // Founder report: "hindi version me 3 point nahi banta aur summary
+      // chhota aata hai". Two root causes, both fixed here:
+      //   1. The old prompt said "Keep them concise" — so Gemini SHORTENED
+      //      the Hindi summary instead of translating the full English one,
+      //      and it dropped the "**Key Points:**" heading + the "• " bullet
+      //      markers that the web extractKeyPoints() splits on (so Hindi
+      //      users got 0 quick-revision points).
+      //   2. ALL ~30 items were translated in ONE 3000-token call, so the
+      //      JSON got truncated mid-stream — later items came back empty
+      //      (then hidden by the strict-Hindi filter) and the last returned
+      //      item was cut short.
+      // Fix: translate in small batches with a faithful, structure-preserving
+      // prompt and a much larger output budget.
+      const buildPrompt = (batch: { headline: string; summary: string }[]) =>
+        `You are a professional Hindi (Devanagari) translator for an Indian competitive-exam current-affairs app.
+
+Translate EACH news item below into natural, fluent Hindi. STRICT RULES:
+- This is a FULL translation, NOT a summary. Translate every sentence — do NOT shorten, compress or skip anything. The Hindi summary MUST be the same length and detail as the English one.
+- PRESERVE the exact structure and formatting: keep blank lines between paragraphs, keep the "**Key Points:**" heading (translate it to "**मुख्य बिंदु:**"), and keep every "• " bullet line as a "• " bullet line. The number of bullet points in Hindi MUST equal the number in English (never fewer than 3).
+- Keep proper nouns, scheme names, org acronyms (ISRO, RBI, UN, GDP) and numbers/dates intact; transliterate names only when there is a well-known Hindi form.
+- Do NOT add commentary. Output ONLY the translation.
+
+Items:
+${batch.map((it, i) => `### ITEM ${i + 1}\nHeadline: ${it.headline}\nSummary:\n${it.summary}`).join('\n\n')}
+
+Respond ONLY with valid JSON (summary may contain \\n newlines and • bullets):
+{"items":[{"headline":"हिंदी headline","summary":"पूरा हिंदी सारांश\\n\\n**मुख्य बिंदु:**\\n• बिंदु 1\\n• बिंदु 2\\n• बिंदु 3"}]}`;
+
+      // Translate a single batch via Gemini → Groq → OpenAI. Returns the
+      // translated array, or null if every provider failed for this batch.
+      const translateBatch = async (
+        batch: { headline: string; summary: string }[],
+      ): Promise<{ headline: string; summary: string }[] | null> => {
+        const prompt = buildPrompt(batch);
+
+        if (env.GEMINI_API_KEY) {
+          try {
+            const r = await callGemini({ prompt, generationConfig: { temperature: 0.2, maxOutputTokens: 8000 }, tier: 'flash' });
+            if (r.ok) {
+              const jsonMatch = r.text.match(/\{[\s\S]*\}/);
+              if (jsonMatch) {
+                const parsed = JSON.parse(jsonMatch[0]) as { items?: { headline: string; summary: string }[] };
+                if (parsed.items?.length) {
+                  logger.info('ai.translate_hindi', { provider: 'gemini', count: parsed.items.length, model: r.model });
+                  return parsed.items;
+                }
               }
             }
-          }
-        } catch (err) { logger.warn('ai.translate_gemini_failed', { error: err instanceof Error ? err.message : String(err) }); }
+          } catch (err) { logger.warn('ai.translate_gemini_failed', { error: err instanceof Error ? err.message : String(err) }); }
+        }
+
+        if (groq) {
+          try {
+            const trGroq = await getGroqClient();
+            const c = await (trGroq?.client ?? groq!).chat.completions.create({ model: trGroq?.model ?? 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.2, max_tokens: 8000, response_format: { type: 'json_object' } });
+            const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { items?: { headline: string; summary: string }[] };
+            if (parsed.items?.length) {
+              logger.info('ai.translate_hindi', { provider: 'groq', count: parsed.items.length });
+              return parsed.items;
+            }
+          } catch (err) { logger.warn('ai.translate_groq_failed', { error: err instanceof Error ? err.message : String(err) }); }
+        }
+
+        if (openai) {
+          try {
+            const c = await oaCreate({ messages: [{ role: 'user', content: prompt }], temperature: 0.2, max_tokens: 8000, response_format: { type: 'json_object' } });
+            const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { items?: { headline: string; summary: string }[] };
+            if (parsed.items?.length) {
+              logger.info('ai.translate_hindi', { provider: 'openai', count: parsed.items.length });
+              return parsed.items;
+            }
+          } catch (err) { logger.warn('ai.translate_openai_failed', { error: err instanceof Error ? err.message : String(err) }); }
+        }
+
+        return null;
+      };
+
+      // Batch in small groups (5) so the JSON never gets truncated. Each
+      // batch keeps its slot alignment: a failed batch falls back to the
+      // English originals (same as the previous total-failure behaviour)
+      // rather than shifting every later item's index.
+      const BATCH_SIZE = 5;
+      const out: { headline: string; summary: string }[] = [];
+      let anyFailed = false;
+      for (let i = 0; i < items.length; i += BATCH_SIZE) {
+        const batch = items.slice(i, i + BATCH_SIZE);
+        const translated = await translateBatch(batch);
+        if (translated && translated.length === batch.length) {
+          out.push(...translated);
+        } else if (translated && translated.length > 0) {
+          // Provider returned a partial batch — keep what we got, pad the
+          // rest with originals to preserve index alignment.
+          for (let j = 0; j < batch.length; j++) out.push(translated[j] ?? batch[j]!);
+          anyFailed = true;
+        } else {
+          out.push(...batch);
+          anyFailed = true;
+        }
       }
 
-      // Fallback: Groq
-      if (groq) {
-        try {
-          const trGroq = await getGroqClient();
-          const c = await (trGroq?.client ?? groq!).chat.completions.create({ model: trGroq?.model ?? 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.2, max_tokens: 3000, response_format: { type: 'json_object' } });
-          const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { items: { headline: string; summary: string }[] };
-          if (parsed.items?.length) {
-            logger.info('ai.translate_hindi', { provider: 'groq', count: parsed.items.length });
-            return parsed.items;
-          }
-        } catch (err) { logger.warn('ai.translate_groq_failed', { error: err instanceof Error ? err.message : String(err) }); }
-      }
-
-      // Fallback: OpenAI
-      if (openai) {
-        try {
-          const c = await oaCreate({ messages: [{ role: 'user', content: prompt }], temperature: 0.2, max_tokens: 3000, response_format: { type: 'json_object' } });
-          const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { items: { headline: string; summary: string }[] };
-          if (parsed.items?.length) {
-            logger.info('ai.translate_hindi', { provider: 'openai', count: parsed.items.length });
-            return parsed.items;
-          }
-        } catch (err) { logger.warn('ai.translate_openai_failed', { error: err instanceof Error ? err.message : String(err) }); }
-      }
-
-      logger.warn('ai.translate_all_failed', { message: 'All providers failed, returning original items' });
-      return items; // Return originals if all translation fails
+      if (anyFailed) logger.warn('ai.translate_partial', { message: 'Some Hindi translation batches fell back to English', total: items.length });
+      return out;
     },
 
     async generateBlogDraft(input) {

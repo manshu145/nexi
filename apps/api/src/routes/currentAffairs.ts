@@ -11,13 +11,23 @@ import { INDIAN_STATES } from '@nexigrate/shared';
 
 /**
  * Deduplicate current affairs items by normalized headline.
+ *
+ * Dedup is SCOPED PER STATE (state slug + headline), never across editions.
+ * Founder report: "state ke news mix up ho rahe hain / unke feed me nahi ja
+ * rahe". Root cause: a national item and a state (CG/MP) item covering the
+ * same event normalize to the same headline key; the old global dedup merged
+ * them into ONE survivor with a single `state` value — so the state edition
+ * either lost its item or inherited a national one. Scoping the key by state
+ * keeps each edition's items independent: a national duplicate can never
+ * evict a state item, and two different states never collide.
  */
 function deduplicateItems(items: any[]): any[] {
   if (items.length === 0) return [];
   const seen = new Map<string, any>();
   for (const item of items) {
-    const normalizedKey = normalizeHeadline(item.headline || '');
-    if (!normalizedKey) continue;
+    const headlineKey = normalizeHeadline(item.headline || '');
+    if (!headlineKey) continue;
+    const normalizedKey = `${item.state || 'national'}::${headlineKey}`;
     const existing = seen.get(normalizedKey);
     if (!existing) {
       seen.set(normalizedKey, item);
