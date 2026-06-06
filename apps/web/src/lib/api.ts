@@ -67,6 +67,7 @@ export interface SyllabusChapter { slug: string; name: string; nameHi: string; o
 export interface SyllabusSubject { slug: string; name: string; nameHi: string; icon: string; chapters: SyllabusChapter[]; }
 export interface SyllabusTree { exam: string; examName: string; subjects: SyllabusSubject[]; }
 export interface StudyProgress { userId: string; exam: string; completedChapters: string[]; chapterScores: Record<string, number>; currentChapter: string | null; overallPercent: number; }
+export interface ReviewItem { id: string; exam: string; subject: string; chapter: string; easeFactor: number; interval: number; repetitions: number; dueAt: string; lastScore: number; lastReviewedAt: string; createdAt: string; }
 export interface ChapterContent { exam: string; subject: string; chapter: string; language: string; content: string; generatedAt: string; generatedBy: string; userLevel?: 'beginner' | 'intermediate' | 'advanced'; contentPersonalizedFor?: 'beginner' | 'intermediate' | 'advanced'; }
 
 // Blog (lock §5.3)
@@ -232,6 +233,9 @@ export const api = {
   async visualizeChapter(examSlug: string, subjectSlug: string, chapterSlug: string, type: 'diagram'|'mindmap'|'flowchart'|'timeline'|'image') { return (await authedFetch('/v1/study/visualize', { method: 'POST', body: JSON.stringify({ examSlug, subjectSlug, chapterSlug, type }) })).json() as Promise<{visualization:{type:'mermaid'|'image'; content:string}}>; },
   async completeChapter(exam: string, subject: string, chapter: string, score: number) { return (await authedFetch(`/v1/study/${exam}/${subject}/${chapter}/complete`, { method: 'POST', body: JSON.stringify({ score }) })).json() as Promise<CompleteResult>; },
   async getStudyProgress(examSlug: string) { return (await authedFetch(`/v1/study/progress/${examSlug}`)).json() as Promise<{progress:StudyProgress}>; },
+  async getReviewDue(limit = 20) { return (await authedFetch(`/v1/review/due?limit=${limit}`)).json() as Promise<{items:ReviewItem[]; count:number}>; },
+  async getReviewStats() { return (await authedFetch('/v1/review/stats')).json() as Promise<{dueCount:number}>; },
+  async gradeReview(id: string, quality: number) { return (await authedFetch(`/v1/review/${encodeURIComponent(id)}/grade`, { method: 'POST', body: JSON.stringify({ quality }) })).json() as Promise<{item:ReviewItem}>; },
 
   // Current Affairs
   async getCurrentAffairs(lang: 'en' | 'hi' = 'en', state?: string) {

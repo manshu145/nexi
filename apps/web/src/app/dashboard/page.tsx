@@ -255,6 +255,7 @@ export default function DashboardPage() {
 
       {/* Exam countdown — days remaining to the user's target exam */}
       {me?.targetExam && <ExamCountdown examSlug={me.targetExam} onOpen={() => router.push('/exam-calendar')} />}
+      <ReviseTodayCard onOpen={() => router.push('/revise')} />
 
       {/* Primary Study CTA - Full width hero card */}
       <section className="mt-8 animate-fadeIn">
@@ -500,6 +501,39 @@ function ExamCountdown({ examSlug, onOpen }: { examSlug: string; onOpen: () => v
             <span className="text-sm font-semibold text-ember-500">View →</span>
           )}
         </div>
+      </button>
+    </section>
+  );
+}
+
+
+/**
+ * ReviseTodayCard — spaced-repetition nudge. Shows only when the student has
+ * chapters due for revision today; tapping opens the /revise queue.
+ */
+function ReviseTodayCard({ onOpen }: { onOpen: () => void }) {
+  const [dueCount, setDueCount] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    api.getReviewStats()
+      .then((r) => { if (!cancelled) setDueCount(r.dueCount); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  if (dueCount <= 0) return null;
+
+  return (
+    <section className="mt-4">
+      <button onClick={onOpen} className="paper-card flex w-full items-center justify-between gap-3 p-4 text-left transition-shadow hover:shadow-md">
+        <div className="flex items-center gap-3">
+          <span aria-hidden className="grid h-10 w-10 place-items-center rounded-xl bg-ember-500/10 text-xl">🔁</span>
+          <div>
+            <p className="text-sm font-semibold text-ink-900">Revise Today</p>
+            <p className="text-xs text-muted-500">{dueCount} chapter{dueCount === 1 ? '' : 's'} due for spaced revision</p>
+          </div>
+        </div>
+        <span className="text-sm font-semibold text-ember-500">Revise →</span>
       </button>
     </section>
   );

@@ -47,6 +47,8 @@ import { makeNotificationRoutes } from './routes/notifications.js';
 import { notifyUser } from './lib/notificationService.js';
 import { FirestoreExamDatesStore, InMemoryExamDatesStore, type ExamDatesStore } from './lib/examDatesStore.js';
 import { makeExamRoutes } from './routes/exams.js';
+import { FirestoreReviewStore, InMemoryReviewStore, type ReviewStore } from './lib/reviewStore.js';
+import { makeReviewRoutes } from './routes/review.js';
 import { makePYQRoutes } from './routes/pyq.js';
 
 export interface AppDeps { env: Env; logger: Logger; users?: UserStore; aiEngine?: AIEngine; chapters?: ChapterStore; currentAffairs?: CurrentAffairsStore; chatStore?: ChatStore; adminStore?: AdminStore; couponStore?: CouponStore; idempotency?: IdempotencyStore; ledger?: CreditLedger; config?: PlatformConfigStore; mockTests?: MockTestStore; pyq?: PYQStore; blog?: BlogStore; aiProviderStore?: AIProviderStore; modelResolver?: AIModelResolver; serviceKeys?: ServiceKeyStore; push?: PushService; teamInvites?: TeamInviteStore; }
@@ -78,6 +80,7 @@ export function buildApp(deps: AppDeps): Hono {
   const emailThreads: EmailThreadStore = fs ? new FirestoreEmailThreadStore(fs) : new InMemoryEmailThreadStore();
   const notifications: NotificationStore = fs ? new FirestoreNotificationStore(fs) : new InMemoryNotificationStore();
   const examDates: ExamDatesStore = fs ? new FirestoreExamDatesStore(fs) : new InMemoryExamDatesStore();
+  const review: ReviewStore = fs ? new FirestoreReviewStore(fs) : new InMemoryReviewStore();
   const blog = deps.blog ?? (fs ? new FirestoreBlogStore(fs) : new InMemoryBlogStore());
   // PR-37: Razorpay / Resend / WhatsApp / FCM keys come from this store
   // first, env vars second. Mirrors the AI Providers pattern (PR-29) but
@@ -477,7 +480,7 @@ export function buildApp(deps: AppDeps): Hono {
   });
   v1.route('/users', makeUsersRoutes({ users, logger, db: fs, ledger, config, firebaseAuth }));
   v1.route('/assessment', makeAssessmentRoutes({ users, aiEngine, logger, env, ledger, serviceKeys }));
-  v1.route('/study', makeStudyRoutes({ users, aiEngine, chapters, logger, db: fs, env, ledger, config, modelResolver }));
+  v1.route('/study', makeStudyRoutes({ users, aiEngine, chapters, logger, db: fs, env, ledger, config, modelResolver, review }));
   v1.route('/current-affairs', cronRoutes);
   v1.route('/chat', makeChatRoutes({ users, aiEngine, chat: chatStore, logger, env, config, usage: featureUsage }));
   v1.route('/credits', makeCreditsRoutes({ users, logger, db: fs, ledger, config }));
@@ -491,6 +494,7 @@ export function buildApp(deps: AppDeps): Hono {
   v1.route('/mailbox', makeMailboxRoutes({ threads: emailThreads, users, env, logger, serviceKeys }));
   v1.route('/notifications', makeNotificationRoutes({ notifications, logger }));
   v1.route('/exams', makeExamRoutes({ examDates, users, aiEngine, env, logger }));
+  v1.route('/review', makeReviewRoutes({ review, logger }));
 
   // (POST /v1/logs/error and GET /v1/branding are now mounted on the
   // PUBLIC router via makePublicRoutes() above, so the front-end error
