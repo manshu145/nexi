@@ -63,7 +63,6 @@ export const EXAMS: readonly Exam[] = [
   { id: asExamSlug('ukpsc'),          name: 'UKPSC (Uttarakhand)', category: 'state',         status: 'live' },
   { id: asExamSlug('cgpsc'),          name: 'CGPSC (Chhattisgarh)', category: 'state',        status: 'live' },
   { id: asExamSlug('cg-vyapam'),      name: 'CG Vyapam (CGPEB)',  category: 'state',          status: 'live' },
-  { id: asExamSlug('cg-shikshak-bharti'), name: 'CG Shikshak Bharti', category: 'state',      status: 'live' },
 
   // ─── Banking ───
   { id: asExamSlug('ibps-po'),        name: 'IBPS PO',            category: 'banking',        status: 'live' },
@@ -93,11 +92,63 @@ export const EXAMS: readonly Exam[] = [
   { id: asExamSlug('cuet-pg'),        name: 'CUET PG',            category: 'management',     status: 'live' },
 
   // ─── Teaching ───
-  { id: asExamSlug('ctet'),           name: 'CTET',               category: 'civil-services', status: 'live' },
-  { id: asExamSlug('uptet'),          name: 'UPTET / SUPER TET',  category: 'civil-services', status: 'live' },
+  { id: asExamSlug('ctet'),           name: 'CTET',               category: 'teaching',       status: 'live' },
+  { id: asExamSlug('uptet'),          name: 'UPTET / SUPER TET',  category: 'teaching',       status: 'live' },
+  { id: asExamSlug('cgtet'),          name: 'CGTET',              category: 'teaching',       status: 'live' },
+  { id: asExamSlug('bstet'),          name: 'BSTET (Bihar TET)',  category: 'teaching',       status: 'live' },
+  { id: asExamSlug('kvs-teacher'),    name: 'KVS Teacher',        category: 'teaching',       status: 'live' },
+  { id: asExamSlug('nvs-teacher'),    name: 'NVS Teacher',        category: 'teaching',       status: 'live' },
+  { id: asExamSlug('dsssb-teacher'),  name: 'DSSSB Teacher',      category: 'teaching',       status: 'live' },
+  { id: asExamSlug('cg-set'),         name: 'CG SET (Lecturer)',  category: 'teaching',       status: 'live' },
+  { id: asExamSlug('cg-principal'),   name: 'CG Principal / Headmaster', category: 'teaching', status: 'live' },
+  { id: asExamSlug('cg-shikshak-bharti'), name: 'CG Shikshak Bharti', category: 'teaching',  status: 'live' },
 
-  // ─── Nursing / Paramedical ───
+  // ─── Nursing / Paramedical / Medical (additional) ───
   { id: asExamSlug('nursing-officer'), name: 'Nursing Officer',   category: 'medical',        status: 'live' },
+  { id: asExamSlug('neet-pg'),        name: 'NEET PG',            category: 'medical',        status: 'live' },
+  { id: asExamSlug('aiims-raipur'),   name: 'AIIMS Raipur',       category: 'medical',        status: 'live' },
+  { id: asExamSlug('anm-gnm-entrance'), name: 'ANM / GNM Entrance', category: 'medical',     status: 'live' },
+  { id: asExamSlug('bpharma-entrance'), name: 'B.Pharma / D.Pharma Entrance', category: 'medical', status: 'live' },
+  { id: asExamSlug('cgpsc-medical'),  name: 'CGPSC Medical Officer', category: 'medical',     status: 'live' },
+  { id: asExamSlug('cg-vyapam-nursing'), name: 'CG Vyapam Nursing Officer', category: 'medical', status: 'live' },
+  { id: asExamSlug('cg-vyapam-anm-gnm'), name: 'CG Vyapam ANM/GNM', category: 'medical',    status: 'live' },
+  { id: asExamSlug('cg-vyapam-lab-tech'), name: 'CG Vyapam Lab Technician', category: 'medical', status: 'live' },
+
+  // ─── CG State PSC & Government (CGPSC / CGVYAPAM) ───
+  { id: asExamSlug('cgpsc-state-service'), name: 'CGPSC State Service (SDM/DSP)', category: 'state', status: 'live' },
+  { id: asExamSlug('cgpsc-forest'),   name: 'CGPSC Forest Service', category: 'state',        status: 'live' },
+  { id: asExamSlug('cgpsc-agriculture'), name: 'CGPSC Agriculture Officer', category: 'state', status: 'live' },
+  { id: asExamSlug('cg-vyapam-patwari'), name: 'CG Vyapam Patwari', category: 'state',       status: 'live' },
+  { id: asExamSlug('cg-vyapam-forest-guard'), name: 'CG Forest Guard / Aarakshi', category: 'state', status: 'live' },
+  { id: asExamSlug('cg-vyapam-si'),   name: 'CG Vyapam Sub Inspector', category: 'state',    status: 'live' },
+  { id: asExamSlug('cg-vyapam-constable'), name: 'CG Vyapam Constable', category: 'state',   status: 'live' },
+  { id: asExamSlug('cg-vyapam-steno'), name: 'CG Vyapam Steno/Typist/DEO', category: 'state', status: 'live' },
+  { id: asExamSlug('cg-vyapam-je'),   name: 'CG Vyapam Junior Engineer', category: 'state',  status: 'live' },
+  { id: asExamSlug('cg-revenue-inspector'), name: 'CG Revenue Inspector', category: 'state', status: 'live' },
+  { id: asExamSlug('cg-excise-si'),   name: 'CG Excise Sub Inspector', category: 'state',    status: 'live' },
+
+  // ─── Banking & Finance (additional) ───
+  { id: asExamSlug('ibps-so'),        name: 'IBPS SO',            category: 'banking',        status: 'live' },
+  { id: asExamSlug('ibps-rrb-po'),    name: 'IBPS RRB PO',       category: 'banking',        status: 'live' },
+  { id: asExamSlug('ibps-rrb-clerk'), name: 'IBPS RRB Clerk',    category: 'banking',        status: 'live' },
+  { id: asExamSlug('lic-aao'),        name: 'LIC AAO',            category: 'banking',        status: 'live' },
+  { id: asExamSlug('niacl-ao'),       name: 'NIACL AO',           category: 'banking',        status: 'live' },
+
+  // ─── Central Government (additional) ───
+  { id: asExamSlug('ssc-je'),         name: 'SSC JE',             category: 'civil-services', status: 'live' },
+  { id: asExamSlug('rrb-alp'),        name: 'RRB ALP',            category: 'civil-services', status: 'live' },
+  { id: asExamSlug('crpf-constable'), name: 'CRPF/BSF/CISF Constable', category: 'defence',  status: 'live' },
+  { id: asExamSlug('crpf-si'),        name: 'CRPF/BSF/CISF SI',  category: 'defence',        status: 'live' },
+  { id: asExamSlug('india-post-gds'), name: 'India Post GDS',     category: 'civil-services', status: 'live' },
+  { id: asExamSlug('india-post-mts'), name: 'India Post MTS/Postman', category: 'civil-services', status: 'live' },
+
+  // ─── Engineering (additional) ───
+  { id: asExamSlug('cgpet'),          name: 'CGPET (CG Engineering)', category: 'engineering', status: 'live' },
+  { id: asExamSlug('gate'),           name: 'GATE',               category: 'engineering',    status: 'live' },
+
+  // ─── Law (additional) ───
+  { id: asExamSlug('cg-civil-judge'), name: 'CGPSC Civil Judge',  category: 'law',            status: 'live' },
+  { id: asExamSlug('bar-council'),    name: 'Bar Council Exam',   category: 'law',            status: 'live' },
 
   // ─── Professional Skills ───
   { id: asExamSlug('it-fundamentals'), name: 'IT Fundamentals', category: 'professional-skills', status: 'live' },

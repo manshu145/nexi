@@ -100,6 +100,18 @@ export function buildApp(deps: AppDeps): Hono {
 
   // Rate limiting for AI endpoints (Fix #29)
   const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+
+  // Periodic cleanup every 60s to prevent unbounded memory growth.
+  // The AI spend cap (per-user daily limit in Firestore) is the real
+  // protection against abuse; this in-memory limiter is a burst guard only.
+  const RATE_LIMIT_MAX_ENTRIES = 5000;
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, val] of rateLimitMap) {
+      if (val.resetAt < now) rateLimitMap.delete(key);
+    }
+  }, 60_000);
+
   app.use('/v1/chat/*', async (c, next) => {
     // Use the decoded principal userId if available (set by auth middleware
     // above on the /v1 sub-router); for pre-auth routes fall back to IP.
@@ -113,11 +125,12 @@ export function buildApp(deps: AppDeps): Hono {
       }
       entry.count++;
     } else {
+      // Evict oldest entries if map is getting large
+      if (rateLimitMap.size >= RATE_LIMIT_MAX_ENTRIES) {
+        const oldest = [...rateLimitMap.entries()].sort((a, b) => a[1].resetAt - b[1].resetAt);
+        for (let i = 0; i < 1000 && i < oldest.length; i++) rateLimitMap.delete(oldest[i]![0]);
+      }
       rateLimitMap.set(userId, { count: 1, resetAt: now + 60000 });
-    }
-    // Cleanup old entries periodically
-    if (rateLimitMap.size > 10000) {
-      for (const [key, val] of rateLimitMap) { if (val.resetAt < now) rateLimitMap.delete(key); }
     }
     await next();
   });

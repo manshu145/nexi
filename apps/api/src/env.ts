@@ -29,7 +29,10 @@ const envSchema = z.object({
   WHATSAPP_TOKEN: z.string().optional().default(''),
   WHATSAPP_PHONE_NUMBER_ID: z.string().optional().default(''),
   SUPER_ADMIN_EMAIL: z.string().default('manshu.ibc24@gmail.com'),
-  CRON_SECRET: z.string().optional().default('nexigrate-cron-2026'),
+  // IMPORTANT: Override this in production with a strong random secret (32+ chars).
+  // The default is intentionally weak so local dev works out-of-the-box, but
+  // Cloud Run deployments MUST set CRON_SECRET via env var or Secret Manager.
+  CRON_SECRET: z.string().optional().default('nexigrate-cron-2026-dev-only'),
   CORS_ALLOWED_ORIGINS: z.string().default('http://localhost:3000,https://app.nexigrate.com,https://nexigrate.com').transform((s) => s.split(',')),
 });
 

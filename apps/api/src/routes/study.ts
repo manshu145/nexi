@@ -44,6 +44,9 @@ function resolveExamName(examSlug: string): string {
  * Chapters" results actually show up on reload. Existing chapters win on
  * slug collision; new ones are appended and the list is re-sorted by order.
  * Fail-soft: any Firestore error leaves the subject untouched.
+ *
+ * Performance (S6 fix): uses db.getAll() to batch-read all subject docs
+ * in a single Firestore round-trip instead of N sequential reads.
  */
 async function mergeAppendedChapters(
   db: Firestore | null,
@@ -51,35 +54,43 @@ async function mergeAppendedChapters(
   syllabus: SyllabusTree,
 ): Promise<SyllabusTree> {
   if (!db) return syllabus;
-  const subjects = await Promise.all(
-    syllabus.subjects.map(async (sub) => {
-      try {
-        const snap = await db.collection('syllabi').doc(`${examSlug}_${sub.slug}`).get();
-        if (!snap.exists) return sub;
-        const stored = (snap.data()?.chapters ?? []) as {
-          slug?: string; name?: string; nameHi?: string; order?: number; estimatedMinutes?: number;
-        }[];
-        if (!Array.isArray(stored) || stored.length === 0) return sub;
-        const bySlug = new Map(sub.chapters.map((ch) => [ch.slug, ch]));
-        let nextOrder = sub.chapters.length;
-        for (const ch of stored) {
-          if (!ch?.slug || bySlug.has(ch.slug)) continue;
-          bySlug.set(ch.slug, {
-            slug: ch.slug,
-            name: ch.name ?? ch.slug,
-            nameHi: ch.nameHi ?? ch.name ?? ch.slug,
-            order: ch.order ?? ++nextOrder,
-            estimatedMinutes: ch.estimatedMinutes ?? 40,
-          });
-        }
-        const merged = Array.from(bySlug.values()).sort((a, b) => a.order - b.order);
-        return { ...sub, chapters: merged };
-      } catch {
-        return sub;
+  if (syllabus.subjects.length === 0) return syllabus;
+
+  try {
+    // Batch read: single network call for all subject docs
+    const refs = syllabus.subjects.map((sub) =>
+      db.collection('syllabi').doc(`${examSlug}_${sub.slug}`)
+    );
+    const snaps = await db.getAll(...refs);
+
+    const subjects = syllabus.subjects.map((sub, i) => {
+      const snap = snaps[i];
+      if (!snap || !snap.exists) return sub;
+      const stored = (snap.data()?.chapters ?? []) as {
+        slug?: string; name?: string; nameHi?: string; order?: number; estimatedMinutes?: number;
+      }[];
+      if (!Array.isArray(stored) || stored.length === 0) return sub;
+      const bySlug = new Map(sub.chapters.map((ch) => [ch.slug, ch]));
+      let nextOrder = sub.chapters.length;
+      for (const ch of stored) {
+        if (!ch?.slug || bySlug.has(ch.slug)) continue;
+        bySlug.set(ch.slug, {
+          slug: ch.slug,
+          name: ch.name ?? ch.slug,
+          nameHi: ch.nameHi ?? ch.name ?? ch.slug,
+          order: ch.order ?? ++nextOrder,
+          estimatedMinutes: ch.estimatedMinutes ?? 40,
+        });
       }
-    }),
-  );
-  return { ...syllabus, subjects };
+      const merged = Array.from(bySlug.values()).sort((a, b) => a.order - b.order);
+      return { ...sub, chapters: merged };
+    });
+
+    return { ...syllabus, subjects };
+  } catch {
+    // Fail-soft: return original syllabus if batch read fails
+    return syllabus;
+  }
 }
 
 export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
@@ -196,7 +207,7 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
             source: 'admin_grant',
             amount: refundAmount,
             sourceRef: `refund:${exam}/${subject}/${chapter}`,
-            idempotencyKey: `refund:read_chapter:${principal.userId}:${exam}/${subject}/${chapter}:${Date.now()}`,
+            idempotencyKey: `refund:read_chapter:${principal.userId}:${exam}/${subject}/${chapter}:${userLevel}`,
           });
           deps.logger.info('study.credits_refunded', { userId: principal.userId, amount: refundAmount, reason: 'ai_failure' });
         } catch (refundErr) {
