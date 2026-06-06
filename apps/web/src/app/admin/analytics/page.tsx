@@ -16,6 +16,7 @@ import {
 } from 'recharts';
 import { useAuth } from '~/lib/auth-context';
 import { api, type AnalyticsOverview } from '~/lib/api';
+import { EXAM_BY_SLUG } from '@nexigrate/shared';
 
 const EMBER = '#B3461F';
 const GOLD = '#B8862F';
@@ -28,8 +29,11 @@ const EVENT_LABELS: Record<string, string> = {
   quiz_complete: 'Quizzes completed',
   mock_test_start: 'Mock tests started',
   mock_test_complete: 'Mock tests completed',
+  essay_practice: 'Essay practice',
+  essay_submit: 'Essays graded',
   chat_message: 'Chat messages',
   current_affairs_view: 'Current affairs views',
+  reel_view: 'News reels opened',
   ca_quiz_attempt: 'CA quiz attempts',
   search: 'Searches',
   feature_click: 'Feature clicks',
@@ -37,6 +41,16 @@ const EVENT_LABELS: Record<string, string> = {
   upgrade_click: 'Upgrade clicks',
   error_encountered: 'Errors',
 };
+
+/** Key metrics shown in the Today vs Yesterday compare strip. */
+const COMPARE_METRICS: Array<{ key: string; label: string }> = [
+  { key: '__total', label: 'Total activity' },
+  { key: 'chapter_open', label: 'Chapters' },
+  { key: 'quiz_complete', label: 'Quizzes' },
+  { key: 'mock_test_complete', label: 'Mock tests' },
+  { key: 'reel_view', label: 'News reels' },
+  { key: 'essay_submit', label: 'Essays' },
+];
 
 function Stat({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
   return (
@@ -88,6 +102,25 @@ export default function AdminAnalyticsPage() {
   const clickRate = upgradeViews > 0 ? Math.round((upgradeClicks / upgradeViews) * 100) : 0;
   const buyRate = upgradeClicks > 0 ? Math.round((payments / upgradeClicks) * 100) : 0;
 
+  // Exam-wise engagement (top 10 by event count).
+  const examData = Object.entries(data.examTotals ?? {})
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([slug, v]) => ({ name: EXAM_BY_SLUG.get(slug as never)?.name ?? slug, value: v }));
+
+  // Language split.
+  const langTotals = data.langTotals ?? {};
+  const enCount = langTotals['en'] ?? 0;
+  const hiCount = langTotals['hi'] ?? 0;
+  const langTotal = enCount + hiCount;
+  const enPct = langTotal > 0 ? Math.round((enCount / langTotal) * 100) : 0;
+  const hiPct = langTotal > 0 ? 100 - enPct : 0;
+
+  // Today vs Yesterday compare.
+  const cmp = data.compare;
+  const metricVal = (snap: { total: number; events: Record<string, number> } | undefined, key: string) =>
+    !snap ? 0 : key === '__total' ? snap.total : (snap.events[key] ?? 0);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -112,6 +145,29 @@ export default function AdminAnalyticsPage() {
         <Stat label="Active Now" value={data.overview.activeSessions} sub="live sessions" />
         <Stat label="Revenue 30d" value={`₹${data.overview.revenue30d.toLocaleString('en-IN')}`} />
         <Stat label="Revenue Total" value={`₹${data.overview.revenueTotal.toLocaleString('en-IN')}`} />
+      </div>
+
+      {/* Today vs Yesterday */}
+      <div className="paper-card p-4">
+        <h2 className="mb-3 text-sm font-semibold text-ink-900">Today vs Yesterday</h2>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          {COMPARE_METRICS.map(({ key, label }) => {
+            const t = metricVal(cmp?.today, key);
+            const y = metricVal(cmp?.yesterday, key);
+            const delta = t - y;
+            const pct = y > 0 ? Math.round((delta / y) * 100) : (t > 0 ? 100 : 0);
+            const up = delta >= 0;
+            return (
+              <div key={key} className="rounded-lg border border-line bg-paper-50 p-3">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-muted-500">{label}</p>
+                <p className="mt-1 font-serif text-xl font-bold text-ink-900">{t}</p>
+                <p className={`mt-0.5 text-[11px] font-semibold ${up ? 'text-ember-600' : 'text-muted-500'}`}>
+                  {up ? '▲' : '▼'} {Math.abs(pct)}% <span className="font-normal text-muted-400">vs {y}</span>
+                </p>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Daily activity */}
@@ -155,6 +211,57 @@ export default function AdminAnalyticsPage() {
             </BarChart>
           </ResponsiveContainer>
         )}
+      </div>
+
+      {/* Exam-wise engagement + Language split */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className="paper-card p-4">
+          <h2 className="mb-3 text-sm font-semibold text-ink-900">Most active exams</h2>
+          {examData.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-500">No exam-tagged activity yet.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={Math.max(200, examData.length * 32)}>
+              <BarChart data={examData} layout="vertical" margin={{ top: 0, right: 16, left: 60, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#E7E0CE" horizontal={false} />
+                <XAxis type="number" tick={{ fontSize: 11, fill: '#7A6F5C' }} allowDecimals={false} />
+                <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#7A6F5C' }} width={130} />
+                <Tooltip contentStyle={{ background: '#FBF6E8', border: '1px solid #E7E0CE', borderRadius: 8, fontSize: 12 }} />
+                <Bar dataKey="value" fill={GOLD} radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        <div className="paper-card p-4">
+          <h2 className="mb-3 text-sm font-semibold text-ink-900">Language split</h2>
+          {langTotal === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-500">No language-tagged activity yet.</p>
+          ) : (
+            <div className="space-y-4 pt-2">
+              <div>
+                <div className="mb-1 flex items-center justify-between text-xs">
+                  <span className="font-medium text-ink-900">English</span>
+                  <span className="text-muted-500">{enPct}% · {enCount.toLocaleString('en-IN')}</span>
+                </div>
+                <div className="h-3 overflow-hidden rounded-full bg-paper-200">
+                  <div className="h-full rounded-full bg-ember-500" style={{ width: `${enPct}%` }} />
+                </div>
+              </div>
+              <div>
+                <div className="mb-1 flex items-center justify-between text-xs">
+                  <span className="font-medium text-ink-900">हिंदी (Hindi)</span>
+                  <span className="text-muted-500">{hiPct}% · {hiCount.toLocaleString('en-IN')}</span>
+                </div>
+                <div className="h-3 overflow-hidden rounded-full bg-paper-200">
+                  <div className="h-full rounded-full bg-gold-500" style={{ width: `${hiPct}%` }} />
+                </div>
+              </div>
+              <p className="pt-2 text-center text-xs text-muted-500">
+                {enCount >= hiCount ? 'English' : 'Hindi'} is the dominant content language.
+              </p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

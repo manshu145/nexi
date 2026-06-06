@@ -27,7 +27,7 @@ import type { Firestore } from 'firebase-admin/firestore';
 import type { ExamSlug, ISODateTime, UserId } from '@nexigrate/shared';
 import type { GeneratedMCQ } from './aiEngine.js';
 
-export type MockTestStatus = 'in_progress' | 'submitted' | 'expired';
+export type MockTestStatus = 'generating' | 'in_progress' | 'submitted' | 'expired' | 'generation_failed';
 
 export interface MockTestAttempt {
   id: string;
@@ -60,6 +60,8 @@ export interface MockTestAttempt {
   wrongCount?: number;
   /** Net marks after negative marking (correct*1 − wrong*neg) — populated after submission. */
   netMarks?: number;
+  /** When status is 'generation_failed', the reason (for support/debugging). */
+  generationError?: string | null;
 }
 
 export interface MockTestStore {

@@ -185,6 +185,10 @@ export default function MockTestsPage() {
       return;
     }
 
+    // Client-owned attempt id: lets us recover the test by polling GET /:id
+    // even if the start response is lost on a flaky connection.
+    const attemptId = `mt_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+
     // Set up the abort controller BEFORE flipping to `starting` so the
     // abort handle is available to the timeout closure.
     const controller = new AbortController();
@@ -195,12 +199,24 @@ export default function MockTestsPage() {
     try {
       const examSlug = me.targetExam;
       const language = me.language ?? 'en';
-      const res = await api.startMockTest({ examSlug, language }, { signal: controller.signal });
+      const res = await api.startMockTest({ examSlug, language, attemptId }, { signal: controller.signal });
       window.clearTimeout(timeoutId);
       router.push(`/mock-tests/${encodeURIComponent(res.attemptId)}`);
     } catch (err) {
       window.clearTimeout(timeoutId);
       if (abortRef.current === controller) abortRef.current = null;
+      // Recoverable failures (client timeout / dropped connection): the
+      // server may still be generating under our attemptId. Navigate to
+      // the attempt page, which polls until the test is ready (or shows a
+      // clean failure if generation actually failed). This is the fix for
+      // "network error" on otherwise-fine connections.
+      const recoverable =
+        (err instanceof DOMException && err.name === 'AbortError') ||
+        (err instanceof TypeError && /failed to fetch|network/i.test(err.message));
+      if (recoverable) {
+        router.push(`/mock-tests/${encodeURIComponent(attemptId)}?pending=1`);
+        return;
+      }
       setStartState({ kind: 'error', message: formatStartError(err) });
     }
   };

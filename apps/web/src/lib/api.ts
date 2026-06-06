@@ -41,14 +41,17 @@ export function newIdempotencyKey(): string {
   });
 }
 
-export interface StoredUser { id: string; email: string; name: string; phone: string|null; photoURL: string|null; language: 'en'|'hi'; targetExam: ExamSlug|null; classLevel: string|null; board: string|null; school: string|null; dob: string|null; aim: string|null; onboardingScore: number|null; onboardingLevel: 'beginner'|'intermediate'|'advanced'|null; credits: number; plan: 'free'|'scholar'|'aspirant'|'achiever'; planExpiresAt: string|null; planCancelledAt: string|null; onboardingPlanChosen?: boolean; currentStreak: number; bestStreak: number; lastDailyAt: string|null; isVerified: boolean; phoneVerified?: boolean; role: 'student'|'admin'; createdAt: string; }
+export interface StoredUser { id: string; email: string; name: string; phone: string|null; photoURL: string|null; language: 'en'|'hi'; targetExam: ExamSlug|null; secondaryExams?: ExamSlug[]; classLevel: string|null; board: string|null; school: string|null; dob: string|null; aim: string|null; onboardingScore: number|null; onboardingLevel: 'beginner'|'intermediate'|'advanced'|null; credits: number; plan: 'free'|'scholar'|'aspirant'|'achiever'; planExpiresAt: string|null; planCancelledAt: string|null; onboardingPlanChosen?: boolean; currentStreak: number; bestStreak: number; lastDailyAt: string|null; isVerified: boolean; phoneVerified?: boolean; role: 'student'|'admin'; createdAt: string; }
 export interface MeResponse { user: StoredUser; dailyStreak: { streak: number; creditsEarned: number }; }
 export interface MCQOption { key: 'A'|'B'|'C'|'D'; text: string; }
 export interface GeneratedMCQ { id: string; question: string; options: MCQOption[]; correctOption: 'A'|'B'|'C'|'D'; explanation: string; difficulty: 'easy'|'medium'|'hard'; subject?: string; topic?: string; }
 export interface AnalyticsOverview {
   overview: { totalUsers: number; dau: number; mau: number; newUsersToday: number; newUsersThisWeek: number; revenue30d: number; revenueTotal: number; activeSessions: number; stickiness: number };
-  series: Array<{ date: string; total: number; events: Record<string, number> }>;
+  series: Array<{ date: string; total: number; events: Record<string, number>; dims?: { exam?: Record<string, number>; lang?: Record<string, number> } }>;
   featureTotals: Record<string, number>;
+  examTotals: Record<string, number>;
+  langTotals: Record<string, number>;
+  compare: { today: { date: string; total: number; events: Record<string, number> }; yesterday: { date: string; total: number; events: Record<string, number> } };
   funnel: { upgradeViews: number; upgradeClicks: number; payments: number };
   rangeDays: number;
 }
@@ -109,6 +112,7 @@ export const api = {
     await authedFetch('/v1/notifications/read-all', { method: 'POST', body: JSON.stringify({}) });
   },
   async updateProfile(data: Record<string, unknown>) { return (await authedFetch('/v1/users/me', { method: 'PATCH', body: JSON.stringify(data) })).json() as Promise<{user:StoredUser}>; },
+  async manageExam(action: 'add' | 'remove' | 'switch', exam: string) { return (await authedFetch('/v1/users/me/exams', { method: 'POST', body: JSON.stringify({ action, exam }) })).json() as Promise<{user:StoredUser}>; },
   async saveOnboarding(data: Record<string, unknown>) { return (await authedFetch('/v1/users/me/onboarding', { method: 'POST', body: JSON.stringify(data) })).json() as Promise<{user:StoredUser}>; },
   async markPlanChosen(chosenPlan: 'free'|'scholar'|'aspirant'|'achiever') {
     return (await authedFetch('/v1/users/me/onboarding/plan-chosen', {
@@ -397,22 +401,23 @@ export const api = {
    * the underlying fetch — see PR-32.
    */
   async startMockTest(
-    input: { examSlug: string; language?: 'en' | 'hi'; questionCount?: number; durationMinutes?: number },
+    input: { examSlug: string; language?: 'en' | 'hi'; questionCount?: number; durationMinutes?: number; attemptId?: string },
     opts?: { signal?: AbortSignal },
   ) {
     return (await authedFetch('/v1/mock-tests/start', {
       method: 'POST', body: JSON.stringify(input),
       ...(opts?.signal ? { signal: opts.signal } : {}),
     })).json() as Promise<{
-      attemptId: string; examSlug: string; language: 'en' | 'hi';
-      durationMinutes: number; total: number; startedAt: string; creditCost: number;
-      questions: Array<{ id: string; question: string; options: { key: 'A'|'B'|'C'|'D'; text: string }[]; difficulty?: string; subject?: string; topic?: string }>;
+      attemptId: string; status?: 'generating'|'in_progress'|'submitted'|'expired'|'generation_failed';
+      examSlug: string; language: 'en' | 'hi';
+      durationMinutes: number; total: number; startedAt?: string; creditCost: number;
+      questions?: Array<{ id: string; question: string; options: { key: 'A'|'B'|'C'|'D'; text: string }[]; difficulty?: string; subject?: string; topic?: string }>;
     }>;
   },
   async getMockTest(id: string) {
     return (await authedFetch(`/v1/mock-tests/${encodeURIComponent(id)}`)).json() as Promise<{
-      id: string; examSlug: string; language: 'en'|'hi'; status: 'in_progress'|'submitted'|'expired';
-      startedAt: string; durationMinutes: number; submittedAt: string|null;
+      id: string; examSlug: string; language: 'en'|'hi'; status: 'generating'|'in_progress'|'submitted'|'expired'|'generation_failed';
+      startedAt: string; durationMinutes: number; submittedAt: string|null; generationError?: string|null;
       total: number; score: number|null; percentage: number|null;
       subjectBreakdown: Record<string, { correct: number; total: number }>|null;
       wrongCount?: number|null; netMarks?: number|null; negativeMarkPerWrong?: number;
@@ -704,7 +709,7 @@ export interface LeaderboardResponse { date: string; leaderboard: LeaderboardEnt
 export interface ChatMessage { role: 'user' | 'assistant'; content: string; timestamp: string; }
 export interface ChatSession { id: string; userId: string; title: string; messages: ChatMessage[]; createdAt: string; updatedAt: string; }
 export interface ChatSessionSummary { id: string; title: string; createdAt: string; updatedAt: string; messageCount: number; }
-export interface PlanFeatures { dailyMCQ: number; mockTests: number; aiTutor: boolean; currentAffairs: boolean; essayGrading: boolean; chaptersPerDay: number; creditDeduction: boolean; aiTutorPerDay?: number; essaysPerDay?: number; imagesPerDay?: number; }
+export interface PlanFeatures { dailyMCQ: number; mockTests: number; aiTutor: boolean; currentAffairs: boolean; essayGrading: boolean; chaptersPerDay: number; creditDeduction: boolean; aiTutorPerDay?: number; essaysPerDay?: number; imagesPerDay?: number; maxExams?: number; }
 export interface Plan { id: string; name: string; nameHi: string; price: number; yearlyPrice: number; isActive?: boolean; comingSoon?: boolean; features?: PlanFeatures; dailyMcq?: number; mockTests?: number; aiTutor?: boolean; currentAffairs?: boolean; essayGrading?: boolean; }
 export interface ReferralStats { code: string; referralUrl: string; totalReferrals: number; pendingReferrals: number; completedReferrals: number; totalEarned: number; }
 
@@ -741,6 +746,8 @@ export interface AdminPlanFeatures {
   aiTutorPerDay?: number;
   essaysPerDay?: number;
   imagesPerDay?: number;
+  // Multi-exam (Sprint 5): how many exams this plan allows (-1 = unlimited).
+  maxExams?: number;
 }
 
 export interface AdminPlan {

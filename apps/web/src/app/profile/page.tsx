@@ -9,6 +9,8 @@ import { useAuth } from '~/lib/auth-context';
 import { useUser } from '~/lib/userStore';
 import { api, type ReferralStats } from '~/lib/api';
 import { AILoader } from '~/components/ui/AILoader';
+import MyExams from '~/components/MyExams';
+import { NotificationSetting } from '~/components/NotificationSetting';
 
 function Row({ label, value }: { label: string; value?: string | null }) {
   return (<div className="flex items-center justify-between border-b border-line py-3">
@@ -189,6 +191,9 @@ export default function ProfilePage() {
       </section>
       <section className="mt-6"><h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">{t('academicInfo')}</h2><div className="mt-3"><Row label={t('targetExam')} value={examName} /><Row label={t('level')} value={me?.onboardingLevel} /></div></section>
 
+      {/* Multi-exam management (Sprint 5) */}
+      <div className="mt-6"><MyExams /></div>
+
       {/* Language Preference */}
       <section className="mt-6">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">Language / भाषा</h2>
@@ -215,6 +220,8 @@ export default function ProfilePage() {
           </div>
         </div>
       </section>
+      <NotificationSetting />
+
       <section className="mt-6"><h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">{t('accountInfo')}</h2><div className="mt-3"><Row label={t('plan')} value={planDisplayName(me?.plan)} /><Row label={t('credits')} value={String(me?.credits ?? 0)} /><Row label={t('memberSince')} value={me?.createdAt ? new Date(me.createdAt).toLocaleDateString() : '—'} /></div></section>
 
       {/* Plan & Billing */}

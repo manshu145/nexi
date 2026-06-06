@@ -22,10 +22,11 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { useAuth } from '~/lib/auth-context';
 import { api } from '~/lib/api';
+import { track } from '~/lib/analytics';
 import { AILoader } from '~/components/ui/AILoader';
 
 type Choice = 'A' | 'B' | 'C' | 'D' | null;
@@ -46,10 +47,14 @@ export default function MockTestAttemptPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const id = params?.id ?? '';
+  const searchParams = useSearchParams();
+  const pending = searchParams?.get('pending') === '1';
   const { user, loading: authLoading } = useAuth();
 
   const [attempt, setAttempt] = useState<Attempt | null>(null);
   const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [genError, setGenError] = useState<string | null>(null);
   const [idx, setIdx] = useState(0);
   const [answers, setAnswers] = useState<Record<string, Choice>>({});
   const [flagged, setFlagged] = useState<Record<string, boolean>>({});
@@ -67,24 +72,73 @@ export default function MockTestAttemptPage() {
   // pressing the manual Submit button.
   const tickIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Load the attempt.
+  // Load the attempt — with polling for the 'generating' phase. Mock-test
+  // generation now happens server-side under a client-owned id; while it's
+  // in flight (status 'generating') we poll until the test is ready, so a
+  // dropped start-response still resolves into a playable test instead of a
+  // dead "network error".
   useEffect(() => {
     if (authLoading) return;
     if (!user) { router.replace('/signin'); return; }
     if (!id) return;
-    (async () => {
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    // When we arrived via ?pending=1 the start response was lost, so the
+    // attempt doc may not exist for a beat — tolerate a few 404s before
+    // giving up.
+    let notFoundTries = 0;
+    const MAX_NOT_FOUND = pending ? 8 : 1;
+    const POLL_MS = 2500;
+
+    const poll = async () => {
       try {
         const a = await api.getMockTest(id);
+        if (cancelled) return;
+        notFoundTries = 0;
+        if (a.status === 'generating') {
+          setGenerating(true);
+          timer = setTimeout(poll, POLL_MS);
+          return;
+        }
+        if (a.status === 'generation_failed') {
+          setGenerating(false);
+          setGenError(a.generationError || 'The mock test could not be generated. Your credits were refunded — please try again.');
+          setLoading(false);
+          return;
+        }
+        // ready (in_progress / submitted / expired)
+        setGenerating(false);
         setAttempt(a);
         if (a.answers) setAnswers(a.answers);
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : 'Could not load attempt');
-        router.replace('/mock-tests');
-      } finally {
         setLoading(false);
+      } catch (err) {
+        if (cancelled) return;
+        const msg = err instanceof Error ? err.message : 'Could not load attempt';
+        // Tolerate transient not-found / network blips while generation
+        // is still spinning up or the connection is flaky.
+        const isNotFound = /not found|404/i.test(msg);
+        const isNetwork = err instanceof TypeError;
+        if ((isNotFound && notFoundTries < MAX_NOT_FOUND) || isNetwork) {
+          notFoundTries += isNotFound ? 1 : 0;
+          setGenerating(true);
+          timer = setTimeout(poll, POLL_MS);
+          return;
+        }
+        if (isNotFound) {
+          // Start request likely never reached the server.
+          setGenError('We could not start this mock test — it may not have been created. No credits were charged. Please go back and try again.');
+          setLoading(false);
+          return;
+        }
+        toast.error(msg);
+        router.replace('/mock-tests');
       }
-    })();
-  }, [authLoading, user, id, router]);
+    };
+
+    void poll();
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+  }, [authLoading, user, id, router, pending]);
 
   // Countdown timer for in-progress attempts. Recomputed off the
   // server-issued `startedAt` + `durationMinutes` so a refresh doesn't
@@ -149,6 +203,7 @@ export default function MockTestAttemptPage() {
         answers: result.answers,
       });
       setAnswers(result.answers);
+      track('mock_test_complete', { score: String(result.score), percentage: String(result.percentage) });
       if (toastId) toast.success(`Score: ${result.score}/${result.total} (${result.percentage}%)`, { id: toastId });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to submit';
@@ -158,6 +213,45 @@ export default function MockTestAttemptPage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  // Generation failed (or could not start) — clean recoverable error.
+  if (genError) {
+    return (
+      <main className="min-h-screen bg-paper-100 px-4 py-6">
+        <div className="mx-auto max-w-md">
+          <div role="alert" className="paper-card mt-10 border border-ember-500/40 p-6 text-center">
+            <span aria-hidden className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-ember-500/10 text-2xl">⚠️</span>
+            <h1 className="mt-4 font-serif text-lg font-semibold text-ink-900">Mock test could not start</h1>
+            <p className="mt-2 text-sm text-muted-500">{genError}</p>
+            <p className="mt-3 text-[11px] text-muted-400">No credits lost — we only charge once a test is fully generated, and refund automatically on failure.</p>
+            <button type="button" onClick={() => router.replace('/mock-tests')} className="btn-primary mt-5 w-full">
+              Back to Mock Tests
+            </button>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // Still generating — reassuring polling loader (recovers a dropped start).
+  if (generating && !attempt) {
+    return (
+      <main className="min-h-screen bg-paper-100 px-4 py-6">
+        <div className="mx-auto max-w-md">
+          <div role="status" aria-live="polite" className="paper-card mt-10 p-6 text-center">
+            <span aria-hidden className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-ember-500/10">
+              <span className="h-3.5 w-3.5 rounded-full bg-ember-500 animate-pulse" />
+            </span>
+            <h1 className="mt-4 font-serif text-lg font-semibold text-ink-900">Preparing your mock test…</h1>
+            <p className="mt-2 text-sm text-muted-500">
+              Our AI is generating 50 exam-pattern questions. This can take 30–90 seconds — it&apos;ll open automatically when ready, even if your connection blips.
+            </p>
+            <p className="mt-3 text-[11px] text-muted-400">Keep this screen open. You won&apos;t lose credits if generation fails.</p>
+          </div>
+        </div>
+      </main>
+    );
   }
 
   if (loading || !attempt) {
