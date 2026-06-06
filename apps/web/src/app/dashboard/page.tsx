@@ -255,6 +255,7 @@ export default function DashboardPage() {
 
       {/* Exam countdown — days remaining to the user's target exam */}
       {me?.targetExam && <ExamCountdown examSlug={me.targetExam} onOpen={() => router.push('/exam-calendar')} />}
+      {me?.targetExam && <DailyPlanCard examSlug={me.targetExam} onOpen={() => router.push('/plan')} />}
       <ReviseTodayCard onOpen={() => router.push('/revise')} />
 
       {/* Primary Study CTA - Full width hero card */}
@@ -534,6 +535,50 @@ function ReviseTodayCard({ onOpen }: { onOpen: () => void }) {
           </div>
         </div>
         <span className="text-sm font-semibold text-ember-500">Revise →</span>
+      </button>
+    </section>
+  );
+}
+
+
+/**
+ * DailyPlanCard — a glanceable "Today's Study Plan" summary. Pulls the
+ * server-composed plan (revise + weak + next chapters) and links to /plan.
+ */
+function DailyPlanCard({ examSlug, onOpen }: { examSlug: string; onOpen: () => void }) {
+  const [plan, setPlan] = useState<import('~/lib/api').DailyPlan | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    api.getDailyPlan(examSlug)
+      .then((p) => { if (!cancelled) setPlan(p); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [examSlug]);
+
+  if (!plan || plan.items.length === 0) return null;
+  const top = plan.items.slice(0, 3);
+
+  return (
+    <section className="mt-4">
+      <button onClick={onOpen} className="paper-card w-full p-4 text-left transition-shadow hover:shadow-md">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span aria-hidden className="grid h-10 w-10 place-items-center rounded-xl bg-ember-500/10 text-xl">🗺️</span>
+            <div>
+              <p className="text-sm font-semibold text-ink-900">Today&apos;s Study Plan</p>
+              <p className="text-xs text-muted-500">{plan.items.length} tasks · ~{plan.estMinutes} min</p>
+            </div>
+          </div>
+          <span className="text-sm font-semibold text-ember-500">Open →</span>
+        </div>
+        <ul className="mt-3 space-y-1.5">
+          {top.map((it, i) => (
+            <li key={`${it.subject}/${it.chapter}/${i}`} className="flex items-center gap-2 text-xs text-ink-700">
+              <span aria-hidden>{it.kind === 'revise' ? '🔁' : it.kind === 'fix' ? '🛠️' : '📘'}</span>
+              <span className="truncate">{it.chapterName}</span>
+            </li>
+          ))}
+        </ul>
       </button>
     </section>
   );

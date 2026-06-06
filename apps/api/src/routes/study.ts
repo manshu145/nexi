@@ -528,6 +528,85 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
     return c.json({ overallPercent, subjectBreakdown, weakChapters, strongChapters });
   });
 
+  // GET /v1/study/plan/:examSlug — today's personalized study plan.
+  // Composed deterministically (no AI cost) from three signals:
+  //   1. Revise  — chapters due today via spaced repetition (SM-2).
+  //   2. Fix     — weak chapters (last score < 60) worth redoing.
+  //   3. Learn   — the next not-yet-completed chapters in syllabus order.
+  app.get('/plan/:examSlug', async (c) => {
+    const principal = requireAuth(c);
+    const examSlug = c.req.param('examSlug');
+
+    const fallbackDeps: SyllabusFallbackDeps = { env: deps.env, db: deps.db, logger: deps.logger, resolver: deps.modelResolver, aiEngine: deps.aiEngine };
+    const [progress, syllabus, dueItems] = await Promise.all([
+      deps.chapters.getProgress(principal.userId, examSlug),
+      getSyllabusWithFallback(examSlug, resolveExamName(examSlug), fallbackDeps).catch(() => null),
+      deps.review ? deps.review.listDue(principal.userId, new Date().toISOString(), 5).catch(() => []) : Promise.resolve([]),
+    ]);
+
+    type PlanItem = { kind: 'revise' | 'fix' | 'learn'; subject: string; chapter: string; chapterName: string; subjectName: string; reason: string; minutes: number; score?: number };
+    const items: PlanItem[] = [];
+    const used = new Set<string>(); // `${subject}/${chapter}` already added
+
+    const nameLookup = new Map<string, { chapterName: string; subjectName: string }>();
+    if (syllabus) {
+      for (const sub of syllabus.subjects) {
+        for (const ch of sub.chapters) nameLookup.set(`${sub.slug}/${ch.slug}`, { chapterName: ch.name, subjectName: sub.name });
+      }
+    }
+    const pretty = (s: string) => s.replace(/-/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
+
+    // 1. Revise (spaced repetition) — up to 3.
+    for (const it of dueItems.slice(0, 3)) {
+      const key = `${it.subject}/${it.chapter}`;
+      if (used.has(key)) continue;
+      used.add(key);
+      const nm = nameLookup.get(key);
+      items.push({ kind: 'revise', subject: it.subject, chapter: it.chapter, chapterName: nm?.chapterName ?? pretty(it.chapter), subjectName: nm?.subjectName ?? pretty(it.subject), reason: 'Due for spaced revision', minutes: 10 });
+    }
+
+    // 2. Fix weak chapters (last score < 60) — up to 2.
+    if (syllabus) {
+      const weak: PlanItem[] = [];
+      for (const sub of syllabus.subjects) {
+        for (const ch of sub.chapters) {
+          const key = `${sub.slug}/${ch.slug}`;
+          const score = progress.chapterScores[key];
+          if (score !== undefined && score < 60 && !used.has(key)) {
+            weak.push({ kind: 'fix', subject: sub.slug, chapter: ch.slug, chapterName: ch.name, subjectName: sub.name, reason: `Last score ${score}% — strengthen this`, minutes: 20, score });
+          }
+        }
+      }
+      weak.sort((a, b) => (a.score ?? 0) - (b.score ?? 0));
+      for (const w of weak.slice(0, 2)) { items.push(w); used.add(`${w.subject}/${w.chapter}`); }
+    }
+
+    // 3. Learn next — next not-yet-completed chapters in syllabus order — up to 3.
+    if (syllabus) {
+      let learnAdded = 0;
+      for (const sub of syllabus.subjects) {
+        for (const ch of sub.chapters) {
+          if (learnAdded >= 3) break;
+          const key = `${sub.slug}/${ch.slug}`;
+          if (progress.completedChapters.includes(key) || used.has(key)) continue;
+          items.push({ kind: 'learn', subject: sub.slug, chapter: ch.slug, chapterName: ch.name, subjectName: sub.name, reason: 'Next in your syllabus', minutes: 25 });
+          used.add(key);
+          learnAdded++;
+        }
+        if (learnAdded >= 3) break;
+      }
+    }
+
+    const estMinutes = items.reduce((a, i) => a + i.minutes, 0);
+    return c.json({
+      date: new Date().toISOString().slice(0, 10),
+      exam: examSlug,
+      items,
+      estMinutes,
+      dueCount: dueItems.length,
+    });
+  });
+
   // POST /v1/study/generate-chapters — generate advanced chapters for Scholar+ users
   app.post('/generate-chapters', async (c) => {
     const principal = requireAuth(c);

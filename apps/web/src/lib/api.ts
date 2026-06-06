@@ -68,6 +68,8 @@ export interface SyllabusSubject { slug: string; name: string; nameHi: string; i
 export interface SyllabusTree { exam: string; examName: string; subjects: SyllabusSubject[]; }
 export interface StudyProgress { userId: string; exam: string; completedChapters: string[]; chapterScores: Record<string, number>; currentChapter: string | null; overallPercent: number; }
 export interface ReviewItem { id: string; exam: string; subject: string; chapter: string; easeFactor: number; interval: number; repetitions: number; dueAt: string; lastScore: number; lastReviewedAt: string; createdAt: string; }
+export interface DailyPlanItem { kind: 'revise' | 'fix' | 'learn'; subject: string; chapter: string; chapterName: string; subjectName: string; reason: string; minutes: number; score?: number; }
+export interface DailyPlan { date: string; exam: string; items: DailyPlanItem[]; estMinutes: number; dueCount: number; }
 export interface ChapterContent { exam: string; subject: string; chapter: string; language: string; content: string; generatedAt: string; generatedBy: string; userLevel?: 'beginner' | 'intermediate' | 'advanced'; contentPersonalizedFor?: 'beginner' | 'intermediate' | 'advanced'; }
 
 // Blog (lock §5.3)
@@ -235,6 +237,7 @@ export const api = {
   async getStudyProgress(examSlug: string) { return (await authedFetch(`/v1/study/progress/${examSlug}`)).json() as Promise<{progress:StudyProgress}>; },
   async getReviewDue(limit = 20) { return (await authedFetch(`/v1/review/due?limit=${limit}`)).json() as Promise<{items:ReviewItem[]; count:number}>; },
   async getReviewStats() { return (await authedFetch('/v1/review/stats')).json() as Promise<{dueCount:number}>; },
+  async getDailyPlan(examSlug: string) { return (await authedFetch(`/v1/study/plan/${examSlug}`)).json() as Promise<DailyPlan>; },
   async gradeReview(id: string, quality: number) { return (await authedFetch(`/v1/review/${encodeURIComponent(id)}/grade`, { method: 'POST', body: JSON.stringify({ quality }) })).json() as Promise<{item:ReviewItem}>; },
 
   // Current Affairs
