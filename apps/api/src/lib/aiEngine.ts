@@ -56,6 +56,8 @@ export interface AIEngine {
   generateMermaidDiagram(chapter: string, subject: string, exam: string): Promise<string>;
   generateVisualization(topic: string, subject: string, exam: string, type: VisualizationType): Promise<VisualizationResult>;
   generateSyllabus(examSlug: string, examName: string, level: string): Promise<GeneratedSyllabus>;
+  /** AI-estimate upcoming exam events (Prelims/Mains/registration) with month estimates. */
+  generateExamDates(examSlug: string, examName: string): Promise<Array<{ name: string; estimatedMonth: string; sourceUrl: string }>>;
   generateSelectionDiagram(selectedText: string, subject: string, language: 'en' | 'hi'): Promise<string>;
   generateCurrentAffairsQuiz(headlines: string, count?: number, language?: 'en' | 'hi'): Promise<GeneratedMCQ[]>;
   /**
@@ -1841,6 +1843,99 @@ Respond ONLY with valid JSON (no markdown fences):
 
       logger.error('ai.syllabus_all_failed', { examSlug, errors });
       throw new Error(`All AI providers failed for syllabus generation: ${errors.join('; ')}`);
+    },
+
+    async generateExamDates(examSlug: string, examName: string) {
+      const year = new Date().getFullYear();
+      const prompt = `You are an expert on Indian competitive exam schedules.
+
+For the exam "${examName}" (slug: ${examSlug}), list its typical UPCOMING events/stages for the ${year}-${year + 1} cycle, based on the exam's HISTORICAL annual calendar pattern.
+
+Rules:
+- Include each distinct stage the exam actually has (e.g. Prelims, Mains, Interview, or Session 1/2, Tier I/II, Registration window) — only stages that REALLY exist for THIS exam.
+- "estimatedMonth": the month + year you'd expect it, e.g. "May 2027". If genuinely unpredictable, use "To be announced".
+- "name": short stage label including the year, e.g. "Prelims 2027".
+- "sourceUrl": the official portal URL for this exam.
+- 1 to 6 events. These are ESTIMATES from historical patterns, not official dates.
+
+Respond ONLY with valid JSON (no markdown fences):
+{"events":[{"name":"Prelims 2027","estimatedMonth":"May 2027","sourceUrl":"https://..."}]}`;
+
+      const parse = (raw: string): Array<{ name: string; estimatedMonth: string; sourceUrl: string }> | null => {
+        if (!raw) return null;
+        const txt = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+        const tryParse = (s: string) => {
+          try {
+            const p = JSON.parse(s) as { events?: Array<{ name?: string; estimatedMonth?: string; sourceUrl?: string }> };
+            if (!Array.isArray(p?.events)) return null;
+            const events = p.events
+              .filter(e => e && typeof e.name === 'string' && e.name.trim())
+              .slice(0, 6)
+              .map(e => ({
+                name: String(e.name).slice(0, 120),
+                estimatedMonth: String(e.estimatedMonth ?? 'To be announced').slice(0, 60),
+                sourceUrl: String(e.sourceUrl ?? '').slice(0, 300),
+              }));
+            return events.length ? events : null;
+          } catch { return null; }
+        };
+        return tryParse(txt) ?? (txt.match(/\{[\s\S]*\}/) ? tryParse(txt.match(/\{[\s\S]*\}/)![0]) : null);
+      };
+
+      const errors: string[] = [];
+
+      // Attempt 1: Groq
+      const groq = await getGroqClient();
+      if (groq) {
+        try {
+          const c = await groq.client.chat.completions.create({ model: groq.model, messages: [{ role: 'user', content: prompt }], temperature: 0.4, max_tokens: 1200, response_format: { type: 'json_object' } });
+          const parsed = parse(c.choices[0]?.message?.content ?? '');
+          if (parsed) {
+            if (resolver) void resolver.reportModelSuccess('groq', groq.model);
+            logger.info('ai.exam_dates_generated', { provider: 'groq', examSlug, events: parsed.length });
+            return parsed;
+          }
+          errors.push('Groq returned no usable events');
+        } catch (err) {
+          if (resolver) await resolver.reportModelFailure('groq', groq.model, err instanceof Error ? err.message : String(err));
+          errors.push(`Groq: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      } else { errors.push('GROQ_API_KEY not configured'); }
+
+      // Attempt 2: OpenAI
+      if (openai) {
+        try {
+          const c = await oaCreate({ messages: [{ role: 'user', content: prompt }], temperature: 0.4, max_tokens: 1200, response_format: { type: 'json_object' } });
+          const parsed = parse(c.choices[0]?.message?.content ?? '');
+          if (parsed) {
+            logger.info('ai.exam_dates_generated', { provider: 'openai', examSlug, events: parsed.length });
+            return parsed;
+          }
+          errors.push('OpenAI returned no usable events');
+        } catch (err) {
+          errors.push(`OpenAI: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      } else { errors.push('OPENAI_API_KEY not configured'); }
+
+      // Attempt 3: Gemini
+      if (env.GEMINI_API_KEY) {
+        try {
+          const r = await callGemini({ prompt, generationConfig: { temperature: 0.4, maxOutputTokens: 1200 }, tier: 'flash' });
+          if (r.ok) {
+            const parsed = parse(r.text);
+            if (parsed) {
+              logger.info('ai.exam_dates_generated', { provider: 'gemini', model: r.model, examSlug, events: parsed.length });
+              return parsed;
+            }
+            errors.push('Gemini returned no usable events');
+          } else { errors.push(`Gemini: ${r.error}`); }
+        } catch (err) {
+          errors.push(`Gemini: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      } else { errors.push('GEMINI_API_KEY not configured'); }
+
+      logger.error('ai.exam_dates_all_failed', { examSlug, errors });
+      throw new Error(`All AI providers failed for exam-date generation: ${errors.join('; ')}`);
     },
 
     async generateSelectionDiagram(selectedText: string, subject: string, language: 'en' | 'hi') {

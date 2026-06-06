@@ -26,6 +26,7 @@ export default function AdminExamDatesPage() {
   const [selected, setSelected] = useState<string>(EXAMS[0]?.id ?? '');
   const [events, setEvents] = useState<ExamEvent[]>([]);
   const [saving, setSaving] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
@@ -67,12 +68,26 @@ export default function AdminExamDatesPage() {
     } finally { setSaving(false); }
   };
 
+  // AI fills in the typical stages with month estimates so the admin
+  // doesn't hand-enter every exam. Confirmed (exact) events are preserved.
+  const aiEstimate = async () => {
+    setGenerating(true); setMsg(null);
+    try {
+      const saved = await api.generateExamDates(selected, examName);
+      setAll(prev => ({ ...prev, [selected]: saved }));
+      setEvents(saved.events.map(e => ({ ...e })));
+      setMsg(`AI added ${saved.events.length} estimated event(s) ✓ — review & Save`);
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : 'AI estimate failed');
+    } finally { setGenerating(false); }
+  };
+
   if (loading || pageLoading) return <div className="p-6 text-sm text-muted-500">Loading…</div>;
 
   return (
     <div className="mx-auto max-w-3xl p-4 sm:p-6">
       <h1 className="font-serif text-2xl font-semibold text-ink-900">Exam Dates</h1>
-      <p className="mt-1 text-sm text-muted-500">Manage exam calendars. Set exact dates and mark them confirmed when official notifications are published.</p>
+      <p className="mt-1 text-sm text-muted-500">Manage exam calendars. AI fills in estimated dates — you just confirm/edit the exact date when the official notification drops. Students see these on their dashboard countdown & calendar.</p>
 
       {/* Exam picker */}
       <div className="mt-5">
@@ -127,6 +142,9 @@ export default function AdminExamDatesPage() {
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <button type="button" onClick={() => setEvents(prev => [...prev, emptyEvent()])} className="btn-ghost">+ Add event</button>
+        <button type="button" onClick={aiEstimate} disabled={generating || saving} className="btn-ghost" title="Let AI estimate this exam's typical stages & months">
+          {generating ? '🤖 Estimating…' : '🤖 AI estimate dates'}
+        </button>
         <button type="button" onClick={save} disabled={saving} className="btn-primary">{saving ? 'Saving…' : 'Save dates'}</button>
         {msg && <span className="text-sm text-muted-600">{msg}</span>}
       </div>
