@@ -53,6 +53,8 @@ export interface AIEngine {
   scoreAssessmentV2(examResults: StageResults, reasoningResults: StageResults): Promise<AssessmentResult>;
   generateChapterContent(chapter: string, subject: string, exam: string, language: 'en' | 'hi', userContext?: UserContext): Promise<string>;
   generateChapterMCQs(chapter: string, subject: string, exam: string, language: 'en' | 'hi', count?: number, seed?: string, chapterContent?: string, userLevel?: 'beginner' | 'intermediate' | 'advanced'): Promise<GeneratedMCQ[]>;
+  /** Concise revision flashcards (front/back) for a chapter. */
+  generateFlashcards(chapter: string, subject: string, exam: string, language: 'en' | 'hi', count?: number, chapterContent?: string): Promise<Array<{ front: string; back: string }>>;
   generateMermaidDiagram(chapter: string, subject: string, exam: string): Promise<string>;
   generateVisualization(topic: string, subject: string, exam: string, type: VisualizationType): Promise<VisualizationResult>;
   generateSyllabus(examSlug: string, examName: string, level: string): Promise<GeneratedSyllabus>;
@@ -1501,6 +1503,81 @@ Write ONLY the Markdown content for the chapter \u2014 no preamble, no closing n
       logger.error('ai.chapter_mcqs_all_failed', { errors, chapter, subject, exam });
       logAICallToStore(store, 'all-providers', 0, 0, 0, undefined, { status: 'error', endpoint: 'generateChapterMCQs', error: errors.join('; '), requestPreview: `Chapter: ${chapter}, Subject: ${subject}` });
       throw new Error(`Failed to generate chapter MCQs: ${errors.join('; ')}`);
+    },
+
+    async generateFlashcards(chapter, subject, exam, language = 'en', count = 12, chapterContent?: string) {
+      const langInstr = language === 'hi'
+        ? 'Write BOTH front and back in Hindi (Devanagari).'
+        : 'Write in English.';
+      const ctx = chapterContent
+        ? `Base the cards ONLY on this chapter content:\n"""\n${chapterContent.slice(0, 6000)}\n"""\n`
+        : '';
+      const prompt = `You are creating revision flashcards for the chapter "${chapter}" (${subject}, exam: ${exam}).
+${ctx}Make exactly ${count} high-yield flashcards a student can revise quickly before the exam.
+${langInstr}
+Rules:
+- "front": a crisp question / term / prompt (max ~120 chars).
+- "back": the concise answer / definition / key fact (max ~240 chars). No fluff.
+- Cover the most exam-relevant facts, definitions, formulas, dates and concepts.
+- No duplicates.
+
+Respond ONLY with valid JSON (no markdown fences):
+{"cards":[{"front":"...","back":"..."}]}`;
+
+      const parse = (raw: string): Array<{ front: string; back: string }> | null => {
+        if (!raw) return null;
+        const txt = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+        const attempt = (s: string) => {
+          try {
+            const p = JSON.parse(s) as { cards?: Array<{ front?: string; back?: string }> };
+            if (!Array.isArray(p?.cards)) return null;
+            const cards = p.cards
+              .filter(k => k && typeof k.front === 'string' && typeof k.back === 'string' && k.front.trim() && k.back.trim())
+              .slice(0, 40)
+              .map(k => ({ front: String(k.front).slice(0, 200), back: String(k.back).slice(0, 400) }));
+            return cards.length ? cards : null;
+          } catch { return null; }
+        };
+        return attempt(txt) ?? (txt.match(/\{[\s\S]*\}/) ? attempt(txt.match(/\{[\s\S]*\}/)![0]) : null);
+      };
+
+      const errors: string[] = [];
+
+      const groq = await getGroqClient();
+      if (groq) {
+        try {
+          const c = await groq.client.chat.completions.create({ model: groq.model, messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 3000, response_format: { type: 'json_object' } });
+          const parsed = parse(c.choices[0]?.message?.content ?? '');
+          if (parsed) { if (resolver) void resolver.reportModelSuccess('groq', groq.model); logger.info('ai.flashcards', { provider: 'groq', chapter, count: parsed.length }); return parsed; }
+          errors.push('Groq returned unparseable flashcards');
+        } catch (err) {
+          if (resolver) await resolver.reportModelFailure('groq', groq.model, err instanceof Error ? err.message : String(err));
+          errors.push(`Groq: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      } else { errors.push('GROQ not configured'); }
+
+      if (openai) {
+        try {
+          const c = await oaCreate({ messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 3000, response_format: { type: 'json_object' } });
+          const parsed = parse(c.choices[0]?.message?.content ?? '');
+          if (parsed) { logger.info('ai.flashcards', { provider: 'openai', chapter, count: parsed.length }); return parsed; }
+          errors.push('OpenAI returned unparseable flashcards');
+        } catch (err) { errors.push(`OpenAI: ${err instanceof Error ? err.message : String(err)}`); }
+      } else { errors.push('OpenAI not configured'); }
+
+      if (env.GEMINI_API_KEY) {
+        try {
+          const r = await callGemini({ prompt, generationConfig: { temperature: 0.5, maxOutputTokens: 3000 }, tier: 'flash' });
+          if (r.ok) {
+            const parsed = parse(r.text);
+            if (parsed) { logger.info('ai.flashcards', { provider: 'gemini', chapter, count: parsed.length, model: r.model }); return parsed; }
+            errors.push('Gemini returned unparseable flashcards');
+          } else { errors.push(`Gemini: ${r.error}`); }
+        } catch (err) { errors.push(`Gemini: ${err instanceof Error ? err.message : String(err)}`); }
+      } else { errors.push('GEMINI not configured'); }
+
+      logger.error('ai.flashcards_all_failed', { errors, chapter, subject, exam });
+      throw new Error(`Failed to generate flashcards: ${errors.join('; ')}`);
     },
 
     async generateMermaidDiagram(chapter, subject, exam) {

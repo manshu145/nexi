@@ -265,6 +265,44 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
     }
   });
 
+  // GET /v1/study/:exam/:subject/:chapter/flashcards — AI revision flashcards (cached)
+  app.get('/:exam/:subject/:chapter/flashcards', async (c) => {
+    const principal = requireAuth(c);
+    const { exam, subject, chapter } = c.req.param();
+    const language = (c.req.query('lang') as 'en' | 'hi') || 'en';
+
+    try {
+      // Flashcards are concise facts — shared across levels to keep cost low.
+      const cacheKey = `${exam}_${subject}_${chapter}_${language}`;
+      if (deps.db) {
+        const snap = await deps.db.collection('flashcardsCache').doc(cacheKey).get();
+        if (snap.exists) {
+          const data = snap.data() as { cards?: Array<{ front: string; back: string }> };
+          if (data?.cards?.length) return c.json({ cards: data.cards, cached: true });
+        }
+      }
+
+      // Base cards on the chapter the student actually read (any cached level).
+      const user = await deps.users.get(principal.userId);
+      const userLevel = user?.onboardingLevel ?? 'intermediate';
+      const cachedContent = await deps.chapters.getChapter(exam, subject, chapter, language, userLevel);
+      const chapterText = cachedContent?.content ?? undefined;
+
+      const cards = await deps.aiEngine.generateFlashcards(chapter, subject, exam, language, 12, chapterText);
+
+      if (deps.db && cards.length) {
+        await deps.db.collection('flashcardsCache').doc(cacheKey).set({
+          exam, subject, chapter, language, cards, generatedAt: new Date().toISOString(),
+        }).catch(() => { /* cache write best-effort */ });
+      }
+      return c.json({ cards, cached: false });
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      deps.logger.error('study.flashcards_error', { exam, subject, chapter, language, error: errorMsg });
+      return c.json({ cards: [], error: `Could not generate flashcards: ${errorMsg.slice(0, 160)}. Try again.` });
+    }
+  });
+
   // GET /v1/study/:exam/:subject/:chapter/diagram — mermaid diagram (full chapter)
   app.get('/:exam/:subject/:chapter/diagram', async (c) => {
     requireAuth(c);
