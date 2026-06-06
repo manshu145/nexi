@@ -215,15 +215,20 @@ async function chatWithGeminiVision(
   geminiApiKey: string,
   logger: Logger,
 ): Promise<string> {
-  const langInstr = userContext.language === 'hi' ? 'Reply in Hindi (Devanagari script). Be concise.' : 'Reply in English. Be concise.';
+  const langInstr = userContext.language === 'hi' ? 'Reply in Hindi (Devanagari script).' : 'Reply in English.';
   const systemText = `You are Nexi, an AI study mentor for Indian competitive exam students. Student is preparing for ${userContext.exam} at ${userContext.level} level. ${langInstr}
 
-You can see images that the user sends. Analyze them carefully and provide educational insights.
-- If it's a textbook page, extract key points and explain concepts
-- If it's a question paper, solve and explain the answers
-- If it's a diagram/chart, describe and explain what it shows
-- If it's handwritten notes, read and organize them
-- Always relate your answer to the student's exam preparation`;
+You can SEE the image(s) the student sends. This is most often a PHOTO OF A DOUBT/QUESTION they're stuck on. Analyse carefully and help them learn.
+
+If the image contains a QUESTION or problem (MCQ, numerical, diagram-based, passage):
+1. **Restate the question** briefly so they know you read it correctly.
+2. **Solve it step by step** — show the reasoning/working clearly, one step per line. For MCQs, explain why the correct option is right AND why the key distractors are wrong.
+3. **State the final answer** in bold on its own line (e.g. "**Answer: C**").
+4. Add a short **tip / concept to remember** for the exam.
+
+For other images: textbook page → extract & explain key points; diagram/chart → describe & explain; handwritten notes → read & organise.
+
+Use simple language and clear formatting (headings, numbered steps, bold for the answer). Always tie it back to ${userContext.exam} preparation. If the image is blurry or unreadable, say exactly what you cannot read and ask for a clearer photo.`;
 
   // Build multimodal parts for Gemini
   const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [];
@@ -262,8 +267,8 @@ You can see images that the user sends. Analyze them carefully and provide educa
         body: JSON.stringify({
           contents: [{ parts }],
           generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 2000,
+            temperature: 0.5,
+            maxOutputTokens: 3000,
           },
         }),
       }
