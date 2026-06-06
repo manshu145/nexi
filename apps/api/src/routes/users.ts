@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { asExamSlug, asISODateTime, asUserId, isExamSlug } from '@nexigrate/shared';
+import { asExamSlug, asISODateTime, asUserId, isExamSlug, isPlanActive, maxExamsFor } from '@nexigrate/shared';
 import { requireAuth } from '../auth.js';
 import type { Logger } from '../logger.js';
 import type { UserStore } from '../lib/userStore.js';
@@ -45,6 +45,19 @@ const planChosenSchema = z.object({
 
 export function makeUsersRoutes(deps: UsersRoutesDeps): Hono {
   const app = new Hono();
+
+  /** Dedupe a list of exam slugs, dropping falsy values and an optional
+   *  excluded slug (e.g. the active exam, which lives in targetExam). */
+  function dedupeExams<T extends string>(list: (T | null | undefined)[], exclude?: T | null): T[] {
+    const seen = new Set<string>();
+    const out: T[] = [];
+    for (const e of list) {
+      if (!e || e === exclude || seen.has(e)) continue;
+      seen.add(e);
+      out.push(e);
+    }
+    return out;
+  }
 
   /**
    * Calendar day in IST (Asia/Kolkata) for a given ISO timestamp. Used as
@@ -189,6 +202,113 @@ export function makeUsersRoutes(deps: UsersRoutesDeps): Hono {
     const user = await deps.users.update(principal.userId, parsed.data as any);
     deps.logger.info('users.profile_updated', { userId: principal.userId });
     return c.json({ user });
+  });
+
+  /**
+   * POST /v1/users/me/exams — multi-exam enrolment (Sprint 5).
+   *
+   * Body: { action: 'add' | 'remove' | 'switch', exam: <slug> }
+   *
+   * The full enrolled set is [targetExam, ...secondaryExams] (deduped).
+   *  - add    : enrol in another exam (subject to the plan's maxExams cap).
+   *  - switch : make `exam` the active targetExam; the previous active exam
+   *             becomes a secondary so progress for it is preserved.
+   *  - remove : drop a secondary exam (can't remove the active one — switch
+   *             first).
+   *
+   * The cap is read from the live (admin-editable) plan config. An expired
+   * paid plan is treated as Free for the purposes of the limit.
+   */
+  const examActionSchema = z.object({
+    action: z.enum(['add', 'remove', 'switch']),
+    exam: z.string().refine(isExamSlug, { message: 'unknown exam slug' }),
+  });
+
+  app.post('/me/exams', async (c) => {
+    const principal = requireAuth(c);
+    const body = await c.req.json().catch(() => null);
+    const parsed = examActionSchema.safeParse(body);
+    if (!parsed.success) throw new HTTPException(400, { message: parsed.error.issues[0]?.message ?? 'invalid body' });
+
+    const { action } = parsed.data;
+    const exam = asExamSlug(parsed.data.exam);
+
+    const me = await deps.users.get(principal.userId);
+    if (!me) throw new HTTPException(404, { message: 'user not found' });
+
+    const active = me.targetExam;
+    const secondary = (me.secondaryExams ?? []).filter((e): e is typeof exam => !!e);
+    // Current enrolled set (deduped), active first.
+    const enrolled = [active, ...secondary].filter((e): e is typeof exam => !!e);
+    const enrolledSet = new Set<string>(enrolled);
+
+    // Effective plan: expired paid plan falls back to Free limits.
+    const effectivePlanId = isPlanActive(me.plan, me.planExpiresAt) ? me.plan : 'free';
+    const plan = await deps.config.getPlan(effectivePlanId as any);
+    const limit = maxExamsFor(plan?.features); // -1 = unlimited
+
+    if (action === 'add') {
+      if (enrolledSet.has(exam)) {
+        throw new HTTPException(409, { message: 'You are already enrolled in this exam.' });
+      }
+      if (limit !== -1 && enrolled.length >= limit) {
+        throw new HTTPException(403, {
+          message:
+            limit <= 1
+              ? 'Your plan allows only one exam. Upgrade to study for multiple exams.'
+              : `Your plan allows up to ${limit} exams. Upgrade to add more.`,
+        });
+      }
+      const nextSecondary = active ? [...secondary, exam] : secondary;
+      const data: Partial<typeof me> = active
+        ? { secondaryExams: dedupeExams(nextSecondary, active) }
+        : { targetExam: exam };
+      const updated = await deps.users.update(principal.userId, data as any);
+      deps.logger.info('users.exam_added', { userId: principal.userId, exam, limit });
+      return c.json({ user: updated });
+    }
+
+    if (action === 'switch') {
+      if (active === exam) {
+        return c.json({ user: me }); // no-op
+      }
+      if (!enrolledSet.has(exam)) {
+        // Switching to a not-yet-enrolled exam = add + activate, still capped.
+        if (limit !== -1 && enrolled.length >= limit) {
+          throw new HTTPException(403, {
+            message:
+              limit <= 1
+                ? 'Your plan allows only one exam. Upgrade to study for multiple exams.'
+                : `Your plan allows up to ${limit} exams. Upgrade to add more.`,
+          });
+        }
+      }
+      // New secondary list = (old secondaries + old active) minus the new active.
+      const nextSecondary = dedupeExams(
+        [...secondary, ...(active ? [active] : [])].filter((e) => e !== exam),
+      );
+      const updated = await deps.users.update(principal.userId, {
+        targetExam: exam,
+        secondaryExams: nextSecondary,
+      } as any);
+      deps.logger.info('users.exam_switched', { userId: principal.userId, exam });
+      return c.json({ user: updated });
+    }
+
+    // action === 'remove'
+    if (active === exam) {
+      throw new HTTPException(409, {
+        message: 'This is your active exam. Switch to another exam before removing it.',
+      });
+    }
+    if (!secondary.includes(exam)) {
+      throw new HTTPException(404, { message: 'You are not enrolled in this exam.' });
+    }
+    const updated = await deps.users.update(principal.userId, {
+      secondaryExams: secondary.filter((e) => e !== exam),
+    } as any);
+    deps.logger.info('users.exam_removed', { userId: principal.userId, exam });
+    return c.json({ user: updated });
   });
 
   /**

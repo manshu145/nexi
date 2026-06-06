@@ -308,6 +308,9 @@ function sanitisePlanPatch(patch: Partial<PlanConfig>): Partial<PlanConfig> {
       ...(f.aiTutorPerDay !== undefined ? { aiTutorPerDay: clampInt(f.aiTutorPerDay, 0) } : {}),
       ...(f.essaysPerDay !== undefined ? { essaysPerDay: clampInt(f.essaysPerDay, 0) } : {}),
       ...(f.imagesPerDay !== undefined ? { imagesPerDay: clampInt(f.imagesPerDay, 0) } : {}),
+      // Multi-exam (Sprint 5) — how many exams this plan allows. Persist
+      // only when present so older saves don't clobber the default.
+      ...(f.maxExams !== undefined ? { maxExams: clampInt(f.maxExams, 1) } : {}),
     };
   }
   return out;

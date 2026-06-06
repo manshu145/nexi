@@ -339,6 +339,7 @@ export default function AdminPlansPage() {
                     <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-500">AI Tutor/day</th>
                     <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-500">Essays/day</th>
                     <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-500">Images/day</th>
+                    <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-500">Max Exams</th>
                     <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-500">AI Tutor</th>
                     <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-500">Current Affairs</th>
                     <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-500">Essay Grade</th>
@@ -378,6 +379,11 @@ export default function AdminPlansPage() {
                         <input type="number" value={p.features.imagesPerDay ?? -1}
                           onChange={(e) => patchDraft(p.id, { features: { ...p.features, imagesPerDay: Number(e.target.value) } })}
                           className="input w-16 text-xs" title="AI image generations per day. -1 = unlimited, 0 = blocked." />
+                      </td>
+                      <td className="px-4 py-2">
+                        <input type="number" value={p.features.maxExams ?? 1}
+                          onChange={(e) => patchDraft(p.id, { features: { ...p.features, maxExams: Number(e.target.value) } })}
+                          className="input w-16 text-xs" title="How many exams a user on this plan can enrol in. -1 = unlimited." />
                       </td>
                       <td className="px-4 py-2">
                         <input type="checkbox" checked={p.features.aiTutor}
