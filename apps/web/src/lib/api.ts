@@ -45,6 +45,8 @@ export interface StoredUser { id: string; email: string; name: string; phone: st
 export interface MeResponse { user: StoredUser; dailyStreak: { streak: number; creditsEarned: number }; }
 export interface MCQOption { key: 'A'|'B'|'C'|'D'; text: string; }
 export interface GeneratedMCQ { id: string; question: string; options: MCQOption[]; correctOption: 'A'|'B'|'C'|'D'; explanation: string; difficulty: 'easy'|'medium'|'hard'; subject?: string; topic?: string; }
+export interface ExamEvent { name: string; date: string | null; estimatedMonth: string; isConfirmed: boolean; sourceUrl: string; registrationStart: string | null; registrationEnd: string | null; }
+export interface ExamDates { examSlug: string; examName: string; events: ExamEvent[]; lastUpdated: string | null; }
 export interface AssessmentResult { score: number; total: number; level: 'beginner'|'intermediate'|'advanced'; message: string; messageHi: string; weakAreas?: string[]; strongAreas?: string[]; }
 
 export interface SyllabusChapter { slug: string; name: string; nameHi: string; order: number; estimatedMinutes: number; }
@@ -124,6 +126,19 @@ export const api = {
     })).json() as Promise<{questions:GeneratedMCQ[]}>;
   },
   async submitMultiStageAssessment(stage1: {questions:GeneratedMCQ[]; answers:{questionId:string;chosen:string|null}[]}, stage2: {questions:GeneratedMCQ[]; answers:{questionId:string;chosen:string|null}[]}, stage3: {questions:GeneratedMCQ[]; answers:{questionId:string;chosen:string|null}[]}) { return (await authedFetch('/v1/assessment/submit', { method: 'POST', body: JSON.stringify({ multiStage: true, stage1, stage2, stage3 }) })).json() as Promise<AssessmentResult>; },
+
+  // ─── Exam calendar ──────────────────────────────────────────────────────
+  async getExamDates() {
+    return (await authedFetch('/v1/exams/dates')).json() as Promise<{ exams: ExamDates[] }>;
+  },
+  async getExamDatesFor(examSlug: string) {
+    return (await authedFetch(`/v1/exams/dates/${encodeURIComponent(examSlug)}`)).json() as Promise<ExamDates>;
+  },
+  async updateExamDates(examSlug: string, examName: string, events: ExamEvent[]) {
+    return (await authedFetch(`/v1/exams/dates/${encodeURIComponent(examSlug)}`, {
+      method: 'PATCH', body: JSON.stringify({ examName, events }),
+    })).json() as Promise<ExamDates>;
+  },
 
   // Study
   async getSyllabus(examSlug: string) { return (await authedFetch(`/v1/study/syllabus/${examSlug}`)).json() as Promise<{syllabus:SyllabusTree}>; },
