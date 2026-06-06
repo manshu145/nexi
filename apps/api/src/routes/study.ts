@@ -31,6 +31,8 @@ export interface StudyRoutesDeps {
    * Optional for tests; production wiring in app.ts always supplies it.
    */
   modelResolver?: import('../lib/aiModelResolver.js').AIModelResolver | null;
+  /** Spaced-repetition store — schedules a chapter for review on completion. Optional for tests. */
+  review?: import('../lib/reviewStore.js').ReviewStore | null;
 }
 
 /** Human-readable exam name from the curated registry, with a slug-derived fallback. */
@@ -417,6 +419,17 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
       passed,
       creditsAwarded,
     });
+
+    // Spaced repetition: schedule this chapter for review using SM-2 from the
+    // quiz score (low score -> comes back tomorrow, high score -> drifts out).
+    // Best-effort; never block chapter completion on it.
+    if (deps.review) {
+      try {
+        await deps.review.schedule(principal.userId, { exam, subject, chapter }, score);
+      } catch (err) {
+        deps.logger.warn('study.review_schedule_failed', { userId: principal.userId, refKey, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
 
     // Determine next chapter (unlock requires a passing score). Use the
     // cache-backed fallback so AI-generated exams (e.g. CGPSC) also resolve
