@@ -31,6 +31,15 @@ export interface StageResults {
 
 export interface AIEngine {
   generateAssessmentQuestions(examSlug: string, language: 'en' | 'hi', count?: number): Promise<GeneratedMCQ[]>;
+  /**
+   * Generate a full mock test as difficulty SECTIONS (default 20 easy +
+   * 20 medium + 10 hard = 50). Each section is generated in batches of 10
+   * (with one retry per batch) across the resilient provider chain, in
+   * parallel for speed. Short batches are topped up from the static
+   * fallback bank so the caller always gets a full-length test; if too
+   * few REAL questions came back it throws so the route can refund.
+   */
+  generateMockTest(examSlug: string, language: 'en' | 'hi', opts?: { easy?: number; medium?: number; hard?: number }): Promise<GeneratedMCQ[]>;
   generateStage1Questions(examSlug: string, language: 'en' | 'hi'): Promise<GeneratedMCQ[]>;
   generateStage2Questions(examSlug: string, language: 'en' | 'hi', stage1Results: StageResults): Promise<GeneratedMCQ[]>;
   generateStage3Questions(examSlug: string, language: 'en' | 'hi', stage1Results: StageResults, stage2Results: StageResults): Promise<GeneratedMCQ[]>;
@@ -792,6 +801,72 @@ export function createAIEngine(
         logger.error('ai.assessment_static_fallback', { endpoint: 'generateAssessmentQuestions', examSlug, language, count, error: err instanceof Error ? err.message.slice(0, 200) : String(err) });
         return getFallbackQuestions({ language: language === 'hi' ? 'hi' : 'en', count, idPrefix: 'a', offset: 0 });
       }
+    },
+
+    async generateMockTest(examSlug, language = 'en', opts) {
+      const easy = opts?.easy ?? 20;
+      const medium = opts?.medium ?? 20;
+      const hard = opts?.hard ?? 10;
+      const langInstr = language === 'hi' ? 'Generate all questions and options in Hindi (Devanagari script).' : 'Generate all questions and options in English.';
+
+      const buildPrompt = (n: number, difficulty: 'easy' | 'medium' | 'hard', batchIdx: number) =>
+        `${JSON_ONLY_PREFIX}You are an expert Indian competitive exam question creator.\n\nGenerate exactly ${n} ${difficulty.toUpperCase()}-difficulty MCQs for "${examSlug}" exam mock test${batchIdx > 0 ? ` (continuation batch ${batchIdx + 1})` : ''}.\n${langInstr}\n\nRequirements:\n- ALL ${n} questions MUST be ${difficulty} difficulty.\n- ${difficulty === 'hard' ? 'Analytical / multi-step; all 4 options plausible; require deep understanding.' : difficulty === 'medium' ? 'Application-based; require careful thought; at least 2 close options.' : 'Direct factual recall; one clearly correct answer.'}\n- Cover DIFFERENT subjects/topics from the official ${examSlug} syllabus.\n- 4 options (A-D), correct answer, brief explanation.\n- MUST include subject and topic fields.\n\nRespond ONLY with JSON:\n{"questions":[{"id":"m-q1","question":"...","options":[{"key":"A","text":"..."},{"key":"B","text":"..."},{"key":"C","text":"..."},{"key":"D","text":"..."}],"correctOption":"A","explanation":"...","difficulty":"${difficulty}","subject":"...","topic":"..."}]}`;
+
+      // Build batch specs: chunks of 10 per difficulty.
+      const specs: { difficulty: 'easy' | 'medium' | 'hard'; count: number }[] = [];
+      const chunk = (total: number, difficulty: 'easy' | 'medium' | 'hard') => {
+        let rem = total;
+        while (rem > 0) { const n = Math.min(10, rem); specs.push({ difficulty, count: n }); rem -= n; }
+      };
+      chunk(easy, 'easy'); chunk(medium, 'medium'); chunk(hard, 'hard');
+
+      // One retry per batch, run in parallel. Each _generateQuestions call
+      // already falls across Groq -> OpenAI -> Gemini internally, so a
+      // single provider hiccup doesn't sink a batch.
+      const runBatch = async (spec: { difficulty: 'easy' | 'medium' | 'hard'; count: number }, idx: number): Promise<GeneratedMCQ[]> => {
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            const qs = await _generateQuestions(buildPrompt(spec.count, spec.difficulty, idx), `generateMockTest_${spec.difficulty}`, examSlug, language);
+            if (qs.length > 0) return qs.map((q) => ({ ...q, difficulty: spec.difficulty }));
+          } catch { /* retry once */ }
+        }
+        return [];
+      };
+
+      const settled = await Promise.allSettled(specs.map((s, i) => runBatch(s, i)));
+      const byDiff: Record<'easy' | 'medium' | 'hard', GeneratedMCQ[]> = { easy: [], medium: [], hard: [] };
+      settled.forEach((r, i) => {
+        if (r.status === 'fulfilled') byDiff[specs[i]!.difficulty].push(...r.value);
+      });
+
+      const realCount = byDiff.easy.length + byDiff.medium.length + byDiff.hard.length;
+      const target = easy + medium + hard;
+      // If too little REAL content came back, fail so the route refunds
+      // rather than handing the user a test padded with repeated fallbacks.
+      if (realCount < Math.ceil(target * 0.5)) {
+        throw new Error(`Mock test generation produced only ${realCount}/${target} real questions`);
+      }
+
+      // Top up any short section from the static bank so the test is full.
+      const topUp = (arr: GeneratedMCQ[], wanted: number, difficulty: 'easy' | 'medium' | 'hard', idPrefix: string): GeneratedMCQ[] => {
+        if (arr.length >= wanted) return arr.slice(0, wanted);
+        const fb = getFallbackQuestions({ language: language === 'hi' ? 'hi' : 'en', count: wanted - arr.length, idPrefix, offset: arr.length })
+          .map((q) => ({ ...q, difficulty }));
+        return [...arr, ...fb];
+      };
+
+      const all = [
+        ...topUp(byDiff.easy, easy, 'easy', 'me'),
+        ...topUp(byDiff.medium, medium, 'medium', 'mm'),
+        ...topUp(byDiff.hard, hard, 'hard', 'mh'),
+      ].map((q, i) => ({ ...q, id: `m-q${i + 1}` }));
+
+      logger.info('ai.mock_test_generated', {
+        examSlug, language,
+        easy: byDiff.easy.length, medium: byDiff.medium.length, hard: byDiff.hard.length,
+        real: realCount, total: all.length,
+      });
+      return all;
     },
 
     async generateStage1Questions(examSlug, language = 'en') {
