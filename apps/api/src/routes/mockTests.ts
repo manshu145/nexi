@@ -53,6 +53,13 @@ const startSchema = z.object({
   /** Optional override; defaults to 30 questions / 30 minutes (1 min/q is the standard). */
   questionCount: z.number().int().min(10).max(100).optional(),
   durationMinutes: z.number().int().min(10).max(180).optional(),
+  /**
+   * Client-generated attempt id. Letting the client own the id makes the
+   * start flow resilient to a dropped response: even if the network drops
+   * while we're generating, the client already knows the id and can poll
+   * GET /:id to recover the test once generation finishes server-side.
+   */
+  attemptId: z.string().regex(/^mt_[a-zA-Z0-9_]{6,40}$/).optional(),
 });
 
 const submitSchema = z.object({
@@ -97,7 +104,28 @@ export function makeMockTestRoutes(deps: MockTestRoutesDeps): Hono {
     const questionCount = parsed.data.questionCount ?? DEFAULT_QUESTION_COUNT;
     const durationMinutes = parsed.data.durationMinutes ?? DEFAULT_DURATION_MINUTES;
     const cost = await deps.config.getSpendAmount('mock_test');
-    const attemptId = `mt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const attemptId = parsed.data.attemptId ?? `mt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+    // Idempotent re-entry: if this attemptId already exists (e.g. the client
+    // retried after a dropped response, or double-tapped), don't charge or
+    // regenerate — just report the current state so the client can navigate
+    // to /:id and poll.
+    const existing = await deps.mockTests.get(attemptId);
+    if (existing) {
+      if (existing.userId !== principal.userId) {
+        throw new HTTPException(403, { message: 'forbidden' });
+      }
+      return c.json({
+        attemptId,
+        status: existing.status,
+        examSlug: existing.examSlug,
+        language: existing.language,
+        durationMinutes: existing.durationMinutes,
+        total: existing.total,
+        creditCost: existing.creditCost,
+        negativeMarkPerWrong: existing.negativeMarkPerWrong ?? NEGATIVE_MARK_PER_WRONG,
+      });
+    }
 
     // 1. Charge credits up front. If insufficient balance, fail before
     //    spending AI tokens. Idempotency key ties this to the attemptId
@@ -120,15 +148,39 @@ export function makeMockTestRoutes(deps: MockTestRoutesDeps): Hono {
       throw new HTTPException(500, { message: 'Could not charge credits. Please try again.' });
     }
 
-    // 2. Generate questions via the same resilient pipeline used by the
-    //    legacy assessment flow. PR-18's batched fallback means a 30q
-    //    request ends up as 6 batches of 5 internally if Groq is the
-    //    only working provider, but the caller never sees that.
+    // 2. Persist a 'generating' placeholder BEFORE generation. This is the
+    //    key resilience win: the attempt now exists keyed by the client's
+    //    id, so even if the network drops mid-generation the client can
+    //    poll GET /:id and recover the test once we finish (Cloud Run keeps
+    //    the handler running after a client disconnect).
+    const createdAt = new Date().toISOString();
+    const placeholder: MockTestAttempt = {
+      id: attemptId,
+      userId: principal.userId,
+      examSlug: examSlug as ExamSlug,
+      language,
+      questions: [],
+      answers: {},
+      status: 'generating',
+      startedAt: asISODateTime(createdAt),
+      durationMinutes,
+      submittedAt: null,
+      score: null,
+      total: 0,
+      percentage: null,
+      subjectBreakdown: null,
+      creditCost: cost,
+      negativeMarkPerWrong: NEGATIVE_MARK_PER_WRONG,
+      generationError: null,
+    };
+    await deps.mockTests.create(placeholder);
+
+    // 3. Generate questions. Runs inside the handler (Cloud Run keeps it
+    //    alive past a client disconnect), and on completion the attempt
+    //    flips to 'in_progress' with the timer starting NOW (so a slow
+    //    generation never eats into the candidate's time).
     let questions: GeneratedMCQ[];
     try {
-      // Section-based generation (20 easy + 20 medium + 10 hard for the
-      // default 50q test). For a custom questionCount we keep the same
-      // 40/40/20 split so the difficulty curve is consistent.
       const sections = parsed.data.questionCount
         ? {
             easy: Math.round(questionCount * 0.4),
@@ -137,12 +189,12 @@ export function makeMockTestRoutes(deps: MockTestRoutesDeps): Hono {
           }
         : { ...MOCK_SECTIONS };
       questions = await deps.aiEngine.generateMockTest(examSlug, language, sections);
-      // Lock §3.8: bounded cost — generateMockTest batches internally.
       await deps.aiEngine.recordAICost(principal.userId, 0.05);
       if (!questions || questions.length === 0) {
         throw new Error('AI returned 0 questions');
       }
     } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
       // Refund — never leave a paying user out of pocket for an outage.
       try {
         await deps.ledger.award({
@@ -157,36 +209,32 @@ export function makeMockTestRoutes(deps: MockTestRoutesDeps): Hono {
           userId: principal.userId, attemptId, error: refundErr instanceof Error ? refundErr.message : String(refundErr),
         });
       }
+      // Mark the attempt failed so a polling client sees a clean error
+      // instead of an indefinite 'generating' spinner.
+      try {
+        await deps.mockTests.update(attemptId, {
+          status: 'generation_failed',
+          generationError: 'Our AI provider was slow or unavailable. Your credits were refunded — please try again.',
+        });
+      } catch { /* best-effort */ }
       deps.logger.error('mock_test.generation_failed', {
-        userId: principal.userId, examSlug, language, error: err instanceof Error ? err.message : String(err),
+        userId: principal.userId, examSlug, language, error: errMsg,
       });
       throw new HTTPException(503, {
         message: 'Could not generate the mock test right now. Your credits have been refunded — please try again.',
       });
     }
 
-    // 3. Persist attempt (without correct answers leaking into the
-    //    response — we strip them in the response shape below).
-    const now = new Date().toISOString();
-    const attempt: MockTestAttempt = {
-      id: attemptId,
-      userId: principal.userId,
-      examSlug: examSlug as ExamSlug,
-      language,
+    // 4. Flip to in_progress with the full question set; reset startedAt so
+    //    the timer begins when the test is actually ready.
+    const readyAt = new Date().toISOString();
+    const attempt = await deps.mockTests.update(attemptId, {
       questions,
       answers: Object.fromEntries(questions.map(q => [q.id, null])),
       status: 'in_progress',
-      startedAt: asISODateTime(now),
-      durationMinutes,
-      submittedAt: null,
-      score: null,
+      startedAt: asISODateTime(readyAt),
       total: questions.length,
-      percentage: null,
-      subjectBreakdown: null,
-      creditCost: cost,
-      negativeMarkPerWrong: NEGATIVE_MARK_PER_WRONG,
-    };
-    await deps.mockTests.create(attempt);
+    });
 
     deps.logger.info('mock_test.started', {
       userId: principal.userId, attemptId, examSlug, language,
@@ -195,6 +243,7 @@ export function makeMockTestRoutes(deps: MockTestRoutesDeps): Hono {
 
     return c.json({
       attemptId,
+      status: attempt.status,
       examSlug,
       language,
       durationMinutes,
@@ -204,6 +253,35 @@ export function makeMockTestRoutes(deps: MockTestRoutesDeps): Hono {
       creditCost: cost,
       negativeMarkPerWrong: NEGATIVE_MARK_PER_WRONG,
     });
+  });
+
+  /**
+   * GET /v1/mock-tests/history
+   *
+   * User's last 20 attempts (metadata only). Registered BEFORE the
+   * `/:id` route on purpose — otherwise "history" gets captured as an
+   * `:id` param and 404s with "mock test attempt not found" (the exact
+   * bug founders hit on the Past-attempts list).
+   */
+  app.get('/history', async (c) => {
+    const principal = requireAuth(c);
+    const attempts = await deps.mockTests.listByUser(principal.userId, 20);
+    const items = attempts
+      // Hide failed/never-generated placeholders from the history list.
+      .filter(a => a.status !== 'generation_failed' && a.status !== 'generating')
+      .map(a => ({
+        id: a.id,
+        examSlug: a.examSlug,
+        language: a.language,
+        status: a.status,
+        startedAt: a.startedAt,
+        submittedAt: a.submittedAt,
+        total: a.total,
+        score: a.score,
+        percentage: a.percentage,
+        durationMinutes: a.durationMinutes,
+      }));
+    return c.json({ attempts: items });
   });
 
   /**
@@ -230,6 +308,7 @@ export function makeMockTestRoutes(deps: MockTestRoutesDeps): Hono {
       startedAt: attempt.startedAt,
       durationMinutes: attempt.durationMinutes,
       submittedAt: attempt.submittedAt,
+      generationError: attempt.generationError ?? null,
       total: attempt.total,
       score: attempt.score,
       percentage: attempt.percentage,
@@ -330,32 +409,6 @@ export function makeMockTestRoutes(deps: MockTestRoutesDeps): Hono {
       questions: updated.questions,
       answers: answersMap,
     });
-  });
-
-  /**
-   * GET /v1/mock-tests/history
-   *
-   * User's last 20 attempts. We omit the question payload from this
-   * response (just metadata + scores) to keep the list page cheap and
-   * fast even on slow networks. The full questions are still available
-   * via GET /:id when the user clicks into a specific attempt.
-   */
-  app.get('/history', async (c) => {
-    const principal = requireAuth(c);
-    const attempts = await deps.mockTests.listByUser(principal.userId, 20);
-    const items = attempts.map(a => ({
-      id: a.id,
-      examSlug: a.examSlug,
-      language: a.language,
-      status: a.status,
-      startedAt: a.startedAt,
-      submittedAt: a.submittedAt,
-      total: a.total,
-      score: a.score,
-      percentage: a.percentage,
-      durationMinutes: a.durationMinutes,
-    }));
-    return c.json({ attempts: items });
   });
 
   return app;
