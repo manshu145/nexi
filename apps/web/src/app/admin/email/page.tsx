@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '~/lib/auth-context';
 import { getFirebaseAuthClient } from '~/lib/firebase';
+import { api, type MailboxThread, type MailboxMessage } from '~/lib/api';
 
 const API = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com';
 
@@ -35,9 +36,20 @@ export default function AdminEmailPage() {
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
   const [templateName, setTemplateName] = useState('');
   const [showSaveTemplate, setShowSaveTemplate] = useState(false);
-  const [activeTab, setActiveTab] = useState<'compose' | 'templates' | 'logs' | 'settings'>('compose');
+  const [activeTab, setActiveTab] = useState<'compose' | 'mailbox' | 'templates' | 'logs' | 'settings'>('compose');
   const [emailLogs, setEmailLogs] = useState<EmailLog[]>([]);
   const [emailConfig, setEmailConfig] = useState<Record<string, any>>({});
+
+  // Mailbox state
+  const [threads, setThreads] = useState<MailboxThread[]>([]);
+  const [mailboxUnread, setMailboxUnread] = useState(0);
+  const [threadFilter, setThreadFilter] = useState<'open' | 'closed' | 'all'>('open');
+  const [selectedThread, setSelectedThread] = useState<MailboxThread | null>(null);
+  const [threadMessages, setThreadMessages] = useState<MailboxMessage[]>([]);
+  const [replyText, setReplyText] = useState('');
+  const [replying, setReplying] = useState(false);
+  const [showCompose, setShowCompose] = useState(false);
+  const [composeFields, setComposeFields] = useState({ to: '', name: '', subject: '', text: '' });
 
   useEffect(() => { if (!loading && !user) router.replace('/admin/login'); }, [user, loading, router]);
 
@@ -114,6 +126,71 @@ export default function AdminEmailPage() {
     setActiveTab('compose');
   };
 
+  // ── Mailbox ──────────────────────────────────────────────────────────
+  const loadThreads = async (filter: 'open' | 'closed' | 'all' = threadFilter) => {
+    try {
+      const res = await api.getMailboxThreads(filter === 'all' ? undefined : filter);
+      setThreads(res.threads);
+      setMailboxUnread(res.unreadCount);
+    } catch { /* ignore */ }
+  };
+
+  // Load unread badge once on mount; full list when the tab is opened.
+  useEffect(() => { if (user) void loadThreads('open'); /* eslint-disable-next-line */ }, [user]);
+  useEffect(() => { if (user && activeTab === 'mailbox') void loadThreads(threadFilter); /* eslint-disable-next-line */ }, [activeTab, threadFilter]);
+
+  const openThread = async (t: MailboxThread) => {
+    setSelectedThread(t);
+    setThreadMessages([]);
+    try {
+      const res = await api.getMailboxThread(t.id);
+      setSelectedThread(res.thread);
+      setThreadMessages(res.messages);
+      // opening marks read server-side; reflect locally
+      setThreads(prev => prev.map(x => x.id === t.id ? { ...x, unreadByAdmin: false } : x));
+      setMailboxUnread(c => Math.max(0, c - (t.unreadByAdmin ? 1 : 0)));
+    } catch { /* ignore */ }
+  };
+
+  const sendReply = async () => {
+    if (!selectedThread || !replyText.trim()) return;
+    setReplying(true); setError(null);
+    try {
+      const res = await api.mailboxReply(selectedThread.id, replyText.trim());
+      setThreadMessages(prev => [...prev, res.message]);
+      setReplyText('');
+    } catch (e) { setError(e instanceof Error ? e.message : 'Reply failed'); }
+    finally { setReplying(false); }
+  };
+
+  const sendCompose = async () => {
+    if (!composeFields.to.trim() || !composeFields.subject.trim() || !composeFields.text.trim()) return;
+    setReplying(true); setError(null);
+    try {
+      const res = await api.mailboxCompose({
+        to: composeFields.to.trim(),
+        ...(composeFields.name.trim() ? { name: composeFields.name.trim() } : {}),
+        subject: composeFields.subject.trim(),
+        text: composeFields.text.trim(),
+      });
+      setShowCompose(false);
+      setComposeFields({ to: '', name: '', subject: '', text: '' });
+      await loadThreads('open');
+      void openThread(res.thread);
+    } catch (e) { setError(e instanceof Error ? e.message : 'Send failed'); }
+    finally { setReplying(false); }
+  };
+
+  const toggleThreadStatus = async () => {
+    if (!selectedThread) return;
+    const next = selectedThread.status === 'open' ? 'closed' : 'open';
+    try {
+      await api.setMailboxThreadStatus(selectedThread.id, next);
+      setSelectedThread({ ...selectedThread, status: next });
+      await loadThreads(threadFilter);
+    } catch { /* ignore */ }
+  };
+
   if (loading || !user) return <div className="space-y-4"><div className="h-7 w-32 rounded bg-paper-300 animate-pulse" /><div className="h-40 rounded bg-paper-300 animate-pulse" /></div>;
 
   return (
@@ -137,6 +214,9 @@ export default function AdminEmailPage() {
       <div className="mt-6 flex gap-2">
         <button onClick={() => setActiveTab('compose')} className={`pill ${activeTab === 'compose' ? 'bg-ink-900 text-paper-50 border-ink-900' : ''}`}>
           Compose
+        </button>
+        <button onClick={() => setActiveTab('mailbox')} className={`pill ${activeTab === 'mailbox' ? 'bg-ink-900 text-paper-50 border-ink-900' : ''}`}>
+          Mailbox{mailboxUnread > 0 ? ` (${mailboxUnread})` : ''}
         </button>
         <button onClick={() => setActiveTab('templates')} className={`pill ${activeTab === 'templates' ? 'bg-ink-900 text-paper-50 border-ink-900' : ''}`}>
           Templates ({templates.length})
@@ -179,6 +259,91 @@ export default function AdminEmailPage() {
               <button onClick={handleSaveTemplate} disabled={!templateName.trim()} className="btn-primary text-sm">Save</button>
             </div>
           )}
+        </div>
+      )}
+
+      {activeTab === 'mailbox' && (
+        <div className="mt-4">
+          {/* Toolbar */}
+          <div className="mb-3 flex items-center gap-2">
+            <div className="flex gap-1">
+              {(['open', 'closed', 'all'] as const).map(f => (
+                <button key={f} onClick={() => setThreadFilter(f)} className={`pill text-xs ${threadFilter === f ? 'bg-ink-900 text-paper-50 border-ink-900' : ''}`}>
+                  {f === 'open' ? 'Open' : f === 'closed' ? 'Closed' : 'All'}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => { setShowCompose(true); setSelectedThread(null); }} className="btn-primary text-sm ml-auto">✉️ New conversation</button>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-[280px_1fr]">
+            {/* Thread list */}
+            <div className="paper-card divide-y divide-paper-200 max-h-[70vh] overflow-y-auto">
+              {threads.length === 0 ? (
+                <div className="p-6 text-center text-sm text-muted-500">No conversations yet.</div>
+              ) : threads.map(t => (
+                <button key={t.id} onClick={() => { setShowCompose(false); void openThread(t); }}
+                  className={`block w-full p-3 text-left hover:bg-paper-100 ${selectedThread?.id === t.id ? 'bg-paper-100' : ''}`}>
+                  <div className="flex items-center gap-2">
+                    {t.unreadByAdmin && <span className="h-2 w-2 flex-shrink-0 rounded-full bg-ember-500" />}
+                    <span className="truncate text-sm font-medium text-ink-900">{t.participantName || t.participantEmail}</span>
+                    {t.status === 'closed' && <span className="ml-auto text-[10px] text-muted-400">closed</span>}
+                  </div>
+                  <p className="mt-0.5 truncate text-xs text-muted-600">{t.subject}</p>
+                  <p className="mt-0.5 truncate text-[11px] text-muted-400">{t.lastDirection === 'inbound' ? '↩ ' : '→ '}{t.preview}</p>
+                </button>
+              ))}
+            </div>
+
+            {/* Conversation / compose */}
+            <div className="paper-card p-4 flex flex-col max-h-[70vh]">
+              {showCompose ? (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold text-ink-900">New conversation</h3>
+                  <input value={composeFields.to} onChange={e => setComposeFields(f => ({ ...f, to: e.target.value }))} className="input" placeholder="Recipient email" />
+                  <input value={composeFields.name} onChange={e => setComposeFields(f => ({ ...f, name: e.target.value }))} className="input" placeholder="Name (optional)" />
+                  <input value={composeFields.subject} onChange={e => setComposeFields(f => ({ ...f, subject: e.target.value }))} className="input" placeholder="Subject" />
+                  <textarea value={composeFields.text} onChange={e => setComposeFields(f => ({ ...f, text: e.target.value }))} className="input" rows={6} placeholder="Your message…" />
+                  <div className="flex gap-2">
+                    <button onClick={sendCompose} disabled={replying} className="btn-primary flex-1">{replying ? 'Sending…' : 'Send'}</button>
+                    <button onClick={() => setShowCompose(false)} className="btn-ghost">Cancel</button>
+                  </div>
+                </div>
+              ) : !selectedThread ? (
+                <div className="flex flex-1 items-center justify-center text-sm text-muted-500">Select a conversation to read &amp; reply.</div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between border-b border-paper-200 pb-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-ink-900">{selectedThread.participantName || selectedThread.participantEmail}</p>
+                      <p className="truncate text-xs text-muted-500">{selectedThread.subject} · {selectedThread.participantEmail}</p>
+                    </div>
+                    <button onClick={toggleThreadStatus} className="btn-ghost-sm text-xs flex-shrink-0">{selectedThread.status === 'open' ? 'Close' : 'Reopen'}</button>
+                  </div>
+
+                  <div className="flex-1 space-y-3 overflow-y-auto py-3">
+                    {threadMessages.map(m => (
+                      <div key={m.id} className={`flex ${m.direction === 'outbound' ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${m.direction === 'outbound' ? 'bg-ember-500/10 text-ink-900' : 'bg-paper-200 text-ink-800'}`}>
+                          <p className="whitespace-pre-wrap">{m.text}</p>
+                          <p className="mt-1 text-[10px] text-muted-400">
+                            {m.direction === 'outbound' ? (m.authorAdminEmail ? `you · ${m.authorAdminEmail}` : 'you') : m.from}
+                            {' · '}{new Date(m.createdAt).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}
+                            {m.status ? ` · ${m.status}` : ''}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="border-t border-paper-200 pt-3">
+                    <textarea value={replyText} onChange={e => setReplyText(e.target.value)} className="input" rows={3} placeholder="Type your reply…" />
+                    <button onClick={sendReply} disabled={replying || !replyText.trim()} className="btn-primary mt-2 w-full">{replying ? 'Sending…' : 'Send reply'}</button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
