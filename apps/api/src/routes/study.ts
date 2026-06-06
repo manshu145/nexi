@@ -501,45 +501,114 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
     if (!subjectData) throw new HTTPException(404, { message: 'Subject not found in syllabus' });
 
     const existingChapters = subjectData.chapters.map(ch => ch.name).join(', ');
+    const existingSlugs = new Set(subjectData.chapters.map(ch => ch.slug.toLowerCase()));
     const nextOrder = subjectData.chapters.length + 1;
+
+    type GenChapter = { name: string; slug: string; nameHi: string; estimatedMinutes: number; order: number; isAdvanced: boolean };
+
+    const slugify = (name: string): string =>
+      name.toLowerCase().trim()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .slice(0, 60) || `chapter-${Date.now()}`;
 
     try {
       const prompt = `The student has completed all standard chapters for "${subjectData.name}" in "${syllabus.examName}".
-Generate 5 advanced/additional chapter topics that go beyond the standard syllabus but are highly relevant for ${syllabus.examName} preparation.
-Existing chapters: ${existingChapters}. Do not repeat any.
-Return ONLY valid JSON array: [{"name":"Chapter Name","slug":"chapter-slug","nameHi":"Hindi Name","estimatedMinutes":45,"order":${nextOrder},"isAdvanced":true}]`;
+Generate 5 ADVANCED/additional chapter topics that go beyond the standard syllabus but are highly relevant for ${syllabus.examName} preparation.
+Existing chapters (do NOT repeat any of these): ${existingChapters}.
+Return ONLY a JSON object in EXACTLY this shape:
+{"chapters":[{"name":"Chapter Name","nameHi":"हिन्दी नाम","estimatedMinutes":45}]}
+Rules: exactly 5 chapters, each name unique and not in the existing list, nameHi in Devanagari, estimatedMinutes between 30 and 60.`;
 
-      let newChapters: { name: string; slug: string; nameHi: string; estimatedMinutes: number; order: number; isAdvanced: boolean }[] = [];
+      // Robust JSON extraction from a model response (handles fenced code,
+      // object-wrapped, or bare-array outputs).
+      const parseChapters = (raw: string): Array<{ name?: string; nameHi?: string; estimatedMinutes?: number }> => {
+        if (!raw) return [];
+        let txt = raw.trim().replace(/^```(?:json)?/i, '').replace(/```$/,'').trim();
+        try {
+          const parsed = JSON.parse(txt);
+          if (Array.isArray(parsed)) return parsed;
+          if (Array.isArray(parsed?.chapters)) return parsed.chapters;
+          return [];
+        } catch {
+          // Last resort: pull the first [...] array out of the text.
+          const m = txt.match(/\[[\s\S]*\]/);
+          if (m) { try { const a = JSON.parse(m[0]); return Array.isArray(a) ? a : []; } catch { /* ignore */ } }
+          return [];
+        }
+      };
 
-      // Use GPT-4o for deep generation
+      // Resilient generation: OpenAI (gpt-4o-mini) -> Groq. Removes the
+      // single-point-of-failure where a missing/invalid OpenAI key 503'd
+      // the whole "Load More Chapters" feature.
+      let rawList: Array<{ name?: string; nameHi?: string; estimatedMinutes?: number }> = [];
+      const genErrors: string[] = [];
+
       if (deps.env.OPENAI_API_KEY && deps.env.OPENAI_API_KEY.length > 5) {
-        const OpenAI = (await import('openai')).default;
-        const openai = new OpenAI({ apiKey: deps.env.OPENAI_API_KEY });
-        const completion = await openai.chat.completions.create({
-          // Was hardcoded 'gpt-4o' which 404s on keys without gpt-4o access.
-          // gpt-4o-mini is the confirmed-available model and is plenty for
-          // generating a short list of chapter topics.
-          model: 'gpt-4o-mini',
-          messages: [{ role: 'user', content: prompt }],
-          temperature: 0.7,
-          max_tokens: 1500,
-          response_format: { type: 'json_object' },
-        });
-        const raw = completion.choices[0]?.message?.content ?? '[]';
-        const parsed = JSON.parse(raw);
-        newChapters = Array.isArray(parsed) ? parsed : parsed.chapters ?? [];
-      } else {
-        throw new Error('OpenAI API key required for chapter generation');
+        try {
+          const OpenAI = (await import('openai')).default;
+          const openai = new OpenAI({ apiKey: deps.env.OPENAI_API_KEY });
+          const completion = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.7,
+            max_tokens: 1500,
+            response_format: { type: 'json_object' },
+          });
+          rawList = parseChapters(completion.choices[0]?.message?.content ?? '');
+        } catch (err) {
+          genErrors.push(`OpenAI: ${err instanceof Error ? err.message : String(err)}`);
+          deps.logger.warn('study.generate_chapters_openai_failed', { error: genErrors[genErrors.length - 1] });
+        }
       }
 
-      if (newChapters.length === 0) throw new Error('AI returned no chapters');
+      if (rawList.length === 0 && deps.env.GROQ_API_KEY && deps.env.GROQ_API_KEY.length > 5) {
+        try {
+          const Groq = (await import('groq-sdk')).default;
+          const groq = new Groq({ apiKey: deps.env.GROQ_API_KEY });
+          const completion = await groq.chat.completions.create({
+            model: 'llama-3.3-70b-versatile',
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.7,
+            max_tokens: 1500,
+            response_format: { type: 'json_object' },
+          });
+          rawList = parseChapters(completion.choices[0]?.message?.content ?? '');
+        } catch (err) {
+          genErrors.push(`Groq: ${err instanceof Error ? err.message : String(err)}`);
+          deps.logger.warn('study.generate_chapters_groq_failed', { error: genErrors[genErrors.length - 1] });
+        }
+      }
 
-      // Assign correct order numbers
-      newChapters = newChapters.map((ch, i) => ({
-        ...ch,
-        order: nextOrder + i,
-        isAdvanced: true,
-      }));
+      if (rawList.length === 0) {
+        throw new Error(`AI returned no chapters${genErrors.length ? ` (${genErrors.join('; ')})` : ''}`);
+      }
+
+      // Normalize, dedup (against existing + within the batch), cap at 5.
+      const batchSlugs = new Set<string>();
+      const newChapters: GenChapter[] = [];
+      for (const item of rawList) {
+        const name = (item?.name ?? '').toString().trim();
+        if (!name) continue;
+        let slug = slugify(name);
+        if (existingSlugs.has(slug) || batchSlugs.has(slug)) continue; // skip duplicates
+        batchSlugs.add(slug);
+        const mins = Number(item?.estimatedMinutes);
+        newChapters.push({
+          name,
+          slug,
+          nameHi: (item?.nameHi ?? name).toString().trim(),
+          estimatedMinutes: Number.isFinite(mins) ? Math.min(60, Math.max(30, Math.round(mins))) : 45,
+          order: nextOrder + newChapters.length,
+          isAdvanced: true,
+        });
+        if (newChapters.length >= 5) break;
+      }
+
+      if (newChapters.length === 0) {
+        throw new Error('All generated chapters were duplicates');
+      }
 
       // Save to Firestore (append to syllabus)
       if (deps.db) {
