@@ -31,11 +31,26 @@ export interface StageResults {
 
 export interface AIEngine {
   generateAssessmentQuestions(examSlug: string, language: 'en' | 'hi', count?: number): Promise<GeneratedMCQ[]>;
-  generateStage1Questions(examSlug: string, language: 'en' | 'hi'): Promise<GeneratedMCQ[]>;
+  /**
+   * Generate a full mock test as difficulty SECTIONS (default 20 easy +
+   * 20 medium + 10 hard = 50). Each section is generated in batches of 10
+   * (with one retry per batch) across the resilient provider chain, in
+   * parallel for speed. Short batches are topped up from the static
+   * fallback bank so the caller always gets a full-length test; if too
+   * few REAL questions came back it throws so the route can refund.
+   */
+  generateMockTest(examSlug: string, language: 'en' | 'hi', opts?: { easy?: number; medium?: number; hard?: number }): Promise<GeneratedMCQ[]>;
+  generateStage1Questions(examSlug: string, language: 'en' | 'hi', count?: number): Promise<GeneratedMCQ[]>;
   generateStage2Questions(examSlug: string, language: 'en' | 'hi', stage1Results: StageResults): Promise<GeneratedMCQ[]>;
   generateStage3Questions(examSlug: string, language: 'en' | 'hi', stage1Results: StageResults, stage2Results: StageResults): Promise<GeneratedMCQ[]>;
   scoreAssessment(questions: GeneratedMCQ[], answers: { questionId: string; chosen: string | null }[]): Promise<AssessmentResult>;
   scoreMultiStageAssessment(stage1: StageResults, stage2: StageResults, stage3: StageResults): Promise<AssessmentResult>;
+  /**
+   * Score the redesigned assessment: 15 exam MCQs + 5 reasoning MCQs.
+   * Level is weighted 75% exam knowledge / 25% reasoning capacity; weak +
+   * strong areas come from the exam questions' subject breakdown.
+   */
+  scoreAssessmentV2(examResults: StageResults, reasoningResults: StageResults): Promise<AssessmentResult>;
   generateChapterContent(chapter: string, subject: string, exam: string, language: 'en' | 'hi', userContext?: UserContext): Promise<string>;
   generateChapterMCQs(chapter: string, subject: string, exam: string, language: 'en' | 'hi', count?: number, seed?: string, chapterContent?: string, userLevel?: 'beginner' | 'intermediate' | 'advanced'): Promise<GeneratedMCQ[]>;
   generateMermaidDiagram(chapter: string, subject: string, exam: string): Promise<string>;
@@ -794,18 +809,84 @@ export function createAIEngine(
       }
     },
 
-    async generateStage1Questions(examSlug, language = 'en') {
+    async generateMockTest(examSlug, language = 'en', opts) {
+      const easy = opts?.easy ?? 20;
+      const medium = opts?.medium ?? 20;
+      const hard = opts?.hard ?? 10;
+      const langInstr = language === 'hi' ? 'Generate all questions and options in Hindi (Devanagari script).' : 'Generate all questions and options in English.';
+
+      const buildPrompt = (n: number, difficulty: 'easy' | 'medium' | 'hard', batchIdx: number) =>
+        `${JSON_ONLY_PREFIX}You are an expert Indian competitive exam question creator.\n\nGenerate exactly ${n} ${difficulty.toUpperCase()}-difficulty MCQs for "${examSlug}" exam mock test${batchIdx > 0 ? ` (continuation batch ${batchIdx + 1})` : ''}.\n${langInstr}\n\nRequirements:\n- ALL ${n} questions MUST be ${difficulty} difficulty.\n- ${difficulty === 'hard' ? 'Analytical / multi-step; all 4 options plausible; require deep understanding.' : difficulty === 'medium' ? 'Application-based; require careful thought; at least 2 close options.' : 'Direct factual recall; one clearly correct answer.'}\n- Cover DIFFERENT subjects/topics from the official ${examSlug} syllabus.\n- 4 options (A-D), correct answer, brief explanation.\n- MUST include subject and topic fields.\n\nRespond ONLY with JSON:\n{"questions":[{"id":"m-q1","question":"...","options":[{"key":"A","text":"..."},{"key":"B","text":"..."},{"key":"C","text":"..."},{"key":"D","text":"..."}],"correctOption":"A","explanation":"...","difficulty":"${difficulty}","subject":"...","topic":"..."}]}`;
+
+      // Build batch specs: chunks of 10 per difficulty.
+      const specs: { difficulty: 'easy' | 'medium' | 'hard'; count: number }[] = [];
+      const chunk = (total: number, difficulty: 'easy' | 'medium' | 'hard') => {
+        let rem = total;
+        while (rem > 0) { const n = Math.min(10, rem); specs.push({ difficulty, count: n }); rem -= n; }
+      };
+      chunk(easy, 'easy'); chunk(medium, 'medium'); chunk(hard, 'hard');
+
+      // One retry per batch, run in parallel. Each _generateQuestions call
+      // already falls across Groq -> OpenAI -> Gemini internally, so a
+      // single provider hiccup doesn't sink a batch.
+      const runBatch = async (spec: { difficulty: 'easy' | 'medium' | 'hard'; count: number }, idx: number): Promise<GeneratedMCQ[]> => {
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            const qs = await _generateQuestions(buildPrompt(spec.count, spec.difficulty, idx), `generateMockTest_${spec.difficulty}`, examSlug, language);
+            if (qs.length > 0) return qs.map((q) => ({ ...q, difficulty: spec.difficulty }));
+          } catch { /* retry once */ }
+        }
+        return [];
+      };
+
+      const settled = await Promise.allSettled(specs.map((s, i) => runBatch(s, i)));
+      const byDiff: Record<'easy' | 'medium' | 'hard', GeneratedMCQ[]> = { easy: [], medium: [], hard: [] };
+      settled.forEach((r, i) => {
+        if (r.status === 'fulfilled') byDiff[specs[i]!.difficulty].push(...r.value);
+      });
+
+      const realCount = byDiff.easy.length + byDiff.medium.length + byDiff.hard.length;
+      const target = easy + medium + hard;
+      // If too little REAL content came back, fail so the route refunds
+      // rather than handing the user a test padded with repeated fallbacks.
+      if (realCount < Math.ceil(target * 0.5)) {
+        throw new Error(`Mock test generation produced only ${realCount}/${target} real questions`);
+      }
+
+      // Top up any short section from the static bank so the test is full.
+      const topUp = (arr: GeneratedMCQ[], wanted: number, difficulty: 'easy' | 'medium' | 'hard', idPrefix: string): GeneratedMCQ[] => {
+        if (arr.length >= wanted) return arr.slice(0, wanted);
+        const fb = getFallbackQuestions({ language: language === 'hi' ? 'hi' : 'en', count: wanted - arr.length, idPrefix, offset: arr.length })
+          .map((q) => ({ ...q, difficulty }));
+        return [...arr, ...fb];
+      };
+
+      const all = [
+        ...topUp(byDiff.easy, easy, 'easy', 'me'),
+        ...topUp(byDiff.medium, medium, 'medium', 'mm'),
+        ...topUp(byDiff.hard, hard, 'hard', 'mh'),
+      ].map((q, i) => ({ ...q, id: `m-q${i + 1}` }));
+
+      logger.info('ai.mock_test_generated', {
+        examSlug, language,
+        easy: byDiff.easy.length, medium: byDiff.medium.length, hard: byDiff.hard.length,
+        real: realCount, total: all.length,
+      });
+      return all;
+    },
+
+    async generateStage1Questions(examSlug, language = 'en', count = 15) {
       const langInstr = language === 'hi' ? 'Generate all questions and options in Hindi (Devanagari script).' : 'Generate all questions and options in English.';
       const buildPrompt = (n: number, batchIdx: number) => {
         const subjectGuidance = `Based on the exam "${examSlug}", generate questions covering the OFFICIAL SYLLABUS subjects:\n- If exam is UPSC/upsc-cse: test History + Geography + Polity + Economy + Science\n- If exam is NEET/neet-ug: test Physics + Chemistry + Biology\n- If exam is JEE/jee-main: test Physics + Chemistry + Mathematics\n- If exam is SSC CGL/ssc-cgl or Banking: test Reasoning + Quant + GK + English\n- If exam is Class 10/class-10-cbse or Class 12/class-12-cbse: test Math + Science + Social Science + English\n- If exam is IT/Python/Web Dev/Data Science/digital-marketing/tally-accounting: test relevant technical topics proportionally\n- For any other exam: identify its core subjects and distribute questions proportionally`;
         return `${JSON_ONLY_PREFIX}You are an expert Indian competitive exam question creator.\n\nGenerate exactly ${n} MCQs for "${examSlug}" exam — Stage 1 Core Subjects assessment${batchIdx > 0 ? ` (continuation batch ${batchIdx + 1})` : ''}.\n${langInstr}\n\n${subjectGuidance}\n\nRequirements:\n- Mix of easy and medium difficulty\n- 4 options (A-D), correct answer, brief explanation\n- MUST include subject and topic fields for each question\n- Questions must be relevant to the SPECIFIC exam syllabus\n\nRespond ONLY with JSON:\n{"questions":[{"id":"s1-q1","question":"...","options":[{"key":"A","text":"..."},{"key":"B","text":"..."},{"key":"C","text":"..."},{"key":"D","text":"..."}],"correctOption":"A","explanation":"...","difficulty":"medium","subject":"history","topic":"modern-india"}]}`;
       };
-      // 10 questions → fallback: 2 batches of 5. Single-shot fast-path stays.
+      // 15 questions → fallback: 3 batches of 5. Single-shot fast-path stays.
       try {
-        return await _generateQuestionsBatched(buildPrompt, 10, 2, 'generateStage1Questions', examSlug, language, 's1');
+        return await _generateQuestionsBatched(buildPrompt, count, Math.max(1, Math.ceil(count / 5)), 'generateStage1Questions', examSlug, language, 's1');
       } catch (err) {
         logger.error('ai.assessment_static_fallback', { endpoint: 'generateStage1Questions', examSlug, language, error: err instanceof Error ? err.message.slice(0, 200) : String(err) });
-        return getFallbackQuestions({ language: language === 'hi' ? 'hi' : 'en', count: 10, idPrefix: 's1', offset: 0 });
+        return getFallbackQuestions({ language: language === 'hi' ? 'hi' : 'en', count, idPrefix: 's1', offset: 0 });
       }
     },
 
@@ -936,6 +1017,66 @@ export function createAIEngine(
       };
     },
 
+    async scoreAssessmentV2(examResults, reasoningResults) {
+      const scoreStage = (sr: StageResults) => {
+        let correct = 0;
+        for (const a of sr.answers) {
+          const q = sr.questions.find(qq => qq.id === a.questionId);
+          if (q && a.chosen === q.correctOption) correct++;
+        }
+        return { correct, total: sr.questions.length, pct: sr.questions.length > 0 ? (correct / sr.questions.length) * 100 : 0 };
+      };
+
+      const exam = scoreStage(examResults);
+      const reasoning = scoreStage(reasoningResults);
+
+      // Exam knowledge weighted 75%, reasoning capacity 25%.
+      const totalPct = (exam.pct * 0.75) + (reasoning.pct * 0.25);
+      const totalCorrect = exam.correct + reasoning.correct;
+      const totalQuestions = exam.total + reasoning.total;
+      const level: 'beginner' | 'intermediate' | 'advanced' = totalPct > 70 ? 'advanced' : totalPct >= 40 ? 'intermediate' : 'beginner';
+
+      // Weak/strong areas from the exam questions' subjects.
+      const subjectScores: Record<string, { correct: number; total: number }> = {};
+      for (const q of examResults.questions) {
+        const subj = q.subject ?? 'general';
+        if (!subjectScores[subj]) subjectScores[subj] = { correct: 0, total: 0 };
+        subjectScores[subj]!.total++;
+        const ans = examResults.answers.find(a => a.questionId === q.id);
+        if (ans && ans.chosen === q.correctOption) subjectScores[subj]!.correct++;
+      }
+      const weakAreas: string[] = [];
+      const strongAreas: string[] = [];
+      for (const [subj, sc] of Object.entries(subjectScores)) {
+        const pct = sc.total > 0 ? (sc.correct / sc.total) * 100 : 0;
+        if (pct < 40) weakAreas.push(subj);
+        else if (pct > 70) strongAreas.push(subj);
+      }
+
+      try {
+        const prompt = `A student finished an onboarding assessment for an Indian competitive exam.\nExam-knowledge: ${exam.correct}/${exam.total} (${exam.pct.toFixed(0)}%). Reasoning: ${reasoning.correct}/${reasoning.total} (${reasoning.pct.toFixed(0)}%).\nLevel assigned: ${level}. Weak: ${weakAreas.join(', ') || 'none'}. Strong: ${strongAreas.join(', ') || 'none'}.\nWrite a short encouraging message. Respond ONLY JSON:\n{"message":"English (2-3 sentences)","messageHi":"Hindi Devanagari (2-3 sentences)"}`;
+        if (openai) {
+          const completion = await oaCreate({ messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 300, response_format: { type: 'json_object' } });
+          const parsed = JSON.parse(completion.choices[0]?.message?.content ?? '{}') as { message: string; messageHi: string };
+          if (parsed.message) {
+            return { score: totalCorrect, total: totalQuestions, level, message: parsed.message, messageHi: parsed.messageHi, weakAreas, strongAreas };
+          }
+        }
+      } catch (err) {
+        logger.error('ai.score_v2_error', { error: err instanceof Error ? err.message : String(err) });
+      }
+
+      return {
+        score: totalCorrect,
+        total: totalQuestions,
+        level,
+        message: `You scored ${totalCorrect}/${totalQuestions} (${totalPct.toFixed(0)}%). Level: ${level}. Let's personalise your learning!`,
+        messageHi: `आपने ${totalCorrect}/${totalQuestions} अंक प्राप्त किए (${totalPct.toFixed(0)}%)। स्तर: ${level}। चलिए आपकी पढ़ाई को व्यक्तिगत बनाते हैं!`,
+        weakAreas,
+        strongAreas,
+      };
+    },
+
     async scoreAssessment(questions, answers) {
       let correct = 0;
       for (const a of answers) { const q = questions.find((qq) => qq.id === a.questionId); if (q && a.chosen === q.correctOption) correct++; }
@@ -957,38 +1098,120 @@ export function createAIEngine(
     async generateChapterContent(chapter, subject, exam, language = 'en', userContext?) {
       const langInstr = language === 'hi' ? 'Write the entire chapter in Hindi (Devanagari). Simple, student-friendly language.' : 'Write in clear, student-friendly English.';
 
-      // Build personalization section based on user level
-      let personalizationInstr = '';
+      // ── Tier (level) configuration ───────────────────────────────────
+      // The student-facing level maps to a quality tier. Depth + word
+      // count scale with the tier; the SECTION STRUCTURE is the same for
+      // every tier so each chapter is genuinely exam-complete (no more
+      // shallow "khana-purti" content).
       const level = userContext?.onboardingLevel ?? 'intermediate';
+      const tier =
+        level === 'beginner'
+          ? {
+              name: 'FOUNDATION',
+              desc: 'The student is NEW to this subject. Build basics from scratch, explain every term, use daily-life analogies. Assume NO prior knowledge — but still cover the full topic, do not skip the hard parts (introduce them gently).',
+              minWords: 1000,
+              maxWords: 1200,
+            }
+          : level === 'advanced'
+            ? {
+                name: 'MASTERY',
+                desc: 'The student has STRONG preparation. Go deep and analytical, assume solid basics, add inter-topic connections, the examiner\u2019s perspective, tricky/high-difficulty areas, and recent developments (last 5 years).',
+                minWords: 1500,
+                maxWords: 1800,
+              }
+            : {
+                name: 'STRENGTHENING',
+                desc: 'The student has a decent base. Give a clear, exam-focused explanation: define technical terms briefly, emphasise application, and connect concepts to how they are actually tested.',
+                minWords: 1200,
+                maxWords: 1500,
+              };
 
-      if (level === 'beginner') {
-        const weakAreasStr = userContext?.weakAreas?.length ? `The student's weak areas are: ${userContext.weakAreas.join(', ')} — be extra careful to build strong basics in these areas.` : '';
-        personalizationInstr = `This student is a BEGINNER — they are new to this topic.
-Writing style: Simple language, avoid jargon, explain every term.
-Structure: Start with 'What is this?', use many examples from daily life, include memory tricks and mnemonics, use simple analogies.
-Length: 600-800 words. Language: ${language === 'hi' ? 'Hindi' : 'English'}.
-${weakAreasStr}
-End with: 3 key takeaways in bullet points.`;
-      } else if (level === 'advanced') {
-        const strongAreasStr = userContext?.strongAreas?.length ? `Student's strong areas: ${userContext.strongAreas.join(', ')} — use these as reference points.` : '';
-        personalizationInstr = `This student is ADVANCED — high level of preparation.
-Writing style: Analytical and deep, assume strong foundational knowledge.
-Structure: Advanced concepts, critical analysis, inter-topic connections, recent developments, previous year questions with approach strategy, common mistakes to avoid at advanced level.
-Length: 1000-1200 words. Language: ${language === 'hi' ? 'Hindi' : 'English'}.
-${strongAreasStr}
-End with: Examiner perspective and scoring strategy.`;
+      // ── Subject-aware rules ──────────────────────────────────────────
+      // Forces concrete, verifiable detail appropriate to the subject so
+      // the AI cannot get away with vague generalities.
+      const s = `${subject} ${chapter}`.toLowerCase();
+      let subjectRule: string;
+      if (/history|इतिहास|culture|संस्कृति|freedom|movement|आंदोलन/.test(s)) {
+        subjectRule = 'HISTORY topic: every event MUST carry an exact date/year; name the people, dynasties, movements and treaties involved; explain cause \u2192 effect \u2192 significance.';
+      } else if (/polity|constitution|राजव्यवस्था|संविधान|governance|शासन|civics/.test(s)) {
+        subjectRule = 'POLITY topic: cite specific Article numbers, constitutional provisions, key Amendments, landmark Supreme Court cases, and name the institutions involved.';
+      } else if (/econom|अर्थ|finance|वित्त|banking|बैंक|budget|बजट/.test(s)) {
+        subjectRule = 'ECONOMY topic: include relevant government schemes, key figures/data (clearly note that current figures change over time), economic terms with definitions, and recent policy developments.';
+      } else if (/physic|भौतिक/.test(s)) {
+        subjectRule = 'PHYSICS topic: include every relevant formula in $...$ with each symbol explained and SI units; show a short derivation where needed; include at least one fully worked numerical example.';
+      } else if (/chemis|रसायन/.test(s)) {
+        subjectRule = 'CHEMISTRY topic: include balanced reactions/equations, formulas, periodic trends where relevant, and the exam-important exceptions students forget.';
+      } else if (/bio|जीव|botany|वनस्पति|zoology|प्राणि/.test(s)) {
+        subjectRule = 'BIOLOGY topic: describe key labelled diagrams in words, define scientific terms, explain processes step-by-step, and stick to NCERT-line facts.';
+      } else if (/math|गणित|quantitative|aptitude|अभियोग्यता|reasoning|तर्क/.test(s)) {
+        subjectRule = 'MATH/QUANT topic: include formulas, at least two step-by-step worked examples, time-saving shortcuts/tricks, and the common traps that cost marks.';
+      } else if (/geograph|भूगोल/.test(s)) {
+        subjectRule = 'GEOGRAPHY topic: describe maps/locations in words, give specific place names (rivers, ranges, regions), explain the mechanism behind phenomena, and include relevant data.';
+      } else if (/current|समसामयिक|affairs/.test(s)) {
+        subjectRule = 'CURRENT-AFFAIRS topic: focus on developments from the last 1\u20135 years with dates and names; clearly flag anything time-sensitive.';
+      } else if (/english|अंग्रेज|language|भाषा|hindi|हिन्दी|grammar|व्याकरण/.test(s)) {
+        subjectRule = 'LANGUAGE topic: state each rule with clear examples, show the common error patterns, and add practice-style illustrations.';
       } else {
-        // intermediate
-        const completedStr = userContext?.completedChapters?.length ? `The student has already completed: ${userContext.completedChapters.slice(0, 10).join(', ')} — build connections to those topics where relevant.` : '';
-        personalizationInstr = `This student has basic knowledge — INTERMEDIATE level.
-Writing style: Clear and direct, some technical terms with brief explanation.
-Structure: Quick concept recap, deeper explanation, exam-relevant facts and figures, previous year question patterns.
-Length: 800-1000 words. Language: ${language === 'hi' ? 'Hindi' : 'English'}.
-${completedStr}
-End with: Important facts to remember for exam.`;
+        subjectRule = 'Use specific, verifiable facts (names, numbers, dates, definitions) throughout \u2014 never vague generalities.';
       }
 
-      const prompt = `You are an expert Indian education content writer.\nYou are generating educational content for ${exam}.\nThis content must strictly follow the official ${exam} syllabus.\nOnly cover topics that are part of the official curriculum.\nGround all factual content in NCERT textbooks where applicable.\nDo not add topics outside the official syllabus.\n\nGenerate a chapter on "${chapter}" (subject: ${subject}) for ${exam} preparation.\n${langInstr}\n\n${personalizationInstr}\n\nAdditional Requirements:\n- Use Markdown format with ## headings for each major section\n- Use ## headings generously — each sub-topic should have its own ## heading\n- Include real-world Indian examples\n- Exam-focused: highlight frequently-asked areas\n- For science/math: include formulas in $...$\n- Reference NCERT concepts and terminology where applicable\n- Be thorough and cover every aspect needed for this level.\n\nWrite ONLY the Markdown content.`;
+      // Light personalization (kept secondary to canonical tier quality).
+      const weakStr = userContext?.weakAreas?.length
+        ? `\n- The student is weaker in: ${userContext.weakAreas.slice(0, 5).join(', ')} \u2014 add a little extra clarity wherever this chapter touches those areas.`
+        : '';
+
+      // Mandatory section headings, localised to the output language.
+      const sectionList =
+        language === 'hi'
+          ? [
+              '## परिचय (यह क्या है और परीक्षा के लिए क्यों ज़रूरी है)',
+              '## मुख्य अवधारणाएँ (विस्तार से समझाएँ)',
+              '## महत्वपूर्ण तथ्य एवं आँकड़े (बुलेट में, परीक्षा-केंद्रित)',
+              '## पिछले वर्षों के प्रश्नों का स्वरूप (किस तरह के प्रश्न आते हैं)',
+              '## याद रखने की ट्रिक्स (mnemonics/संक्षेप)',
+              '## मुख्य बिंदु \u2014 रिवीज़न (5\u20137 बुलेट)',
+            ]
+          : [
+              '## Introduction (what it is & why it matters for this exam)',
+              '## Core Concepts (explained in depth)',
+              '## Key Facts & Figures (bulleted, exam-focused)',
+              '## Previous-Year Question Patterns (what kind of questions appear)',
+              '## Memory Tricks (mnemonics / shortcuts)',
+              '## Key Takeaways \u2014 Revision (5\u20137 bullets)',
+            ];
+
+      const prompt = `You are a SENIOR FACULTY MEMBER at one of India\u2019s top coaching institutes (think Vajiram & Ravi for UPSC, Allen for NEET/JEE) with 20+ years of experience. You know EXACTLY what is asked in ${exam} and what a student must know to score. You NEVER write filler, padding, or vague statements.
+
+TASK: Write a COMPREHENSIVE, exam-ready chapter on "${chapter}" (subject: ${subject}) for ${exam}.
+${langInstr}
+
+SYLLABUS DISCIPLINE:
+- Strictly follow the official ${exam} syllabus; cover only what is in the official curriculum for this topic.
+- Ground factual content in NCERT/standard sources where applicable.
+- Do NOT add topics outside the official syllabus.
+
+TARGET TIER \u2014 ${tier.name}:
+${tier.desc}
+- LENGTH: ${tier.minWords}\u2013${tier.maxWords} words. This is a hard minimum \u2014 a short chapter is a FAILED chapter.
+
+SUBJECT RULE:
+- ${subjectRule}${weakStr}
+
+MANDATORY STRUCTURE \u2014 use these exact Markdown section headings, in this order, and fill EVERY one with real substance:
+${sectionList.join('\n')}
+
+Within sections you may add more ## sub-headings as needed.
+
+QUALITY RULES (strict):
+- Every claim must be factual and accurate \u2014 no hallucinations.
+- No vague lines like "this is very important" \u2014 say WHY and HOW, with specifics.
+- Do not repeat the same point in different words; no filler phrases.
+- Do not skip any mandatory section. Do not stop early.
+- For science/math include formulas in $...$.
+- Use real Indian examples, exact dates/numbers/names where relevant.
+- Write in ${language === 'hi' ? 'pure Hindi (Devanagari)' : 'clear English'} throughout.
+
+Write ONLY the Markdown content for the chapter \u2014 no preamble, no closing notes.`;
       const startTime = performance.now();
 
       // Inner: one attempt at content generation. Resilient across

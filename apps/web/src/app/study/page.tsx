@@ -263,7 +263,7 @@ export default function StudyPage() {
                                 method: 'POST',
                                 body: JSON.stringify({ examSlug: syllabus!.exam, subjectSlug: subject.slug }),
                               });
-                              const res = await genRes.json() as { newChapters: any[]; message: string };
+                              const res = await genRes.json() as { newChapters: { name: string; slug: string }[]; message: string };
                               setGenSuccess(res.message ?? 'New chapters generated!');
                               // Refresh syllabus
                               const exam = me?.targetExam;

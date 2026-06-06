@@ -47,6 +47,8 @@ export interface MCQOption { key: 'A'|'B'|'C'|'D'; text: string; }
 export interface GeneratedMCQ { id: string; question: string; options: MCQOption[]; correctOption: 'A'|'B'|'C'|'D'; explanation: string; difficulty: 'easy'|'medium'|'hard'; subject?: string; topic?: string; }
 export interface ExamEvent { name: string; date: string | null; estimatedMonth: string; isConfirmed: boolean; sourceUrl: string; registrationStart: string | null; registrationEnd: string | null; }
 export interface ExamDates { examSlug: string; examName: string; events: ExamEvent[]; lastUpdated: string | null; }
+export interface PersonalOption { value: string; label: string; labelHi: string; }
+export interface PersonalQuestion { id: string; field: string; question: string; questionHi: string; options: PersonalOption[]; }
 export interface AssessmentResult { score: number; total: number; level: 'beginner'|'intermediate'|'advanced'; message: string; messageHi: string; weakAreas?: string[]; strongAreas?: string[]; }
 
 export interface SyllabusChapter { slug: string; name: string; nameHi: string; order: number; estimatedMinutes: number; }
@@ -138,6 +140,32 @@ export const api = {
     return (await authedFetch(`/v1/exams/dates/${encodeURIComponent(examSlug)}`, {
       method: 'PATCH', body: JSON.stringify({ examName, events }),
     })).json() as Promise<ExamDates>;
+  },
+  // ─── Assessment V2 (5 personal + 15 exam + 5 reasoning) ─────────────────
+  async getPersonalQuestions() {
+    return (await authedFetch('/v1/assessment/personal')).json() as Promise<{ questions: PersonalQuestion[] }>;
+  },
+  async getExamAssessmentQuestions(examSlug: string, language: 'en'|'hi', opts?: { signal?: AbortSignal }) {
+    return (await authedFetch('/v1/assessment/exam', {
+      method: 'POST', body: JSON.stringify({ examSlug, language }),
+      ...(opts?.signal ? { signal: opts.signal } : {}),
+    })).json() as Promise<{questions:GeneratedMCQ[]}>;
+  },
+  async getReasoningAssessmentQuestions(language: 'en'|'hi', opts?: { signal?: AbortSignal }) {
+    return (await authedFetch('/v1/assessment/reasoning', {
+      method: 'POST', body: JSON.stringify({ language }),
+      ...(opts?.signal ? { signal: opts.signal } : {}),
+    })).json() as Promise<{questions:GeneratedMCQ[]}>;
+  },
+  async submitAssessmentV2(
+    personal: Record<string, string>,
+    examResults: {questions:GeneratedMCQ[]; answers:{questionId:string;chosen:string|null}[]},
+    reasoningResults: {questions:GeneratedMCQ[]; answers:{questionId:string;chosen:string|null}[]},
+  ) {
+    return (await authedFetch('/v1/assessment/submit', {
+      method: 'POST',
+      body: JSON.stringify({ v2: true, personal, examResults, reasoningResults }),
+    })).json() as Promise<AssessmentResult>;
   },
 
   // Study
@@ -337,6 +365,7 @@ export const api = {
       startedAt: string; durationMinutes: number; submittedAt: string|null;
       total: number; score: number|null; percentage: number|null;
       subjectBreakdown: Record<string, { correct: number; total: number }>|null;
+      wrongCount?: number|null; netMarks?: number|null; negativeMarkPerWrong?: number;
       questions: Array<{ id: string; question: string; options: { key: 'A'|'B'|'C'|'D'; text: string }[]; difficulty?: string; subject?: string; topic?: string; correctOption?: 'A'|'B'|'C'|'D'; explanation?: string }>;
       answers?: Record<string, 'A'|'B'|'C'|'D'|null>;
       creditCost: number;
@@ -348,6 +377,7 @@ export const api = {
     })).json() as Promise<{
       id: string; score: number; total: number; percentage: number;
       subjectBreakdown: Record<string, { correct: number; total: number }>;
+      wrongCount?: number; netMarks?: number; negativeMarkPerWrong?: number;
       submittedAt: string;
       questions: Array<{ id: string; question: string; options: { key: 'A'|'B'|'C'|'D'; text: string }[]; correctOption: 'A'|'B'|'C'|'D'; explanation: string; difficulty?: string; subject?: string; topic?: string }>;
       answers: Record<string, 'A'|'B'|'C'|'D'|null>;
