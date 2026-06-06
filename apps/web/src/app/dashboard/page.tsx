@@ -3,7 +3,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useTheme } from 'next-themes';
-import { EXAM_BY_SLUG, planDisplayName } from '@nexigrate/shared';
+import { EXAM_BY_SLUG, planDisplayName, type ExamSlug } from '@nexigrate/shared';
 import { Logo } from '~/components/Logo';
 import { useAuth } from '~/lib/auth-context';
 import { useUser } from '~/lib/userStore';
@@ -22,10 +22,11 @@ export default function DashboardPage() {
   // hydrates from sessionStorage on first paint and revalidates in the
   // background, so navigation between authenticated pages no longer
   // triggers a fresh /me round-trip per page (~600ms warm, 2-3s cold).
-  const { user: me, loading: meLoading, refresh } = useUser();
+  const { user: me, loading: meLoading, refresh, mutate } = useUser();
   const [error, setError] = useState<string | null>(null);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [appInstalled, setAppInstalled] = useState(false);
+  const [switchingExam, setSwitchingExam] = useState(false);
   // Tracks whether we've already kicked off the one-shot credit-retry
   // for brand-new users whose signup bonus hasn't credited yet.
   const creditRetryFiredRef = useRef(false);
@@ -143,6 +144,23 @@ export default function DashboardPage() {
   const firstName = (me?.name ?? user.displayName ?? 'Student').split(' ')[0];
   const levelLabel = me?.onboardingLevel ?? 'beginner';
 
+  // Multi-exam (Sprint 5): the enrolled set is [targetExam, ...secondaryExams].
+  // When the user has more than one, the hero badge becomes a switcher.
+  const enrolledExams = [me?.targetExam, ...((me?.secondaryExams ?? []))].filter(Boolean) as ExamSlug[];
+  const handleSwitchExam = async (slug: string) => {
+    if (!slug || slug === me?.targetExam || switchingExam) return;
+    setSwitchingExam(true);
+    try {
+      const { user: updated } = await api.manageExam('switch', slug);
+      mutate(() => updated);
+      void refresh();
+    } catch {
+      /* toast handled below via no-op; keep dashboard resilient */
+    } finally {
+      setSwitchingExam(false);
+    }
+  };
+
   return (
     <main className="mx-auto flex min-h-dvh max-w-4xl flex-col px-5 pt-6 pb-8 overflow-x-hidden">
       {/* Onboarding tour for first-time users */}
@@ -170,9 +188,29 @@ export default function DashboardPage() {
         <h1 className="font-serif text-2xl font-bold text-ink-900">{greeting}, {firstName}! 👋</h1>
         {examName && (
           <div className="mt-3">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-ember-500 px-3.5 py-1.5 text-xs font-semibold text-paper-50">
-              {tc('preparingFor')}: {examName}
-            </span>
+            {enrolledExams.length > 1 ? (
+              <label className="inline-flex items-center gap-1.5 rounded-full bg-ember-500 px-3.5 py-1.5 text-xs font-semibold text-paper-50">
+                {tc('preparingFor')}:
+                <select
+                  value={me?.targetExam ?? ''}
+                  onChange={(e) => void handleSwitchExam(e.target.value)}
+                  disabled={switchingExam}
+                  aria-label="Switch active exam"
+                  className="cursor-pointer rounded-md bg-transparent font-semibold text-paper-50 focus:outline-none disabled:opacity-60"
+                >
+                  {enrolledExams.map((slug) => (
+                    <option key={slug} value={slug} className="text-ink-900">
+                      {EXAM_BY_SLUG.get(slug)?.name ?? slug}
+                    </option>
+                  ))}
+                </select>
+                {switchingExam && <span className="opacity-80">…</span>}
+              </label>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-ember-500 px-3.5 py-1.5 text-xs font-semibold text-paper-50">
+                {tc('preparingFor')}: {examName}
+              </span>
+            )}
           </div>
         )}
         {me && (

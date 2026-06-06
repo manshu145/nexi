@@ -9,6 +9,7 @@ import { useAuth } from '~/lib/auth-context';
 import { useUser } from '~/lib/userStore';
 import { api, type ReferralStats } from '~/lib/api';
 import { AILoader } from '~/components/ui/AILoader';
+import MyExams from '~/components/MyExams';
 
 function Row({ label, value }: { label: string; value?: string | null }) {
   return (<div className="flex items-center justify-between border-b border-line py-3">
@@ -188,6 +189,9 @@ export default function ProfilePage() {
         )}
       </section>
       <section className="mt-6"><h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">{t('academicInfo')}</h2><div className="mt-3"><Row label={t('targetExam')} value={examName} /><Row label={t('level')} value={me?.onboardingLevel} /></div></section>
+
+      {/* Multi-exam management (Sprint 5) */}
+      <div className="mt-6"><MyExams /></div>
 
       {/* Language Preference */}
       <section className="mt-6">

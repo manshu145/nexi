@@ -5,6 +5,13 @@ export interface StoredUser {
   id: UserId; firebaseUid: string; email: string; name: string; phone: string | null;
   photoURL: string | null; primaryProvider: 'google' | 'phone'; role: 'student' | 'admin';
   language: 'en' | 'hi'; targetExam: ExamSlug | null; classLevel: ClassLevel | null;
+  /**
+   * Additional exams the user is enrolled in beyond `targetExam` (Sprint 5
+   * multi-exam). Full enrolled set = [targetExam, ...secondaryExams] (deduped).
+   * "Switching" active exam rewrites targetExam and moves the previous one
+   * here. Plan's `maxExams` caps the total. Undefined for legacy users.
+   */
+  secondaryExams?: ExamSlug[];
   board: Board | null; school: string | null; dob: string | null; aim: string | null;
   onboardingScore: number | null; onboardingLevel: 'beginner' | 'intermediate' | 'advanced' | null;
   credits: number; plan: 'free' | 'scholar' | 'aspirant' | 'achiever'; planExpiresAt: ISODateTime | null;

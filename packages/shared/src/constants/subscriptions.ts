@@ -23,6 +23,12 @@ export interface PlanFeatures {
   aiTutorPerDay?: number;    // AI chat messages per day; -1 = unlimited
   essaysPerDay?: number;     // essay gradings per day; -1 = unlimited
   imagesPerDay?: number;     // AI image generations per day; -1 = unlimited
+  // ── Multi-exam (Sprint 5) ──────────────────────────────────────────
+  // How many exams a user on this plan can be enrolled in at once.
+  // 1 = single exam (free), -1 = unlimited. Admin-configurable via the
+  // /admin/plans matrix. Optional so older platformConfig docs default
+  // safely to the compile-time value below.
+  maxExams?: number;
 }
 
 export interface PlanConfig {
@@ -68,6 +74,7 @@ export const PLANS: Readonly<Record<PlanId, PlanConfig>> = {
       aiTutorPerDay: 0,        // free uses credits for chat, no flat daily allowance
       essaysPerDay: 1,
       imagesPerDay: 1,
+      maxExams: 1,             // free: single exam
     },
   },
   scholar: {
@@ -89,6 +96,7 @@ export const PLANS: Readonly<Record<PlanId, PlanConfig>> = {
       aiTutorPerDay: 30,
       essaysPerDay: 3,
       imagesPerDay: 6,
+      maxExams: 2,             // starter: up to 2 exams
     },
   },
   aspirant: {
@@ -110,6 +118,7 @@ export const PLANS: Readonly<Record<PlanId, PlanConfig>> = {
       aiTutorPerDay: 100,
       essaysPerDay: 10,
       imagesPerDay: 15,
+      maxExams: 3,             // pro: up to 3 exams
     },
   },
   achiever: {
@@ -131,6 +140,7 @@ export const PLANS: Readonly<Record<PlanId, PlanConfig>> = {
       aiTutorPerDay: 300,
       essaysPerDay: -1,        // unlimited (fair-use)
       imagesPerDay: 50,
+      maxExams: -1,            // elite: unlimited exams
     },
   },
 } as const;
@@ -159,6 +169,17 @@ export function isPlanActive(plan: string, planExpiresAt: string | null): boolea
   if (plan === 'free') return true; // free is always "active"
   if (!planExpiresAt) return false;
   return new Date(planExpiresAt).getTime() > Date.now();
+}
+
+/**
+ * How many exams a plan allows. Reads the (admin-configurable) feature value
+ * with a safe fallback to the compile-time default, and treats an expired
+ * paid plan as the free limit. -1 means unlimited.
+ */
+export function maxExamsFor(features: PlanFeatures | null | undefined): number {
+  const v = features?.maxExams;
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  return 1;
 }
 
 /** Check if credit deduction applies for a user */
