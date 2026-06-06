@@ -65,3 +65,53 @@ export async function addWatermark(dataUrl: string): Promise<string> {
     img.src = dataUrl;
   });
 }
+
+
+/**
+ * Watermark for SAVED CHAPTER PAGES (light "paper" background).
+ *
+ * The addWatermark() above uses light/white text tuned for dark visualization
+ * images — invisible on the cream reader page. This variant uses the brand
+ * deep-red, visible on light backgrounds:
+ *   - bottom-right "nexigrate.com" (semi-transparent)
+ *   - a large faint diagonal "Nexigrate" across the centre (deters cropping)
+ *
+ * Input/Output: base64 data URL. Returns a JPEG data URL.
+ */
+export async function addPageWatermark(dataUrl: string): Promise<string> {
+  if (typeof document === 'undefined') return dataUrl;
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { resolve(dataUrl); return; }
+      ctx.drawImage(img, 0, 0);
+
+      // Diagonal faint brand mark across the centre.
+      ctx.save();
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate(-Math.PI / 6);
+      ctx.font = `bold ${Math.max(40, img.width * 0.12)}px Georgia, serif`;
+      ctx.fillStyle = 'rgba(139, 26, 14, 0.06)';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Nexigrate', 0, 0);
+      ctx.restore();
+
+      // Bottom-right site tag.
+      const fontSize = Math.max(13, img.width * 0.022);
+      ctx.font = `600 ${fontSize}px Georgia, serif`;
+      ctx.fillStyle = 'rgba(139, 26, 14, 0.45)';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText('nexigrate.com', img.width - 16, img.height - 14);
+
+      resolve(canvas.toDataURL('image/jpeg', 0.92));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}

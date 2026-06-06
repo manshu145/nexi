@@ -7,6 +7,7 @@ import { api, type ChapterContent } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 import { PlanGate } from '~/components/PlanGate';
 import { AILoader } from '~/components/ui/AILoader';
+import { toast } from 'sonner';
 
 export default function KindleReaderPage() {
   const { user, loading } = useAuth();
@@ -46,6 +47,7 @@ export default function KindleReaderPage() {
   const [simplifiedPages, setSimplifiedPages] = useState<Record<number, string>>({});
   const [simplifying, setSimplifying] = useState(false);
   const [showSimplified, setShowSimplified] = useState(false);
+  const [savingImage, setSavingImage] = useState(false);
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
   const pageRef = useRef<HTMLDivElement>(null);
@@ -530,6 +532,32 @@ export default function KindleReaderPage() {
     ? simplifiedPages[currentPage]!
     : pages[currentPage] ?? '';
 
+  // Save the current reader page as a watermarked image. Uses html-to-image
+  // (SVG foreignObject) rather than html2canvas because the reader uses
+  // Tailwind v4 utilities that compile to oklch() — which html2canvas can't
+  // parse. The browser renders oklch natively inside foreignObject.
+  const handleSavePage = async () => {
+    const node = document.getElementById('kindle-capture');
+    if (!node) return;
+    setSavingImage(true);
+    try {
+      const { toPng } = await import('html-to-image');
+      const bg = getComputedStyle(node).backgroundColor || '#FBF6E8';
+      const dataUrl = await toPng(node, { pixelRatio: 2, backgroundColor: bg, cacheBust: true });
+      const { addPageWatermark } = await import('~/lib/watermark');
+      const marked = await addPageWatermark(dataUrl);
+      const a = document.createElement('a');
+      a.download = `nexigrate-${chapter}-page-${currentPage + 1}.jpg`;
+      a.href = marked;
+      a.click();
+      toast.success(getLanguage() === 'hi' ? 'पेज सेव हो गया!' : 'Page saved!');
+    } catch {
+      toast.error(getLanguage() === 'hi' ? 'इमेज सेव नहीं हो सकी' : 'Could not save image');
+    } finally {
+      setSavingImage(false);
+    }
+  };
+
   return (
     <div className="kindle-frame" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
       {/* Header */}
@@ -543,6 +571,9 @@ export default function KindleReaderPage() {
           </button>
           <button onClick={handleTTS} className={`tts-btn ${speaking ? 'playing' : ''}`}>
             {speaking ? '⏸' : '🔊'}<span className="hidden sm:inline"> {speaking ? 'Pause' : 'Listen'}</span>
+          </button>
+          <button onClick={handleSavePage} disabled={savingImage} className="tts-btn" title="Save this page as an image">
+            {savingImage ? '⏳' : '📷'}<span className="hidden sm:inline"> {savingImage ? '...' : 'Save'}</span>
           </button>
           <button onClick={() => handleVisualize('page')} className="tts-btn">
             📊<span className="hidden sm:inline"> Visualize</span>
@@ -565,6 +596,7 @@ export default function KindleReaderPage() {
           <div
             className={`kindle-page ${flipDirection === 'next' ? 'page-flip-forward' : flipDirection === 'prev' ? 'page-flip-backward' : ''}`}
             onMouseUp={handleTextSelection}
+            id="kindle-capture"
           >
             <div className="reader">
               <div className="reader-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(currentPageContent) }} />
