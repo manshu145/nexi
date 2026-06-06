@@ -47,8 +47,11 @@ export interface MCQOption { key: 'A'|'B'|'C'|'D'; text: string; }
 export interface GeneratedMCQ { id: string; question: string; options: MCQOption[]; correctOption: 'A'|'B'|'C'|'D'; explanation: string; difficulty: 'easy'|'medium'|'hard'; subject?: string; topic?: string; }
 export interface AnalyticsOverview {
   overview: { totalUsers: number; dau: number; mau: number; newUsersToday: number; newUsersThisWeek: number; revenue30d: number; revenueTotal: number; activeSessions: number; stickiness: number };
-  series: Array<{ date: string; total: number; events: Record<string, number> }>;
+  series: Array<{ date: string; total: number; events: Record<string, number>; dims?: { exam?: Record<string, number>; lang?: Record<string, number> } }>;
   featureTotals: Record<string, number>;
+  examTotals: Record<string, number>;
+  langTotals: Record<string, number>;
+  compare: { today: { date: string; total: number; events: Record<string, number> }; yesterday: { date: string; total: number; events: Record<string, number> } };
   funnel: { upgradeViews: number; upgradeClicks: number; payments: number };
   rangeDays: number;
 }

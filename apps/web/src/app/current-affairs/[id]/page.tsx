@@ -6,6 +6,7 @@ import { api, type CurrentAffairsItem } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 import { Skeleton } from '~/components/Skeleton';
 import { AILoader } from '~/components/ui/AILoader';
+import { track } from '~/lib/analytics';
 
 export default function CurrentAffairsDetailPage() {
   const { user, loading } = useAuth();
@@ -27,6 +28,7 @@ export default function CurrentAffairsDetailPage() {
 
   useEffect(() => {
     if (!user || !id) return;
+    track('reel_view', { id: String(id).slice(0, 40) });
     (async () => {
       try {
         const lang = (localStorage.getItem('nexigrate-language') as 'en' | 'hi') || 'en';

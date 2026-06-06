@@ -26,6 +26,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { useAuth } from '~/lib/auth-context';
 import { api } from '~/lib/api';
+import { track } from '~/lib/analytics';
 import { AILoader } from '~/components/ui/AILoader';
 
 type Choice = 'A' | 'B' | 'C' | 'D' | null;
@@ -149,6 +150,7 @@ export default function MockTestAttemptPage() {
         answers: result.answers,
       });
       setAnswers(result.answers);
+      track('mock_test_complete', { score: String(result.score), percentage: String(result.percentage) });
       if (toastId) toast.success(`Score: ${result.score}/${result.total} (${result.percentage}%)`, { id: toastId });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to submit';
