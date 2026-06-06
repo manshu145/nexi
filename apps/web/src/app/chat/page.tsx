@@ -65,6 +65,7 @@ function ChatPage() {
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const topicHandled = useRef(false);
 
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
@@ -186,7 +187,14 @@ function ChatPage() {
   const sendMessage = async () => {
     const text = input.trim();
     if ((!text && attachments.length === 0) || sending) return;
-    const msgText = text || (attachments.length > 0 ? `[Sent ${attachments.length} attachment(s)]` : '');
+    const hasImage = attachments.some(a => a.type === 'image');
+    // When the student just snaps/attaches a question photo without typing,
+    // send a clear "solve this doubt" instruction so the vision model gives
+    // a full step-by-step worked solution instead of a vague description.
+    const msgText = text
+      || (hasImage
+        ? 'Solve this question step by step and give the final answer. Explain the concept simply.'
+        : (attachments.length > 0 ? `[Sent ${attachments.length} attachment(s)]` : ''));
     setInput('');
     const currentAttachments = [...attachments];
     setAttachments([]);
@@ -493,8 +501,8 @@ function ChatPage() {
               </h2>
               <p className="mt-2 text-sm text-muted-500 max-w-sm leading-relaxed">
                 {userLang === 'hi'
-                  ? `${userExam ? `${userExam.replace(/-/g, ' ').toUpperCase()} से related` : 'अपनी exam से related'} कुछ भी पूछो। Images attach कर सकते हो या diagrams generate कर सकते हो!`
-                  : `Ask me anything about ${userExam ? userExam.replace(/-/g, ' ').toUpperCase() : 'your exam'}. You can also attach images or generate diagrams!`}
+                  ? `${userExam ? `${userExam.replace(/-/g, ' ').toUpperCase()} से related` : 'अपनी exam से related'} कुछ भी पूछो। किसी भी सवाल की 📷 फोटो खींचकर step-by-step हल पाओ, या diagram बनाओ!`
+                  : `Ask me anything about ${userExam ? userExam.replace(/-/g, ' ').toUpperCase() : 'your exam'}. 📷 Snap a photo of any question for a step-by-step solution, or generate diagrams!`}
               </p>
               <div className="mt-6 flex flex-wrap justify-center gap-2 max-w-md">
                 {prompts.map((p, idx) => (
@@ -633,6 +641,15 @@ function ChatPage() {
           {/* Quick action buttons row */}
           <div className="mx-auto max-w-2xl mb-2 flex items-center gap-2 overflow-x-auto scrollbar-hide pb-0.5">
             <button
+              onClick={() => cameraInputRef.current?.click()}
+              disabled={sending}
+              className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-ember-500/40 bg-ember-500/10 text-xs font-medium text-ember-600 hover:bg-ember-500/20 transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+              title="Snap a photo of any question and get a step-by-step solution"
+            >
+              <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+              <span>Solve a doubt</span>
+            </button>
+            <button
               onClick={handleGenerateImage}
               disabled={!input.trim() || sending || generatingImage}
               className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-line bg-paper-100 text-xs font-medium text-ink-700 hover:bg-paper-200 hover:text-ink-900 hover:border-muted-400 transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
@@ -666,11 +683,27 @@ function ChatPage() {
             >
               <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
             </button>
+            {/* Camera button — snap a doubt (mobile opens the camera) */}
+            <button
+              onClick={() => cameraInputRef.current?.click()}
+              className="flex-shrink-0 h-10 w-10 rounded-xl border border-line bg-paper-100 flex items-center justify-center text-muted-500 hover:text-ink-900 hover:bg-paper-200 hover:border-muted-400 transition-all duration-150 active:scale-95"
+              title="Snap a photo of your doubt"
+            >
+              <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            </button>
             <input
               ref={fileInputRef}
               type="file"
               accept="image/*,.pdf,.doc,.docx,.txt"
               multiple
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+            <input
+              ref={cameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
               onChange={handleFileSelect}
               className="hidden"
             />
