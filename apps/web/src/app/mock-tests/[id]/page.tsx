@@ -52,6 +52,8 @@ export default function MockTestAttemptPage() {
   const [loading, setLoading] = useState(true);
   const [idx, setIdx] = useState(0);
   const [answers, setAnswers] = useState<Record<string, Choice>>({});
+  const [flagged, setFlagged] = useState<Record<string, boolean>>({});
+  const [reviewOpen, setReviewOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const submittedRef = useRef(false); // guard auto-submit from firing twice
@@ -140,6 +142,9 @@ export default function MockTestAttemptPage() {
         score: result.score,
         percentage: result.percentage,
         subjectBreakdown: result.subjectBreakdown,
+        wrongCount: result.wrongCount ?? null,
+        netMarks: result.netMarks ?? null,
+        negativeMarkPerWrong: result.negativeMarkPerWrong ?? 0,
         questions: result.questions,
         answers: result.answers,
       });
@@ -172,6 +177,10 @@ export default function MockTestAttemptPage() {
   const secs = (secondsLeft ?? 0) % 60;
   const timerWarning = (secondsLeft ?? 999) <= 60;
 
+  const allQs = attempt.questions as Question[];
+  const unansweredList = allQs.map((qq, i) => ({ qq, i })).filter(({ qq }) => (answers[qq.id] ?? null) === null);
+  const flaggedList = allQs.map((qq, i) => ({ qq, i })).filter(({ qq }) => flagged[qq.id]);
+
   return (
     <main className="min-h-screen bg-paper-100 pb-24">
       {/* Sticky header: timer + progress */}
@@ -195,10 +204,26 @@ export default function MockTestAttemptPage() {
       </header>
 
       <section className="mx-auto max-w-2xl px-4 py-6">
-        {/* Subject + difficulty pill row */}
-        <div className="mb-3 flex flex-wrap gap-2 text-xs">
+        {/* Subject + difficulty pill row + flag toggle */}
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
           {q.subject && <span className="rounded-full bg-paper-200 px-2 py-0.5 text-muted-600">{q.subject}</span>}
-          <span className="rounded-full bg-gold-500/10 px-2 py-0.5 text-gold-700">{q.difficulty}</span>
+          {q.difficulty && (
+            <span className={`rounded-full px-2 py-0.5 capitalize ${
+              q.difficulty === 'hard' ? 'bg-red-500/10 text-red-600'
+              : q.difficulty === 'medium' ? 'bg-gold-500/10 text-gold-700'
+              : 'bg-ember-500/10 text-ember-600'
+            }`}>{q.difficulty}</span>
+          )}
+          <button
+            type="button"
+            onClick={() => setFlagged(prev => ({ ...prev, [q.id]: !prev[q.id] }))}
+            className={`ml-auto rounded-full px-2.5 py-0.5 font-medium transition-colors ${
+              flagged[q.id] ? 'bg-gold-500/20 text-gold-700' : 'bg-paper-200 text-muted-500 hover:bg-paper-300'
+            }`}
+            aria-pressed={!!flagged[q.id]}
+          >
+            {flagged[q.id] ? '🚩 Flagged' : '⚐ Flag for review'}
+          </button>
         </div>
 
         {/* Question text */}
@@ -258,14 +283,23 @@ export default function MockTestAttemptPage() {
           ) : (
             <button
               type="button"
-              onClick={() => handleSubmit(false)}
+              onClick={() => setReviewOpen(true)}
               disabled={submitting}
               className="btn-primary flex-1"
             >
-              {submitting ? 'Submitting…' : 'Submit test'}
+              Review & Submit
             </button>
           )}
         </div>
+
+        {/* Review & Submit available anytime */}
+        <button
+          type="button"
+          onClick={() => setReviewOpen(true)}
+          className="mt-3 w-full text-center text-xs font-medium text-ember-600 hover:text-ember-700"
+        >
+          Review flagged / unanswered & submit
+        </button>
 
         {/* Question-jump grid */}
         <details className="mt-6">
@@ -294,6 +328,62 @@ export default function MockTestAttemptPage() {
           </div>
         </details>
       </section>
+
+      {/* Review & Submit overlay — shows flagged + unanswered before final submit */}
+      {reviewOpen && (
+        <div className="fixed inset-0 z-[120] flex items-end justify-center bg-ink-900/50 p-0 sm:items-center sm:p-4" onClick={() => setReviewOpen(false)}>
+          <div className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl bg-paper-50 sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="border-b border-line px-5 py-4">
+              <h3 className="font-serif text-lg font-semibold text-ink-900">Review before submit</h3>
+              <p className="mt-1 text-xs text-muted-500">
+                {answered}/{total} answered · {unansweredList.length} unanswered · {flaggedList.length} flagged
+              </p>
+              <p className="mt-1 text-[11px] text-muted-400">Negative marking: −0.25 per wrong answer. Unanswered = no penalty.</p>
+            </div>
+
+            <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+              {unansweredList.length > 0 && (
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-500">Unanswered ({unansweredList.length})</p>
+                  <div className="grid grid-cols-6 gap-1.5 sm:grid-cols-10">
+                    {unansweredList.map(({ qq, i }) => (
+                      <button key={qq.id} type="button"
+                        onClick={() => { setIdx(i); setReviewOpen(false); }}
+                        className="aspect-square rounded bg-paper-200 text-[11px] font-medium text-muted-600 hover:bg-paper-300">
+                        {i + 1}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {flaggedList.length > 0 && (
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-500">🚩 Flagged ({flaggedList.length})</p>
+                  <div className="grid grid-cols-6 gap-1.5 sm:grid-cols-10">
+                    {flaggedList.map(({ qq, i }) => (
+                      <button key={qq.id} type="button"
+                        onClick={() => { setIdx(i); setReviewOpen(false); }}
+                        className="aspect-square rounded bg-gold-500/15 text-[11px] font-medium text-gold-700 hover:bg-gold-500/25">
+                        {i + 1}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {unansweredList.length === 0 && flaggedList.length === 0 && (
+                <p className="py-6 text-center text-sm text-muted-500">All questions answered and nothing flagged. You&apos;re good to go! 🎉</p>
+              )}
+            </div>
+
+            <div className="flex gap-2 border-t border-line px-5 py-4">
+              <button type="button" onClick={() => setReviewOpen(false)} className="btn-ghost flex-1">Keep working</button>
+              <button type="button" onClick={() => { setReviewOpen(false); void handleSubmit(false); }} disabled={submitting} className="btn-primary flex-1">
+                {submitting ? 'Submitting…' : 'Submit Now'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
@@ -328,6 +418,13 @@ function ResultView({
             {attempt.percentage}<span className="text-2xl text-muted-500">%</span>
           </p>
           <p className="mt-1 text-sm text-muted-600">{attempt.score} of {attempt.total} correct</p>
+          {typeof attempt.netMarks === 'number' && attempt.netMarks !== null && (attempt.negativeMarkPerWrong ?? 0) > 0 && (
+            <div className="mx-auto mt-3 max-w-xs rounded-lg bg-paper-200 px-4 py-2 text-xs text-muted-600">
+              <span className="font-semibold text-ink-900">{attempt.netMarks}</span> / {attempt.total} net marks
+              <span className="mx-1.5 text-muted-400">·</span>
+              {attempt.wrongCount ?? 0} wrong × −{attempt.negativeMarkPerWrong}
+            </div>
+          )}
           <p className="mt-3 text-xs text-muted-500">
             Submitted {attempt.submittedAt ? new Date(attempt.submittedAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : ''}
           </p>

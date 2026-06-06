@@ -233,7 +233,7 @@ export default function MockTestsPage() {
             <span aria-hidden className="grid h-12 w-12 place-items-center rounded-lg bg-ember-500/10 text-2xl">🧪</span>
             <div className="flex-1">
               <h2 className="font-serif text-lg font-semibold text-ink-900">Start a new mock test</h2>
-              <p className="mt-1 text-xs text-muted-500">30 questions · 30 minutes · uses 20 credits · timer starts immediately</p>
+              <p className="mt-1 text-xs text-muted-500">50 questions · 60 minutes · 3 sections (easy/medium/hard) · −0.25 negative marking · uses 20 credits · timer starts immediately</p>
             </div>
           </div>
           <button
