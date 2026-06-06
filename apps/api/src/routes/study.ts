@@ -6,6 +6,7 @@ import type { UserStore } from '../lib/userStore.js';
 import type { AIEngine } from '../lib/aiEngine.js';
 import type { ChapterStore, UserContext } from '../lib/chapterStore.js';
 import { getSyllabusWithFallback, type SyllabusFallbackDeps } from '../lib/syllabusStore.js';
+import { triggerBackgroundRefresh } from '../lib/contentRefresh.js';
 import { asISODateTime, asUserId, EXAM_BY_SLUG, type SyllabusTree } from '@nexigrate/shared';
 import type { Firestore } from 'firebase-admin/firestore';
 import type { Env } from '../env.js';
@@ -126,6 +127,14 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
     // Check cache first (before deducting credits) — cache key now includes level
     let content = await deps.chapters.getChapter(exam, subject, chapter, language, userLevel);
     if (content) {
+      // Weekly freshness: if cached content is stale, serve it instantly but
+      // regenerate in the background so the next reader gets updated content.
+      // No credit charge, no user wait. (Stale-while-revalidate.)
+      triggerBackgroundRefresh(
+        { aiEngine: deps.aiEngine, chapters: deps.chapters, logger: deps.logger },
+        content,
+        deps.env.CONTENT_REFRESH_DAYS,
+      );
       return c.json({ chapter: content, userLevel, contentPersonalizedFor: userLevel });
     }
 

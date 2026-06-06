@@ -197,6 +197,30 @@ export function buildApp(deps: AppDeps): Hono {
     return c.json({ success: true, ...result });
   });
 
+  // Cron endpoint — weekly content refresh (Cloud Scheduler: weekly).
+  // Regenerates the stalest cached chapter content so study material stays
+  // current with the latest syllabus instead of being frozen forever.
+  app.post('/v1/study/content-refresh', async (c) => {
+    const cronSecret = c.req.header('x-cron-secret');
+    if (cronSecret !== env.CRON_SECRET) {
+      return c.json({ error: 'unauthorized' }, 401);
+    }
+    logger.info('cron.content_refresh_start');
+    try {
+      const { refreshStaleContent } = await import('./lib/contentRefresh.js');
+      // Allow per-call overrides (?days= & ?limit=) for manual admin runs,
+      // else fall back to the env-configured defaults.
+      const days = Number(c.req.query('days')) || env.CONTENT_REFRESH_DAYS;
+      const limit = Number(c.req.query('limit')) || env.CONTENT_REFRESH_BATCH;
+      const result = await refreshStaleContent({ aiEngine, chapters, logger }, days, limit);
+      logger.info('cron.content_refresh_done', result);
+      return c.json({ success: true, ...result, days, limit });
+    } catch (err) {
+      logger.error('cron.content_refresh_error', { error: err instanceof Error ? err.message : String(err) });
+      return c.json({ success: false, error: 'Content refresh failed' }, 500);
+    }
+  });
+
   // Cron endpoint — streak reminder (Cloud Scheduler: daily 7pm IST)
   app.post('/v1/notifications/streak-check', async (c) => {
     const cronSecret = c.req.header('x-cron-secret');

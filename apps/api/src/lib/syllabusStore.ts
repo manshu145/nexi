@@ -1,4 +1,5 @@
 import { asExamSlug, type ExamSlug, type SyllabusTree } from '@nexigrate/shared';
+import { getAdditionalSyllabi } from './syllabusData.js';
 
 /**
  * Official syllabus trees for supported exams.
@@ -1163,6 +1164,16 @@ const SYLLABUS_MAP = new Map<string, SyllabusTree>([
   ['digital-marketing', DIGITAL_MARKETING],
   ['tally-accounting', TALLY_ACCOUNTING],
 ]);
+
+// Merge in all additional official syllabi (schools, state PSC, banking,
+// defence, law, management, teaching, medical, engineering, CG-specific).
+// These complete coverage of the full exam catalog so EVERY live exam
+// resolves to a real, structured syllabus — no AI guessing for structure.
+for (const [slug, tree] of getAdditionalSyllabi()) {
+  if (!SYLLABUS_MAP.has(slug)) {
+    SYLLABUS_MAP.set(slug, tree);
+  }
+}
 
 export function getSyllabus(examSlug: ExamSlug | string): SyllabusTree | null {
   return SYLLABUS_MAP.get(examSlug) ?? null;
