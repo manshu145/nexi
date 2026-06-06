@@ -7,6 +7,7 @@ import { SessionPing } from './SessionPing';
 import { AnnouncementBanner } from './AnnouncementBanner';
 import { DynamicFavicon } from './DynamicFavicon';
 import { AnalyticsTracker } from './AnalyticsTracker';
+import { PushPrompt } from './PushPrompt';
 
 /**
  * App-wide providers. Theme handling is system-based per founder lock §4.3
@@ -36,6 +37,7 @@ export function Providers({ children }: { children: ReactNode }) {
           <AnalyticsTracker />
           <AnnouncementBanner />
           <DynamicFavicon />
+          <PushPrompt />
           {children}
         </UserProvider>
       </AuthProvider>
