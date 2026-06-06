@@ -73,11 +73,27 @@ export function makeAnalyticsRoutes(deps: AnalyticsRoutesDeps): Hono {
 
     // Feature-usage totals across the range.
     const featureTotals: Record<string, number> = {};
+    const examTotals: Record<string, number> = {};
+    const langTotals: Record<string, number> = {};
     for (const day of series) {
       for (const [k, v] of Object.entries(day.events)) {
         featureTotals[k] = (featureTotals[k] ?? 0) + v;
       }
+      for (const [k, v] of Object.entries(day.dims?.exam ?? {})) {
+        examTotals[k] = (examTotals[k] ?? 0) + v;
+      }
+      for (const [k, v] of Object.entries(day.dims?.lang ?? {})) {
+        langTotals[k] = (langTotals[k] ?? 0) + v;
+      }
     }
+
+    // Today vs Yesterday snapshots (last two days of the series).
+    const todaySnap = series[series.length - 1] ?? { date: '', total: 0, events: {}, dims: {} };
+    const yesterdaySnap = series[series.length - 2] ?? { date: '', total: 0, events: {}, dims: {} };
+    const compare = {
+      today: { date: todaySnap.date, total: todaySnap.total, events: todaySnap.events },
+      yesterday: { date: yesterdaySnap.date, total: yesterdaySnap.total, events: yesterdaySnap.events },
+    };
 
     // Upgrade funnel from events; payments count from billingOrders (range).
     const upgradeViews = featureTotals['upgrade_view'] ?? 0;
@@ -108,8 +124,11 @@ export function makeAnalyticsRoutes(deps: AnalyticsRoutesDeps): Hono {
         activeSessions: stats.activeSessions,
         stickiness: stats.mau > 0 ? Math.round((stats.dau / stats.mau) * 100) : 0, // DAU/MAU %
       },
-      series,            // [{date,total,events:{...}}]
+      series,            // [{date,total,events:{...},dims:{...}}]
       featureTotals,     // {event_type: count}
+      examTotals,        // {exam_slug: engagement count}
+      langTotals,        // {en|hi: count}
+      compare,           // {today:{...}, yesterday:{...}}
       funnel: { upgradeViews, upgradeClicks, payments },
       rangeDays: days,
     });

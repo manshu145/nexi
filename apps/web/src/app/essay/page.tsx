@@ -6,6 +6,7 @@ import { useUser } from '~/lib/userStore';
 import { api } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 import { AILoader } from '~/components/ui/AILoader';
+import { track } from '~/lib/analytics';
 
 const API = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com';
 
@@ -237,6 +238,7 @@ Respond ONLY with valid JSON:
       } else {
         const data = await res.json() as { feedback: EssayFeedback };
         setFeedback(data.feedback);
+        track('essay_submit', { score: String(data.feedback?.overallScore ?? '') });
         // Keep the per-day counter visually accurate without a refetch.
         setUsageInfo(prev => (prev && prev.limit >= 0 ? { ...prev, used: prev.used + 1 } : prev));
       }
