@@ -6,6 +6,7 @@ import { UserProvider } from '~/lib/userStore';
 import { SessionPing } from './SessionPing';
 import { AnnouncementBanner } from './AnnouncementBanner';
 import { DynamicFavicon } from './DynamicFavicon';
+import { AnalyticsTracker } from './AnalyticsTracker';
 
 /**
  * App-wide providers. Theme handling is system-based per founder lock §4.3
@@ -32,6 +33,7 @@ export function Providers({ children }: { children: ReactNode }) {
       <AuthProvider>
         <UserProvider>
           <SessionPing />
+          <AnalyticsTracker />
           <AnnouncementBanner />
           <DynamicFavicon />
           {children}

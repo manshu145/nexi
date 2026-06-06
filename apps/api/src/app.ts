@@ -38,6 +38,8 @@ import { FirestoreTeamInviteStore, InMemoryTeamInviteStore, type TeamInviteStore
 import { makePublicRoutes } from './routes/public.js';
 import { makeMockTestRoutes } from './routes/mockTests.js';
 import { FirestorePYQStore, InMemoryPYQStore, type PYQStore } from './lib/pyqStore.js';
+import { FirestoreAnalyticsStore, InMemoryAnalyticsStore, type AnalyticsStore } from './lib/analyticsStore.js';
+import { makeAnalyticsRoutes } from './routes/analytics.js';
 import { FirestoreNotificationStore, InMemoryNotificationStore, type NotificationStore } from './lib/notificationStore.js';
 import { makeNotificationRoutes } from './routes/notifications.js';
 import { notifyUser } from './lib/notificationService.js';
@@ -70,6 +72,7 @@ export function buildApp(deps: AppDeps): Hono {
   const config = deps.config ?? (fs ? new FirestorePlatformConfigStore(fs, logger) : new InMemoryPlatformConfigStore());
   const mockTests = deps.mockTests ?? (fs ? new FirestoreMockTestStore(fs) : new InMemoryMockTestStore());
   const pyq = deps.pyq ?? (fs ? new FirestorePYQStore(fs) : new InMemoryPYQStore());
+  const analytics: AnalyticsStore = fs ? new FirestoreAnalyticsStore(fs) : new InMemoryAnalyticsStore();
   const notifications: NotificationStore = fs ? new FirestoreNotificationStore(fs) : new InMemoryNotificationStore();
   const examDates: ExamDatesStore = fs ? new FirestoreExamDatesStore(fs) : new InMemoryExamDatesStore();
   const blog = deps.blog ?? (fs ? new FirestoreBlogStore(fs) : new InMemoryBlogStore());
@@ -395,6 +398,7 @@ export function buildApp(deps: AppDeps): Hono {
   v1.route('/essay', makeEssayRoutes({ users, aiEngine, logger, db: fs, config, usage: featureUsage }));
   v1.route('/mock-tests', makeMockTestRoutes({ users, aiEngine, mockTests, ledger, config, logger }));
   v1.route('/pyq', makePYQRoutes({ users, aiEngine, pyq, logger }));
+  v1.route('/analytics', makeAnalyticsRoutes({ analytics, adminStore, users, env, logger, db: fs }));
   v1.route('/notifications', makeNotificationRoutes({ notifications, logger }));
   v1.route('/exams', makeExamRoutes({ examDates, users, env, logger }));
 

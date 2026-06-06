@@ -45,6 +45,13 @@ export interface StoredUser { id: string; email: string; name: string; phone: st
 export interface MeResponse { user: StoredUser; dailyStreak: { streak: number; creditsEarned: number }; }
 export interface MCQOption { key: 'A'|'B'|'C'|'D'; text: string; }
 export interface GeneratedMCQ { id: string; question: string; options: MCQOption[]; correctOption: 'A'|'B'|'C'|'D'; explanation: string; difficulty: 'easy'|'medium'|'hard'; subject?: string; topic?: string; }
+export interface AnalyticsOverview {
+  overview: { totalUsers: number; dau: number; mau: number; newUsersToday: number; newUsersThisWeek: number; revenue30d: number; revenueTotal: number; activeSessions: number; stickiness: number };
+  series: Array<{ date: string; total: number; events: Record<string, number> }>;
+  featureTotals: Record<string, number>;
+  funnel: { upgradeViews: number; upgradeClicks: number; payments: number };
+  rangeDays: number;
+}
 export interface ExamEvent { name: string; date: string | null; estimatedMonth: string; isConfirmed: boolean; sourceUrl: string; registrationStart: string | null; registrationEnd: string | null; }
 export interface ExamDates { examSlug: string; examName: string; events: ExamEvent[]; lastUpdated: string | null; }
 export interface PersonalOption { value: string; label: string; labelHi: string; }
@@ -142,6 +149,11 @@ export const api = {
     })).json() as Promise<{questions:GeneratedMCQ[]}>;
   },
   async submitMultiStageAssessment(stage1: {questions:GeneratedMCQ[]; answers:{questionId:string;chosen:string|null}[]}, stage2: {questions:GeneratedMCQ[]; answers:{questionId:string;chosen:string|null}[]}, stage3: {questions:GeneratedMCQ[]; answers:{questionId:string;chosen:string|null}[]}) { return (await authedFetch('/v1/assessment/submit', { method: 'POST', body: JSON.stringify({ multiStage: true, stage1, stage2, stage3 }) })).json() as Promise<AssessmentResult>; },
+
+  // ─── Admin analytics ────────────────────────────────────────────────────
+  async getAnalyticsOverview(days = 30) {
+    return (await authedFetch(`/v1/analytics/overview?days=${days}`)).json() as Promise<AnalyticsOverview>;
+  },
 
   // ─── Exam calendar ──────────────────────────────────────────────────────
   async getExamDates() {

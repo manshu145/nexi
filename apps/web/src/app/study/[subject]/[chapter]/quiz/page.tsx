@@ -6,6 +6,7 @@ import { useUser } from '~/lib/userStore';
 import { api, type GeneratedMCQ } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 import { AILoader } from '~/components/ui/AILoader';
+import { track } from '~/lib/analytics';
 
 type Phase = 'loading' | 'quiz' | 'submitting' | 'result';
 
@@ -136,6 +137,7 @@ export default function ChapterQuizPage() {
       // without each running their own /me fetch (Pattern C from PR-32).
       void refresh();
       setResult({ score, total: questions.length, passed: res.passed, creditsAwarded: res.creditsAwarded, nextChapter: res.nextChapter });
+      track('quiz_complete', { subject, chapter, score: String(score), passed: String(res.passed) });
       setPhase('result');
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to submit';

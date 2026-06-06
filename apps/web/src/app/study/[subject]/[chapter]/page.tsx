@@ -8,6 +8,7 @@ import { Logo } from '~/components/Logo';
 import { PlanGate } from '~/components/PlanGate';
 import { AILoader } from '~/components/ui/AILoader';
 import { toast } from 'sonner';
+import { track } from '~/lib/analytics';
 
 export default function KindleReaderPage() {
   const { user, loading } = useAuth();
@@ -53,6 +54,7 @@ export default function KindleReaderPage() {
   const pageRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
+  useEffect(() => { if (user) track('chapter_open', { subject, chapter }); }, [user, subject, chapter]);
 
   useEffect(() => {
     if (!user || !me) return;
