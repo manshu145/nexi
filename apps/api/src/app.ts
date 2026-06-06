@@ -490,7 +490,7 @@ export function buildApp(deps: AppDeps): Hono {
   v1.route('/analytics', makeAnalyticsRoutes({ analytics, adminStore, users, env, logger, db: fs }));
   v1.route('/mailbox', makeMailboxRoutes({ threads: emailThreads, users, env, logger, serviceKeys }));
   v1.route('/notifications', makeNotificationRoutes({ notifications, logger }));
-  v1.route('/exams', makeExamRoutes({ examDates, users, env, logger }));
+  v1.route('/exams', makeExamRoutes({ examDates, users, aiEngine, env, logger }));
 
   // (POST /v1/logs/error and GET /v1/branding are now mounted on the
   // PUBLIC router via makePublicRoutes() above, so the front-end error

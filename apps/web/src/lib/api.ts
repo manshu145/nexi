@@ -186,6 +186,11 @@ export const api = {
       method: 'PATCH', body: JSON.stringify({ examName, events }),
     })).json() as Promise<ExamDates>;
   },
+  async generateExamDates(examSlug: string, examName: string) {
+    return (await authedFetch(`/v1/exams/dates/${encodeURIComponent(examSlug)}/generate`, {
+      method: 'POST', body: JSON.stringify({ examName }),
+    })).json() as Promise<ExamDates>;
+  },
   // ─── Assessment V2 (5 personal + 15 exam + 5 reasoning) ─────────────────
   async getPersonalQuestions() {
     return (await authedFetch('/v1/assessment/personal')).json() as Promise<{ questions: PersonalQuestion[] }>;
