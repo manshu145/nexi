@@ -45,6 +45,8 @@ export interface StoredUser { id: string; email: string; name: string; phone: st
 export interface MeResponse { user: StoredUser; dailyStreak: { streak: number; creditsEarned: number }; }
 export interface MCQOption { key: 'A'|'B'|'C'|'D'; text: string; }
 export interface GeneratedMCQ { id: string; question: string; options: MCQOption[]; correctOption: 'A'|'B'|'C'|'D'; explanation: string; difficulty: 'easy'|'medium'|'hard'; subject?: string; topic?: string; }
+export interface PersonalOption { value: string; label: string; labelHi: string; }
+export interface PersonalQuestion { id: string; field: string; question: string; questionHi: string; options: PersonalOption[]; }
 export interface AssessmentResult { score: number; total: number; level: 'beginner'|'intermediate'|'advanced'; message: string; messageHi: string; weakAreas?: string[]; strongAreas?: string[]; }
 
 export interface SyllabusChapter { slug: string; name: string; nameHi: string; order: number; estimatedMinutes: number; }
@@ -138,6 +140,33 @@ export const api = {
     })).json() as Promise<{questions:GeneratedMCQ[]}>;
   },
   async submitMultiStageAssessment(stage1: {questions:GeneratedMCQ[]; answers:{questionId:string;chosen:string|null}[]}, stage2: {questions:GeneratedMCQ[]; answers:{questionId:string;chosen:string|null}[]}, stage3: {questions:GeneratedMCQ[]; answers:{questionId:string;chosen:string|null}[]}) { return (await authedFetch('/v1/assessment/submit', { method: 'POST', body: JSON.stringify({ multiStage: true, stage1, stage2, stage3 }) })).json() as Promise<AssessmentResult>; },
+
+  // ─── Assessment V2 (5 personal + 15 exam + 5 reasoning) ─────────────────
+  async getPersonalQuestions() {
+    return (await authedFetch('/v1/assessment/personal')).json() as Promise<{ questions: PersonalQuestion[] }>;
+  },
+  async getExamAssessmentQuestions(examSlug: string, language: 'en'|'hi', opts?: { signal?: AbortSignal }) {
+    return (await authedFetch('/v1/assessment/exam', {
+      method: 'POST', body: JSON.stringify({ examSlug, language }),
+      ...(opts?.signal ? { signal: opts.signal } : {}),
+    })).json() as Promise<{questions:GeneratedMCQ[]}>;
+  },
+  async getReasoningAssessmentQuestions(language: 'en'|'hi', opts?: { signal?: AbortSignal }) {
+    return (await authedFetch('/v1/assessment/reasoning', {
+      method: 'POST', body: JSON.stringify({ language }),
+      ...(opts?.signal ? { signal: opts.signal } : {}),
+    })).json() as Promise<{questions:GeneratedMCQ[]}>;
+  },
+  async submitAssessmentV2(
+    personal: Record<string, string>,
+    examResults: {questions:GeneratedMCQ[]; answers:{questionId:string;chosen:string|null}[]},
+    reasoningResults: {questions:GeneratedMCQ[]; answers:{questionId:string;chosen:string|null}[]},
+  ) {
+    return (await authedFetch('/v1/assessment/submit', {
+      method: 'POST',
+      body: JSON.stringify({ v2: true, personal, examResults, reasoningResults }),
+    })).json() as Promise<AssessmentResult>;
+  },
 
   // Study
   async getSyllabus(examSlug: string) { return (await authedFetch(`/v1/study/syllabus/${examSlug}`)).json() as Promise<{syllabus:SyllabusTree}>; },
