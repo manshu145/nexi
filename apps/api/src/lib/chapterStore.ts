@@ -35,6 +35,13 @@ export interface ChapterStore {
   saveChapter(content: ChapterContent): Promise<void>;
   getProgress(userId: UserId, exam: string): Promise<StudyProgress>;
   saveProgress(userId: UserId, exam: string, subject: string, chapter: string, score: number): Promise<StudyProgress>;
+  /**
+   * List cached chapters whose content was generated before `olderThanISO`.
+   * Used by the weekly content-refresh cron to find stale content to
+   * regenerate. Ordered oldest-first so the stalest content is refreshed
+   * first. Returns at most `limit` entries.
+   */
+  listStaleChapters(olderThanISO: string, limit: number): Promise<ChapterContent[]>;
 }
 
 // ---------- in-memory --------------------------------------------------------
@@ -59,6 +66,13 @@ export class InMemoryChapterStore implements ChapterStore {
 
   async saveChapter(content: ChapterContent) {
     this.chapters.set(this.chapterKey(content.exam, content.subject, content.chapter, content.language, content.userLevel), content);
+  }
+
+  async listStaleChapters(olderThanISO: string, limit: number): Promise<ChapterContent[]> {
+    return Array.from(this.chapters.values())
+      .filter((c) => (c.generatedAt ?? '') < olderThanISO)
+      .sort((a, b) => (a.generatedAt ?? '').localeCompare(b.generatedAt ?? ''))
+      .slice(0, Math.max(0, limit));
   }
 
   async getProgress(userId: UserId, exam: string): Promise<StudyProgress> {
@@ -109,6 +123,18 @@ export class FirestoreChapterStore implements ChapterStore {
   async saveChapter(content: ChapterContent) {
     const docId = this.chapterDocId(content.exam, content.subject, content.chapter, content.language, content.userLevel);
     await this.db.collection('chapter_content').doc(docId).set(content);
+  }
+
+  async listStaleChapters(olderThanISO: string, limit: number): Promise<ChapterContent[]> {
+    // Range filter + orderBy on the SAME field (generatedAt) needs no
+    // composite index. Oldest content first so the cron refreshes the
+    // stalest chapters before its per-run budget is exhausted.
+    const snap = await this.db.collection('chapter_content')
+      .where('generatedAt', '<', olderThanISO)
+      .orderBy('generatedAt', 'asc')
+      .limit(Math.max(0, limit))
+      .get();
+    return snap.docs.map((d) => d.data() as ChapterContent);
   }
 
   async getProgress(userId: UserId, exam: string): Promise<StudyProgress> {

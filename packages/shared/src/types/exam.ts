@@ -19,6 +19,7 @@ export type ExamCategory =
   | 'state'
   | 'law'
   | 'management'
+  | 'teaching'
   | 'professional-skills';
 
 export type ExamStatus = 'live' | 'soon';

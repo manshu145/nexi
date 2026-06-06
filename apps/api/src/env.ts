@@ -29,7 +29,19 @@ const envSchema = z.object({
   WHATSAPP_TOKEN: z.string().optional().default(''),
   WHATSAPP_PHONE_NUMBER_ID: z.string().optional().default(''),
   SUPER_ADMIN_EMAIL: z.string().default('manshu.ibc24@gmail.com'),
-  CRON_SECRET: z.string().optional().default('nexigrate-cron-2026'),
+  // IMPORTANT: Override this in production with a strong random secret (32+ chars).
+  // The default is intentionally weak so local dev works out-of-the-box, but
+  // Cloud Run deployments MUST set CRON_SECRET via env var or Secret Manager.
+  CRON_SECRET: z.string().optional().default('nexigrate-cron-2026-dev-only'),
+  // Weekly content freshness: cached AI chapter content older than this many
+  // days is considered stale. It is served instantly (no user wait) but
+  // regenerated in the background, and the weekly cron proactively refreshes
+  // the stalest batch. Keeps study content current with the latest syllabus.
+  CONTENT_REFRESH_DAYS: z.coerce.number().min(1).default(7),
+  // Max chapters the weekly refresh cron regenerates per run (cost + Cloud
+  // Run request-timeout guard; regeneration is sequential). Override per-run
+  // with ?limit= for manual admin sweeps.
+  CONTENT_REFRESH_BATCH: z.coerce.number().min(1).default(25),
   CORS_ALLOWED_ORIGINS: z.string().default('http://localhost:3000,https://app.nexigrate.com,https://nexigrate.com').transform((s) => s.split(',')),
 });
 

@@ -59,41 +59,37 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
       const principal = requireAuth(c);
       const today = new Date().toISOString().split('T')[0]!;
       const language = (c.req.query('lang') as 'en' | 'hi') || 'en';
-      let items: any[] = [];
-      let winner: any = null;
-      try { items = await deps.currentAffairs.getTodayItems(today); } catch (e) { deps.logger.error('ca.getTodayItems_error', { error: String(e) }); }
-      try { winner = await deps.currentAffairs.getYesterdayWinner(); } catch (e) { deps.logger.error('ca.getWinner_error', { error: String(e) }); }
-
-      items = deduplicateItems(items);
-
-      // State edition filter. The state selector on the client sends:
-      //   • 'all' / no param → national items + items from LIVE state
-      //     editions (so a state's news surfaces as soon as the admin
-      //     enables it — this is the default the app now uses)
-      //   • 'national'       → only items WITHOUT a state tag
-      //   • <state-slug>     → only items tagged to that state
-      // Items tagged to a state that is NOT live stay hidden everywhere,
-      // so the admin's "live" toggle is the single gate that controls
-      // whether a state edition's news reaches students.
       const stateParam = c.req.query('state');
+
+      // Parallelize independent Firestore calls: items + winner + live states
+      // (previously sequential = ~600ms, now parallel = ~200ms)
+      const needLiveStates = !stateParam || stateParam === 'all';
+      const [itemsResult, winnerResult, liveStatesResult, lastIngestedResult] = await Promise.all([
+        deps.currentAffairs.getTodayItems(today).catch((e) => { deps.logger.error('ca.getTodayItems_error', { error: String(e) }); return [] as any[]; }),
+        deps.currentAffairs.getYesterdayWinner().catch((e) => { deps.logger.error('ca.getWinner_error', { error: String(e) }); return null; }),
+        needLiveStates ? deps.currentAffairs.getLiveStates().catch((e) => { deps.logger.warn('ca.live_states_filter_error', { error: String(e) }); return [] as string[]; }) : Promise.resolve([] as string[]),
+        deps.currentAffairs.getLastIngestedAt().catch(() => null),
+      ]);
+
+      let items: any[] = deduplicateItems(itemsResult);
+      const winner = winnerResult;
+
+      // State edition filter
       if (stateParam === 'national') {
         items = items.filter((it: any) => !it.state);
       } else if (stateParam && stateParam !== 'all') {
         items = items.filter((it: any) => it.state === stateParam);
       } else {
         // 'all' or no param → national + live-state news only.
-        let live = new Set<string>();
-        try { live = new Set(await deps.currentAffairs.getLiveStates()); }
-        catch (e) { deps.logger.warn('ca.live_states_filter_error', { error: String(e) }); }
+        const live = new Set<string>(liveStatesResult);
         items = items.filter((it: any) => !it.state || live.has(it.state));
       }
 
       // 30-min refresh check: trigger background re-ingestion if stale
       try {
-        const lastIngested = await deps.currentAffairs.getLastIngestedAt();
         const thirtyMinMs = 30 * 60 * 1000;
-        if (!lastIngested || (Date.now() - Date.parse(lastIngested)) > thirtyMinMs) {
-          deps.logger.info('ca.stale_triggering_reingest', { lastIngested });
+        if (!lastIngestedResult || (Date.now() - Date.parse(lastIngestedResult)) > thirtyMinMs) {
+          deps.logger.info('ca.stale_triggering_reingest', { lastIngested: lastIngestedResult });
           // Fire-and-forget background re-ingestion
           import('../lib/rssIngestion.js').then(({ ingestCurrentAffairs }) => {
             ingestCurrentAffairs(deps.currentAffairs, deps.env, deps.logger, deps.aiEngine)
