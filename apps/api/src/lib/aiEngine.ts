@@ -1032,38 +1032,120 @@ export function createAIEngine(
     async generateChapterContent(chapter, subject, exam, language = 'en', userContext?) {
       const langInstr = language === 'hi' ? 'Write the entire chapter in Hindi (Devanagari). Simple, student-friendly language.' : 'Write in clear, student-friendly English.';
 
-      // Build personalization section based on user level
-      let personalizationInstr = '';
+      // ── Tier (level) configuration ───────────────────────────────────
+      // The student-facing level maps to a quality tier. Depth + word
+      // count scale with the tier; the SECTION STRUCTURE is the same for
+      // every tier so each chapter is genuinely exam-complete (no more
+      // shallow "khana-purti" content).
       const level = userContext?.onboardingLevel ?? 'intermediate';
+      const tier =
+        level === 'beginner'
+          ? {
+              name: 'FOUNDATION',
+              desc: 'The student is NEW to this subject. Build basics from scratch, explain every term, use daily-life analogies. Assume NO prior knowledge — but still cover the full topic, do not skip the hard parts (introduce them gently).',
+              minWords: 1000,
+              maxWords: 1200,
+            }
+          : level === 'advanced'
+            ? {
+                name: 'MASTERY',
+                desc: 'The student has STRONG preparation. Go deep and analytical, assume solid basics, add inter-topic connections, the examiner\u2019s perspective, tricky/high-difficulty areas, and recent developments (last 5 years).',
+                minWords: 1500,
+                maxWords: 1800,
+              }
+            : {
+                name: 'STRENGTHENING',
+                desc: 'The student has a decent base. Give a clear, exam-focused explanation: define technical terms briefly, emphasise application, and connect concepts to how they are actually tested.',
+                minWords: 1200,
+                maxWords: 1500,
+              };
 
-      if (level === 'beginner') {
-        const weakAreasStr = userContext?.weakAreas?.length ? `The student's weak areas are: ${userContext.weakAreas.join(', ')} — be extra careful to build strong basics in these areas.` : '';
-        personalizationInstr = `This student is a BEGINNER — they are new to this topic.
-Writing style: Simple language, avoid jargon, explain every term.
-Structure: Start with 'What is this?', use many examples from daily life, include memory tricks and mnemonics, use simple analogies.
-Length: 600-800 words. Language: ${language === 'hi' ? 'Hindi' : 'English'}.
-${weakAreasStr}
-End with: 3 key takeaways in bullet points.`;
-      } else if (level === 'advanced') {
-        const strongAreasStr = userContext?.strongAreas?.length ? `Student's strong areas: ${userContext.strongAreas.join(', ')} — use these as reference points.` : '';
-        personalizationInstr = `This student is ADVANCED — high level of preparation.
-Writing style: Analytical and deep, assume strong foundational knowledge.
-Structure: Advanced concepts, critical analysis, inter-topic connections, recent developments, previous year questions with approach strategy, common mistakes to avoid at advanced level.
-Length: 1000-1200 words. Language: ${language === 'hi' ? 'Hindi' : 'English'}.
-${strongAreasStr}
-End with: Examiner perspective and scoring strategy.`;
+      // ── Subject-aware rules ──────────────────────────────────────────
+      // Forces concrete, verifiable detail appropriate to the subject so
+      // the AI cannot get away with vague generalities.
+      const s = `${subject} ${chapter}`.toLowerCase();
+      let subjectRule: string;
+      if (/history|इतिहास|culture|संस्कृति|freedom|movement|आंदोलन/.test(s)) {
+        subjectRule = 'HISTORY topic: every event MUST carry an exact date/year; name the people, dynasties, movements and treaties involved; explain cause \u2192 effect \u2192 significance.';
+      } else if (/polity|constitution|राजव्यवस्था|संविधान|governance|शासन|civics/.test(s)) {
+        subjectRule = 'POLITY topic: cite specific Article numbers, constitutional provisions, key Amendments, landmark Supreme Court cases, and name the institutions involved.';
+      } else if (/econom|अर्थ|finance|वित्त|banking|बैंक|budget|बजट/.test(s)) {
+        subjectRule = 'ECONOMY topic: include relevant government schemes, key figures/data (clearly note that current figures change over time), economic terms with definitions, and recent policy developments.';
+      } else if (/physic|भौतिक/.test(s)) {
+        subjectRule = 'PHYSICS topic: include every relevant formula in $...$ with each symbol explained and SI units; show a short derivation where needed; include at least one fully worked numerical example.';
+      } else if (/chemis|रसायन/.test(s)) {
+        subjectRule = 'CHEMISTRY topic: include balanced reactions/equations, formulas, periodic trends where relevant, and the exam-important exceptions students forget.';
+      } else if (/bio|जीव|botany|वनस्पति|zoology|प्राणि/.test(s)) {
+        subjectRule = 'BIOLOGY topic: describe key labelled diagrams in words, define scientific terms, explain processes step-by-step, and stick to NCERT-line facts.';
+      } else if (/math|गणित|quantitative|aptitude|अभियोग्यता|reasoning|तर्क/.test(s)) {
+        subjectRule = 'MATH/QUANT topic: include formulas, at least two step-by-step worked examples, time-saving shortcuts/tricks, and the common traps that cost marks.';
+      } else if (/geograph|भूगोल/.test(s)) {
+        subjectRule = 'GEOGRAPHY topic: describe maps/locations in words, give specific place names (rivers, ranges, regions), explain the mechanism behind phenomena, and include relevant data.';
+      } else if (/current|समसामयिक|affairs/.test(s)) {
+        subjectRule = 'CURRENT-AFFAIRS topic: focus on developments from the last 1\u20135 years with dates and names; clearly flag anything time-sensitive.';
+      } else if (/english|अंग्रेज|language|भाषा|hindi|हिन्दी|grammar|व्याकरण/.test(s)) {
+        subjectRule = 'LANGUAGE topic: state each rule with clear examples, show the common error patterns, and add practice-style illustrations.';
       } else {
-        // intermediate
-        const completedStr = userContext?.completedChapters?.length ? `The student has already completed: ${userContext.completedChapters.slice(0, 10).join(', ')} — build connections to those topics where relevant.` : '';
-        personalizationInstr = `This student has basic knowledge — INTERMEDIATE level.
-Writing style: Clear and direct, some technical terms with brief explanation.
-Structure: Quick concept recap, deeper explanation, exam-relevant facts and figures, previous year question patterns.
-Length: 800-1000 words. Language: ${language === 'hi' ? 'Hindi' : 'English'}.
-${completedStr}
-End with: Important facts to remember for exam.`;
+        subjectRule = 'Use specific, verifiable facts (names, numbers, dates, definitions) throughout \u2014 never vague generalities.';
       }
 
-      const prompt = `You are an expert Indian education content writer.\nYou are generating educational content for ${exam}.\nThis content must strictly follow the official ${exam} syllabus.\nOnly cover topics that are part of the official curriculum.\nGround all factual content in NCERT textbooks where applicable.\nDo not add topics outside the official syllabus.\n\nGenerate a chapter on "${chapter}" (subject: ${subject}) for ${exam} preparation.\n${langInstr}\n\n${personalizationInstr}\n\nAdditional Requirements:\n- Use Markdown format with ## headings for each major section\n- Use ## headings generously — each sub-topic should have its own ## heading\n- Include real-world Indian examples\n- Exam-focused: highlight frequently-asked areas\n- For science/math: include formulas in $...$\n- Reference NCERT concepts and terminology where applicable\n- Be thorough and cover every aspect needed for this level.\n\nWrite ONLY the Markdown content.`;
+      // Light personalization (kept secondary to canonical tier quality).
+      const weakStr = userContext?.weakAreas?.length
+        ? `\n- The student is weaker in: ${userContext.weakAreas.slice(0, 5).join(', ')} \u2014 add a little extra clarity wherever this chapter touches those areas.`
+        : '';
+
+      // Mandatory section headings, localised to the output language.
+      const sectionList =
+        language === 'hi'
+          ? [
+              '## परिचय (यह क्या है और परीक्षा के लिए क्यों ज़रूरी है)',
+              '## मुख्य अवधारणाएँ (विस्तार से समझाएँ)',
+              '## महत्वपूर्ण तथ्य एवं आँकड़े (बुलेट में, परीक्षा-केंद्रित)',
+              '## पिछले वर्षों के प्रश्नों का स्वरूप (किस तरह के प्रश्न आते हैं)',
+              '## याद रखने की ट्रिक्स (mnemonics/संक्षेप)',
+              '## मुख्य बिंदु \u2014 रिवीज़न (5\u20137 बुलेट)',
+            ]
+          : [
+              '## Introduction (what it is & why it matters for this exam)',
+              '## Core Concepts (explained in depth)',
+              '## Key Facts & Figures (bulleted, exam-focused)',
+              '## Previous-Year Question Patterns (what kind of questions appear)',
+              '## Memory Tricks (mnemonics / shortcuts)',
+              '## Key Takeaways \u2014 Revision (5\u20137 bullets)',
+            ];
+
+      const prompt = `You are a SENIOR FACULTY MEMBER at one of India\u2019s top coaching institutes (think Vajiram & Ravi for UPSC, Allen for NEET/JEE) with 20+ years of experience. You know EXACTLY what is asked in ${exam} and what a student must know to score. You NEVER write filler, padding, or vague statements.
+
+TASK: Write a COMPREHENSIVE, exam-ready chapter on "${chapter}" (subject: ${subject}) for ${exam}.
+${langInstr}
+
+SYLLABUS DISCIPLINE:
+- Strictly follow the official ${exam} syllabus; cover only what is in the official curriculum for this topic.
+- Ground factual content in NCERT/standard sources where applicable.
+- Do NOT add topics outside the official syllabus.
+
+TARGET TIER \u2014 ${tier.name}:
+${tier.desc}
+- LENGTH: ${tier.minWords}\u2013${tier.maxWords} words. This is a hard minimum \u2014 a short chapter is a FAILED chapter.
+
+SUBJECT RULE:
+- ${subjectRule}${weakStr}
+
+MANDATORY STRUCTURE \u2014 use these exact Markdown section headings, in this order, and fill EVERY one with real substance:
+${sectionList.join('\n')}
+
+Within sections you may add more ## sub-headings as needed.
+
+QUALITY RULES (strict):
+- Every claim must be factual and accurate \u2014 no hallucinations.
+- No vague lines like "this is very important" \u2014 say WHY and HOW, with specifics.
+- Do not repeat the same point in different words; no filler phrases.
+- Do not skip any mandatory section. Do not stop early.
+- For science/math include formulas in $...$.
+- Use real Indian examples, exact dates/numbers/names where relevant.
+- Write in ${language === 'hi' ? 'pure Hindi (Devanagari)' : 'clear English'} throughout.
+
+Write ONLY the Markdown content for the chapter \u2014 no preamble, no closing notes.`;
       const startTime = performance.now();
 
       // Inner: one attempt at content generation. Resilient across
