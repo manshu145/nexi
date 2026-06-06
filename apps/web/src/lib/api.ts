@@ -190,6 +190,11 @@ export const api = {
       method: 'PATCH', body: JSON.stringify({ examName, events }),
     })).json() as Promise<ExamDates>;
   },
+  async generateExamDates(examSlug: string, examName: string) {
+    return (await authedFetch(`/v1/exams/dates/${encodeURIComponent(examSlug)}/generate`, {
+      method: 'POST', body: JSON.stringify({ examName }),
+    })).json() as Promise<ExamDates>;
+  },
   // ─── Assessment V2 (5 personal + 15 exam + 5 reasoning) ─────────────────
   async getPersonalQuestions() {
     return (await authedFetch('/v1/assessment/personal')).json() as Promise<{ questions: PersonalQuestion[] }>;
@@ -396,22 +401,23 @@ export const api = {
    * the underlying fetch — see PR-32.
    */
   async startMockTest(
-    input: { examSlug: string; language?: 'en' | 'hi'; questionCount?: number; durationMinutes?: number },
+    input: { examSlug: string; language?: 'en' | 'hi'; questionCount?: number; durationMinutes?: number; attemptId?: string },
     opts?: { signal?: AbortSignal },
   ) {
     return (await authedFetch('/v1/mock-tests/start', {
       method: 'POST', body: JSON.stringify(input),
       ...(opts?.signal ? { signal: opts.signal } : {}),
     })).json() as Promise<{
-      attemptId: string; examSlug: string; language: 'en' | 'hi';
-      durationMinutes: number; total: number; startedAt: string; creditCost: number;
-      questions: Array<{ id: string; question: string; options: { key: 'A'|'B'|'C'|'D'; text: string }[]; difficulty?: string; subject?: string; topic?: string }>;
+      attemptId: string; status?: 'generating'|'in_progress'|'submitted'|'expired'|'generation_failed';
+      examSlug: string; language: 'en' | 'hi';
+      durationMinutes: number; total: number; startedAt?: string; creditCost: number;
+      questions?: Array<{ id: string; question: string; options: { key: 'A'|'B'|'C'|'D'; text: string }[]; difficulty?: string; subject?: string; topic?: string }>;
     }>;
   },
   async getMockTest(id: string) {
     return (await authedFetch(`/v1/mock-tests/${encodeURIComponent(id)}`)).json() as Promise<{
-      id: string; examSlug: string; language: 'en'|'hi'; status: 'in_progress'|'submitted'|'expired';
-      startedAt: string; durationMinutes: number; submittedAt: string|null;
+      id: string; examSlug: string; language: 'en'|'hi'; status: 'generating'|'in_progress'|'submitted'|'expired'|'generation_failed';
+      startedAt: string; durationMinutes: number; submittedAt: string|null; generationError?: string|null;
       total: number; score: number|null; percentage: number|null;
       subjectBreakdown: Record<string, { correct: number; total: number }>|null;
       wrongCount?: number|null; netMarks?: number|null; negativeMarkPerWrong?: number;
