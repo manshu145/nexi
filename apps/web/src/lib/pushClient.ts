@@ -86,7 +86,16 @@ export async function registerPushToken(): Promise<boolean> {
     // HTTPS is not available.
     let swRegistration: ServiceWorkerRegistration | undefined;
     try {
-      swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+      // Register the FCM worker at a DEDICATED scope, NOT the root "/".
+      // The PWA (next-pwa) already owns "/sw.js" at scope "/", and a scope
+      // can only have ONE active service worker — registering
+      // firebase-messaging-sw.js at "/" too made the two workers clobber
+      // each other on every load. The FCM worker (which holds the push
+      // subscription) kept getting replaced by the PWA worker, so FCM
+      // accepted the message (token still "valid" → admin saw success) but
+      // there was no live FCM worker to display it. A separate scope lets
+      // both workers coexist. This is Firebase's own recommended scope.
+      swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/firebase-cloud-messaging-push-scope' });
       // Wait until the SW is ACTIVE before getToken — calling getToken while
       // the worker is still "installing"/"waiting" is a common cause of a
       // silent failure / empty token on the FIRST attempt (which then looked
@@ -152,9 +161,11 @@ export async function registerPushToken(): Promise<boolean> {
       try {
         const { onMessage } = await import('firebase/messaging');
         onMessage(messaging, (payload) => {
-          const title = payload.notification?.title ?? payload.data?.['title'] ?? 'Nexigrate';
-          const body = payload.notification?.body ?? payload.data?.['body'] ?? '';
-          const link = payload.data?.['click_action'] ?? payload.fcmOptions?.link ?? '/';
+          // Messages are data-only now, so read payload.data first
+          // (notification kept as a legacy fallback).
+          const title = payload.data?.['title'] ?? payload.notification?.title ?? 'Nexigrate';
+          const body = payload.data?.['body'] ?? payload.notification?.body ?? '';
+          const link = payload.data?.['click_action'] ?? payload.data?.['url'] ?? payload.fcmOptions?.link ?? '/';
           try {
             swRegistration?.showNotification(title, {
               body,

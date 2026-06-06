@@ -466,7 +466,7 @@ function ShortCard({ item, isActive, liked, bookmarked, likeCount, onLike, onBoo
               {emoji} {item.category}
             </span>
             {item.factChecked && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/90 text-white shadow-sm">✓ Verified</span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gold-500/90 text-paper-50 shadow-sm">✓ Verified</span>
             )}
           </div>
         </div>

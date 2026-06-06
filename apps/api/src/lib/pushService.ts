@@ -71,26 +71,50 @@ export interface PushService {
 
 const TOKEN_BATCH_SIZE = 500;
 
+/** Public web origin used to turn relative notification links (e.g.
+ *  "/dashboard", "/current-affairs") into the absolute HTTPS URLs that
+ *  FCM web push requires. A relative link in webpush.fcmOptions.link is
+ *  rejected by FCM — which is why the AUTOMATIC notifications (streak,
+ *  daily digest) silently failed while the admin test (already absolute)
+ *  appeared to "send". Mirrors the constant used in emailService. */
+const APP_BASE_URL = 'https://app.nexigrate.com';
+
+function toAbsoluteLink(link?: string): string | undefined {
+  if (!link) return undefined;
+  if (/^https?:\/\//i.test(link)) return link;
+  return `${APP_BASE_URL}${link.startsWith('/') ? '' : '/'}${link}`;
+}
+
 /**
  * Build the FCM message payload from our PushNotificationPayload shape.
- * Centralised so sendToTokens / sendToTopic produce identical structures
- * including the click_action data key the service worker reads to
- * navigate on tap.
+ *
+ * DATA-ONLY by design. Previously we sent a top-level `notification`
+ * payload; for FCM web push that makes the SDK auto-display the message
+ * AND (depending on SDK version) also invoke onBackgroundMessage — giving
+ * either a duplicate or, combined with the service-worker scope clash, no
+ * notification at all. Sending data-only means the service worker's
+ * onBackgroundMessage ALWAYS fires exactly once and renders a single,
+ * branded notification with full control over the icon + click target.
+ *
+ * All display fields therefore travel in `data` (FCM requires every data
+ * value to be a string), and the click URL is normalised to an absolute
+ * HTTPS link the service worker reads from `click_action` / `url`.
  */
 function buildMessage(payload: PushNotificationPayload, target: { token: string } | { topic: string }): Record<string, unknown> {
-  const data: Record<string, string> = { ...(payload.data ?? {}) };
-  if (payload.link) data['click_action'] = payload.link;
+  const link = toAbsoluteLink(payload.link);
+  const data: Record<string, string> = {
+    ...(payload.data ?? {}),
+    title: payload.title,
+    body: payload.body,
+    ...(link ? { click_action: link, url: link } : {}),
+    ...(payload.imageUrl ? { image: payload.imageUrl } : {}),
+  };
   return {
     ...target,
-    notification: {
-      title: payload.title,
-      body: payload.body,
-      ...(payload.imageUrl ? { imageUrl: payload.imageUrl } : {}),
-    },
     data,
-    webpush: payload.link
-      ? { fcmOptions: { link: payload.link } }
-      : undefined,
+    // High urgency + 1-day TTL so time-sensitive nudges (streak at risk,
+    // today's current affairs) are delivered promptly rather than coalesced.
+    webpush: { headers: { Urgency: 'high', TTL: '86400' } },
   };
 }
 
