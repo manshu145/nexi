@@ -33,6 +33,12 @@ const envSchema = z.object({
   // The default is intentionally weak so local dev works out-of-the-box, but
   // Cloud Run deployments MUST set CRON_SECRET via env var or Secret Manager.
   CRON_SECRET: z.string().optional().default('nexigrate-cron-2026-dev-only'),
+  // Mailbox: base inbound address users reply to. Per-thread replies use
+  // plus-addressing (support+<threadId>@domain) routed via Resend Inbound.
+  MAILBOX_INBOUND_ADDRESS: z.string().optional().default('support@nexigrate.com'),
+  // Shared secret for verifying Resend webhooks (delivery + inbound). Passed
+  // as ?token=... on the webhook URL. Falls back to CRON_SECRET if unset.
+  RESEND_WEBHOOK_SECRET: z.string().optional().default(''),
   // Weekly content freshness: cached AI chapter content older than this many
   // days is considered stale. It is served instantly (no user wait) but
   // regenerated in the background, and the weekly cron proactively refreshes

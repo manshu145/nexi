@@ -45,6 +45,8 @@ export interface StoredUser { id: string; email: string; name: string; phone: st
 export interface MeResponse { user: StoredUser; dailyStreak: { streak: number; creditsEarned: number }; }
 export interface MCQOption { key: 'A'|'B'|'C'|'D'; text: string; }
 export interface GeneratedMCQ { id: string; question: string; options: MCQOption[]; correctOption: 'A'|'B'|'C'|'D'; explanation: string; difficulty: 'easy'|'medium'|'hard'; subject?: string; topic?: string; }
+export interface MailboxMessage { id: string; direction: 'inbound'|'outbound'; from: string; to: string; subject: string; text: string; html?: string; status?: string; authorAdminEmail?: string; createdAt: string; }
+export interface MailboxThread { id: string; participantEmail: string; participantName?: string; subject: string; status: 'open'|'closed'; unreadByAdmin: boolean; lastMessageAt: string; lastDirection: 'inbound'|'outbound'; preview: string; createdAt: string; }
 export interface ExamEvent { name: string; date: string | null; estimatedMonth: string; isConfirmed: boolean; sourceUrl: string; registrationStart: string | null; registrationEnd: string | null; }
 export interface ExamDates { examSlug: string; examName: string; events: ExamEvent[]; lastUpdated: string | null; }
 export interface PersonalOption { value: string; label: string; labelHi: string; }
@@ -142,6 +144,24 @@ export const api = {
     })).json() as Promise<{questions:GeneratedMCQ[]}>;
   },
   async submitMultiStageAssessment(stage1: {questions:GeneratedMCQ[]; answers:{questionId:string;chosen:string|null}[]}, stage2: {questions:GeneratedMCQ[]; answers:{questionId:string;chosen:string|null}[]}, stage3: {questions:GeneratedMCQ[]; answers:{questionId:string;chosen:string|null}[]}) { return (await authedFetch('/v1/assessment/submit', { method: 'POST', body: JSON.stringify({ multiStage: true, stage1, stage2, stage3 }) })).json() as Promise<AssessmentResult>; },
+
+  // ─── Admin mailbox (two-way email conversations) ────────────────────────
+  async getMailboxThreads(status?: 'open'|'closed') {
+    const q = status ? `?status=${status}` : '';
+    return (await authedFetch(`/v1/mailbox/threads${q}`)).json() as Promise<{ threads: MailboxThread[]; unreadCount: number }>;
+  },
+  async getMailboxThread(id: string) {
+    return (await authedFetch(`/v1/mailbox/threads/${encodeURIComponent(id)}`)).json() as Promise<{ thread: MailboxThread; messages: MailboxMessage[] }>;
+  },
+  async mailboxReply(id: string, text: string) {
+    return (await authedFetch(`/v1/mailbox/threads/${encodeURIComponent(id)}/reply`, { method: 'POST', body: JSON.stringify({ text }) })).json() as Promise<{ message: MailboxMessage }>;
+  },
+  async setMailboxThreadStatus(id: string, status: 'open'|'closed') {
+    return (await authedFetch(`/v1/mailbox/threads/${encodeURIComponent(id)}/status`, { method: 'POST', body: JSON.stringify({ status }) })).json() as Promise<{ success: boolean }>;
+  },
+  async mailboxCompose(input: { to: string; name?: string; subject: string; text: string }) {
+    return (await authedFetch('/v1/mailbox/compose', { method: 'POST', body: JSON.stringify(input) })).json() as Promise<{ thread: MailboxThread }>;
+  },
 
   // ─── Exam calendar ──────────────────────────────────────────────────────
   async getExamDates() {

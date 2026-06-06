@@ -38,6 +38,8 @@ import { FirestoreTeamInviteStore, InMemoryTeamInviteStore, type TeamInviteStore
 import { makePublicRoutes } from './routes/public.js';
 import { makeMockTestRoutes } from './routes/mockTests.js';
 import { FirestorePYQStore, InMemoryPYQStore, type PYQStore } from './lib/pyqStore.js';
+import { FirestoreEmailThreadStore, InMemoryEmailThreadStore, type EmailThreadStore } from './lib/emailThreadStore.js';
+import { makeMailboxRoutes } from './routes/mailbox.js';
 import { FirestoreNotificationStore, InMemoryNotificationStore, type NotificationStore } from './lib/notificationStore.js';
 import { makeNotificationRoutes } from './routes/notifications.js';
 import { notifyUser } from './lib/notificationService.js';
@@ -70,6 +72,7 @@ export function buildApp(deps: AppDeps): Hono {
   const config = deps.config ?? (fs ? new FirestorePlatformConfigStore(fs, logger) : new InMemoryPlatformConfigStore());
   const mockTests = deps.mockTests ?? (fs ? new FirestoreMockTestStore(fs) : new InMemoryMockTestStore());
   const pyq = deps.pyq ?? (fs ? new FirestorePYQStore(fs) : new InMemoryPYQStore());
+  const emailThreads: EmailThreadStore = fs ? new FirestoreEmailThreadStore(fs) : new InMemoryEmailThreadStore();
   const notifications: NotificationStore = fs ? new FirestoreNotificationStore(fs) : new InMemoryNotificationStore();
   const examDates: ExamDatesStore = fs ? new FirestoreExamDatesStore(fs) : new InMemoryExamDatesStore();
   const blog = deps.blog ?? (fs ? new FirestoreBlogStore(fs) : new InMemoryBlogStore());
@@ -202,6 +205,92 @@ export function buildApp(deps: AppDeps): Hono {
     const result = await ingestCurrentAffairs(currentAffairs, env, logger, aiEngine, modelResolver);
     await currentAffairs.setLastIngestedAt(new Date().toISOString());
     return c.json({ success: true, ...result });
+  });
+
+  // Webhook — Resend INBOUND email (user replies → mailbox threads).
+  // Configure in Resend: domain inbound routing → this URL with ?token=.
+  // Reply-To uses support+<threadId>@domain so we can route replies to the
+  // exact thread; falls back to matching the sender's email.
+  app.post('/v1/webhooks/resend-inbound', async (c) => {
+    const token = c.req.query('token');
+    const expected = env.RESEND_WEBHOOK_SECRET || env.CRON_SECRET;
+    if (token !== expected) return c.json({ error: 'unauthorized' }, 401);
+    try {
+      const body = await c.req.json().catch(() => ({}));
+      const d = (body?.data ?? body) as Record<string, unknown>;
+      const fromRaw = d.from as unknown;
+      const fromEmail = typeof fromRaw === 'string'
+        ? (fromRaw.match(/<([^>]+)>/)?.[1] ?? fromRaw).trim()
+        : ((fromRaw as { address?: string } | undefined)?.address ?? '').trim();
+      const toList = Array.isArray(d.to) ? d.to : (d.to ? [d.to] : []);
+      const toStr = toList.map((t) => (typeof t === 'string' ? t : (t as { address?: string })?.address ?? '')).join(',');
+      const subject = String(d.subject ?? '(no subject)');
+      const text = String(d.text ?? (d as { stripped_text?: string }).stripped_text ?? '');
+      const html = typeof d.html === 'string' ? d.html : undefined;
+      const headers = (d.headers ?? {}) as Record<string, string>;
+      const inboundMsgId = headers['message-id'] || headers['Message-ID'];
+
+      if (!fromEmail) { logger.warn('mailbox.inbound_no_from'); return c.json({ ok: true }); }
+
+      // Resolve thread: plus-token in the to-address → else open thread by sender → else new.
+      const tokenMatch = toStr.match(/\+([A-Za-z0-9_]+)@/);
+      let threadId = tokenMatch?.[1];
+      if (threadId) {
+        const exists = await emailThreads.getThread(threadId);
+        if (!exists) threadId = undefined;
+      }
+      if (!threadId) {
+        const open = await emailThreads.findOpenThreadByEmail(fromEmail);
+        if (open) threadId = open.id;
+      }
+      if (!threadId) {
+        const created = await emailThreads.createThread({ participantEmail: fromEmail, subject });
+        threadId = created.id;
+      }
+      await emailThreads.appendMessage(threadId, {
+        direction: 'inbound', from: fromEmail, to: toStr, subject, text,
+        ...(html ? { html } : {}), ...(inboundMsgId ? { messageId: inboundMsgId } : {}),
+      });
+      logger.info('mailbox.inbound_received', { threadId, from: fromEmail });
+      return c.json({ ok: true, threadId });
+    } catch (err) {
+      logger.error('mailbox.inbound_error', { error: err instanceof Error ? err.message : String(err) });
+      return c.json({ ok: false }, 200); // 200 so Resend doesn't endlessly retry
+    }
+  });
+
+  // Webhook — Resend DELIVERY events (delivered/opened/clicked/bounced) for
+  // analytics + per-message status in the mailbox.
+  app.post('/v1/webhooks/resend', async (c) => {
+    const token = c.req.query('token');
+    const expected = env.RESEND_WEBHOOK_SECRET || env.CRON_SECRET;
+    if (token !== expected) return c.json({ error: 'unauthorized' }, 401);
+    try {
+      const body = await c.req.json().catch(() => ({}));
+      const type = String(body?.type ?? '');
+      const data = (body?.data ?? {}) as { email_id?: string; to?: unknown };
+      const messageId = data.email_id;
+      const statusMap: Record<string, 'delivered' | 'opened' | 'clicked' | 'bounced'> = {
+        'email.delivered': 'delivered',
+        'email.opened': 'opened',
+        'email.clicked': 'clicked',
+        'email.bounced': 'bounced',
+      };
+      const status = statusMap[type];
+      if (messageId && status) {
+        await emailThreads.updateMessageStatusByMessageId(messageId, status);
+      }
+      // Append to emailEvents for analytics (best-effort).
+      if (fs && type) {
+        await fs.collection('emailEvents').add({
+          type, messageId: messageId ?? null, createdAt: new Date().toISOString(),
+        }).catch(() => {});
+      }
+      return c.json({ ok: true });
+    } catch (err) {
+      logger.error('mailbox.delivery_webhook_error', { error: err instanceof Error ? err.message : String(err) });
+      return c.json({ ok: false }, 200);
+    }
   });
 
   // Cron endpoint — weekly content refresh (Cloud Scheduler: weekly).
@@ -395,6 +484,7 @@ export function buildApp(deps: AppDeps): Hono {
   v1.route('/essay', makeEssayRoutes({ users, aiEngine, logger, db: fs, config, usage: featureUsage }));
   v1.route('/mock-tests', makeMockTestRoutes({ users, aiEngine, mockTests, ledger, config, logger }));
   v1.route('/pyq', makePYQRoutes({ users, aiEngine, pyq, logger }));
+  v1.route('/mailbox', makeMailboxRoutes({ threads: emailThreads, users, env, logger, serviceKeys }));
   v1.route('/notifications', makeNotificationRoutes({ notifications, logger }));
   v1.route('/exams', makeExamRoutes({ examDates, users, env, logger }));
 

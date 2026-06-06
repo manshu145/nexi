@@ -12,6 +12,13 @@ export interface EmailService {
   sendPaymentSuccess(to: string, name: string, plan: string, expiresAt: string, amount: number): Promise<boolean>;
   sendCancellationConfirmation(to: string, name: string, plan: string, expiresAt: string): Promise<boolean>;
   sendCustom(to: string, subject: string, htmlBody: string): Promise<boolean>;
+  /**
+   * Send a threaded conversation email. Sets a per-thread Reply-To
+   * (support+<threadId>@…) so the user's reply lands back on the right
+   * thread via the inbound webhook, plus optional In-Reply-To/References
+   * headers for native email threading. Returns the provider message id.
+   */
+  sendThreaded(to: string, subject: string, htmlBody: string, opts: { replyTo: string; inReplyTo?: string }): Promise<{ success: boolean; id?: string }>;
 }
 
 function baseTemplate(content: string): string {
@@ -214,6 +221,36 @@ export function createEmailService(env: Env, logger: Logger, serviceKeys?: Servi
 
     async sendCustom(to, subject, htmlBody) {
       return sendBoolean(to, subject, htmlBody, 'custom');
+    },
+
+    async sendThreaded(to, subject, htmlBody, opts) {
+      const cfg = await resolveResend(serviceKeys, env, logger);
+      if (!cfg) return { success: false };
+      try {
+        const FROM = `${cfg.fromName} <${cfg.fromEmail}>`;
+        const headers: Record<string, string> = {};
+        if (opts.inReplyTo) { headers['In-Reply-To'] = opts.inReplyTo; headers['References'] = opts.inReplyTo; }
+        const res = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${cfg.apiKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            from: FROM, to: [to], subject, html: htmlBody,
+            reply_to: opts.replyTo,
+            ...(Object.keys(headers).length ? { headers } : {}),
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.text().catch(() => '');
+          logger.error('email.thread_send_failed', { to, subject, status: res.status, error: err.slice(0, 200) });
+          return { success: false };
+        }
+        const data = (await res.json()) as { id?: string };
+        logger.info('email.thread_sent', { to, subject, id: data.id });
+        return { success: true, id: data.id };
+      } catch (err) {
+        logger.error('email.thread_send_error', { to, subject, error: err instanceof Error ? err.message : String(err) });
+        return { success: false };
+      }
     },
   };
 }
