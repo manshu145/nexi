@@ -85,6 +85,20 @@ export interface CompleteResult { progress: StudyProgress; nextChapter: string |
 export const api = {
   async me(): Promise<MeResponse> { return (await authedFetch('/v1/users/me')).json() as Promise<MeResponse>; },
   async recordPwaInstall(): Promise<void> { await authedFetch('/v1/users/me/pwa-install', { method: 'POST', body: JSON.stringify({}) }); },
+
+  // ─── In-app notifications ───────────────────────────────────────────────
+  async getNotifications() {
+    return (await authedFetch('/v1/notifications')).json() as Promise<{
+      notifications: Array<{ id: string; type: string; title: string; body: string; link?: string; isRead: boolean; createdAt: string }>;
+      unreadCount: number;
+    }>;
+  },
+  async markNotificationRead(id: string): Promise<void> {
+    await authedFetch(`/v1/notifications/${encodeURIComponent(id)}/read`, { method: 'POST', body: JSON.stringify({}) });
+  },
+  async markAllNotificationsRead(): Promise<void> {
+    await authedFetch('/v1/notifications/read-all', { method: 'POST', body: JSON.stringify({}) });
+  },
   async updateProfile(data: Record<string, unknown>) { return (await authedFetch('/v1/users/me', { method: 'PATCH', body: JSON.stringify(data) })).json() as Promise<{user:StoredUser}>; },
   async saveOnboarding(data: Record<string, unknown>) { return (await authedFetch('/v1/users/me/onboarding', { method: 'POST', body: JSON.stringify(data) })).json() as Promise<{user:StoredUser}>; },
   async markPlanChosen(chosenPlan: 'free'|'scholar'|'aspirant'|'achiever') {

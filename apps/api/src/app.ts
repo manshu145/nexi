@@ -38,6 +38,9 @@ import { FirestoreTeamInviteStore, InMemoryTeamInviteStore, type TeamInviteStore
 import { makePublicRoutes } from './routes/public.js';
 import { makeMockTestRoutes } from './routes/mockTests.js';
 import { FirestorePYQStore, InMemoryPYQStore, type PYQStore } from './lib/pyqStore.js';
+import { FirestoreNotificationStore, InMemoryNotificationStore, type NotificationStore } from './lib/notificationStore.js';
+import { makeNotificationRoutes } from './routes/notifications.js';
+import { notifyUser } from './lib/notificationService.js';
 import { FirestoreExamDatesStore, InMemoryExamDatesStore, type ExamDatesStore } from './lib/examDatesStore.js';
 import { makeExamRoutes } from './routes/exams.js';
 import { makePYQRoutes } from './routes/pyq.js';
@@ -67,6 +70,7 @@ export function buildApp(deps: AppDeps): Hono {
   const config = deps.config ?? (fs ? new FirestorePlatformConfigStore(fs, logger) : new InMemoryPlatformConfigStore());
   const mockTests = deps.mockTests ?? (fs ? new FirestoreMockTestStore(fs) : new InMemoryMockTestStore());
   const pyq = deps.pyq ?? (fs ? new FirestorePYQStore(fs) : new InMemoryPYQStore());
+  const notifications: NotificationStore = fs ? new FirestoreNotificationStore(fs) : new InMemoryNotificationStore();
   const examDates: ExamDatesStore = fs ? new FirestoreExamDatesStore(fs) : new InMemoryExamDatesStore();
   const blog = deps.blog ?? (fs ? new FirestoreBlogStore(fs) : new InMemoryBlogStore());
   // PR-37: Razorpay / Resend / WhatsApp / FCM keys come from this store
@@ -263,6 +267,15 @@ export function buildApp(deps: AppDeps): Hono {
             (u.language as 'en' | 'hi') ?? 'en',
           );
           if (success) sent++;
+          // Also drop an in-app inbox notification (+ push) so users who
+          // didn't grant email but use the app still get nudged.
+          await notifyUser({ notifications, users, push, logger }, doc.id, {
+            type: 'streak',
+            title: `🔥 ${u.currentStreak ?? 0}-day streak at risk!`,
+            body: 'Study a little today to keep your streak alive.',
+            link: '/dashboard',
+            dedupeKey: 'streak-reminder',
+          }, { push: true });
         }
       }
       logger.info('cron.streak_check_done', { sent, skipped });
@@ -270,6 +283,44 @@ export function buildApp(deps: AppDeps): Hono {
     } catch (err) {
       logger.error('cron.streak_check_error', { error: err instanceof Error ? err.message : String(err) });
       return c.json({ success: false, error: 'Streak check failed' }, 500);
+    }
+  });
+
+  // Cron endpoint — daily current-affairs digest (Cloud Scheduler: daily 7am IST).
+  // Drops a single in-app notification (+ push) about fresh current affairs to
+  // recently-active users. Bounded + deduped (once/day) so it stays cheap and
+  // never spams. This is the main "come back daily" retention nudge.
+  app.post('/v1/notifications/daily-digest', async (c) => {
+    const cronSecret = c.req.header('x-cron-secret');
+    if (cronSecret !== env.CRON_SECRET) {
+      return c.json({ error: 'unauthorized' }, 401);
+    }
+    logger.info('cron.daily_digest_start');
+    let notified = 0;
+    try {
+      if (fs) {
+        // Active in the last 7 days = worth nudging; cap the batch for cost.
+        const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
+        const snap = await fs.collection('users')
+          .where('lastDailyAt', '>=', since)
+          .limit(1000)
+          .get();
+        for (const doc of snap.docs) {
+          const ok = await notifyUser({ notifications, users, push, logger }, doc.id, {
+            type: 'current_affairs',
+            title: "📰 Today's current affairs are ready",
+            body: 'Fresh headlines + a quick quiz are waiting. Keep your prep current!',
+            link: '/current-affairs',
+            dedupeKey: 'current-affairs-daily',
+          }, { push: true });
+          if (ok) notified++;
+        }
+      }
+      logger.info('cron.daily_digest_done', { notified });
+      return c.json({ success: true, notified });
+    } catch (err) {
+      logger.error('cron.daily_digest_error', { error: err instanceof Error ? err.message : String(err) });
+      return c.json({ success: false, error: 'Daily digest failed' }, 500);
     }
   });
 
@@ -344,6 +395,7 @@ export function buildApp(deps: AppDeps): Hono {
   v1.route('/essay', makeEssayRoutes({ users, aiEngine, logger, db: fs, config, usage: featureUsage }));
   v1.route('/mock-tests', makeMockTestRoutes({ users, aiEngine, mockTests, ledger, config, logger }));
   v1.route('/pyq', makePYQRoutes({ users, aiEngine, pyq, logger }));
+  v1.route('/notifications', makeNotificationRoutes({ notifications, logger }));
   v1.route('/exams', makeExamRoutes({ examDates, users, env, logger }));
 
   // (POST /v1/logs/error and GET /v1/branding are now mounted on the
