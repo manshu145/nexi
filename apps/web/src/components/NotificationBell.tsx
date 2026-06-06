@@ -123,7 +123,7 @@ export function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 z-50 mt-2 w-80 max-w-[90vw] overflow-hidden rounded-xl border border-line bg-paper-50 shadow-xl">
+        <div className="fixed inset-x-3 top-16 z-50 overflow-hidden rounded-xl border border-line bg-paper-50 shadow-xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-80">
           <div className="flex items-center justify-between border-b border-line px-4 py-3">
             <p className="text-sm font-semibold text-ink-900">Notifications</p>
             {unread > 0 && <button onClick={markAll} className="text-xs text-ember-600 hover:underline">Mark all read</button>}

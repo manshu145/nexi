@@ -137,7 +137,9 @@ export default function PlanSelectionPage() {
   // the admin marks them isActive in /admin/plans (or comingSoon for
   // disabled-but-teased tiers).
   const visiblePlans = useMemo(() => {
-    const order: PlanId[] = ['free', 'scholar', 'aspirant', 'achiever'];
+    // Cheapest paid plan first, Free last — nudges users toward a paid tier
+    // instead of defaulting their eye to Free at the top.
+    const order: PlanId[] = ['scholar', 'aspirant', 'achiever', 'free'];
     return order
       .map((id) => plans.find((p) => p.id === id))
       .filter((p): p is Plan => !!p)

@@ -447,7 +447,7 @@ function ChatPage() {
       {/* Main chat area */}
       <main className="flex flex-1 flex-col min-w-0 h-dvh bg-paper-100">
         {/* Header with model indicator */}
-        <header className="flex items-center gap-3 border-b border-line px-4 py-3 bg-paper-50">
+        <header className="flex flex-shrink-0 items-center gap-3 border-b border-line px-4 py-3 bg-paper-50">
           <button onClick={() => setSidebarOpen(true)} className="btn-ghost-sm md:hidden" aria-label="Open sidebar">&#x2630;</button>
           <div className="flex items-center gap-2 min-w-0 flex-1">
             <h1 className="font-serif text-lg font-semibold text-ink-900 truncate">Nexi AI</h1>
@@ -488,7 +488,7 @@ function ChatPage() {
         </header>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-3 sm:px-4 lg:px-6 py-6 space-y-4 scroll-smooth">
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 sm:px-4 lg:px-6 py-6 space-y-4 scroll-smooth">
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center h-full text-center px-4 animate-fadeIn">
               <div className="w-14 h-14 rounded-2xl bg-gold-500/10 flex items-center justify-center animate-pulse">
@@ -637,7 +637,7 @@ function ChatPage() {
         )}
 
         {/* Quick action bar + Input area */}
-        <div className="border-t border-line p-2 sm:p-3 bg-paper-50/95 backdrop-blur-sm">
+        <div className="flex-shrink-0 border-t border-line p-2 sm:p-3 bg-paper-50/95 backdrop-blur-sm pb-[max(0.5rem,env(safe-area-inset-bottom))]">
           {/* Quick action buttons row */}
           <div className="mx-auto max-w-2xl mb-2 flex items-center gap-2 overflow-x-auto scrollbar-hide pb-0.5">
             <button
@@ -674,11 +674,11 @@ function ChatPage() {
           </div>
 
           {/* Input row */}
-          <div className="mx-auto max-w-2xl relative flex items-end gap-2">
+          <div className="mx-auto max-w-2xl relative flex items-end gap-1.5 sm:gap-2">
             {/* Attachment button */}
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="flex-shrink-0 h-10 w-10 rounded-xl border border-line bg-paper-100 flex items-center justify-center text-muted-500 hover:text-ink-900 hover:bg-paper-200 hover:border-muted-400 transition-all duration-150 active:scale-95"
+              className="flex-shrink-0 h-10 w-9 sm:w-10 rounded-xl border border-line bg-paper-100 flex items-center justify-center text-muted-500 hover:text-ink-900 hover:bg-paper-200 hover:border-muted-400 transition-all duration-150 active:scale-95"
               title="Attach image or file"
             >
               <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
@@ -686,7 +686,7 @@ function ChatPage() {
             {/* Camera button — snap a doubt (mobile opens the camera) */}
             <button
               onClick={() => cameraInputRef.current?.click()}
-              className="flex-shrink-0 h-10 w-10 rounded-xl border border-line bg-paper-100 flex items-center justify-center text-muted-500 hover:text-ink-900 hover:bg-paper-200 hover:border-muted-400 transition-all duration-150 active:scale-95"
+              className="flex-shrink-0 h-10 w-9 sm:w-10 rounded-xl border border-line bg-paper-100 flex items-center justify-center text-muted-500 hover:text-ink-900 hover:bg-paper-200 hover:border-muted-400 transition-all duration-150 active:scale-95"
               title="Snap a photo of your doubt"
             >
               <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
