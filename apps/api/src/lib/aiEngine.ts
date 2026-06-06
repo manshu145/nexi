@@ -40,11 +40,17 @@ export interface AIEngine {
    * few REAL questions came back it throws so the route can refund.
    */
   generateMockTest(examSlug: string, language: 'en' | 'hi', opts?: { easy?: number; medium?: number; hard?: number }): Promise<GeneratedMCQ[]>;
-  generateStage1Questions(examSlug: string, language: 'en' | 'hi'): Promise<GeneratedMCQ[]>;
+  generateStage1Questions(examSlug: string, language: 'en' | 'hi', count?: number): Promise<GeneratedMCQ[]>;
   generateStage2Questions(examSlug: string, language: 'en' | 'hi', stage1Results: StageResults): Promise<GeneratedMCQ[]>;
   generateStage3Questions(examSlug: string, language: 'en' | 'hi', stage1Results: StageResults, stage2Results: StageResults): Promise<GeneratedMCQ[]>;
   scoreAssessment(questions: GeneratedMCQ[], answers: { questionId: string; chosen: string | null }[]): Promise<AssessmentResult>;
   scoreMultiStageAssessment(stage1: StageResults, stage2: StageResults, stage3: StageResults): Promise<AssessmentResult>;
+  /**
+   * Score the redesigned assessment: 15 exam MCQs + 5 reasoning MCQs.
+   * Level is weighted 75% exam knowledge / 25% reasoning capacity; weak +
+   * strong areas come from the exam questions' subject breakdown.
+   */
+  scoreAssessmentV2(examResults: StageResults, reasoningResults: StageResults): Promise<AssessmentResult>;
   generateChapterContent(chapter: string, subject: string, exam: string, language: 'en' | 'hi', userContext?: UserContext): Promise<string>;
   generateChapterMCQs(chapter: string, subject: string, exam: string, language: 'en' | 'hi', count?: number, seed?: string, chapterContent?: string, userLevel?: 'beginner' | 'intermediate' | 'advanced'): Promise<GeneratedMCQ[]>;
   generateMermaidDiagram(chapter: string, subject: string, exam: string): Promise<string>;
@@ -869,18 +875,18 @@ export function createAIEngine(
       return all;
     },
 
-    async generateStage1Questions(examSlug, language = 'en') {
+    async generateStage1Questions(examSlug, language = 'en', count = 15) {
       const langInstr = language === 'hi' ? 'Generate all questions and options in Hindi (Devanagari script).' : 'Generate all questions and options in English.';
       const buildPrompt = (n: number, batchIdx: number) => {
         const subjectGuidance = `Based on the exam "${examSlug}", generate questions covering the OFFICIAL SYLLABUS subjects:\n- If exam is UPSC/upsc-cse: test History + Geography + Polity + Economy + Science\n- If exam is NEET/neet-ug: test Physics + Chemistry + Biology\n- If exam is JEE/jee-main: test Physics + Chemistry + Mathematics\n- If exam is SSC CGL/ssc-cgl or Banking: test Reasoning + Quant + GK + English\n- If exam is Class 10/class-10-cbse or Class 12/class-12-cbse: test Math + Science + Social Science + English\n- If exam is IT/Python/Web Dev/Data Science/digital-marketing/tally-accounting: test relevant technical topics proportionally\n- For any other exam: identify its core subjects and distribute questions proportionally`;
         return `${JSON_ONLY_PREFIX}You are an expert Indian competitive exam question creator.\n\nGenerate exactly ${n} MCQs for "${examSlug}" exam — Stage 1 Core Subjects assessment${batchIdx > 0 ? ` (continuation batch ${batchIdx + 1})` : ''}.\n${langInstr}\n\n${subjectGuidance}\n\nRequirements:\n- Mix of easy and medium difficulty\n- 4 options (A-D), correct answer, brief explanation\n- MUST include subject and topic fields for each question\n- Questions must be relevant to the SPECIFIC exam syllabus\n\nRespond ONLY with JSON:\n{"questions":[{"id":"s1-q1","question":"...","options":[{"key":"A","text":"..."},{"key":"B","text":"..."},{"key":"C","text":"..."},{"key":"D","text":"..."}],"correctOption":"A","explanation":"...","difficulty":"medium","subject":"history","topic":"modern-india"}]}`;
       };
-      // 10 questions → fallback: 2 batches of 5. Single-shot fast-path stays.
+      // 15 questions → fallback: 3 batches of 5. Single-shot fast-path stays.
       try {
-        return await _generateQuestionsBatched(buildPrompt, 10, 2, 'generateStage1Questions', examSlug, language, 's1');
+        return await _generateQuestionsBatched(buildPrompt, count, Math.max(1, Math.ceil(count / 5)), 'generateStage1Questions', examSlug, language, 's1');
       } catch (err) {
         logger.error('ai.assessment_static_fallback', { endpoint: 'generateStage1Questions', examSlug, language, error: err instanceof Error ? err.message.slice(0, 200) : String(err) });
-        return getFallbackQuestions({ language: language === 'hi' ? 'hi' : 'en', count: 10, idPrefix: 's1', offset: 0 });
+        return getFallbackQuestions({ language: language === 'hi' ? 'hi' : 'en', count, idPrefix: 's1', offset: 0 });
       }
     },
 
@@ -1005,6 +1011,66 @@ export function createAIEngine(
         total: totalQuestions,
         level,
         message: `You scored ${totalCorrect}/${totalQuestions} (${totalPct.toFixed(0)}%). Level: ${level}. Let's personalize your learning!`,
+        messageHi: `आपने ${totalCorrect}/${totalQuestions} अंक प्राप्त किए (${totalPct.toFixed(0)}%)। स्तर: ${level}। चलिए आपकी पढ़ाई को व्यक्तिगत बनाते हैं!`,
+        weakAreas,
+        strongAreas,
+      };
+    },
+
+    async scoreAssessmentV2(examResults, reasoningResults) {
+      const scoreStage = (sr: StageResults) => {
+        let correct = 0;
+        for (const a of sr.answers) {
+          const q = sr.questions.find(qq => qq.id === a.questionId);
+          if (q && a.chosen === q.correctOption) correct++;
+        }
+        return { correct, total: sr.questions.length, pct: sr.questions.length > 0 ? (correct / sr.questions.length) * 100 : 0 };
+      };
+
+      const exam = scoreStage(examResults);
+      const reasoning = scoreStage(reasoningResults);
+
+      // Exam knowledge weighted 75%, reasoning capacity 25%.
+      const totalPct = (exam.pct * 0.75) + (reasoning.pct * 0.25);
+      const totalCorrect = exam.correct + reasoning.correct;
+      const totalQuestions = exam.total + reasoning.total;
+      const level: 'beginner' | 'intermediate' | 'advanced' = totalPct > 70 ? 'advanced' : totalPct >= 40 ? 'intermediate' : 'beginner';
+
+      // Weak/strong areas from the exam questions' subjects.
+      const subjectScores: Record<string, { correct: number; total: number }> = {};
+      for (const q of examResults.questions) {
+        const subj = q.subject ?? 'general';
+        if (!subjectScores[subj]) subjectScores[subj] = { correct: 0, total: 0 };
+        subjectScores[subj]!.total++;
+        const ans = examResults.answers.find(a => a.questionId === q.id);
+        if (ans && ans.chosen === q.correctOption) subjectScores[subj]!.correct++;
+      }
+      const weakAreas: string[] = [];
+      const strongAreas: string[] = [];
+      for (const [subj, sc] of Object.entries(subjectScores)) {
+        const pct = sc.total > 0 ? (sc.correct / sc.total) * 100 : 0;
+        if (pct < 40) weakAreas.push(subj);
+        else if (pct > 70) strongAreas.push(subj);
+      }
+
+      try {
+        const prompt = `A student finished an onboarding assessment for an Indian competitive exam.\nExam-knowledge: ${exam.correct}/${exam.total} (${exam.pct.toFixed(0)}%). Reasoning: ${reasoning.correct}/${reasoning.total} (${reasoning.pct.toFixed(0)}%).\nLevel assigned: ${level}. Weak: ${weakAreas.join(', ') || 'none'}. Strong: ${strongAreas.join(', ') || 'none'}.\nWrite a short encouraging message. Respond ONLY JSON:\n{"message":"English (2-3 sentences)","messageHi":"Hindi Devanagari (2-3 sentences)"}`;
+        if (openai) {
+          const completion = await oaCreate({ messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 300, response_format: { type: 'json_object' } });
+          const parsed = JSON.parse(completion.choices[0]?.message?.content ?? '{}') as { message: string; messageHi: string };
+          if (parsed.message) {
+            return { score: totalCorrect, total: totalQuestions, level, message: parsed.message, messageHi: parsed.messageHi, weakAreas, strongAreas };
+          }
+        }
+      } catch (err) {
+        logger.error('ai.score_v2_error', { error: err instanceof Error ? err.message : String(err) });
+      }
+
+      return {
+        score: totalCorrect,
+        total: totalQuestions,
+        level,
+        message: `You scored ${totalCorrect}/${totalQuestions} (${totalPct.toFixed(0)}%). Level: ${level}. Let's personalise your learning!`,
         messageHi: `आपने ${totalCorrect}/${totalQuestions} अंक प्राप्त किए (${totalPct.toFixed(0)}%)। स्तर: ${level}। चलिए आपकी पढ़ाई को व्यक्तिगत बनाते हैं!`,
         weakAreas,
         strongAreas,
