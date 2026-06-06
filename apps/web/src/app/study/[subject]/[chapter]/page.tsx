@@ -637,6 +637,9 @@ export default function KindleReaderPage() {
           <button onClick={() => router.push(`/chat?topic=${encodeURIComponent(chapterName)}&context=${encodeURIComponent((pages[currentPage] ?? '').slice(0, 300))}`)} className="tts-btn" title="Ask Nexi AI about this">
             🤖
           </button>
+          <button onClick={() => router.push(`/study/${subject}/${chapter}/flashcards`)} className="tts-btn" title="Revise with flashcards">
+            🃏
+          </button>
           {currentPage === pages.length - 1 ? (
             <button onClick={() => router.push(`/study/${subject}/${chapter}/quiz`)} style={{ backgroundColor: 'var(--color-ember-500)', color: 'var(--color-paper-50)', borderColor: 'var(--color-ember-500)' }}>Take Quiz →</button>
           ) : (
