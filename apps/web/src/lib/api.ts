@@ -337,6 +337,7 @@ export const api = {
       startedAt: string; durationMinutes: number; submittedAt: string|null;
       total: number; score: number|null; percentage: number|null;
       subjectBreakdown: Record<string, { correct: number; total: number }>|null;
+      wrongCount?: number|null; netMarks?: number|null; negativeMarkPerWrong?: number;
       questions: Array<{ id: string; question: string; options: { key: 'A'|'B'|'C'|'D'; text: string }[]; difficulty?: string; subject?: string; topic?: string; correctOption?: 'A'|'B'|'C'|'D'; explanation?: string }>;
       answers?: Record<string, 'A'|'B'|'C'|'D'|null>;
       creditCost: number;
@@ -348,6 +349,7 @@ export const api = {
     })).json() as Promise<{
       id: string; score: number; total: number; percentage: number;
       subjectBreakdown: Record<string, { correct: number; total: number }>;
+      wrongCount?: number; netMarks?: number; negativeMarkPerWrong?: number;
       submittedAt: string;
       questions: Array<{ id: string; question: string; options: { key: 'A'|'B'|'C'|'D'; text: string }[]; correctOption: 'A'|'B'|'C'|'D'; explanation: string; difficulty?: string; subject?: string; topic?: string }>;
       answers: Record<string, 'A'|'B'|'C'|'D'|null>;
