@@ -41,14 +41,46 @@ export default function ChapterQuizPage() {
   const [answers, setAnswers] = useState<Map<string, string | null>>(new Map());
   const [timer, setTimer] = useState(45);
   const [error, setError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [timeUp, setTimeUp] = useState(false);
   const [result, setResult] = useState<{ score: number; total: number; passed: boolean; creditsAwarded: number; nextChapter: string | null } | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const restoredRef = useRef(false);
+  const autoRetriedRef = useRef(false);
+
+  // sessionStorage key for this chapter's in-progress quiz. Persisting the
+  // generated questions (not just answers) means a refresh / accidental
+  // back-navigation resumes the SAME quiz instead of regenerating it (which
+  // would lose answers AND burn AI tokens). Stamped with a 2-hour TTL.
+  const storageKey = `nexigrate-quiz:${subject}:${chapter}`;
+  const QUIZ_TTL_MS = 2 * 60 * 60 * 1000;
 
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
 
   useEffect(() => {
     if (!user || !me) return;
+    if (restoredRef.current) return;
+    restoredRef.current = true;
     (async () => {
+      // 1. Try to resume an in-progress quiz from sessionStorage (survives
+      //    refresh / tab-close without regenerating questions or losing answers).
+      try {
+        const raw = sessionStorage.getItem(storageKey);
+        if (raw) {
+          const saved = JSON.parse(raw) as { questions: GeneratedMCQ[]; answers: [string, string | null][]; idx: number; ts: number };
+          if (saved.questions?.length && Date.now() - (saved.ts ?? 0) < QUIZ_TTL_MS) {
+            setQuestions(saved.questions);
+            setAnswers(new Map(saved.answers ?? []));
+            setIdx(Math.min(saved.idx ?? 0, saved.questions.length - 1));
+            setPhase('quiz');
+            setTimer(45);
+            return;
+          }
+          sessionStorage.removeItem(storageKey); // stale
+        }
+      } catch { /* corrupt snapshot — fall through to fetch */ }
+
+      // 2. Fresh fetch.
       try {
         const exam = me.targetExam ?? 'jee-main';
         const lang = getLanguageFromCookie();
@@ -70,10 +102,22 @@ export default function ChapterQuizPage() {
         }
       }
     })();
-  }, [user, me, subject, chapter]);
+  }, [user, me, subject, chapter, storageKey]);
+
+  // Persist in-progress quiz (questions + answers + position) so a refresh
+  // resumes instead of regenerating. Cleared on successful submit.
+  useEffect(() => {
+    if (phase !== 'quiz' || questions.length === 0) return;
+    try {
+      sessionStorage.setItem(storageKey, JSON.stringify({
+        questions, answers: Array.from(answers.entries()), idx, ts: Date.now(),
+      }));
+    } catch { /* quota — ignore */ }
+  }, [phase, questions, answers, idx, storageKey]);
 
   const submitQuiz = useCallback(async () => {
     if (timerRef.current) clearInterval(timerRef.current);
+    setSubmitError(null);
     setPhase('submitting');
     try {
       const exam = me?.targetExam ?? 'jee-main';
@@ -84,14 +128,32 @@ export default function ChapterQuizPage() {
       }
       const score = Math.round((correct / questions.length) * 100);
       const res = await api.completeChapter(exam, subject, chapter, score);
+      // Success — clear the saved in-progress quiz.
+      try { sessionStorage.removeItem(storageKey); } catch { /* ignore */ }
+      autoRetriedRef.current = false;
       // Pull the updated credit balance / streak into the shared store so
       // dashboard / level / leaderboard pages see the awarded credits
       // without each running their own /me fetch (Pattern C from PR-32).
       void refresh();
       setResult({ score, total: questions.length, passed: res.passed, creditsAwarded: res.creditsAwarded, nextChapter: res.nextChapter });
       setPhase('result');
-    } catch (e) { setError(e instanceof Error ? e.message : 'Failed to submit'); setPhase('quiz'); }
-  }, [questions, answers, subject, chapter, me, refresh]);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Failed to submit';
+      // One automatic retry after a short delay for transient network blips
+      // before bothering the user — their answers are safe in state + storage.
+      if (!autoRetriedRef.current && /failed to fetch|network|timeout|503/i.test(msg)) {
+        autoRetriedRef.current = true;
+        setTimeout(() => { void submitQuiz(); }, 2000);
+        return;
+      }
+      setSubmitError(
+        /failed to fetch|network/i.test(msg)
+          ? 'Network error while submitting. Your answers are saved — tap "Submit again" to retry.'
+          : `Could not submit: ${msg}. Your answers are saved — tap "Submit again".`,
+      );
+      setPhase('quiz');
+    }
+  }, [questions, answers, subject, chapter, me, refresh, storageKey]);
 
   const handleNext = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -102,10 +164,25 @@ export default function ChapterQuizPage() {
   useEffect(() => {
     if (phase !== 'quiz') return;
     timerRef.current = setInterval(() => {
-      setTimer(p => { if (p <= 1) { handleNext(); return 45; } return p - 1; });
+      setTimer(p => {
+        if (p <= 1) {
+          // On the LAST question we do NOT auto-submit — a flaky-network
+          // auto-submit is how answers got lost. Stop the timer and let the
+          // user tap Submit (their answers persist). Earlier questions still
+          // auto-advance so the timed quiz keeps moving.
+          if (idx >= questions.length - 1) {
+            if (timerRef.current) clearInterval(timerRef.current);
+            setTimeUp(true);
+            return 0;
+          }
+          handleNext();
+          return 45;
+        }
+        return p - 1;
+      });
     }, 1000);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [phase, idx, handleNext]);
+  }, [phase, idx, handleNext, questions.length]);
 
   if (loading || !user) return <main className="flex min-h-dvh items-center justify-center"><AILoader context="quiz" /></main>;
 
@@ -228,6 +305,19 @@ export default function ChapterQuizPage() {
           <div key={i} className={`h-2 w-2 rounded-full ${i === idx ? 'bg-ember-500' : answers.get(questions[i]?.id ?? '') ? 'bg-gold-500' : 'bg-paper-300'}`} />
         ))}
       </div>
+
+      {/* Submit error / time-up banners — answers are preserved either way */}
+      {submitError && (
+        <div role="alert" className="mt-4 rounded-lg border border-ember-500/40 bg-ember-500/5 p-3">
+          <p className="text-xs text-ink-900">{submitError}</p>
+          <button onClick={() => void submitQuiz()} className="btn-primary mt-2 w-full">Submit again</button>
+        </div>
+      )}
+      {timeUp && !submitError && (
+        <div className="mt-4 rounded-lg border border-gold-500/40 bg-gold-500/5 p-3">
+          <p className="text-xs text-ink-900">Time&apos;s up! Review your answers and tap Submit when ready — nothing is lost.</p>
+        </div>
+      )}
 
       {/* Question card */}
       <div className="paper-card mt-6 p-5">

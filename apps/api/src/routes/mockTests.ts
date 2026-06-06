@@ -63,12 +63,16 @@ const submitSchema = z.object({
 });
 
 /**
- * Default config — 30 questions in 30 minutes is the standard SSC / banking
- * mock test format and gives us a clean MVP. Larger formats (UPSC prelims
- * = 100 q in 2h) ship later as preset packs.
+ * Default config — a 50-question, 60-minute mock test split into difficulty
+ * sections (20 easy + 20 medium + 10 hard), with negative marking, matching
+ * real competitive-exam patterns. Callers can still override via the request.
  */
-const DEFAULT_QUESTION_COUNT = 30;
-const DEFAULT_DURATION_MINUTES = 30;
+const DEFAULT_QUESTION_COUNT = 50;
+const DEFAULT_DURATION_MINUTES = 60;
+/** Marks deducted per wrong (non-skipped) answer. */
+const NEGATIVE_MARK_PER_WRONG = 0.25;
+/** Section sizes for the default 50-question mock test. */
+const MOCK_SECTIONS = { easy: 20, medium: 20, hard: 10 } as const;
 
 export function makeMockTestRoutes(deps: MockTestRoutesDeps): Hono {
   const app = new Hono();
@@ -122,9 +126,18 @@ export function makeMockTestRoutes(deps: MockTestRoutesDeps): Hono {
     //    only working provider, but the caller never sees that.
     let questions: GeneratedMCQ[];
     try {
-      questions = await deps.aiEngine.generateAssessmentQuestions(examSlug, language, questionCount);
-      // Lock §3.8 PR-25: ~$0.05 for a 30q test (uses generateAssessmentQuestions
-      // which multi-batches internally via PR-18; cost stays bounded).
+      // Section-based generation (20 easy + 20 medium + 10 hard for the
+      // default 50q test). For a custom questionCount we keep the same
+      // 40/40/20 split so the difficulty curve is consistent.
+      const sections = parsed.data.questionCount
+        ? {
+            easy: Math.round(questionCount * 0.4),
+            medium: Math.round(questionCount * 0.4),
+            hard: questionCount - Math.round(questionCount * 0.4) * 2,
+          }
+        : { ...MOCK_SECTIONS };
+      questions = await deps.aiEngine.generateMockTest(examSlug, language, sections);
+      // Lock §3.8: bounded cost — generateMockTest batches internally.
       await deps.aiEngine.recordAICost(principal.userId, 0.05);
       if (!questions || questions.length === 0) {
         throw new Error('AI returned 0 questions');
@@ -171,6 +184,7 @@ export function makeMockTestRoutes(deps: MockTestRoutesDeps): Hono {
       percentage: null,
       subjectBreakdown: null,
       creditCost: cost,
+      negativeMarkPerWrong: NEGATIVE_MARK_PER_WRONG,
     };
     await deps.mockTests.create(attempt);
 
@@ -188,6 +202,7 @@ export function makeMockTestRoutes(deps: MockTestRoutesDeps): Hono {
       startedAt: attempt.startedAt,
       questions: stripAnswers(questions),
       creditCost: cost,
+      negativeMarkPerWrong: NEGATIVE_MARK_PER_WRONG,
     });
   });
 
@@ -219,6 +234,9 @@ export function makeMockTestRoutes(deps: MockTestRoutesDeps): Hono {
       score: attempt.score,
       percentage: attempt.percentage,
       subjectBreakdown: attempt.subjectBreakdown,
+      wrongCount: attempt.wrongCount ?? null,
+      netMarks: attempt.netMarks ?? null,
+      negativeMarkPerWrong: attempt.negativeMarkPerWrong ?? 0,
       questions: isComplete ? attempt.questions : stripAnswers(attempt.questions),
       answers: isComplete ? attempt.answers : undefined,
       creditCost: attempt.creditCost,
@@ -260,18 +278,26 @@ export function makeMockTestRoutes(deps: MockTestRoutesDeps): Hono {
 
     // Score + per-subject breakdown.
     let correct = 0;
+    let wrong = 0;
     const subjectBreakdown: Record<string, { correct: number; total: number }> = {};
     for (const q of attempt.questions) {
       const subj = q.subject ?? 'general';
       if (!subjectBreakdown[subj]) subjectBreakdown[subj] = { correct: 0, total: 0 };
       subjectBreakdown[subj].total++;
-      if (answersMap[q.id] === q.correctOption) {
+      const chosen = answersMap[q.id];
+      if (chosen === q.correctOption) {
         correct++;
         subjectBreakdown[subj].correct++;
+      } else if (chosen !== null && chosen !== undefined) {
+        wrong++; // answered but incorrect → negative marking applies
       }
     }
     const total = attempt.questions.length;
     const percentage = total > 0 ? Math.round((correct / total) * 100) : 0;
+    const negPerWrong = attempt.negativeMarkPerWrong ?? 0;
+    // Net marks after negative marking, floored at 0 (exams never report
+    // a negative total to the candidate). Rounded to 2 dp.
+    const netMarks = Math.max(0, Math.round((correct - wrong * negPerWrong) * 100) / 100);
     const now = new Date().toISOString();
 
     const updated = await deps.mockTests.update(id, {
@@ -281,11 +307,13 @@ export function makeMockTestRoutes(deps: MockTestRoutesDeps): Hono {
       score: correct,
       percentage,
       subjectBreakdown,
+      wrongCount: wrong,
+      netMarks,
     });
 
     deps.logger.info('mock_test.submitted', {
       userId: principal.userId, attemptId: id, examSlug: attempt.examSlug,
-      score: correct, total, percentage,
+      score: correct, total, percentage, wrong, netMarks,
     });
 
     return c.json({
@@ -294,6 +322,9 @@ export function makeMockTestRoutes(deps: MockTestRoutesDeps): Hono {
       total,
       percentage,
       subjectBreakdown,
+      wrongCount: wrong,
+      netMarks,
+      negativeMarkPerWrong: negPerWrong,
       submittedAt: updated.submittedAt,
       // Full payload so the result page can render explanations without a second round-trip.
       questions: updated.questions,

@@ -4,67 +4,67 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { useUser } from '~/lib/userStore';
-import { api, type GeneratedMCQ } from '~/lib/api';
+import { api, type GeneratedMCQ, type PersonalQuestion } from '~/lib/api';
 import { AILoader } from '~/components/ui/AILoader';
 
-type Phase = 'intro' | 'quiz' | 'stage-transition' | 'submitting' | 'error';
-type Stage = 1 | 2 | 3;
+/**
+ * Redesigned onboarding assessment (25 questions, 3 stages):
+ *   Stage 1 — 5 PERSONAL questions (friendly form, NOT scored). They tell
+ *             the AI who the student is so chapters + study plan can be
+ *             personalised.
+ *   Stage 2 — 15 EXAM-specific MCQs (timed 45s each, scored).
+ *   Stage 3 — 5 LOGICAL-REASONING MCQs (timed 60s each, scored).
+ *
+ * Resilience:
+ *   - 90s AbortController ceiling on each AI generation call.
+ *   - Progress is persisted to sessionStorage after every step so an
+ *     accidental refresh / tab-close resumes instead of regenerating
+ *     (and re-charging AI tokens for) questions already answered. (S9)
+ */
 
-interface StageData {
-  questions: GeneratedMCQ[];
-  answers: Map<string, string | null>;
+type Phase = 'intro' | 'personal' | 'exam' | 'transition' | 'reasoning' | 'submitting' | 'error';
+
+const EXAM_TIMER = 45;
+const REASONING_TIMER = 60;
+const TOTAL = 25; // 5 personal + 15 exam + 5 reasoning
+const STORAGE_KEY = 'nexigrate-assessment-v2';
+
+interface Snapshot {
+  phase: Phase;
+  personalAnswers: Record<string, string>;
+  examQ: GeneratedMCQ[];
+  examA: Record<string, string | null>;
+  reasoningQ: GeneratedMCQ[];
+  reasoningA: Record<string, string | null>;
+  idx: number;
 }
-
-const STAGE_LABELS: Record<Stage, { en: string; hi: string }> = {
-  1: { en: 'Core Knowledge', hi: 'मूल ज्ञान' },
-  2: { en: 'Difficulty Calibration', hi: 'कठिनाई जांच' },
-  3: { en: 'Weak Area Deep Dive', hi: 'कमजोर क्षेत्र गहन परीक्षण' },
-};
-
-const STAGE_INTROS: Record<Stage, { en: string; hi: string }> = {
-  1: { en: 'Let\'s start with questions across core subjects to understand your current level.', hi: 'आइए आपके वर्तमान स्तर को समझने के लिए मूल विषयों के प्रश्नों से शुरू करते हैं।' },
-  2: { en: 'Based on your answers, here are more targeted questions to precisely determine your level...', hi: 'आपके उत्तरों के आधार पर, आपके स्तर को सटीक रूप से निर्धारित करने के लिए और प्रश्न...' },
-  3: { en: 'Let\'s explore your weak areas more deeply to personalize your learning...', hi: 'आइए आपकी पढ़ाई को व्यक्तिगत बनाने के लिए कमजोर क्षेत्रों को गहराई से समझते हैं...' },
-};
-
-const TOTAL_QUESTIONS = 23; // 10 + 8 + 5
 
 export default function AssessmentPage() {
   const t = useTranslations('onboarding.assessment');
   const ts = useTranslations('onboarding');
   const tc = useTranslations('common');
   const router = useRouter();
-  // PR-32: read the exam slug from the shared user store. The page used
-  // to fire api.me() three separate times (once per stage) — replaced
-  // with a single source of truth that's already in memory.
   const { user: me } = useUser();
+
   const [phase, setPhase] = useState<Phase>('intro');
-  const [currentStage, setCurrentStage] = useState<Stage>(1);
-  const [stageData, setStageData] = useState<Record<Stage, StageData>>({
-    1: { questions: [], answers: new Map() },
-    2: { questions: [], answers: new Map() },
-    3: { questions: [], answers: new Map() },
-  });
+  const [personalQuestions, setPersonalQuestions] = useState<PersonalQuestion[]>([]);
+  const [personalAnswers, setPersonalAnswers] = useState<Record<string, string>>({});
+  const [examQ, setExamQ] = useState<GeneratedMCQ[]>([]);
+  const [examA, setExamA] = useState<Record<string, string | null>>({});
+  const [reasoningQ, setReasoningQ] = useState<GeneratedMCQ[]>([]);
+  const [reasoningA, setReasoningA] = useState<Record<string, string | null>>({});
   const [idx, setIdx] = useState(0);
-  const [timer, setTimer] = useState(45);
+  const [timer, setTimer] = useState(EXAM_TIMER);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const lang = useRef<'en' | 'hi'>('en');
-  // PR-34b (audit #66): 90-second client-side ceiling on the stage
-  // generation calls. Same pattern PR-32 used for mock-tests:
-  //   - AbortController scoped per stage call
-  //   - window.setTimeout fires .abort() after 90 s
-  //   - on abort the error phase shows a "took longer than 90 s" copy
-  //     with a Retry button that re-fires the same load.
-  // We track the current controller in a ref so an unmount mid-call
-  // cleans up correctly (page navigation must NOT leave a fetch hanging).
-  const abortRef = useRef<AbortController | null>(null);
-  // Remembers which load to re-fire from the error-phase Retry button.
-  // null = retry intro (start), 1/2/3 = retry that stage's load.
-  const lastFailedRef = useRef<null | 'start' | 2 | 3>(null);
 
-  // Get language on mount
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const restoredRef = useRef(false);
+  const lang = useRef<'en' | 'hi'>('en');
+  const hi = lang.current === 'hi';
+
+  // Language detection (cookie → localStorage).
   useEffect(() => {
     if (typeof document !== 'undefined') {
       const m = document.cookie.match(/nexigrate-language=(en|hi)/);
@@ -76,312 +76,288 @@ export default function AssessmentPage() {
     }
   }, []);
 
-  const currentQuestions = stageData[currentStage].questions;
-  const currentAnswers = stageData[currentStage].answers;
-  const currentQuestion = currentQuestions[idx];
+  // ── sessionStorage persistence (S9) ──────────────────────────────────
+  // Restore once on mount.
+  useEffect(() => {
+    if (restoredRef.current) return;
+    restoredRef.current = true;
+    try {
+      const raw = sessionStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const s = JSON.parse(raw) as Snapshot;
+      // Only resume mid-flow states that have real content.
+      if (s.phase === 'exam' && s.examQ?.length) {
+        setPersonalAnswers(s.personalAnswers ?? {});
+        setExamQ(s.examQ); setExamA(s.examA ?? {});
+        setIdx(s.idx ?? 0); setTimer(EXAM_TIMER); setPhase('exam');
+      } else if (s.phase === 'reasoning' && s.reasoningQ?.length) {
+        setPersonalAnswers(s.personalAnswers ?? {});
+        setExamQ(s.examQ ?? []); setExamA(s.examA ?? {});
+        setReasoningQ(s.reasoningQ); setReasoningA(s.reasoningA ?? {});
+        setIdx(s.idx ?? 0); setTimer(REASONING_TIMER); setPhase('reasoning');
+      } else if (s.phase === 'personal' && Object.keys(s.personalAnswers ?? {}).length) {
+        setPersonalAnswers(s.personalAnswers);
+      }
+    } catch { /* ignore corrupt snapshot */ }
+  }, []);
 
-  // Calculate global progress (across all stages)
-  const questionsAnsweredBefore = (currentStage === 1 ? 0 : currentStage === 2 ? 10 : 18);
-  const globalProgress = questionsAnsweredBefore + idx;
-  const progressPct = Math.round((globalProgress / TOTAL_QUESTIONS) * 100);
+  // Persist snapshot whenever meaningful state changes mid-flow.
+  useEffect(() => {
+    if (phase === 'intro' || phase === 'submitting' || phase === 'error') return;
+    const snap: Snapshot = { phase, personalAnswers, examQ, examA, reasoningQ, reasoningA, idx };
+    try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(snap)); } catch { /* quota — ignore */ }
+  }, [phase, personalAnswers, examQ, examA, reasoningQ, reasoningA, idx]);
 
-  /**
-   * Spin up an AbortController + 90s timeout pair for one stage call.
-   * Returns the signal to thread into the api method and a `done()`
-   * cleanup closure to call from finally so we don't leak the timer.
-   */
-  function makeStageTimeout(): { signal: AbortSignal; done: () => void } {
-    abortRef.current?.abort(); // cancel any in-flight stage if reload re-triggers
-    const controller = new AbortController();
-    abortRef.current = controller;
-    const timeoutId = window.setTimeout(() => controller.abort(), 90_000);
-    return {
-      signal: controller.signal,
-      done: () => { window.clearTimeout(timeoutId); if (abortRef.current === controller) abortRef.current = null; },
-    };
-  }
-
-  /** Cleanup any in-flight stage call on unmount so page-navigation
-   *  doesn't leave a fetch dangling. */
+  // Clean up in-flight generation on unmount.
   useEffect(() => () => { abortRef.current?.abort(); }, []);
 
-  const startAssessment = async () => {
-    setLoading(true); setError(null); setPhase('intro');
-    lastFailedRef.current = 'start';
-    const { signal, done } = makeStageTimeout();
+  function makeTimeout(): { signal: AbortSignal; done: () => void } {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const id = window.setTimeout(() => controller.abort(), 90_000);
+    return { signal: controller.signal, done: () => { window.clearTimeout(id); if (abortRef.current === controller) abortRef.current = null; } };
+  }
+
+  function failWith(err: unknown, fallback: string) {
+    const aborted = err instanceof DOMException && err.name === 'AbortError';
+    const msg = aborted ? 'Generation took longer than 90 seconds. Tap Retry to try again.' : (err instanceof Error ? err.message : fallback);
+    setError(msg); setPhase('error'); toast.error(msg);
+  }
+
+  // ── Stage loaders ────────────────────────────────────────────────────
+  const startPersonal = async () => {
+    setLoading(true); setError(null);
     try {
-      const exam = me?.targetExam ?? 'jee-main';
-      const res = await api.getStage1Questions(exam, lang.current, { signal });
-      done();
-      if (!res.questions || res.questions.length === 0) {
-        throw new Error('No questions received from AI. Service may be busy.');
-      }
-      setStageData(prev => ({ ...prev, 1: { questions: res.questions, answers: new Map() } }));
-      setCurrentStage(1);
-      setIdx(0);
-      setTimer(45);
-      setPhase('quiz');
-      lastFailedRef.current = null;
+      const res = await api.getPersonalQuestions();
+      setPersonalQuestions(res.questions);
+      setPhase('personal');
     } catch (err) {
-      done();
-      const aborted = err instanceof DOMException && err.name === 'AbortError';
-      const msg = aborted
-        ? 'Generation took longer than 90 seconds. Tap Retry to try again.'
-        : (err instanceof Error ? err.message : 'Failed to generate questions');
-      setError(msg);
-      setPhase('error');
-      toast.error(msg);
+      failWith(err, 'Could not load the assessment.');
     } finally { setLoading(false); }
   };
 
-  const loadStage2 = async () => {
-    setPhase('stage-transition');
-    lastFailedRef.current = 2;
-    const { signal, done } = makeStageTimeout();
+  const loadExam = async () => {
+    setPhase('transition');
+    const { signal, done } = makeTimeout();
     try {
       const exam = me?.targetExam ?? 'jee-main';
-      const stage1Results = {
-        questions: stageData[1].questions,
-        answers: Array.from(stageData[1].answers.entries()).map(([qId, chosen]) => ({ questionId: qId, chosen })),
-      };
-      const res = await api.getStage2Questions(exam, lang.current, stage1Results, { signal });
+      const res = await api.getExamAssessmentQuestions(exam, lang.current, { signal });
       done();
-      if (!res.questions || res.questions.length === 0) throw new Error('No Stage 2 questions received.');
-      setStageData(prev => ({ ...prev, 2: { questions: res.questions, answers: new Map() } }));
-      setCurrentStage(2);
-      setIdx(0);
-      setTimer(45);
-      setPhase('quiz');
-      lastFailedRef.current = null;
-    } catch (err) {
-      done();
-      const aborted = err instanceof DOMException && err.name === 'AbortError';
-      const msg = aborted
-        ? 'Generation took longer than 90 seconds. Tap Retry to try again.'
-        : (err instanceof Error ? err.message : 'Failed to generate Stage 2 questions');
-      setError(msg);
-      setPhase('error');
-      toast.error(msg);
-    }
+      if (!res.questions?.length) throw new Error('No exam questions received.');
+      setExamQ(res.questions); setExamA({}); setIdx(0); setTimer(EXAM_TIMER); setPhase('exam');
+    } catch (err) { done(); failWith(err, 'Failed to generate exam questions.'); }
   };
 
-  const loadStage3 = async () => {
-    setPhase('stage-transition');
-    lastFailedRef.current = 3;
-    const { signal, done } = makeStageTimeout();
+  const loadReasoning = async () => {
+    setPhase('transition');
+    const { signal, done } = makeTimeout();
     try {
-      const exam = me?.targetExam ?? 'jee-main';
-      const stage1Results = {
-        questions: stageData[1].questions,
-        answers: Array.from(stageData[1].answers.entries()).map(([qId, chosen]) => ({ questionId: qId, chosen })),
-      };
-      const stage2Results = {
-        questions: stageData[2].questions,
-        answers: Array.from(stageData[2].answers.entries()).map(([qId, chosen]) => ({ questionId: qId, chosen })),
-      };
-      const res = await api.getStage3Questions(exam, lang.current, stage1Results, stage2Results, { signal });
+      const res = await api.getReasoningAssessmentQuestions(lang.current, { signal });
       done();
-      if (!res.questions || res.questions.length === 0) throw new Error('No Stage 3 questions received.');
-      setStageData(prev => ({ ...prev, 3: { questions: res.questions, answers: new Map() } }));
-      setCurrentStage(3);
-      setIdx(0);
-      setTimer(45);
-      setPhase('quiz');
-      lastFailedRef.current = null;
-    } catch (err) {
-      done();
-      const aborted = err instanceof DOMException && err.name === 'AbortError';
-      const msg = aborted
-        ? 'Generation took longer than 90 seconds. Tap Retry to try again.'
-        : (err instanceof Error ? err.message : 'Failed to generate Stage 3 questions');
-      setError(msg);
-      setPhase('error');
-      toast.error(msg);
-    }
+      if (!res.questions?.length) throw new Error('No reasoning questions received.');
+      setReasoningQ(res.questions); setReasoningA({}); setIdx(0); setTimer(REASONING_TIMER); setPhase('reasoning');
+    } catch (err) { done(); failWith(err, 'Failed to generate reasoning questions.'); }
   };
 
-  /** Re-fire whichever load just failed so the Retry button does the
-   *  right thing without forcing the user back to the intro screen. */
   const handleRetry = () => {
-    const stage = lastFailedRef.current;
-    if (stage === 2) { void loadStage2(); return; }
-    if (stage === 3) { void loadStage3(); return; }
-    void startAssessment();
+    // Resume from the furthest-along stage we have content for.
+    if (reasoningQ.length === 0 && examQ.length > 0 && Object.keys(examA).length >= examQ.length) { void loadReasoning(); return; }
+    if (examQ.length === 0 && Object.keys(personalAnswers).length >= 5) { void loadExam(); return; }
+    if (personalQuestions.length === 0) { void startPersonal(); return; }
+    setPhase(examQ.length ? 'exam' : 'personal');
   };
 
-  const submitAssessment = useCallback(async () => {
+  const submit = useCallback(async () => {
     setPhase('submitting');
     try {
-      const toResults = (sd: StageData) => ({
-        questions: sd.questions,
-        answers: Array.from(sd.answers.entries()).map(([qId, chosen]) => ({ questionId: qId, chosen })),
-      });
-      const result = await api.submitMultiStageAssessment(
-        toResults(stageData[1]),
-        toResults(stageData[2]),
-        toResults(stageData[3]),
-      );
+      const examResults = { questions: examQ, answers: Object.entries(examA).map(([questionId, chosen]) => ({ questionId, chosen })) };
+      const reasoningResults = { questions: reasoningQ, answers: Object.entries(reasoningA).map(([questionId, chosen]) => ({ questionId, chosen })) };
+      const result = await api.submitAssessmentV2(personalAnswers, examResults, reasoningResults);
       sessionStorage.setItem('nexigrate-assessment-result', JSON.stringify(result));
+      sessionStorage.removeItem(STORAGE_KEY);
       router.push('/onboarding/complete');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Submit failed');
-      setPhase('quiz');
+      setPhase('reasoning');
     }
-  }, [stageData, router]);
+  }, [examQ, examA, reasoningQ, reasoningA, personalAnswers, router]);
 
-  const handleNext = useCallback(() => {
+  // ── Active quiz stage helpers ─────────────────────────────────────────
+  const isExam = phase === 'exam';
+  const questions = isExam ? examQ : reasoningQ;
+  const answers = isExam ? examA : reasoningA;
+  const setAnswers = isExam ? setExamA : setReasoningA;
+  const currentQuestion = questions[idx];
+
+  const answeredBefore = isExam ? 5 : 20; // personal(5) [+ exam(15)]
+  const globalProgress = answeredBefore + idx;
+  const progressPct = Math.round((globalProgress / TOTAL) * 100);
+
+  const advance = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
-
-    const isLastInStage = idx >= currentQuestions.length - 1;
-
-    if (isLastInStage) {
-      // Move to next stage or submit
-      if (currentStage === 1) loadStage2();
-      else if (currentStage === 2) loadStage3();
-      else submitAssessment();
+    const last = idx >= questions.length - 1;
+    if (last) {
+      if (isExam) void loadReasoning();
+      else void submit();
     } else {
       setIdx((i) => i + 1);
-      setTimer(45);
+      setTimer(isExam ? EXAM_TIMER : REASONING_TIMER);
     }
-  }, [idx, currentQuestions.length, currentStage, submitAssessment]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idx, questions.length, isExam, submit]);
 
-  // Timer effect
+  // Timer for quiz stages.
   useEffect(() => {
-    if (phase !== 'quiz') return;
+    if (phase !== 'exam' && phase !== 'reasoning') return;
     timerRef.current = setInterval(() => {
-      setTimer((p) => {
-        if (p <= 1) { handleNext(); return 45; }
-        return p - 1;
-      });
+      setTimer((p) => { if (p <= 1) { advance(); return isExam ? EXAM_TIMER : REASONING_TIMER; } return p - 1; });
     }, 1000);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [phase, idx, currentStage, handleNext]);
+  }, [phase, idx, advance, isExam]);
 
   const selectAnswer = (key: string) => {
-    setStageData(prev => {
-      const stage = prev[currentStage];
-      const newAnswers = new Map(stage.answers);
-      newAnswers.set(currentQuestions[idx]!.id, key);
-      return { ...prev, [currentStage]: { ...stage, answers: newAnswers } };
-    });
+    if (!currentQuestion) return;
+    setAnswers((prev) => ({ ...prev, [currentQuestion.id]: key }));
   };
 
-  // INTRO phase
-  if (phase === 'intro') return (
-    <div className="flex flex-col items-center">
+  // ── Onboarding step header (shared) ───────────────────────────────────
+  const StepHeader = () => (
+    <>
       <div className="pill">{ts('step', { current: 4, total: 5 })}</div>
       <div className="mt-4 flex w-full max-w-xs gap-1">{[1, 2, 3, 4, 5].map(s => <div key={s} className={`h-1.5 flex-1 rounded-full ${s <= 4 ? 'bg-ember-500' : 'bg-paper-300'}`} />)}</div>
+    </>
+  );
+
+  // ── INTRO ─────────────────────────────────────────────────────────────
+  if (phase === 'intro') return (
+    <div className="flex flex-col items-center">
+      <StepHeader />
       <h1 className="font-serif mt-8 text-center text-2xl font-semibold text-ink-900">{t('title')}</h1>
       <p className="mt-2 text-center text-sm text-muted-500">{t('subtitle')}</p>
       <div className="paper-card mt-8 w-full p-5">
-        <p className="text-sm text-ink-800 leading-relaxed">{t('description')}</p>
+        <p className="text-sm text-ink-800 leading-relaxed">
+          {hi ? 'यह 25-प्रश्नों का आकलन हमें आपको समझने में मदद करता है ताकि हम आपके लिए सही स्तर के चैप्टर बना सकें।' : 'This 25-question assessment helps us understand you so we can build chapters at the right level for you.'}
+        </p>
         <div className="mt-4 space-y-2">
-          <div className="flex items-center gap-2 text-xs text-muted-500">
-            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-100 text-amber-700 text-[10px] font-bold">1</span>
-            <span>Core Knowledge — 10 questions across all subjects</span>
-          </div>
-          <div className="flex items-center gap-2 text-xs text-muted-500">
-            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-100 text-amber-700 text-[10px] font-bold">2</span>
-            <span>Difficulty Calibration — 8 targeted questions</span>
-          </div>
-          <div className="flex items-center gap-2 text-xs text-muted-500">
-            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-100 text-amber-700 text-[10px] font-bold">3</span>
-            <span>Weak Area Deep Dive — 5 personalization questions</span>
-          </div>
+          {[
+            hi ? '5 निजी सवाल — आपको जानने के लिए (स्कोर नहीं)' : '5 personal questions — to know you (not scored)',
+            hi ? '15 परीक्षा सवाल — आपका स्तर जाँचने के लिए' : '15 exam questions — to gauge your level',
+            hi ? '5 तर्कशक्ति सवाल — सीखने की क्षमता' : '5 reasoning questions — learning ability',
+          ].map((txt, i) => (
+            <div key={i} className="flex items-center gap-2 text-xs text-muted-500">
+              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-ember-500/10 text-[10px] font-bold text-ember-600">{i + 1}</span>
+              <span>{txt}</span>
+            </div>
+          ))}
         </div>
       </div>
-      <button type="button" onClick={startAssessment} disabled={loading} className="btn-primary mt-6 w-full">
+      <button type="button" onClick={startPersonal} disabled={loading} className="btn-primary mt-6 w-full">
         {loading ? tc('loading') : t('startButton')}
       </button>
     </div>
   );
 
-  // ERROR phase
+  // ── ERROR ───────────────────────────────────────────────────────────────
   if (phase === 'error') return (
     <div className="flex flex-col items-center">
-      <div className="pill">{ts('step', { current: 4, total: 5 })}</div>
-      <div className="mt-4 flex w-full max-w-xs gap-1">{[1, 2, 3, 4, 5].map(s => <div key={s} className={`h-1.5 flex-1 rounded-full ${s <= 4 ? 'bg-ember-500' : 'bg-paper-300'}`} />)}</div>
+      <StepHeader />
       <div className="mt-12 text-center">
         <span className="text-4xl">⚠️</span>
-        <h2 className="font-serif mt-4 text-xl font-semibold text-ink-900">Assessment could not be generated</h2>
+        <h2 className="font-serif mt-4 text-xl font-semibold text-ink-900">{hi ? 'आकलन तैयार नहीं हो सका' : 'Assessment could not be generated'}</h2>
         <div className="banner banner-error mt-4">{error}</div>
-        <p className="mt-3 text-xs text-muted-500">AI service may be busy. Try again in a moment.</p>
+        <p className="mt-3 text-xs text-muted-500">{hi ? 'AI सेवा व्यस्त हो सकती है। एक पल में दोबारा कोशिश करें।' : 'AI service may be busy. Try again in a moment.'}</p>
       </div>
-      <div className="mt-8 flex w-full flex-col gap-3">
-        <button type="button" onClick={handleRetry} className="btn-primary w-full">Retry Assessment</button>
-      </div>
+      <button type="button" onClick={handleRetry} className="btn-primary mt-8 w-full">{hi ? 'पुनः प्रयास करें' : 'Retry'}</button>
     </div>
   );
 
-  // STAGE TRANSITION phase — loading next stage
-  if (phase === 'stage-transition') return (
+  // ── PERSONAL (form, no timer) ─────────────────────────────────────────
+  if (phase === 'personal') {
+    const allAnswered = personalQuestions.length > 0 && personalQuestions.every(q => personalAnswers[q.field]);
+    return (
+      <div className="flex flex-col items-center">
+        <StepHeader />
+        <h1 className="font-serif mt-6 text-center text-xl font-semibold text-ink-900">{hi ? 'पहले, आपको थोड़ा जान लें' : 'First, help us know you'}</h1>
+        <p className="mt-1 text-center text-xs text-muted-500">{hi ? 'इनका कोई सही/गलत जवाब नहीं है — ये आपकी पढ़ाई को आपके अनुसार बनाते हैं।' : 'No right or wrong answers — these tailor your learning to you.'}</p>
+        <div className="mt-6 w-full space-y-4">
+          {personalQuestions.map((q, qi) => (
+            <div key={q.id} className="paper-card p-4">
+              <p className="text-sm font-medium text-ink-900"><span className="text-muted-400">{qi + 1}.</span> {hi ? q.questionHi : q.question}</p>
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {q.options.map(opt => {
+                  const chosen = personalAnswers[q.field] === opt.value;
+                  return (
+                    <button key={opt.value} type="button"
+                      onClick={() => setPersonalAnswers(prev => ({ ...prev, [q.field]: opt.value }))}
+                      className={`rounded-lg border px-3 py-2.5 text-left text-sm transition-colors ${chosen ? 'border-ember-500 bg-ember-500/10 text-ink-900' : 'border-line bg-paper-50 text-ink-800 hover:border-ember-500/40'}`}>
+                      {hi ? opt.labelHi : opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+        <button type="button" onClick={() => void loadExam()} disabled={!allAnswered} className="btn-primary mt-6 w-full disabled:opacity-50">
+          {allAnswered ? (hi ? 'आगे बढ़ें →' : 'Continue →') : (hi ? 'सभी सवालों के जवाब दें' : 'Answer all questions')}
+        </button>
+      </div>
+    );
+  }
+
+  // ── TRANSITION ────────────────────────────────────────────────────────
+  if (phase === 'transition') return (
     <div className="flex min-h-[40vh] flex-col items-center justify-center">
       <AILoader context="assessment" />
-      <p className="mt-4 text-sm font-medium text-ink-800">Calculating next questions...</p>
-      <p className="mt-2 text-xs text-muted-500">
-        {currentStage === 1
-          ? 'Analyzing your core knowledge to calibrate difficulty...'
-          : 'Identifying weak areas for deeper assessment...'}
-      </p>
-      {/* Progress bar */}
+      <p className="mt-4 text-sm font-medium text-ink-800">{hi ? 'अगले सवाल तैयार हो रहे हैं…' : 'Preparing your questions…'}</p>
       <div className="mt-6 w-full max-w-xs">
         <div className="h-2 w-full overflow-hidden rounded-full bg-paper-200">
-          <div className="h-full rounded-full bg-amber-500 transition-all duration-500" style={{ width: `${progressPct}%` }} />
+          <div className="h-full rounded-full bg-ember-500 transition-all duration-500" style={{ width: `${progressPct}%` }} />
         </div>
-        <p className="mt-1 text-center text-[10px] text-muted-400">{globalProgress}/{TOTAL_QUESTIONS} questions completed</p>
       </div>
     </div>
   );
 
-  // SUBMITTING phase
+  // ── SUBMITTING ────────────────────────────────────────────────────────
   if (phase === 'submitting') return (
     <div className="flex min-h-[40vh] flex-col items-center justify-center">
       <AILoader context="assessment" />
       <p className="mt-4 text-sm text-muted-500">{t('submitting')}</p>
-      <p className="mt-2 text-xs text-muted-400">Personalizing your learning experience...</p>
+      <p className="mt-2 text-xs text-muted-400">{hi ? 'आपका अनुभव व्यक्तिगत बनाया जा रहा है…' : 'Personalizing your learning experience…'}</p>
     </div>
   );
 
-  // QUIZ phase
+  // ── QUIZ (exam / reasoning) ───────────────────────────────────────────
   if (!currentQuestion) return null;
-  const sel = currentAnswers.get(currentQuestion.id);
-  const stageLabel = STAGE_LABELS[currentStage];
-  const questionInStage = idx + 1;
-  const totalInStage = currentQuestions.length;
+  const sel = answers[currentQuestion.id];
+  const sectionLabel = isExam ? (hi ? 'परीक्षा ज्ञान' : 'Exam Knowledge') : (hi ? 'तर्कशक्ति' : 'Logical Reasoning');
+  const sectionNo = isExam ? 2 : 3;
 
   return (
     <div className="flex flex-col items-center">
-      {/* Onboarding progress */}
-      <div className="pill">{ts('step', { current: 4, total: 5 })}</div>
-      <div className="mt-4 flex w-full max-w-xs gap-1">{[1, 2, 3, 4, 5].map(s => <div key={s} className={`h-1.5 flex-1 rounded-full ${s <= 4 ? 'bg-ember-500' : 'bg-paper-300'}`} />)}</div>
-
-      {/* Stage indicator */}
+      <StepHeader />
       <div className="mt-4 flex w-full items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-amber-500 text-xs font-bold text-stone-900">{currentStage}</span>
-          <span className="text-xs font-medium text-ink-800">Stage {currentStage} of 3 — {lang.current === 'hi' ? stageLabel.hi : stageLabel.en}</span>
+          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-ember-500 text-xs font-bold text-paper-50">{sectionNo}</span>
+          <span className="text-xs font-medium text-ink-800">{hi ? `भाग ${sectionNo}/3 — ` : `Stage ${sectionNo} of 3 — `}{sectionLabel}</span>
         </div>
         <span className={`pill ${timer <= 10 ? 'pill-warn' : ''}`}>{t('timeLeft', { seconds: timer })}</span>
       </div>
 
-      {/* Global progress bar */}
       <div className="mt-3 w-full">
         <div className="h-2 w-full overflow-hidden rounded-full bg-paper-200">
-          <div className="h-full rounded-full bg-amber-500 transition-all duration-300" style={{ width: `${progressPct}%` }} />
+          <div className="h-full rounded-full bg-ember-500 transition-all duration-300" style={{ width: `${progressPct}%` }} />
         </div>
         <div className="mt-1 flex justify-between text-[10px] text-muted-400">
-          <span>Question {questionInStage}/{totalInStage} in this stage</span>
-          <span>{globalProgress + 1}/{TOTAL_QUESTIONS} overall</span>
+          <span>{hi ? `इस भाग में ${idx + 1}/${questions.length}` : `Question ${idx + 1}/${questions.length} in this stage`}</span>
+          <span>{globalProgress + 1}/{TOTAL} {hi ? 'कुल' : 'overall'}</span>
         </div>
       </div>
 
-      {/* Stage dots (question indicators within stage) */}
-      <div className="mt-3 flex w-full gap-1">{currentQuestions.map((_, i) => <div key={i} className={`h-2.5 w-2.5 rounded-full ${i < idx ? 'bg-amber-500' : i === idx ? 'bg-amber-500' : currentAnswers.get(currentQuestions[i]?.id ?? '') ? 'bg-amber-500/40' : 'bg-paper-300'}`} />)}</div>
-
-      {/* Question card */}
       <div className="paper-card mt-5 w-full p-5">
         {currentQuestion.subject && (
-          <span className="mb-2 inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+          <span className="mb-2 inline-block rounded-full bg-ember-500/10 px-2 py-0.5 text-[10px] font-medium text-ember-600">
             {currentQuestion.subject}{currentQuestion.topic ? ` • ${currentQuestion.topic}` : ''}
           </span>
         )}
@@ -396,12 +372,14 @@ export default function AssessmentPage() {
         </div>
       </div>
 
-      {/* Next button */}
-      <button type="button" onClick={handleNext} className="btn-primary mt-4 w-full">
-        {idx >= currentQuestions.length - 1
-          ? currentStage === 3 ? 'Submit Assessment' : `Next Stage →`
+      <button type="button" onClick={advance} className="btn-primary mt-4 w-full">
+        {idx >= questions.length - 1
+          ? (isExam ? (hi ? 'अगला भाग →' : 'Next Stage →') : (hi ? 'आकलन जमा करें' : 'Submit Assessment'))
           : tc('next')}
       </button>
+      {sel === undefined && (
+        <p className="mt-2 text-center text-[11px] text-muted-400">{hi ? 'बिना उत्तर छोड़ सकते हैं — कोई नकारात्मक अंक नहीं' : 'You can skip — no negative marking here'}</p>
+      )}
     </div>
   );
 }

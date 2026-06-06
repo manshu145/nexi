@@ -46,6 +46,7 @@ const NAV_ITEMS = [
   { label: 'Push', href: '/admin/push', icon: '🔔' },
   { label: 'News Feeds', href: '/admin/feeds', icon: '📡' },
   { label: 'PYQ Papers', href: '/admin/pyq', icon: '📄' },
+  { label: 'Exam Dates', href: '/admin/exam-dates', icon: '📅' },
   { label: 'AI & Logs', href: '/admin/logs', icon: '🤖' },
   { label: 'SEO & Branding', href: '/admin/seo', icon: '🔍' },
   { label: 'Announcements', href: '/admin/announcements', icon: '📢' },

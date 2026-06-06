@@ -41,6 +41,8 @@ import { FirestorePYQStore, InMemoryPYQStore, type PYQStore } from './lib/pyqSto
 import { FirestoreNotificationStore, InMemoryNotificationStore, type NotificationStore } from './lib/notificationStore.js';
 import { makeNotificationRoutes } from './routes/notifications.js';
 import { notifyUser } from './lib/notificationService.js';
+import { FirestoreExamDatesStore, InMemoryExamDatesStore, type ExamDatesStore } from './lib/examDatesStore.js';
+import { makeExamRoutes } from './routes/exams.js';
 import { makePYQRoutes } from './routes/pyq.js';
 
 export interface AppDeps { env: Env; logger: Logger; users?: UserStore; aiEngine?: AIEngine; chapters?: ChapterStore; currentAffairs?: CurrentAffairsStore; chatStore?: ChatStore; adminStore?: AdminStore; couponStore?: CouponStore; idempotency?: IdempotencyStore; ledger?: CreditLedger; config?: PlatformConfigStore; mockTests?: MockTestStore; pyq?: PYQStore; blog?: BlogStore; aiProviderStore?: AIProviderStore; modelResolver?: AIModelResolver; serviceKeys?: ServiceKeyStore; push?: PushService; teamInvites?: TeamInviteStore; }
@@ -69,6 +71,7 @@ export function buildApp(deps: AppDeps): Hono {
   const mockTests = deps.mockTests ?? (fs ? new FirestoreMockTestStore(fs) : new InMemoryMockTestStore());
   const pyq = deps.pyq ?? (fs ? new FirestorePYQStore(fs) : new InMemoryPYQStore());
   const notifications: NotificationStore = fs ? new FirestoreNotificationStore(fs) : new InMemoryNotificationStore();
+  const examDates: ExamDatesStore = fs ? new FirestoreExamDatesStore(fs) : new InMemoryExamDatesStore();
   const blog = deps.blog ?? (fs ? new FirestoreBlogStore(fs) : new InMemoryBlogStore());
   // PR-37: Razorpay / Resend / WhatsApp / FCM keys come from this store
   // first, env vars second. Mirrors the AI Providers pattern (PR-29) but
@@ -393,6 +396,7 @@ export function buildApp(deps: AppDeps): Hono {
   v1.route('/mock-tests', makeMockTestRoutes({ users, aiEngine, mockTests, ledger, config, logger }));
   v1.route('/pyq', makePYQRoutes({ users, aiEngine, pyq, logger }));
   v1.route('/notifications', makeNotificationRoutes({ notifications, logger }));
+  v1.route('/exams', makeExamRoutes({ examDates, users, env, logger }));
 
   // (POST /v1/logs/error and GET /v1/branding are now mounted on the
   // PUBLIC router via makePublicRoutes() above, so the front-end error
