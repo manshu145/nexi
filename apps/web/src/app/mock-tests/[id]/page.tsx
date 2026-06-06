@@ -28,6 +28,8 @@ import { useAuth } from '~/lib/auth-context';
 import { api } from '~/lib/api';
 import { track } from '~/lib/analytics';
 import { AILoader } from '~/components/ui/AILoader';
+import { ShareResultCard } from '~/components/ShareResultCard';
+import { EXAM_BY_SLUG } from '@nexigrate/shared';
 
 type Choice = 'A' | 'B' | 'C' | 'D' | null;
 interface Question {
@@ -431,6 +433,12 @@ function ResultView({
             Submitted {attempt.submittedAt ? new Date(attempt.submittedAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : ''}
           </p>
         </div>
+        <ShareResultCard
+          examName={EXAM_BY_SLUG.get(attempt.examSlug as never)?.name ?? 'My Exam'}
+          percentage={attempt.percentage ?? 0}
+          score={attempt.score ?? 0}
+          total={attempt.total}
+        />
       </section>
 
       {/* Subject breakdown */}
