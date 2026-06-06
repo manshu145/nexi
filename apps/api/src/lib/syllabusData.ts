@@ -912,16 +912,15 @@ ADDITIONAL.push(
     ]),
     sub('cg-gk', 'Chhattisgarh General Knowledge', 'छत्तीसगढ़ सामान्य ज्ञान', '🌾', [
       ch('cg-health-schemes', 'CG Health Schemes & Administration', 'छत्तीसगढ़ स्वास्थ्य योजनाएँ', 1, 30),
-      ch('cg-general-awareness', 'CG General Awareness', 'छत्तीसगढ़ सामान्य जागरूकता', 2, 30),
+      ch('cg-history-geography', 'CG History & Geography', 'छ.ग. इतिहास एवं भूगोल', 2, 30),
+      ch('cg-polity-economy', 'CG Polity, Economy & Schemes', 'छ.ग. राजव्यवस्था, अर्थव्यवस्था एवं योजनाएँ', 3, 30),
+      ch('cg-culture-current', 'CG Culture & Current Affairs', 'छ.ग. संस्कृति एवं समसामयिकी', 4, 30),
     ]),
   ]),
 
   mk('cg-vyapam-nursing', 'CG Vyapam Nursing Officer', 'https://vyapam.cgstate.gov.in', [
     ...nursingCore(),
-    sub('cg-gk', 'Chhattisgarh GK & General Awareness', 'छत्तीसगढ़ सामान्य ज्ञान', '🌾', [
-      ch('cg-gk', 'Chhattisgarh General Knowledge', 'छत्तीसगढ़ सामान्य ज्ञान', 1, 30),
-      ch('current-affairs', 'Current Affairs', 'समसामयिकी', 2, 25),
-    ]),
+    cgGkSubject(),
   ]),
 
   mk('cg-vyapam-anm-gnm', 'CG Vyapam ANM/GNM', 'https://vyapam.cgstate.gov.in', [
@@ -938,9 +937,9 @@ ADDITIONAL.push(
     ]),
     sub('science-gk', 'Science & GK', 'विज्ञान एवं सामान्य ज्ञान', '🔬', [
       ch('biology-basics', 'Biology Basics', 'जीव विज्ञान मूल बातें', 1, 35),
-      ch('cg-gk', 'Chhattisgarh GK', 'छत्तीसगढ़ सामान्य ज्ञान', 2, 30),
-      ch('current-affairs', 'Current Affairs', 'समसामयिकी', 3, 25),
+      ch('general-awareness', 'General Awareness & Current Affairs', 'सामान्य जागरूकता एवं समसामयिकी', 2, 30),
     ]),
+    cgGkSubject(),
   ]),
 
   mk('cg-vyapam-lab-tech', 'CG Vyapam Lab Technician', 'https://vyapam.cgstate.gov.in', [
@@ -953,8 +952,9 @@ ADDITIONAL.push(
     ]),
     sub('science-gk', 'Science & GK', 'विज्ञान एवं सामान्य ज्ञान', '🔬', [
       ch('biology-chemistry', 'Biology & Chemistry Basics', 'जीव एवं रसायन मूल बातें', 1, 35),
-      ch('cg-gk', 'Chhattisgarh GK', 'छत्तीसगढ़ सामान्य ज्ञान', 2, 30),
+      ch('general-awareness', 'General Awareness & Current Affairs', 'सामान्य जागरूकता एवं समसामयिकी', 2, 30),
     ]),
+    cgGkSubject(),
   ]),
 
   mk('nursing-officer', 'Nursing Officer (NORCET/AIIMS)', 'https://www.aiimsexams.ac.in', [
@@ -1276,6 +1276,22 @@ function statePscSubjects(state: string, stateHi: string): SyllabusSubject[] {
 }
 
 /** CG Vyapam graduate-level recruitment pattern (GK + aptitude + CG GK). */
+/**
+ * Full-weight Chhattisgarh GK subject — used across CG exams where CG GK is
+ * the highest-scoring section (CG Vyapam / CGPSC patterns, official source:
+ * vyapamcg.cgstate.gov.in). Reused so every CG exam shares consistent depth.
+ */
+function cgGkSubject(): SyllabusSubject {
+  return sub('cg-gk', 'Chhattisgarh General Knowledge', 'छत्तीसगढ़ सामान्य ज्ञान', '🌾', [
+    ch('cg-history', 'CG History & Princely States (Riyasat)', 'छ.ग. का इतिहास एवं रियासतें', 1, 35),
+    ch('cg-geography', 'CG Geography, Rivers, Forests & Climate', 'छ.ग. भूगोल, नदियाँ, वन एवं जलवायु', 2, 35),
+    ch('cg-polity-admin', 'CG Polity, Administration & Districts', 'छ.ग. राजव्यवस्था, प्रशासन एवं जिले', 3, 35),
+    ch('cg-economy-schemes', 'CG Economy, Minerals & Govt Schemes', 'छ.ग. अर्थव्यवस्था, खनिज एवं शासकीय योजनाएँ', 4, 35),
+    ch('cg-culture-tribes', 'CG Culture, Tribes, Festivals & Folk Arts', 'छ.ग. संस्कृति, जनजातियाँ, पर्व एवं लोककला', 5, 35),
+    ch('cg-current-affairs', 'CG Current Affairs & Personalities', 'छ.ग. समसामयिकी एवं प्रमुख व्यक्तित्व', 6, 30),
+  ]);
+}
+
 function cgVyapamSubjects(roleSpecific?: SyllabusSubject): SyllabusSubject[] {
   const base = [
     sub('general-knowledge', 'General Knowledge', 'सामान्य ज्ञान', '🌍', [
@@ -1283,12 +1299,16 @@ function cgVyapamSubjects(roleSpecific?: SyllabusSubject): SyllabusSubject[] {
       ch('indian-history-polity', 'Indian History & Polity', 'भारतीय इतिहास एवं राजव्यवस्था', 2, 35),
       ch('geography-economy', 'Geography & Economy', 'भूगोल एवं अर्थव्यवस्था', 3, 35),
       ch('general-science', 'General Science', 'सामान्य विज्ञान', 4, 35),
+      ch('sports-awards-days', 'Sports, Awards & Important Days', 'खेल, पुरस्कार एवं महत्वपूर्ण दिवस', 5, 25),
     ]),
     sub('cg-gk', 'Chhattisgarh General Knowledge', 'छत्तीसगढ़ सामान्य ज्ञान', '🌾', [
-      ch('cg-history-culture', 'CG History, Culture & Tribes', 'छ.ग. इतिहास, संस्कृति एवं जनजातियाँ', 1, 35),
-      ch('cg-geography', 'CG Geography & Rivers', 'छ.ग. भूगोल एवं नदियाँ', 2, 35),
-      ch('cg-polity-economy', 'CG Polity, Economy & Schemes', 'छ.ग. राजव्यवस्था एवं योजनाएँ', 3, 35),
-      ch('cg-current-affairs', 'CG Current Affairs', 'छ.ग. समसामयिकी', 4, 30),
+      ch('cg-history', 'CG History & Riyasat (Princely States)', 'छ.ग. का इतिहास एवं रियासतें', 1, 35),
+      ch('cg-geography', 'CG Geography, Rivers & Climate', 'छ.ग. भूगोल, नदियाँ एवं जलवायु', 2, 35),
+      ch('cg-polity-admin', 'CG Polity, Administration & Districts', 'छ.ग. राजव्यवस्था, प्रशासन एवं जिले', 3, 35),
+      ch('cg-economy-schemes', 'CG Economy, Minerals & Govt Schemes', 'छ.ग. अर्थव्यवस्था, खनिज एवं योजनाएँ', 4, 35),
+      ch('cg-culture-tribes', 'CG Culture, Tribes, Festivals & Folk Arts', 'छ.ग. संस्कृति, जनजातियाँ, पर्व एवं लोककला', 5, 35),
+      ch('cg-literature-language', 'CG Literature, Language (Chhattisgarhi) & Tourism', 'छ.ग. साहित्य, भाषा (छत्तीसगढ़ी) एवं पर्यटन', 6, 30),
+      ch('cg-current-affairs', 'CG Current Affairs & Personalities', 'छ.ग. समसामयिकी एवं प्रमुख व्यक्तित्व', 7, 30),
     ]),
     sub('aptitude', 'Quantitative Aptitude & Reasoning', 'संख्यात्मक अभिक्षमता एवं तर्क', '📐', [
       ch('arithmetic', 'Arithmetic', 'अंकगणित', 1, 30),
@@ -1299,6 +1319,7 @@ function cgVyapamSubjects(roleSpecific?: SyllabusSubject): SyllabusSubject[] {
     sub('computer-hindi', 'Computer & Hindi', 'कंप्यूटर एवं हिन्दी', '💻', [
       ch('computer-fundamentals', 'Computer Fundamentals', 'कंप्यूटर मूल बातें', 1, 25),
       ch('hindi-grammar', 'Hindi Grammar (Vyakaran)', 'हिन्दी व्याकरण', 2, 25),
+      ch('chhattisgarhi-language', 'Chhattisgarhi Language Basics', 'छत्तीसगढ़ी भाषा का आधार', 3, 25),
     ]),
   ];
   return roleSpecific ? [...base, roleSpecific] : base;
@@ -1351,11 +1372,13 @@ ADDITIONAL.push(
     ]),
     sub('cg-gk', 'Chhattisgarh GK', 'छत्तीसगढ़ सामान्य ज्ञान', '🌾', [
       ch('cg-history-geography', 'CG History & Geography', 'छ.ग. इतिहास एवं भूगोल', 1, 30),
-      ch('cg-culture-current', 'CG Culture & Current Affairs', 'छ.ग. संस्कृति एवं समसामयिकी', 2, 30),
+      ch('cg-polity-economy', 'CG Polity, Economy & Schemes', 'छ.ग. राजव्यवस्था, अर्थव्यवस्था एवं योजनाएँ', 2, 30),
+      ch('cg-culture-current', 'CG Culture, Tribes & Current Affairs', 'छ.ग. संस्कृति, जनजातियाँ एवं समसामयिकी', 3, 30),
     ]),
     sub('maths-reasoning', 'Mathematics & Reasoning', 'गणित एवं तर्क', '📐', [
       ch('arithmetic', 'Arithmetic', 'अंकगणित', 1, 30),
       ch('reasoning', 'Reasoning', 'तर्कशक्ति', 2, 30),
+      ch('data-interpretation', 'Data Interpretation', 'आँकड़ा निर्वचन', 3, 25),
     ]),
   ]),
   mk('cg-vyapam-steno', 'CG Vyapam Steno / Typist / DEO', 'https://vyapam.cgstate.gov.in', [
@@ -1368,8 +1391,9 @@ ADDITIONAL.push(
   ]),
   mk('cg-vyapam-je', 'CG Vyapam Junior Engineer', 'https://vyapam.cgstate.gov.in', [
     sub('general-knowledge', 'General Knowledge & CG GK', 'सामान्य ज्ञान एवं छ.ग. सामान्य ज्ञान', '🌾', [
-      ch('current-affairs', 'Current Affairs', 'समसामयिकी', 1, 25),
-      ch('cg-gk', 'Chhattisgarh GK', 'छत्तीसगढ़ सामान्य ज्ञान', 2, 30),
+      ch('current-affairs', 'Current Affairs (National & CG)', 'समसामयिकी (राष्ट्रीय एवं छ.ग.)', 1, 25),
+      ch('cg-history-geography', 'CG History & Geography', 'छ.ग. इतिहास एवं भूगोल', 2, 30),
+      ch('cg-polity-economy-schemes', 'CG Polity, Economy & Schemes', 'छ.ग. राजव्यवस्था, अर्थव्यवस्था एवं योजनाएँ', 3, 30),
     ]),
     sub('technical-civil', 'Technical — Civil', 'तकनीकी — सिविल', '🏗️', [
       ch('building-materials', 'Building Materials & Construction', 'भवन निर्माण सामग्री', 1, 40),
@@ -1722,9 +1746,7 @@ ADDITIONAL.push(
       ch('advanced-subject', 'Advanced & Applied Topics', 'उन्नत एवं अनुप्रयुक्त विषय', 3, 45),
       ch('subject-research', 'Subject Research & Methodology', 'विषय शोध एवं पद्धति', 4, 40),
     ]),
-    sub('cg-gk', 'Chhattisgarh GK', 'छत्तीसगढ़ सामान्य ज्ञान', '🌾', [
-      ch('cg-gk', 'Chhattisgarh General Knowledge', 'छत्तीसगढ़ सामान्य ज्ञान', 1, 30),
-    ]),
+    cgGkSubject(),
   ]),
   mk('cg-principal', 'CG Principal / Headmaster', 'https://psc.cg.gov.in', [
     sub('educational-administration', 'Educational Administration & Management', 'शैक्षिक प्रशासन एवं प्रबंधन', '🏫', [
@@ -1736,10 +1758,7 @@ ADDITIONAL.push(
       ch('educational-psychology', 'Educational Psychology', 'शैक्षिक मनोविज्ञान', 1, 40),
       ch('teaching-methods', 'Teaching Methods & Evaluation', 'शिक्षण विधियाँ एवं मूल्यांकन', 2, 35),
     ]),
-    sub('cg-gk-general', 'CG GK & General Studies', 'छ.ग. सामान्य ज्ञान', '🌾', [
-      ch('cg-gk', 'Chhattisgarh GK', 'छत्तीसगढ़ सामान्य ज्ञान', 1, 30),
-      ch('current-affairs', 'Current Affairs', 'समसामयिकी', 2, 25),
-    ]),
+    cgGkSubject(),
   ]),
   mk('cg-shikshak-bharti', 'CG Shikshak Bharti (Teacher Recruitment)', 'https://vyapam.cgstate.gov.in', [
     sub('pedagogy', 'Pedagogy & Child Development', 'शिक्षाशास्त्र एवं बाल विकास', '🧒', [
@@ -1752,9 +1771,10 @@ ADDITIONAL.push(
       ch('subject-pedagogy', 'Subject-Specific Pedagogy', 'विषय शिक्षाशास्त्र', 3, 35),
     ]),
     sub('cg-gk-aptitude', 'CG GK, Reasoning & Aptitude', 'छ.ग. सामान्य ज्ञान एवं तर्क', '🌾', [
-      ch('cg-gk', 'Chhattisgarh GK', 'छत्तीसगढ़ सामान्य ज्ञान', 1, 30),
-      ch('reasoning-aptitude', 'Reasoning & Aptitude', 'तर्क एवं अभिक्षमता', 2, 30),
-      ch('current-affairs', 'Current Affairs', 'समसामयिकी', 3, 25),
+      ch('cg-history-geography', 'CG History & Geography', 'छ.ग. इतिहास एवं भूगोल', 1, 30),
+      ch('cg-culture-polity-schemes', 'CG Culture, Polity & Govt Schemes', 'छ.ग. संस्कृति, राजव्यवस्था एवं योजनाएँ', 2, 30),
+      ch('reasoning-aptitude', 'Reasoning & Aptitude', 'तर्क एवं अभिक्षमता', 3, 30),
+      ch('current-affairs', 'Current Affairs (National & CG)', 'समसामयिकी (राष्ट्रीय एवं छ.ग.)', 4, 25),
     ]),
   ]),
 );
