@@ -94,7 +94,11 @@ export default function StudyPage() {
       <section className="mt-6">
         <h1 className="font-serif text-2xl font-bold text-ink-900">{syllabus.examName}</h1>
         <p className="mt-1 text-sm text-muted-500">
-          {progress ? `${progress.overallPercent}% complete · ${progress.completedChapters.length} chapters done` : 'Start your preparation'}
+          {progress
+            ? (lang === 'hi'
+                ? `${progress.overallPercent}% पूर्ण · ${progress.completedChapters.length} चैप्टर पूरे`
+                : `${progress.overallPercent}% complete · ${progress.completedChapters.length} chapters done`)
+            : (lang === 'hi' ? 'अपनी तैयारी शुरू करें' : 'Start your preparation')}
         </p>
         {/* Overall progress bar */}
         <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-paper-300">
@@ -110,10 +114,10 @@ export default function StudyPage() {
         >
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-ink-900">⭐ Free Plan — 2 chapters free per subject</p>
-              <p className="mt-0.5 text-xs text-muted-500">Upgrade to Scholar for unlimited access</p>
+              <p className="text-sm font-medium text-ink-900">{lang === 'hi' ? '⭐ फ्री प्लान — हर विषय में 2 चैप्टर मुफ़्त' : '⭐ Free Plan — 2 chapters free per subject'}</p>
+              <p className="mt-0.5 text-xs text-muted-500">{lang === 'hi' ? 'अनलिमिटेड एक्सेस के लिए Scholar में अपग्रेड करें' : 'Upgrade to Scholar for unlimited access'}</p>
             </div>
-            <span className="text-xs font-semibold text-ember-500">Upgrade →</span>
+            <span className="text-xs font-semibold text-ember-500">{lang === 'hi' ? 'अपग्रेड →' : 'Upgrade →'}</span>
           </div>
         </button>
       )}
@@ -126,7 +130,7 @@ export default function StudyPage() {
         >
           <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-ember-500/10 text-xl flex-shrink-0">▶️</span>
           <div className="flex-1 min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-ember-500">Continue reading</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-ember-500">{lang === 'hi' ? 'पढ़ना जारी रखें' : 'Continue reading'}</p>
             <p className="mt-0.5 font-serif font-medium text-ink-900 truncate">{continueChapter.name}</p>
           </div>
           <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="text-muted-400 group-hover:text-ember-500 group-hover:translate-x-0.5 transition-all flex-shrink-0"><path d="M9 18l6-6-6-6"/></svg>

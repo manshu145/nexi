@@ -23,6 +23,7 @@ import type { CurrentAffairsStore } from '../lib/currentAffairsStore.js';
 import { isHardcodedSuperAdmin } from '../lib/adminEmails.js';
 import { SERVICE_DEFINITIONS, getServiceDefinition, maskSecret, type ServiceId, type ServiceKeyStore } from '../lib/serviceKeyStore.js';
 import type { PushService, PushNotificationPayload } from '../lib/pushService.js';
+import type { NotificationStore } from '../lib/notificationStore.js';
 import type { TeamInviteStore } from '../lib/teamInviteStore.js';
 
 export interface AdminRoutesDeps {
@@ -83,8 +84,68 @@ export interface AdminRoutesDeps {
    * without firebase-admin available continue to construct.
    */
   push?: PushService;
+  /**
+   * In-app notification inbox store. Wired so the admin push broadcast
+   * also writes a bell/inbox item per targeted user — previously a
+   * broadcast only fired FCM and the in-app bell stayed empty.
+   */
+  notifications?: NotificationStore;
   /** PR-40: team invite store for admin RBAC. */
   teamInvites?: TeamInviteStore;
+}
+
+/**
+ * Persist a record of every admin push send to the `pushLogs` collection
+ * so the admin can review what was sent, to whom, and when (the "notification
+ * history" the founder asked for). Fire-and-forget — never blocks/breaks the
+ * send response.
+ */
+async function logPushSend(
+  deps: AdminRoutesDeps,
+  entry: {
+    title: string; body: string; link: string | null;
+    mode: 'audience' | 'topic'; audience: string;
+    devices: number; sent: number; failed: number;
+    inboxCreated?: number; sentBy: string;
+  },
+): Promise<void> {
+  if (!deps.db) return;
+  try {
+    await deps.db.collection('pushLogs').add({
+      ...entry,
+      inboxCreated: entry.inboxCreated ?? 0,
+      sentAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    deps.logger.warn('admin.push_log_failed', { error: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+export interface PushPromptConfig {
+  enabled: boolean;
+  promptDelaySeconds: number;
+  cooldownDays: number;
+  maxDismissals: number;
+}
+
+const DEFAULT_PUSH_PROMPT_CONFIG: PushPromptConfig = {
+  enabled: true,
+  promptDelaySeconds: 6,
+  cooldownDays: 3,
+  maxDismissals: 3,
+};
+
+/** Read the push-prompt config from system/pushConfig, falling back to
+ *  sane defaults. Shared by the admin GET and the public mirror. */
+export async function getPushPromptConfig(deps: Pick<AdminRoutesDeps, 'db'>): Promise<PushPromptConfig> {
+  if (!deps.db) return DEFAULT_PUSH_PROMPT_CONFIG;
+  try {
+    const snap = await deps.db.collection('system').doc('pushConfig').get();
+    if (!snap.exists) return DEFAULT_PUSH_PROMPT_CONFIG;
+    return { ...DEFAULT_PUSH_PROMPT_CONFIG, ...(snap.data() as Partial<PushPromptConfig>) };
+  } catch {
+    return DEFAULT_PUSH_PROMPT_CONFIG;
+  }
 }
 
 export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
@@ -1831,6 +1892,12 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
       };
       const result = await deps.push.sendToTopic(topic, payload);
       deps.logger.info('admin.push_topic_send', { adminId: principal.userId, topic, result });
+      await logPushSend(deps, {
+        title: body.title, body: body.body, link: body.link ?? null,
+        mode: 'topic', audience: `topic:${topic}`,
+        devices: 0, sent: result.successCount, failed: result.failureCount,
+        sentBy: principal.email ?? principal.userId,
+      });
       return c.json({ ok: true, sent: result.successCount, failed: result.failureCount, mode: 'topic', topic });
     }
 
@@ -1840,9 +1907,11 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
 
     type Tok = { token: string; lang: 'en' | 'hi' };
     const tokens: Tok[] = [];
+    const matchedUsers: Array<{ id: string; lang: 'en' | 'hi' }> = [];
     for (const u of users) {
       if (audience === 'free' && u.plan !== 'free') continue;
       if (audience === 'paid' && (u.plan === 'free' || !u.plan)) continue;
+      if (u.id) matchedUsers.push({ id: u.id, lang: u.language === 'hi' ? 'hi' : 'en' });
       const list = (u.fcmTokens ?? []) as Array<{ token: string }>;
       for (const t of list) {
         if (t.token) tokens.push({ token: t.token, lang: u.language === 'hi' ? 'hi' : 'en' });
@@ -1907,6 +1976,37 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
       hiFailed: hiResult.failureCount,
     });
 
+    // Write an in-app inbox item per targeted user so the bell shows the
+    // broadcast even on devices without push permission (the "bell stays
+    // empty" complaint). Best-effort + chunked so a large audience doesn't
+    // block the response; failures are swallowed per user.
+    let inboxCreated = 0;
+    if (deps.notifications && matchedUsers.length > 0) {
+      const store = deps.notifications;
+      const CHUNK = 40;
+      const capped = matchedUsers.slice(0, 5000); // safety cap
+      for (let i = 0; i < capped.length; i += CHUNK) {
+        const slice = capped.slice(i, i + CHUNK);
+        const results = await Promise.allSettled(slice.map(u => store.create(u.id, {
+          type: 'announcement',
+          title: u.lang === 'hi' ? (body.titleHi ?? body.title!) : body.title!,
+          body: u.lang === 'hi' ? (body.bodyHi ?? body.body!) : body.body!,
+          ...(body.link ? { link: body.link } : {}),
+        })));
+        inboxCreated += results.filter(r => r.status === 'fulfilled' && r.value).length;
+      }
+    }
+
+    await logPushSend(deps, {
+      title: body.title, body: body.body, link: body.link ?? null,
+      mode: 'audience', audience,
+      devices: tokens.length,
+      sent: enResult.successCount + hiResult.successCount,
+      failed: enResult.failureCount + hiResult.failureCount,
+      inboxCreated,
+      sentBy: principal.email ?? principal.userId,
+    });
+
     return c.json({
       ok: true,
       mode: 'audience',
@@ -1916,6 +2016,7 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
       failed: enResult.failureCount + hiResult.failureCount,
       invalidTokensPruned: invalid.size,
       hindiUsersTargeted: hiTokens.length,
+      inboxCreated,
     });
   });
 
@@ -1941,6 +2042,46 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
     });
     deps.logger.info('admin.push_test', { adminId: principal.userId, tokens: myTokens.length, result });
     return c.json({ ok: true, devices: myTokens.length, sent: result.successCount, failed: result.failureCount });
+  });
+
+  /**
+   * GET /v1/admin/push/logs — recent push send history (what / to whom /
+   * when / delivery counts). Honours ?limit= (default 100, max 500).
+   */
+  app.get('/push/logs', async (c) => {
+    if (!deps.db) return c.json({ logs: [], total: 0 });
+    const limit = Math.min(Math.max(parseInt(c.req.query('limit') ?? '100', 10) || 100, 1), 500);
+    try {
+      const snap = await deps.db.collection('pushLogs').orderBy('sentAt', 'desc').limit(limit).get();
+      const logs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      return c.json({ logs, total: logs.length });
+    } catch { return c.json({ logs: [], total: 0 }); }
+  });
+
+  /**
+   * GET/PUT /v1/admin/push/config — controls the user-facing "enable
+   * notifications" soft-ask prompt (PushPrompt). Stored in system/pushConfig.
+   * The public mirror is exposed (unauthenticated) at /v1/public/push-config
+   * so the client can read it without an admin token.
+   */
+  app.get('/push/config', async (c) => {
+    const cfg = await getPushPromptConfig(deps);
+    return c.json({ config: cfg });
+  });
+
+  app.put('/push/config', async (c) => {
+    if (!deps.db) throw new HTTPException(503, { message: 'Firestore required' });
+    const body = await c.req.json().catch(() => null) as Record<string, unknown> | null;
+    if (!body) throw new HTTPException(400, { message: 'body required' });
+    const next = {
+      enabled: typeof body['enabled'] === 'boolean' ? body['enabled'] : true,
+      promptDelaySeconds: clampSeconds(body['promptDelaySeconds'], 6, 0, 600),
+      cooldownDays: clampSeconds(body['cooldownDays'], 3, 0, 60),
+      maxDismissals: clampSeconds(body['maxDismissals'], 3, 1, 20),
+    };
+    await deps.db.collection('system').doc('pushConfig').set(next, { merge: true });
+    deps.logger.info('admin.push_config_updated', next);
+    return c.json({ config: next });
   });
 
   // ─── PR-40: Team RBAC endpoints ────────────────────────────────────

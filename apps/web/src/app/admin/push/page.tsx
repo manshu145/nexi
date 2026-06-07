@@ -51,6 +51,13 @@ export default function AdminPushPage() {
   const [sending, setSending] = useState(false);
   const [testing, setTesting] = useState(false);
 
+  // Push send history + prompt-timing config
+  interface PushLog { id: string; title?: string; body?: string; audience?: string; mode?: string; sent?: number; failed?: number; devices?: number; inboxCreated?: number; sentBy?: string; sentAt?: string; }
+  interface PromptCfg { enabled: boolean; promptDelaySeconds: number; cooldownDays: number; maxDismissals: number; }
+  const [logs, setLogs] = useState<PushLog[]>([]);
+  const [promptCfg, setPromptCfg] = useState<PromptCfg>({ enabled: true, promptDelaySeconds: 6, cooldownDays: 3, maxDismissals: 3 });
+  const [savingCfg, setSavingCfg] = useState(false);
+
   useEffect(() => {
     if (!loading && !user) router.replace('/admin/login');
   }, [user, loading, router]);
@@ -58,6 +65,29 @@ export default function AdminPushPage() {
   const getToken = async () => {
     const auth = getFirebaseAuthClient();
     return auth.currentUser?.getIdToken();
+  };
+
+  const loadLogs = async () => {
+    try {
+      const token = await getToken();
+      const res = await fetch(`${API}/v1/admin/push/logs?limit=100`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) { const d = (await res.json()) as { logs: PushLog[] }; setLogs(d.logs); }
+    } catch { /* ignore */ }
+  };
+
+  const saveCfg = async () => {
+    setSavingCfg(true);
+    try {
+      const token = await getToken();
+      const res = await fetch(`${API}/v1/admin/push/config`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(promptCfg),
+      });
+      if (res.ok) { const d = (await res.json()) as { config: PromptCfg }; setPromptCfg(d.config); toast.success('Prompt settings saved'); }
+      else toast.error('Failed to save settings');
+    } catch { toast.error('Failed to save settings'); }
+    finally { setSavingCfg(false); }
   };
 
   useEffect(() => {
@@ -70,6 +100,12 @@ export default function AdminPushPage() {
         });
         if (res.ok) setStatus((await res.json()) as PushStatus);
         else setStatus({ configured: false, reason: `HTTP ${res.status}` });
+        // Load send history + prompt config in parallel (non-fatal).
+        void loadLogs();
+        try {
+          const cfgRes = await fetch(`${API}/v1/admin/push/config`, { headers: { Authorization: `Bearer ${token}` } });
+          if (cfgRes.ok) { const d = (await cfgRes.json()) as { config: PromptCfg }; setPromptCfg(d.config); }
+        } catch { /* ignore */ }
       } catch (err) {
         setStatus({ configured: false, reason: err instanceof Error ? err.message : 'unknown' });
       } finally {
@@ -113,6 +149,7 @@ export default function AdminPushPage() {
         setBodyHi('');
         setLink('');
         setImageUrl('');
+        void loadLogs();
       } else {
         toast.error(data.error ?? `Send failed (HTTP ${res.status})`);
       }
@@ -354,6 +391,83 @@ export default function AdminPushPage() {
             {sending ? 'Sending…' : 'Send notification'}
           </button>
         </div>
+      </section>
+
+      {/* Prompt timing settings */}
+      <section className="mt-6 rounded-xl border border-line bg-paper-50 p-5">
+        <p className="text-sm font-semibold text-ink-700">Permission prompt timing</p>
+        <p className="mt-1 text-xs text-muted-500">Controls the soft-ask popup that invites users to enable notifications. It was appearing too quickly — tune the delay here.</p>
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div>
+            <label className="block text-xs font-medium text-ink-700">Delay before showing (seconds)</label>
+            <input type="number" min={0} max={600} value={promptCfg.promptDelaySeconds}
+              onChange={(e) => setPromptCfg(c => ({ ...c, promptDelaySeconds: Number(e.target.value) }))}
+              className="mt-1 w-full rounded-lg border border-line bg-paper-100 px-3 py-2 text-sm text-ink-900 focus:border-ember-500 focus:outline-none" />
+            <p className="mt-1 text-[11px] text-muted-400">e.g. 60 = wait 1 minute after load</p>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-ink-700">Re-ask cooldown (days)</label>
+            <input type="number" min={0} max={60} value={promptCfg.cooldownDays}
+              onChange={(e) => setPromptCfg(c => ({ ...c, cooldownDays: Number(e.target.value) }))}
+              className="mt-1 w-full rounded-lg border border-line bg-paper-100 px-3 py-2 text-sm text-ink-900 focus:border-ember-500 focus:outline-none" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-ink-700">Max times to ask</label>
+            <input type="number" min={1} max={20} value={promptCfg.maxDismissals}
+              onChange={(e) => setPromptCfg(c => ({ ...c, maxDismissals: Number(e.target.value) }))}
+              className="mt-1 w-full rounded-lg border border-line bg-paper-100 px-3 py-2 text-sm text-ink-900 focus:border-ember-500 focus:outline-none" />
+          </div>
+        </div>
+        <div className="mt-4 flex items-center gap-3">
+          <label className="flex items-center gap-2 text-sm text-ink-800">
+            <input type="checkbox" checked={promptCfg.enabled} onChange={(e) => setPromptCfg(c => ({ ...c, enabled: e.target.checked }))} className="accent-ember-500" />
+            Show the prompt
+          </label>
+          <button type="button" onClick={saveCfg} disabled={savingCfg}
+            className="ml-auto rounded-lg bg-ember-500 px-4 py-2 text-sm font-medium text-paper-50 hover:bg-ember-600 disabled:opacity-50">
+            {savingCfg ? 'Saving…' : 'Save timing'}
+          </button>
+        </div>
+      </section>
+
+      {/* Send history */}
+      <section className="mt-6 rounded-xl border border-line bg-paper-50 p-5">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-semibold text-ink-700">Notification history</p>
+          <button type="button" onClick={loadLogs} className="text-xs text-muted-500 hover:text-ink-800">↻ Refresh</button>
+        </div>
+        {logs.length === 0 ? (
+          <p className="mt-3 text-xs text-muted-400">No notifications sent yet.</p>
+        ) : (
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-line text-left">
+                  <th className="py-2 pr-3 text-[11px] font-semibold uppercase tracking-wider text-muted-500">Title</th>
+                  <th className="py-2 pr-3 text-[11px] font-semibold uppercase tracking-wider text-muted-500">Audience</th>
+                  <th className="py-2 pr-3 text-[11px] font-semibold uppercase tracking-wider text-muted-500">Delivered</th>
+                  <th className="py-2 pr-3 text-[11px] font-semibold uppercase tracking-wider text-muted-500">When</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {logs.map((l) => (
+                  <tr key={l.id} className="align-top">
+                    <td className="py-2 pr-3">
+                      <p className="font-medium text-ink-900">{l.title || '—'}</p>
+                      <p className="max-w-[280px] truncate text-[11px] text-muted-400">{l.body}</p>
+                    </td>
+                    <td className="py-2 pr-3"><span className="pill text-[11px]">{l.audience || l.mode}</span></td>
+                    <td className="py-2 pr-3 text-xs text-muted-600">
+                      {l.sent ?? 0}/{l.devices ?? 0} devices{typeof l.failed === 'number' && l.failed > 0 ? ` · ${l.failed} failed` : ''}
+                      {typeof l.inboxCreated === 'number' && l.inboxCreated > 0 ? ` · ${l.inboxCreated} inbox` : ''}
+                    </td>
+                    <td className="py-2 pr-3 text-[11px] text-muted-400">{l.sentAt ? new Date(l.sentAt).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       {/* Help */}

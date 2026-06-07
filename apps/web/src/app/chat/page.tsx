@@ -488,7 +488,8 @@ function ChatPage() {
         </header>
 
         {/* Messages */}
-        <div className="min-h-0 flex-1 overflow-y-auto px-3 sm:px-4 lg:px-6 py-6 space-y-4 scroll-smooth">
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 sm:px-4 lg:px-6 py-6 scroll-smooth">
+          <div className="mx-auto flex w-full min-h-full max-w-3xl flex-col gap-5">
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center h-full text-center px-4 animate-fadeIn">
               <div className="w-14 h-14 rounded-2xl bg-gold-500/10 flex items-center justify-center animate-pulse">
@@ -520,7 +521,7 @@ function ChatPage() {
           )}
           {messages.map((msg, i) => (
             <div key={i} className={`group flex flex-col animate-slideUp ${msg.role === 'user' ? 'items-end' : 'items-start'}`} style={{ animationDelay: `${Math.min(i * 50, 200)}ms` }}>
-              <div className={`relative max-w-[90%] sm:max-w-[80%] lg:max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed transition-shadow duration-200 hover:shadow-md ${msg.role === 'user' ? 'bg-ember-500 text-paper-50 rounded-br-md' : 'paper-card text-ink-900 rounded-bl-md'}`}>
+              <div className={`relative text-sm leading-relaxed ${msg.role === 'user' ? 'max-w-[85%] sm:max-w-[75%] rounded-2xl rounded-br-md bg-ember-500 px-4 py-3 text-paper-50' : 'w-full max-w-full px-0 py-1 text-ink-900'}`}>
                 {msg.role === 'assistant' ? (
                   <div className="prose prose-sm max-w-none dark:prose-invert prose-headings:font-serif prose-blockquote:border-l-ember-500">
                     <ReactMarkdown
@@ -576,7 +577,7 @@ function ChatPage() {
                 {msg.role === 'assistant' && (
                   <button
                     onClick={() => handleCopy(msg.content)}
-                    className="absolute -top-2 -right-2 hidden group-hover:flex h-7 w-7 items-center justify-center rounded-full bg-paper-50 border border-line shadow-sm text-muted-500 hover:text-ink-900 transition-colors"
+                    className="absolute top-0 right-0 hidden group-hover:flex h-7 w-7 items-center justify-center rounded-full bg-paper-50 border border-line shadow-sm text-muted-500 hover:text-ink-900 transition-colors"
                     aria-label="Copy message"
                     title="Copy to clipboard"
                   >
@@ -610,6 +611,7 @@ function ChatPage() {
             </div>
           )}
           <div ref={bottomRef} />
+          </div>
         </div>
 
         {/* Attachment previews */}
@@ -639,7 +641,7 @@ function ChatPage() {
         {/* Quick action bar + Input area */}
         <div className="flex-shrink-0 border-t border-line p-2 sm:p-3 bg-paper-50/95 backdrop-blur-sm pb-[max(0.5rem,env(safe-area-inset-bottom))]">
           {/* Quick action buttons row */}
-          <div className="mx-auto max-w-2xl mb-2 flex items-center gap-2 overflow-x-auto scrollbar-hide pb-0.5">
+          <div className="mx-auto max-w-3xl mb-2 flex items-center gap-2 overflow-x-auto scrollbar-hide pb-0.5">
             <button
               onClick={() => cameraInputRef.current?.click()}
               disabled={sending}
@@ -674,7 +676,7 @@ function ChatPage() {
           </div>
 
           {/* Input row */}
-          <div className="mx-auto max-w-2xl relative flex items-end gap-1.5 sm:gap-2">
+          <div className="mx-auto max-w-3xl relative flex items-end gap-1.5 sm:gap-2">
             {/* Attachment button */}
             <button
               onClick={() => fileInputRef.current?.click()}

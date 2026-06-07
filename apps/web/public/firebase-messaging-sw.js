@@ -17,18 +17,23 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-// Background message handler. Messages are now DATA-ONLY (see
-// pushService.buildMessage), so all display fields arrive in payload.data
-// and this handler is guaranteed to fire exactly once — no SDK auto-display,
-// no duplicates. We still read payload.notification as a fallback for any
-// legacy notification-style message still in flight.
+// Background message handler.
+//
+// Messages now carry a `webpush.notification` payload (see
+// pushService.buildMessage) so the browser/OS displays them automatically
+// even when this service worker is dormant — the fix for mobile devices
+// where data-only messages were silently dropped. When a notification
+// payload is present the SDK has ALREADY shown it, so we early-return to
+// avoid a duplicate. The data-only branch below stays as a fallback for
+// any legacy data-only message still in flight.
 messaging.onBackgroundMessage((payload) => {
+  if (payload.notification) return; // already displayed by the SDK — no duplicate
   const d = payload.data || {};
-  const title = d.title || payload.notification?.title || 'Nexigrate';
+  const title = d.title || 'Nexigrate';
   const options = {
-    body: d.body || payload.notification?.body || '',
-    icon: '/brand/nexigrate-favicon.svg',
-    badge: '/brand/nexigrate-favicon.svg',
+    body: d.body || '',
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
     // Carry the data through so the notificationclick handler below can
     // resolve the click target from click_action / url.
     data: d,
