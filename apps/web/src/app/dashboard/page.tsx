@@ -235,9 +235,11 @@ export default function DashboardPage() {
             <div className="flex items-start gap-3">
               <span className="text-xl flex-shrink-0">⚠️</span>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-ink-900">Credits khatam ho gaye!</p>
+                <p className="text-sm font-semibold text-ink-900">{me?.language === 'hi' ? 'क्रेडिट खत्म हो गए!' : 'You\'re out of credits!'}</p>
                 <p className="mt-1 text-xs text-muted-500">
-                  Chapters, AI Tutor, aur quizzes use karne ke liye credits chahiye. Upgrade karo ya friends ko refer karo.
+                  {me?.language === 'hi'
+                    ? 'चैप्टर, AI ट्यूटर और क्विज़ इस्तेमाल करने के लिए क्रेडिट चाहिए। अपग्रेड करें या दोस्तों को रेफर करें।'
+                    : 'You need credits to use chapters, the AI tutor and quizzes. Upgrade your plan or refer friends to earn more.'}
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button onClick={() => router.push('/upgrade')} className="inline-flex items-center gap-1 rounded-full bg-ember-500 px-3.5 py-1.5 text-xs font-semibold text-paper-50 hover:bg-ember-600 transition-colors">
