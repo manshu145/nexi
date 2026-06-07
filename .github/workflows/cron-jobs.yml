@@ -16,14 +16,14 @@ name: Scheduled jobs (cron)
 # That's it — schedules below start firing automatically.
 #
 # ── SCHEDULES (GitHub cron is UTC; IST = UTC+5:30) ───────────────────────
-#   every 4h            → current affairs ingestion (RSS → AI summary → Hindi)
+#   every 30 min        → current affairs ingestion (RSS → AI summary → Hindi)
 #   01:30 UTC (07:00 IST) → daily current-affairs digest push
 #   13:30 UTC (19:00 IST) → streak-at-risk reminder push
 #   Sat 22:30 UTC (Sun 04:00 IST) → weekly stale-chapter content refresh
 
 on:
   schedule:
-    - cron: '0 */4 * * *'   # current-affairs ingest
+    - cron: '*/30 * * * *'  # current-affairs ingest (every 30 min)
     - cron: '30 1 * * *'    # daily-digest  (07:00 IST)
     - cron: '30 13 * * *'   # streak-check  (19:00 IST)
     - cron: '30 22 * * 6'   # content-refresh (Sun 04:00 IST)
@@ -64,7 +64,7 @@ jobs:
           JOBS=""
           if [ -n "$SCHED" ]; then
             case "$SCHED" in
-              '0 */4 * * *')  JOBS="ingest" ;;
+              '*/30 * * * *') JOBS="ingest" ;;
               '30 1 * * *')   JOBS="daily-digest" ;;
               '30 13 * * *')  JOBS="streak-check" ;;
               '30 22 * * 6')  JOBS="content-refresh" ;;
