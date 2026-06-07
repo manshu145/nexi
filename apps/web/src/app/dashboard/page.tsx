@@ -214,7 +214,7 @@ export default function DashboardPage() {
           </div>
         )}
         {me && (
-          <button onClick={() => router.push((me.plan ?? 'free') === 'free' ? '/upgrade' : '/profile')} className="mt-2 inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors hover:opacity-80" style={{ background: (me.plan ?? 'free') === 'free' ? 'var(--color-paper-200)' : undefined, color: (me.plan ?? 'free') === 'free' ? 'var(--color-muted-500)' : undefined }}>
+          <button onClick={() => router.push((me.plan ?? 'free') === 'free' ? '/upgrade' : '/profile')} className={`mt-2 inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors hover:opacity-80 ${(me.plan ?? 'free') === 'free' ? 'bg-paper-200 text-muted-500' : ''}`}>
             {(me.plan ?? 'free') === 'free' ? (
               <><span>{t('freePlan')}</span><span className="text-ember-500">· {t('upgrade')} →</span></>
             ) : (

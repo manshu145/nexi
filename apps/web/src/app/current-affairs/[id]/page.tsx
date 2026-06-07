@@ -7,6 +7,7 @@ import { Logo } from '~/components/Logo';
 import { Skeleton } from '~/components/Skeleton';
 import { AILoader } from '~/components/ui/AILoader';
 import { track } from '~/lib/analytics';
+import { getClientLocale } from '~/lib/locale';
 
 export default function CurrentAffairsDetailPage() {
   const { user, loading } = useAuth();
@@ -22,6 +23,7 @@ export default function CurrentAffairsDetailPage() {
   const [likeCount, setLikeCount] = useState(0);
   const [speaking, setSpeaking] = useState(false);
   const [showShareToast, setShowShareToast] = useState(false);
+  const [lang] = useState<'en' | 'hi'>(() => getClientLocale());
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
@@ -254,7 +256,7 @@ export default function CurrentAffairsDetailPage() {
         onClick={handleAskNexi}
         className="mt-8 w-full flex items-center justify-center gap-2 px-5 py-3.5 rounded-2xl bg-ink-900 text-paper-50 font-medium text-sm hover:bg-ink-800 transition-colors"
       >
-        🤖 Ask Nexi to explain this topic
+        🤖 {lang === 'hi' ? 'Nexi से यह टॉपिक समझें' : 'Ask Nexi to explain this topic'}
       </button>
 
       {/* Fair Use / DMCA Notice */}
@@ -267,19 +269,19 @@ export default function CurrentAffairsDetailPage() {
         <div className="mx-auto max-w-2xl flex items-center justify-around py-3 px-4">
           <button onClick={handleLike} className="flex flex-col items-center gap-0.5 transition-transform active:scale-90">
             <span className={`text-2xl transition-all ${liked ? 'scale-110' : ''}`}>{liked ? '❤️' : '🤍'}</span>
-            <span className="text-[10px] text-muted-500 font-medium">{likeCount || 'Like'}</span>
+            <span className="text-[10px] text-muted-500 font-medium">{likeCount || (lang === 'hi' ? 'पसंद' : 'Like')}</span>
           </button>
           <button onClick={handleBookmark} className="flex flex-col items-center gap-0.5 transition-transform active:scale-90">
             <span className={`text-2xl transition-all ${bookmarked ? 'scale-110' : ''}`}>{bookmarked ? '🔖' : '📑'}</span>
-            <span className="text-[10px] text-muted-500 font-medium">{bookmarked ? 'Saved' : 'Save'}</span>
+            <span className="text-[10px] text-muted-500 font-medium">{bookmarked ? (lang === 'hi' ? 'सेव' : 'Saved') : (lang === 'hi' ? 'सेव' : 'Save')}</span>
           </button>
           <button onClick={handleShare} className="flex flex-col items-center gap-0.5 transition-transform active:scale-90">
             <span className="text-2xl">↗️</span>
-            <span className="text-[10px] text-muted-500 font-medium">Share</span>
+            <span className="text-[10px] text-muted-500 font-medium">{lang === 'hi' ? 'शेयर' : 'Share'}</span>
           </button>
           <button onClick={handleTTS} className="flex flex-col items-center gap-0.5 transition-transform active:scale-90">
             <span className={`text-2xl ${speaking ? 'animate-pulse' : ''}`}>{speaking ? '⏸️' : '🎧'}</span>
-            <span className="text-[10px] text-muted-500 font-medium">{speaking ? 'Stop' : 'Listen'}</span>
+            <span className="text-[10px] text-muted-500 font-medium">{speaking ? (lang === 'hi' ? 'रोकें' : 'Stop') : (lang === 'hi' ? 'सुनें' : 'Listen')}</span>
           </button>
         </div>
       </div>
