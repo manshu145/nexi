@@ -23,19 +23,26 @@ import { toast } from 'sonner';
 import { registerPushToken, getLastPushError } from '~/lib/pushClient';
 import { useUser } from '~/lib/userStore';
 
+const API = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com';
 const DISMISS_KEY = 'nexi.pushPrompt.dismissedAt';
 const COUNT_KEY = 'nexi.pushPrompt.dismissCount';
-const COOLDOWN_DAYS = 3;
-const MAX_DISMISSALS = 3;
-const SHOW_DELAY_MS = 6000;
 
-function shouldAsk(): boolean {
+interface PromptConfig {
+  enabled: boolean;
+  promptDelaySeconds: number;
+  cooldownDays: number;
+  maxDismissals: number;
+}
+const DEFAULT_CONFIG: PromptConfig = { enabled: true, promptDelaySeconds: 6, cooldownDays: 3, maxDismissals: 3 };
+
+function shouldAsk(cfg: PromptConfig): boolean {
   if (typeof window === 'undefined' || !('Notification' in window)) return false;
+  if (!cfg.enabled) return false;
   if (Notification.permission !== 'default') return false;
   const count = Number(localStorage.getItem(COUNT_KEY) ?? '0');
-  if (count >= MAX_DISMISSALS) return false;
+  if (count >= cfg.maxDismissals) return false;
   const last = Number(localStorage.getItem(DISMISS_KEY) ?? '0');
-  if (last && Date.now() - last < COOLDOWN_DAYS * 86_400_000) return false;
+  if (last && Date.now() - last < cfg.cooldownDays * 86_400_000) return false;
   return true;
 }
 
@@ -43,16 +50,35 @@ export function PushPrompt() {
   const { user, loading } = useUser();
   const [visible, setVisible] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [config, setConfig] = useState<PromptConfig | null>(null);
 
+  // Fetch the admin-configured prompt timing once the user is known.
   useEffect(() => {
     if (loading || !user) return;
-    if (!shouldAsk()) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${API}/v1/public/push-config`);
+        if (res.ok) {
+          const data = (await res.json()) as { config: Partial<PromptConfig> };
+          if (!cancelled) setConfig({ ...DEFAULT_CONFIG, ...data.config });
+          return;
+        }
+      } catch { /* ignore */ }
+      if (!cancelled) setConfig(DEFAULT_CONFIG);
+    })();
+    return () => { cancelled = true; };
+  }, [user, loading]);
+
+  useEffect(() => {
+    if (loading || !user || !config) return;
+    if (!shouldAsk(config)) return;
     const t = window.setTimeout(() => {
       // Re-check at fire time (permission may have changed in another tab).
-      if (shouldAsk()) setVisible(true);
-    }, SHOW_DELAY_MS);
+      if (shouldAsk(config)) setVisible(true);
+    }, Math.max(0, config.promptDelaySeconds * 1000));
     return () => window.clearTimeout(t);
-  }, [user, loading]);
+  }, [user, loading, config]);
 
   if (!visible) return null;
 
@@ -71,7 +97,7 @@ export function PushPrompt() {
     setBusy(false);
     if (ok) {
       toast.success('Notifications enabled! 🔔');
-      try { localStorage.setItem(COUNT_KEY, String(MAX_DISMISSALS)); } catch { /* ignore */ }
+      try { localStorage.setItem(COUNT_KEY, String(config?.maxDismissals ?? DEFAULT_CONFIG.maxDismissals)); } catch { /* ignore */ }
       setVisible(false);
       return;
     }

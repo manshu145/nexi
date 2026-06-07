@@ -88,20 +88,24 @@ function toAbsoluteLink(link?: string): string | undefined {
 /**
  * Build the FCM message payload from our PushNotificationPayload shape.
  *
- * DATA-ONLY by design. Previously we sent a top-level `notification`
- * payload; for FCM web push that makes the SDK auto-display the message
- * AND (depending on SDK version) also invoke onBackgroundMessage — giving
- * either a duplicate or, combined with the service-worker scope clash, no
- * notification at all. Sending data-only means the service worker's
- * onBackgroundMessage ALWAYS fires exactly once and renders a single,
- * branded notification with full control over the icon + click target.
+ * Includes BOTH `webpush.notification` (so the browser/OS displays the
+ * notification reliably — critical on MOBILE and when the app/service
+ * worker is dormant) AND a `data` block (so the service worker's
+ * notificationclick + foreground onMessage handlers can resolve the click
+ * target and render a branded foreground toast).
  *
- * All display fields therefore travel in `data` (FCM requires every data
- * value to be a string), and the click URL is normalised to an absolute
- * HTTPS link the service worker reads from `click_action` / `url`.
+ * HISTORY: PR#321 made this DATA-ONLY to dodge a duplicate-notification
+ * issue, but that broke mobile delivery — a data-only web-push message
+ * needs the service worker to be alive to call showNotification, and on
+ * mobile the SW is frequently killed when the PWA/browser is closed, so
+ * nothing was shown (desktop, with a long-lived SW, still worked). Adding
+ * `webpush.notification` lets the push service display it without relying
+ * on a live SW. The SW's onBackgroundMessage now early-returns when a
+ * notification payload is present, so there's no duplicate.
  */
 function buildMessage(payload: PushNotificationPayload, target: { token: string } | { topic: string }): Record<string, unknown> {
   const link = toAbsoluteLink(payload.link);
+  const ICON = `${APP_BASE_URL}/icon-192.png`;
   const data: Record<string, string> = {
     ...(payload.data ?? {}),
     title: payload.title,
@@ -112,9 +116,22 @@ function buildMessage(payload: PushNotificationPayload, target: { token: string 
   return {
     ...target,
     data,
-    // High urgency + 1-day TTL so time-sensitive nudges (streak at risk,
-    // today's current affairs) are delivered promptly rather than coalesced.
-    webpush: { headers: { Urgency: 'high', TTL: '86400' } },
+    webpush: {
+      // High urgency + 1-day TTL so time-sensitive nudges (streak at risk,
+      // today's current affairs) are delivered promptly rather than coalesced.
+      headers: { Urgency: 'high', TTL: '86400' },
+      // The displayed notification. Present so the browser/OS shows it even
+      // when our service worker isn't running (the mobile failure mode).
+      notification: {
+        title: payload.title,
+        body: payload.body,
+        icon: ICON,
+        badge: ICON,
+        ...(payload.imageUrl ? { image: payload.imageUrl } : {}),
+      },
+      // Click target — FCM requires an absolute HTTPS URL here.
+      ...(link ? { fcmOptions: { link } } : {}),
+    },
   };
 }
 
