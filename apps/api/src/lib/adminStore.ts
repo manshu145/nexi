@@ -426,7 +426,12 @@ export class FirestoreAdminStore implements AdminStore {
       // revenue *total* from completed orders only so the headline number
       // stays accurate.
       const snap = await this.db.collection('billingOrders').orderBy('createdAt', 'desc').limit(250).get();
-      const payments = snap.docs.map(d => {
+      // Explicit element type: under `tsc --noEmit` (the CI typecheck) the
+      // object-spread below otherwise narrows to just { userId, userEmail }
+      // and drops the Firestore index signature, so reading `status`/`amount`
+      // failed to compile. Annotating as Record<string, any>[] keeps those
+      // dynamic fields accessible (and matches the declared return type).
+      const payments: Record<string, any>[] = snap.docs.map(d => {
         const data = d.data();
         return {
           ...data,
