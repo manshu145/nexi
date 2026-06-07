@@ -256,9 +256,13 @@ export default function DashboardPage() {
       </section>
 
       {/* Exam countdown — days remaining to the user's target exam */}
-      {me?.targetExam && <ExamCountdown examSlug={me.targetExam} onOpen={() => router.push('/exam-calendar')} />}
-      {me?.targetExam && <DailyPlanCard examSlug={me.targetExam} onOpen={() => router.push('/plan')} />}
-      <ReviseTodayCard onOpen={() => router.push('/revise')} />
+      {/* Today strip — exam countdown, daily plan & revision grouped into
+          one tight cluster instead of three separate full-width banners. */}
+      <div className="mt-5 space-y-2.5">
+        {me?.targetExam && <ExamCountdown examSlug={me.targetExam} onOpen={() => router.push('/exam-calendar')} />}
+        {me?.targetExam && <DailyPlanCard examSlug={me.targetExam} onOpen={() => router.push('/plan')} />}
+        <ReviseTodayCard onOpen={() => router.push('/revise')} />
+      </div>
 
       {/* Primary Study CTA - Full width hero card */}
       <section className="mt-8 animate-fadeIn">
@@ -283,116 +287,68 @@ export default function DashboardPage() {
         </button>
       </section>
 
-      {/* Core features — Current Affairs · Nexi AI · Mock Tests · PYQ.
-          Promotes the two test-prep surfaces (Mock Tests, PYQ) from the
-          small quick-action chips into first-class feature cards so they
-          sit alongside Current Affairs + Nexi AI. 2-up on phones,
-          4-up on laptops. */}
-      <section className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <button
-          type="button"
-          onClick={() => router.push('/current-affairs')}
-          className="paper-card card-selectable p-5 text-left animate-fadeIn-delay-1 hover:shadow-md transition-all group"
-        >
-          <div className="flex items-center gap-2">
-            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ember-500/10 text-xl">📰</span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-ember-500/10 px-2 py-0.5 text-[10px] font-bold text-ember-600">
-              <span className="h-1.5 w-1.5 rounded-full bg-ember-500 animate-pulse" />
-              LIVE
-            </span>
-          </div>
-          <h3 className="mt-3 font-serif text-base font-bold text-ink-900">{t('currentAffairs')}</h3>
-          <p className="mt-1 text-xs text-muted-500 line-clamp-1">{t('currentAffairsDesc')}</p>
-          <div className="mt-2 flex items-center gap-1 text-xs font-medium text-ember-500">
-            {t('read')} →
-            <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="group-hover:translate-x-0.5 transition-transform"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-          </div>
-        </button>
+      {/* Explore — one unified, equal-height grid for every feature.
+          Replaces the old split "core features" + "quick actions" sections
+          so all cards share a single visual system and line up cleanly at
+          every width (2-up phones, 3-up tablet, 4-up laptop). Equal heights
+          come from `h-full flex flex-col` + `mt-auto` on the CTA row. */}
+      <section className="mt-6 animate-fadeIn-delay-1">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-muted-500">{me?.language === 'hi' ? 'एक्सप्लोर करें' : 'Explore'}</h2>
+        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          {/* Current Affairs */}
+          <button type="button" onClick={() => router.push('/current-affairs')} className="paper-card card-selectable group flex h-full flex-col p-4 text-left transition-all hover:shadow-md">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ember-500/10 text-xl">📰</span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-ember-500/10 px-2 py-0.5 text-[10px] font-bold text-ember-600"><span className="h-1.5 w-1.5 rounded-full bg-ember-500 animate-pulse" />LIVE</span>
+            </div>
+            <h3 className="mt-3 font-serif text-base font-bold text-ink-900">{t('currentAffairs')}</h3>
+            <p className="mt-1 text-xs text-muted-500 line-clamp-2">{t('currentAffairsDesc')}</p>
+            <div className="mt-auto pt-2.5 flex items-center gap-1 text-xs font-medium text-ember-500">{t('read')} <span className="transition-transform group-hover:translate-x-0.5">→</span></div>
+          </button>
 
-        <button
-          type="button"
-          onClick={() => router.push('/chat')}
-          className="paper-card card-selectable p-5 text-left animate-fadeIn-delay-2 hover:shadow-md transition-all group"
-        >
-          <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ember-500/10 text-xl">🤖</span>
-          <h3 className="mt-3 font-serif text-base font-bold text-ink-900">{t('nexiAI')}</h3>
-          <p className="mt-1 text-xs text-muted-500 line-clamp-1">{t('nexiAIDesc')}</p>
-          <div className="mt-2 flex items-center gap-1 text-xs font-medium text-ember-500">
-            {tc('chat')} →
-            <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="group-hover:translate-x-0.5 transition-transform"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-          </div>
-        </button>
+          {/* Nexi AI */}
+          <button type="button" onClick={() => router.push('/chat')} className="paper-card card-selectable group flex h-full flex-col p-4 text-left transition-all hover:shadow-md">
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ember-500/10 text-xl">🤖</span>
+            <h3 className="mt-3 font-serif text-base font-bold text-ink-900">{t('nexiAI')}</h3>
+            <p className="mt-1 text-xs text-muted-500 line-clamp-2">{t('nexiAIDesc')}</p>
+            <div className="mt-auto pt-2.5 flex items-center gap-1 text-xs font-medium text-ember-500">{tc('chat')} <span className="transition-transform group-hover:translate-x-0.5">→</span></div>
+          </button>
 
-        <button
-          type="button"
-          onClick={() => router.push('/mock-tests')}
-          className="paper-card card-selectable p-5 text-left animate-fadeIn-delay-2 hover:shadow-md transition-all group"
-        >
-          <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ember-500/10 text-xl">🧪</span>
-          <h3 className="mt-3 font-serif text-base font-bold text-ink-900">{t('mockTests')}</h3>
-          <p className="mt-1 text-xs text-muted-500 line-clamp-1">{t('mockTestsDesc')}</p>
-          <div className="mt-2 flex items-center gap-1 text-xs font-medium text-ember-500">
-            {me?.language === 'hi' ? 'शुरू करें' : 'Start'} →
-            <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="group-hover:translate-x-0.5 transition-transform"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-          </div>
-        </button>
+          {/* Mock Tests */}
+          <button type="button" onClick={() => router.push('/mock-tests')} className="paper-card card-selectable group flex h-full flex-col p-4 text-left transition-all hover:shadow-md">
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ember-500/10 text-xl">🧪</span>
+            <h3 className="mt-3 font-serif text-base font-bold text-ink-900">{t('mockTests')}</h3>
+            <p className="mt-1 text-xs text-muted-500 line-clamp-2">{t('mockTestsDesc')}</p>
+            <div className="mt-auto pt-2.5 flex items-center gap-1 text-xs font-medium text-ember-500">{me?.language === 'hi' ? 'शुरू करें' : 'Start'} <span className="transition-transform group-hover:translate-x-0.5">→</span></div>
+          </button>
 
-        <button
-          type="button"
-          onClick={() => router.push('/pyq')}
-          className="paper-card card-selectable p-5 text-left animate-fadeIn-delay-2 hover:shadow-md transition-all group"
-        >
-          <div className="flex items-center gap-2">
-            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ember-500/10 text-xl">📄</span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-ember-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ember-600">New</span>
-          </div>
-          <h3 className="mt-3 font-serif text-base font-bold text-ink-900">{me?.language === 'hi' ? 'पिछले वर्ष' : 'PYQ Papers'}</h3>
-          <p className="mt-1 text-xs text-muted-500 line-clamp-1">{me?.language === 'hi' ? 'पिछले वर्ष के प्रश्न' : 'Previous year questions'}</p>
-          <div className="mt-2 flex items-center gap-1 text-xs font-medium text-ember-500">
-            {t('read')} →
-            <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="group-hover:translate-x-0.5 transition-transform"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-          </div>
-        </button>
-      </section>
+          {/* PYQ */}
+          <button type="button" onClick={() => router.push('/pyq')} className="paper-card card-selectable group flex h-full flex-col p-4 text-left transition-all hover:shadow-md">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ember-500/10 text-xl">📄</span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-ember-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ember-600">New</span>
+            </div>
+            <h3 className="mt-3 font-serif text-base font-bold text-ink-900">{me?.language === 'hi' ? 'पिछले वर्ष' : 'PYQ Papers'}</h3>
+            <p className="mt-1 text-xs text-muted-500 line-clamp-2">{me?.language === 'hi' ? 'पिछले वर्ष के प्रश्न' : 'Previous year questions'}</p>
+            <div className="mt-auto pt-2.5 flex items-center gap-1 text-xs font-medium text-ember-500">{t('read')} <span className="transition-transform group-hover:translate-x-0.5">→</span></div>
+          </button>
 
-      {/* Quick Actions - Grid layout. Mock Tests + PYQ live in the
-          "Core features" grid above; these are the secondary shortcuts. */}
-      <section className="mt-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 animate-fadeIn-delay-2">
-        <button type="button" onClick={() => router.push('/leaderboard')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3 min-h-[68px]">
-          <span className="text-base flex-shrink-0">🏆</span>
-          <div className="text-left min-w-0">
-            <p className="text-sm font-semibold text-ink-900 whitespace-nowrap">{t('leaderboard')}</p>
-            <p className="text-[10px] text-muted-500 truncate">{t('quizScores')}</p>
-          </div>
-        </button>
-        <button type="button" onClick={() => router.push('/essay')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3 min-h-[68px]">
-          <span className="text-base flex-shrink-0">✍️</span>
-          <div className="text-left min-w-0">
-            <p className="text-sm font-semibold text-ink-900 whitespace-nowrap">{t('essay')}</p>
-            <p className="text-[10px] text-muted-500 truncate">{t('essayDesc')}</p>
-          </div>
-        </button>
-        <button type="button" onClick={() => router.push('/upgrade')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3 min-h-[68px]">
-          <span className="text-base flex-shrink-0">⭐</span>
-          <div className="text-left min-w-0">
-            <p className="text-sm font-semibold text-ink-900 whitespace-nowrap">{t('upgrade')}</p>
-            <p className="text-[10px] text-muted-500 truncate">{t('upgradeDesc')}</p>
-          </div>
-        </button>
-        <button type="button" onClick={() => router.push('/refer')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3 min-h-[68px]">
-          <span className="text-base flex-shrink-0">🎁</span>
-          <div className="text-left min-w-0">
-            <p className="text-sm font-semibold text-ink-900 whitespace-nowrap">{t('refer')}</p>
-            <p className="text-[10px] text-muted-500 truncate">{t('referDesc')}</p>
-          </div>
-        </button>
-        <button type="button" onClick={() => router.push('/support')} className="paper-card card-selectable flex items-center gap-2.5 px-4 py-3 min-h-[68px]">
-          <span className="text-base flex-shrink-0">🛟</span>
-          <div className="text-left min-w-0">
-            <p className="text-sm font-semibold text-ink-900 whitespace-nowrap">{t('support')}</p>
-            <p className="text-[10px] text-muted-500 truncate">{t('supportDesc')}</p>
-          </div>
-        </button>
+          {/* Secondary shortcuts — same card system, equal height */}
+          {([
+            { icon: '🏆', title: t('leaderboard'), desc: t('quizScores'), href: '/leaderboard' },
+            { icon: '✍️', title: t('essay'), desc: t('essayDesc'), href: '/essay' },
+            { icon: '⭐', title: t('upgrade'), desc: t('upgradeDesc'), href: '/upgrade' },
+            { icon: '🎁', title: t('refer'), desc: t('referDesc'), href: '/refer' },
+            { icon: '🛟', title: t('support'), desc: t('supportDesc'), href: '/support' },
+          ] as const).map((item) => (
+            <button key={item.href} type="button" onClick={() => router.push(item.href)} className="paper-card card-selectable group flex h-full flex-col p-4 text-left transition-all hover:shadow-md">
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ember-500/10 text-xl">{item.icon}</span>
+              <h3 className="mt-3 font-serif text-base font-bold text-ink-900">{item.title}</h3>
+              <p className="mt-1 text-xs text-muted-500 line-clamp-2">{item.desc}</p>
+              <div className="mt-auto pt-2.5 flex items-center gap-1 text-xs font-medium text-ember-500">{me?.language === 'hi' ? 'खोलें' : 'Open'} <span className="transition-transform group-hover:translate-x-0.5">→</span></div>
+            </button>
+          ))}
+        </div>
       </section>
 
       {/* Stats Row - Compact and visual */}
@@ -480,7 +436,7 @@ function ExamCountdown({ examSlug, onOpen }: { examSlug: string; onOpen: () => v
   if (!info) return null;
 
   return (
-    <section className="mt-4">
+    <section>
       <button type="button" onClick={onOpen} className="paper-card card-selectable w-full p-4 text-left hover:shadow-md transition-all">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
@@ -527,7 +483,7 @@ function ReviseTodayCard({ onOpen }: { onOpen: () => void }) {
   if (dueCount <= 0) return null;
 
   return (
-    <section className="mt-4">
+    <section>
       <button onClick={onOpen} className="paper-card flex w-full items-center justify-between gap-3 p-4 text-left transition-shadow hover:shadow-md">
         <div className="flex items-center gap-3">
           <span aria-hidden className="grid h-10 w-10 place-items-center rounded-xl bg-ember-500/10 text-xl">🔁</span>
@@ -561,7 +517,7 @@ function DailyPlanCard({ examSlug, onOpen }: { examSlug: string; onOpen: () => v
   const top = plan.items.slice(0, 3);
 
   return (
-    <section className="mt-4">
+    <section>
       <button onClick={onOpen} className="paper-card w-full p-4 text-left transition-shadow hover:shadow-md">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">

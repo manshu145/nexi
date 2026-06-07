@@ -381,6 +381,17 @@ html.dark .banner-error {
   -ms-hyphens: auto;
   word-spacing: 0.02em;
 }
+/* On narrow phones, justified text produces ugly rivers/large word gaps
+   because each line fits very few words. Fall back to left-aligned text
+   below 640px for comfortable mobile reading; tablets/desktops keep the
+   book-like justification. */
+@media (max-width: 640px) {
+  .reader-body {
+    text-align: left;
+    word-spacing: normal;
+  }
+  .reader-paragraph + .reader-paragraph { text-indent: 0; margin-top: 0.85rem; }
+}
 .reader-paragraph + .reader-paragraph {
   margin-top: 1rem;
   text-indent: 1.5em;
