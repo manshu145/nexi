@@ -221,8 +221,8 @@ export default function CurrentAffairsShortsPage() {
             <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
           </button>
           <h1 className="text-lg font-serif font-bold text-ink-900">
-            Today&apos;s News
-            {isFromYesterday && <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-ember-500/15 text-ember-600 font-medium align-middle">Yesterday</span>}
+            {getLang() === 'hi' ? 'आज की खबरें' : "Today's News"}
+            {isFromYesterday && <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-ember-500/15 text-ember-600 font-medium align-middle">{getLang() === 'hi' ? 'कल' : 'Yesterday'}</span>}
           </h1>
           <div className="flex items-center gap-1.5">
             <button onClick={() => router.push('/current-affairs/quiz/leaderboard')} className="rounded-full p-1.5 hover:bg-paper-300/50 text-ink-700 transition-colors active:scale-95" title="Leaderboard">🏆</button>
