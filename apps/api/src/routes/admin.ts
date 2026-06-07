@@ -651,16 +651,20 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
   // ━━━ EMAIL ━━━
   // POST /v1/admin/email/send — send email to one user or bulk
   app.post('/email/send', async (c) => {
-    const body = await c.req.json().catch(() => null) as { to?: string; emails?: string[]; subject?: string; body?: string; confirmBroadcast?: boolean } | null;
+    const body = await c.req.json().catch(() => null) as { to?: string; emails?: string[]; subject?: string; body?: string; confirmBroadcast?: boolean; wrap?: boolean } | null;
     if (!body?.subject || !body?.body) throw new HTTPException(400, { message: 'subject and body required' });
-    const { createEmailService } = await import('../lib/emailService.js');
+    const { createEmailService, brandEmailShell } = await import('../lib/emailService.js');
     const emailService = createEmailService(deps.env, deps.logger, deps.serviceKeys);
+    // Wrap raw admin HTML in the branded shell (logo + header + footer) unless
+    // the body is already a full HTML document, or the admin opts out (wrap:false).
+    const looksLikeFullDoc = /<!doctype|<html[\s>]/i.test(body.body);
+    const html = (body.wrap === false || looksLikeFullDoc) ? body.body : brandEmailShell(body.body);
     if (body.to) {
-      const result = await emailService.sendEmail(body.to, body.subject, body.body);
+      const result = await emailService.sendEmail(body.to, body.subject, html);
       return c.json(result);
     }
     if (body.emails?.length) {
-      const result = await emailService.sendBulkEmail(body.emails, body.subject, body.body);
+      const result = await emailService.sendBulkEmail(body.emails, body.subject, html);
       return c.json(result);
     }
     // If no 'to' and no 'emails[]', send to ALL users — requires explicit
@@ -674,7 +678,7 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
     const allUsers = await deps.users.listAll?.() ?? [];
     const allEmails = allUsers.map(u => u.email).filter(e => e && e.includes('@'));
     if (allEmails.length === 0) throw new HTTPException(400, { message: 'No user emails found' });
-    const result = await emailService.sendBulkEmail(allEmails, body.subject, body.body);
+    const result = await emailService.sendBulkEmail(allEmails, body.subject, html);
     deps.logger.info('admin.email_sent_to_all', { count: allEmails.length });
     return c.json(result);
   });
@@ -1101,9 +1105,40 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
   // ━━━ EMAIL LOGS ━━━
   app.get('/email/logs', async (c) => {
     if (!deps.db) return c.json({ logs: [], total: 0 });
-    const snap = await deps.db.collection('emailLogs').orderBy('sentAt', 'desc').limit(50).get();
-    const logs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // Was hard-capped at 50 (admin could only ever see the last 50 sends).
+    // Now honours ?limit= (default 200, max 1000) so the full send history
+    // is visible. ?status=sent|failed filters in-memory.
+    const limit = Math.min(Math.max(parseInt(c.req.query('limit') ?? '200', 10) || 200, 1), 1000);
+    const statusFilter = c.req.query('status');
+    const snap = await deps.db.collection('emailLogs').orderBy('sentAt', 'desc').limit(limit).get();
+    let logs = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Array<Record<string, unknown>>;
+    if (statusFilter) logs = logs.filter(l => l['status'] === statusFilter);
     return c.json({ logs, total: logs.length });
+  });
+
+  // ━━━ EMAIL RECIPIENTS (contacts) ━━━
+  // Auto-imported address book of every signed-up user, for the broadcast
+  // composer's contact picker. Returns {email,name,plan,createdAt} deduped
+  // by email, newest first. Supports ?search= and ?limit= (default 2000).
+  app.get('/email/recipients', async (c) => {
+    const search = c.req.query('search')?.toLowerCase().trim() ?? '';
+    const limit = Math.min(Math.max(parseInt(c.req.query('limit') ?? '2000', 10) || 2000, 1), 10000);
+    const all = await deps.users.listAll?.() ?? [];
+    const seen = new Set<string>();
+    let contacts = all
+      .filter(u => u.email && u.email.includes('@'))
+      .map(u => ({ email: u.email, name: u.name ?? '', plan: u.plan ?? 'free', createdAt: u.createdAt ?? '' }))
+      .filter(ct => {
+        const key = ct.email.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    if (search) {
+      contacts = contacts.filter(ct => ct.email.toLowerCase().includes(search) || ct.name.toLowerCase().includes(search));
+    }
+    contacts.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    return c.json({ contacts: contacts.slice(0, limit), total: contacts.length });
   });
 
   // ━━━ EMAIL CONFIG (Auto-emails + senders) ━━━

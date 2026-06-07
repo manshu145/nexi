@@ -23,11 +23,24 @@ interface EmailLog {
   sentAt?: string;
 }
 
+interface Contact {
+  email: string;
+  name: string;
+  plan: string;
+  createdAt: string;
+}
+
+type RecipientMode = 'all' | 'contacts' | 'manual';
+
+/** Client-side preview of the branded shell the API wraps bodies in. */
+function previewShell(inner: string): string {
+  return `<div style="background:#FAF7F2;padding:16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif"><div style="max-width:600px;margin:0 auto"><div style="text-align:center;padding:16px 0;border-bottom:3px solid #D97706"><span style="font-size:20px;font-weight:700;color:#1C1917;letter-spacing:-0.5px">⬛ Nexigrate</span></div><div style="background:#fff;padding:24px;border-radius:12px;margin-top:14px;border:1px solid #E7E5E4;color:#44403C;font-size:15px;line-height:1.6">${inner || '<span style=\"color:#A8A29E\">Your message preview…</span>'}</div><div style="text-align:center;padding:16px 0;color:#78716C;font-size:11px">© 2026 Nexigrate · Unsubscribe · Privacy</div></div></div>`;
+}
+
 export default function AdminEmailPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const [configured, setConfigured] = useState<boolean | null>(null);
-  const [to, setTo] = useState('');
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
@@ -39,6 +52,18 @@ export default function AdminEmailPage() {
   const [activeTab, setActiveTab] = useState<'compose' | 'mailbox' | 'templates' | 'logs' | 'settings'>('compose');
   const [emailLogs, setEmailLogs] = useState<EmailLog[]>([]);
   const [emailConfig, setEmailConfig] = useState<Record<string, any>>({});
+
+  // ── Bulk composer (Outlook-like) ──────────────────────────────────────
+  const [recipientMode, setRecipientMode] = useState<RecipientMode>('manual');
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [contactsTotal, setContactsTotal] = useState(0);
+  const [contactsLoaded, setContactsLoaded] = useState(false);
+  const [contactSearch, setContactSearch] = useState('');
+  const [selectedEmails, setSelectedEmails] = useState<Set<string>>(new Set());
+  const [manualEmails, setManualEmails] = useState('');
+  const [showPreview, setShowPreview] = useState(true);
+  const [logLimit, setLogLimit] = useState(200);
+  const [logsLoading, setLogsLoading] = useState(false);
 
   // Mailbox state
   const [threads, setThreads] = useState<MailboxThread[]>([]);
@@ -66,7 +91,7 @@ export default function AdminEmailPage() {
         const [statusRes, templatesRes, logsRes, configRes] = await Promise.all([
           fetch(`${API}/v1/admin/email/status`, { headers: { Authorization: `Bearer ${token}` } }),
           fetch(`${API}/v1/admin/email/templates`, { headers: { Authorization: `Bearer ${token}` } }),
-          fetch(`${API}/v1/admin/email/logs`, { headers: { Authorization: `Bearer ${token}` } }),
+          fetch(`${API}/v1/admin/email/logs?limit=200`, { headers: { Authorization: `Bearer ${token}` } }),
           fetch(`${API}/v1/admin/email/config`, { headers: { Authorization: `Bearer ${token}` } }),
         ]);
         if (statusRes.ok) { const data = (await statusRes.json()) as { configured: boolean }; setConfigured(data.configured); }
@@ -79,21 +104,86 @@ export default function AdminEmailPage() {
 
   const handleSend = async () => {
     if (!subject.trim() || !body.trim()) return;
+
+    // Resolve recipients from the active mode.
+    let emails: string[] = [];
+    let broadcastAll = false;
+    if (recipientMode === 'all') {
+      broadcastAll = true;
+    } else if (recipientMode === 'contacts') {
+      emails = [...selectedEmails];
+      if (emails.length === 0) { setError('Select at least one contact.'); return; }
+    } else {
+      emails = manualEmails
+        .split(/[\s,;]+/).map(e => e.trim()).filter(e => e.includes('@'));
+      if (emails.length === 0) { setError('Enter at least one valid email.'); return; }
+    }
+
+    const count = broadcastAll ? contactsTotal || 'all' : emails.length;
+    if (!confirm(`Send this email to ${count} recipient${count === 1 ? '' : 's'}?`)) return;
+
     setSending(true); setError(null); setResult(null);
     try {
       const token = await getToken();
-      const payload: Record<string, string> = { subject, body };
-      if (to.trim()) payload.to = to.trim();
+      const payload: Record<string, unknown> = { subject, body };
+      if (broadcastAll) payload.confirmBroadcast = true;
+      else if (emails.length === 1) payload.to = emails[0];
+      else payload.emails = emails;
       const res = await fetch(`${API}/v1/admin/email/send`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error(`Failed: ${res.status}`);
-      const data = (await res.json()) as { success?: boolean; sent?: number };
-      setResult(data.sent ? `Sent to ${data.sent} users` : data.success ? 'Email sent!' : 'Failed to send');
+      if (!res.ok) { const t = await res.json().catch(() => ({})) as { message?: string }; throw new Error(t.message || `Failed: ${res.status}`); }
+      const data = (await res.json()) as { success?: boolean; sent?: number; failed?: number };
+      setResult(
+        typeof data.sent === 'number'
+          ? `Sent to ${data.sent} recipient${data.sent === 1 ? '' : 's'}${data.failed ? ` · ${data.failed} failed` : ''}`
+          : data.success ? 'Email sent!' : 'Failed to send',
+      );
+      void loadLogs();
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
     finally { setSending(false); }
   };
+
+  const loadContacts = async (search = '') => {
+    setContactsLoaded(false);
+    try {
+      const token = await getToken();
+      const res = await fetch(`${API}/v1/admin/email/recipients?search=${encodeURIComponent(search)}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) {
+        const data = (await res.json()) as { contacts: Contact[]; total: number };
+        setContacts(data.contacts);
+        setContactsTotal(data.total);
+      }
+    } catch { /* ignore */ }
+    finally { setContactsLoaded(true); }
+  };
+
+  const loadLogs = async (limit = logLimit) => {
+    setLogsLoading(true);
+    try {
+      const token = await getToken();
+      const res = await fetch(`${API}/v1/admin/email/logs?limit=${limit}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) { const data = (await res.json()) as { logs: EmailLog[] }; setEmailLogs(data.logs); }
+    } catch { /* ignore */ }
+    finally { setLogsLoading(false); }
+  };
+
+  // Load contacts the first time the user switches to the contacts/all modes.
+  useEffect(() => {
+    if ((recipientMode === 'contacts' || recipientMode === 'all') && !contactsLoaded && user) void loadContacts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recipientMode, user]);
+
+  const toggleContact = (email: string) => {
+    setSelectedEmails(prev => {
+      const next = new Set(prev);
+      if (next.has(email)) next.delete(email); else next.add(email);
+      return next;
+    });
+  };
+  const selectAllVisible = () => setSelectedEmails(new Set(contacts.map(c => c.email)));
+  const clearSelection = () => setSelectedEmails(new Set());
 
   const handleSaveTemplate = async () => {
     if (!templateName.trim() || !subject.trim() || !body.trim()) return;
@@ -194,9 +284,9 @@ export default function AdminEmailPage() {
   if (loading || !user) return <div className="space-y-4"><div className="h-7 w-32 rounded bg-paper-300 animate-pulse" /><div className="h-40 rounded bg-paper-300 animate-pulse" /></div>;
 
   return (
-    <div className="max-w-3xl">
+    <div className="max-w-5xl">
       <h1 className="font-serif text-2xl font-bold text-ink-900">Email</h1>
-      <p className="mt-1 text-sm text-muted-500">Send emails to users via Resend</p>
+      <p className="mt-1 text-sm text-muted-500">Compose branded broadcasts, manage conversations &amp; review delivery logs</p>
 
       {configured === false && (
         <div className="banner banner-error mt-4">Email not configured. Set RESEND_API_KEY in environment variables.</div>
@@ -230,35 +320,115 @@ export default function AdminEmailPage() {
       </div>
 
       {activeTab === 'compose' && (
-        <div className="paper-card mt-4 p-5 space-y-4">
-          <div>
-            <label className="text-xs font-medium text-ink-700">To (email or leave blank for all users)</label>
-            <input value={to} onChange={e => setTo(e.target.value)} className="input mt-1" placeholder="user@example.com (optional — blank = all users)" />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-ink-700">Subject</label>
-            <input value={subject} onChange={e => setSubject(e.target.value)} className="input mt-1" placeholder="Email subject" />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-ink-700">Body (HTML supported)</label>
-            <textarea value={body} onChange={e => setBody(e.target.value)} className="input mt-1 font-mono text-xs" rows={8} placeholder="<h1>Hello {{name}}!</h1><p>Your message here...</p>" />
-          </div>
-
-          <div className="flex items-center gap-3">
-            <button onClick={handleSend} disabled={sending || !subject.trim() || !body.trim()} className="btn-primary flex-1">
-              {sending ? 'Sending...' : to.trim() ? 'Send to User' : 'Send to All Users'}
-            </button>
-            <button onClick={() => setShowSaveTemplate(!showSaveTemplate)} className="btn-ghost text-sm" disabled={!subject.trim() || !body.trim()}>
-              💾 Save as Template
-            </button>
-          </div>
-
-          {showSaveTemplate && (
-            <div className="flex items-center gap-2 p-3 bg-paper-200 rounded-lg">
-              <input value={templateName} onChange={e => setTemplateName(e.target.value)} className="input flex-1" placeholder="Template name (e.g. Welcome Email)" />
-              <button onClick={handleSaveTemplate} disabled={!templateName.trim()} className="btn-primary text-sm">Save</button>
+        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_minmax(300px,420px)]">
+          {/* Composer */}
+          <div className="paper-card p-5 space-y-4">
+            {/* Recipient mode selector */}
+            <div>
+              <label className="text-xs font-medium text-ink-700">Recipients</label>
+              <div className="mt-1.5 flex flex-wrap gap-2">
+                {([
+                  { id: 'manual', label: '✏️ Type emails' },
+                  { id: 'contacts', label: '👥 Pick contacts' },
+                  { id: 'all', label: '📣 All users' },
+                ] as const).map(m => (
+                  <button key={m.id} onClick={() => { setRecipientMode(m.id); setError(null); }}
+                    className={`pill text-xs ${recipientMode === m.id ? 'bg-ink-900 text-paper-50 border-ink-900' : ''}`}>
+                    {m.label}
+                  </button>
+                ))}
+              </div>
             </div>
-          )}
+
+            {recipientMode === 'manual' && (
+              <div>
+                <textarea value={manualEmails} onChange={e => setManualEmails(e.target.value)} className="input font-mono text-xs" rows={2}
+                  placeholder="a@x.com, b@y.com  (comma, space or newline separated)" />
+                <p className="mt-1 text-[11px] text-muted-400">{manualEmails.split(/[\s,;]+/).filter(e => e.includes('@')).length} valid email(s)</p>
+              </div>
+            )}
+
+            {recipientMode === 'all' && (
+              <div className="rounded-lg border border-ember-500/30 bg-ember-500/5 p-3 text-xs text-ink-700">
+                ⚠️ This will email <strong>every registered user</strong>{contactsTotal ? ` (~${contactsTotal})` : ''}. Double-check your subject &amp; body before sending.
+              </div>
+            )}
+
+            {recipientMode === 'contacts' && (
+              <div className="rounded-lg border border-paper-300 p-2">
+                <div className="flex items-center gap-2">
+                  <input value={contactSearch} onChange={e => setContactSearch(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') void loadContacts(contactSearch); }}
+                    className="input flex-1 text-sm" placeholder="Search name or email…" />
+                  <button onClick={() => void loadContacts(contactSearch)} className="btn-ghost-sm text-xs">Search</button>
+                </div>
+                <div className="mt-2 flex items-center justify-between text-[11px] text-muted-500">
+                  <span>{selectedEmails.size} selected · {contactsTotal} contacts</span>
+                  <div className="flex gap-2">
+                    <button onClick={selectAllVisible} className="text-ember-600 hover:underline">Select all shown</button>
+                    <button onClick={clearSelection} className="text-muted-500 hover:underline">Clear</button>
+                  </div>
+                </div>
+                <div className="mt-2 max-h-52 overflow-y-auto divide-y divide-paper-200">
+                  {!contactsLoaded ? (
+                    <p className="p-3 text-center text-xs text-muted-400">Loading contacts…</p>
+                  ) : contacts.length === 0 ? (
+                    <p className="p-3 text-center text-xs text-muted-400">No contacts found.</p>
+                  ) : contacts.map(ct => (
+                    <label key={ct.email} className="flex cursor-pointer items-center gap-2 px-2 py-1.5 hover:bg-paper-100">
+                      <input type="checkbox" checked={selectedEmails.has(ct.email)} onChange={() => toggleContact(ct.email)} className="accent-ember-500" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm text-ink-800">{ct.name || ct.email}</span>
+                        {ct.name && <span className="block truncate text-[11px] text-muted-400">{ct.email}</span>}
+                      </span>
+                      <span className="flex-shrink-0 text-[10px] uppercase text-muted-400">{ct.plan}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label className="text-xs font-medium text-ink-700">Subject</label>
+              <input value={subject} onChange={e => setSubject(e.target.value)} className="input mt-1" placeholder="Email subject" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-ink-700">Body (HTML supported — wrapped in branded template automatically)</label>
+              <textarea value={body} onChange={e => setBody(e.target.value)} className="input mt-1 font-mono text-xs" rows={8}
+                placeholder="<h1>Hello!</h1><p>Your message here…</p>" />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <button onClick={handleSend} disabled={sending || !subject.trim() || !body.trim()} className="btn-primary flex-1 min-w-[160px]">
+                {sending ? 'Sending…'
+                  : recipientMode === 'all' ? 'Send to all users'
+                  : recipientMode === 'contacts' ? `Send to ${selectedEmails.size || 0} contact(s)`
+                  : 'Send'}
+              </button>
+              <button onClick={() => setShowPreview(p => !p)} className="btn-ghost text-sm lg:hidden">{showPreview ? 'Hide' : 'Show'} preview</button>
+              <button onClick={() => setShowSaveTemplate(!showSaveTemplate)} className="btn-ghost text-sm" disabled={!subject.trim() || !body.trim()}>
+                💾 Save as Template
+              </button>
+            </div>
+
+            {showSaveTemplate && (
+              <div className="flex items-center gap-2 p-3 bg-paper-200 rounded-lg">
+                <input value={templateName} onChange={e => setTemplateName(e.target.value)} className="input flex-1" placeholder="Template name (e.g. Welcome Email)" />
+                <button onClick={handleSaveTemplate} disabled={!templateName.trim()} className="btn-primary text-sm">Save</button>
+              </div>
+            )}
+          </div>
+
+          {/* Live preview */}
+          <div className={`${showPreview ? 'block' : 'hidden'} lg:block`}>
+            <div className="paper-card overflow-hidden">
+              <div className="border-b border-paper-200 bg-paper-100 px-4 py-2">
+                <p className="text-xs font-medium text-muted-500">Preview</p>
+                <p className="truncate text-sm font-semibold text-ink-900">{subject || 'No subject'}</p>
+              </div>
+              <iframe title="email-preview" className="h-[460px] w-full bg-white" srcDoc={previewShell(body)} />
+            </div>
+          </div>
         </div>
       )}
 
@@ -376,6 +546,14 @@ export default function AdminEmailPage() {
 
       {activeTab === 'logs' && (
         <div className="mt-4">
+          {/* Logs toolbar — show count + load-more so the admin isn't capped at 50. */}
+          <div className="mb-3 flex items-center gap-3">
+            <p className="text-xs text-muted-500">Showing <strong>{emailLogs.length}</strong> log{emailLogs.length === 1 ? '' : 's'}</p>
+            <button onClick={() => void loadLogs(logLimit)} disabled={logsLoading} className="btn-ghost-sm text-xs">{logsLoading ? 'Refreshing…' : '↻ Refresh'}</button>
+            {emailLogs.length >= logLimit && (
+              <button onClick={() => { const next = logLimit + 300; setLogLimit(next); void loadLogs(next); }} disabled={logsLoading} className="btn-ghost-sm text-xs ml-auto">Load more</button>
+            )}
+          </div>
           {emailLogs.length === 0 ? (
             <div className="paper-card p-8 text-center">
               <span className="text-3xl">📬</span>

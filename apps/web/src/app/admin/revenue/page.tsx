@@ -22,6 +22,7 @@ export default function AdminRevenuePage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [apiTotal, setApiTotal] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [fetching, setFetching] = useState(true);
 
@@ -40,7 +41,7 @@ export default function AdminRevenuePage() {
         const res = await fetch(`${API}/v1/admin/revenue`, { headers: { Authorization: `Bearer ${token}` } });
         if (!res.ok) throw new Error(`Failed: ${res.status}`);
         const data = await res.json() as { payments: Payment[]; total: number };
-        if (!cancelled) { setPayments(data.payments); }
+        if (!cancelled) { setPayments(data.payments); setApiTotal(data.total); }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load revenue data');
       } finally {
@@ -60,9 +61,14 @@ export default function AdminRevenuePage() {
   const fmtINR = (paise: number) =>
     toRupees(paise).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 
-  // Calculate summary stats (in rupees)
-  const totalRevenue = payments.reduce((sum, p) => sum + toRupees(p.amount), 0);
-  const thisMonth = payments.filter(p => {
+  // A payment counts toward revenue only when fully completed/verified.
+  const isPaid = (s: string) => s === 'completed' || s === 'success' || s === 'verified' || s === 'paid';
+  const completed = payments.filter(p => isPaid(p.status));
+
+  // Calculate summary stats (in rupees). Prefer the server-computed total
+  // (completed-only); fall back to a client sum of completed orders.
+  const totalRevenue = apiTotal || completed.reduce((sum, p) => sum + toRupees(p.amount), 0);
+  const thisMonth = completed.filter(p => {
     const d = new Date(p.createdAt);
     const now = new Date();
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
@@ -89,6 +95,7 @@ export default function AdminRevenuePage() {
         <div className="paper-card p-5">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">Total Transactions</p>
           <p className="font-serif mt-2 text-3xl font-bold text-ink-900">{payments.length}</p>
+          <p className="mt-1 text-xs text-muted-400">{completed.length} completed · {payments.length - completed.length} pending/failed</p>
         </div>
       </div>
 
@@ -115,7 +122,7 @@ export default function AdminRevenuePage() {
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <span className="font-serif font-bold text-ink-900">₹{fmtINR(p.amount)}</span>
-                  <span className={`pill text-xs ${p.status === 'success' || p.status === 'verified' ? 'pill-success' : p.status === 'failed' ? 'pill-warn' : ''}`}>
+                  <span className={`pill text-xs ${isPaid(p.status) ? 'pill-success' : p.status === 'failed' ? 'pill-warn' : ''}`}>
                     {p.status}
                   </span>
                 </div>
