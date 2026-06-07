@@ -34,6 +34,7 @@ import type { BlogStore } from '../lib/blogStore.js';
 import type { Auth } from 'firebase-admin/auth';
 import type { ServiceKeyStore } from '../lib/serviceKeyStore.js';
 import type { Env } from '../env.js';
+import { getPushPromptConfig } from './admin.js';
 
 export interface PublicRoutesDeps {
   adminStore: AdminStore;
@@ -49,6 +50,8 @@ export interface PublicRoutesDeps {
   /** PR-38: serviceKeys + env wired so emailService can resolve Resend keys. */
   serviceKeys?: ServiceKeyStore;
   env?: Env;
+  /** Firestore handle — used to expose the public push-prompt config mirror. */
+  db?: import('firebase-admin/firestore').Firestore | null;
 }
 
 const errorReportSchema = z.object({
@@ -129,11 +132,19 @@ export function makePublicRoutes(deps: PublicRoutesDeps): Hono {
 
   // GET /v1/branding  -- public (cacheable).
   // Bundles every "splash screen" fact in one round-trip so the loading
-  // surface doesn't fan out to multiple endpoints before the app shell is
   // ready. The number returned for `signupBonusPreview` is the LIVE
   // platformConfig value, so admin edits in /admin/credit-rewards
   // propagate to the marketing copy ("you'll get N welcome credits") on
   // the same cache TTL as the rest of the rewards.
+  // GET /v1/public/push-config — unauthenticated mirror of the admin
+  // push-prompt settings so the client PushPrompt knows how long to wait
+  // before soft-asking for notification permission.
+  app.get('/push-config', async (c) => {
+    const config = await getPushPromptConfig({ db: deps.db ?? null });
+    c.header('Cache-Control', 'public, max-age=300');
+    return c.json({ config });
+  });
+
   app.get('/branding', async (c) => {
     let logoUrl = '';
     let favicon = '';
