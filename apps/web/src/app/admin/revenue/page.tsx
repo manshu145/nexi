@@ -9,11 +9,14 @@ interface Payment {
   id: string;
   userId: string;
   userEmail: string;
+  userName?: string;
   planId: string;
   period: string;
   amount: number;
   status: string;
   createdAt: string;
+  orderId?: string;
+  paymentId?: string;
 }
 
 const API = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com';
@@ -113,15 +116,24 @@ export default function AdminRevenuePage() {
         ) : (
           <div className="mt-4 space-y-2">
             {payments.map((p) => (
-              <div key={p.id} className="paper-card p-4 flex items-center justify-between">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-ink-900 dark:text-paper-50 truncate">{p.userEmail || p.userId}</p>
-                  <p className="text-xs text-muted-500">
+              <div key={p.id} className="paper-card p-4 flex items-center justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-ink-900 dark:text-paper-50 truncate">
+                    {p.userName || p.userEmail || p.userId || 'Unknown user'}
+                  </p>
+                  {p.userEmail && (
+                    <p className="text-xs text-muted-600 dark:text-muted-400 truncate">{p.userEmail}</p>
+                  )}
+                  <p className="mt-0.5 text-xs text-muted-500">
                     {p.planId} · {p.period} · {new Date(p.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                   </p>
+                  {/* Transaction id — readable mono, clearly visible (was blending in) */}
+                  <p className="mt-1 font-mono text-[11px] text-muted-500 dark:text-muted-400 truncate">
+                    🧾 {p.paymentId || p.orderId || p.id}
+                  </p>
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <span className="font-serif font-bold text-ink-900">₹{fmtINR(p.amount)}</span>
+                <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                  <span className="font-serif font-bold text-ink-900 dark:text-paper-50">₹{fmtINR(p.amount)}</span>
                   <span className={`pill text-xs ${isPaid(p.status) ? 'pill-success' : p.status === 'failed' ? 'pill-warn' : ''}`}>
                     {p.status}
                   </span>

@@ -595,6 +595,31 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
   // GET /v1/admin/revenue — payments
   app.get('/revenue', async (c) => {
     const revenue = await deps.adminStore.getRevenue();
+    // Enrich each order with the buyer's name + email. billingOrders only
+    // stores `uid`, so the admin UI previously showed a raw uid (or blank).
+    // Resolve uid -> {name,email} once per unique user.
+    try {
+      const uids = [...new Set(
+        revenue.payments
+          .map(p => (p['userId'] as string) || (p['uid'] as string) || '')
+          .filter(Boolean),
+      )];
+      const lookup = new Map<string, { name: string; email: string }>();
+      await Promise.all(uids.map(async (uid) => {
+        try {
+          const u = await deps.users.get(asUserId(uid));
+          if (u) lookup.set(uid, { name: u.name ?? '', email: u.email ?? '' });
+        } catch { /* skip a bad uid */ }
+      }));
+      for (const p of revenue.payments) {
+        const uid = (p['userId'] as string) || (p['uid'] as string) || '';
+        const info = lookup.get(uid);
+        if (info) {
+          if (!p['userEmail']) p['userEmail'] = info.email;
+          if (!p['userName']) p['userName'] = info.name;
+        }
+      }
+    } catch { /* enrichment is best-effort */ }
     return c.json(revenue);
   });
 
