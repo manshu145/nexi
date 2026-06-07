@@ -419,9 +419,30 @@ export class FirestoreAdminStore implements AdminStore {
 
   async getRevenue(): Promise<{ payments: Record<string, any>[]; total: number }> {
     try {
-      const snap = await this.db.collection('billingOrders').where('status', '==', 'completed').limit(100).get();
-      const payments = snap.docs.map(d => d.data()).sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''));
-      const total = payments.reduce((sum, p) => sum + ((p.amount || 0) / 100), 0);
+      // Previously filtered to status=='completed' only, so the admin saw
+      // just the handful of fully-verified orders (often "only 2") even
+      // though many pending/failed attempts existed. Now return the full
+      // recent order history (any status) ordered newest-first, and compute
+      // revenue *total* from completed orders only so the headline number
+      // stays accurate.
+      const snap = await this.db.collection('billingOrders').orderBy('createdAt', 'desc').limit(250).get();
+      // Explicit element type: under `tsc --noEmit` (the CI typecheck) the
+      // object-spread below otherwise narrows to just { userId, userEmail }
+      // and drops the Firestore index signature, so reading `status`/`amount`
+      // failed to compile. Annotating as Record<string, any>[] keeps those
+      // dynamic fields accessible (and matches the declared return type).
+      const payments: Record<string, any>[] = snap.docs.map(d => {
+        const data = d.data();
+        return {
+          ...data,
+          // The order doc stores `uid`; the admin UI expects userId/userEmail.
+          userId: data.userId ?? data.uid ?? '',
+          userEmail: data.userEmail ?? data.email ?? '',
+        };
+      });
+      const total = payments
+        .filter(p => p.status === 'completed')
+        .reduce((sum, p) => sum + ((p.amount || 0) / 100), 0);
       return { payments, total };
     } catch { return { payments: [], total: 0 }; }
   }

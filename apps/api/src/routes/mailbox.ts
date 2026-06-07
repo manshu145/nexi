@@ -37,7 +37,8 @@ function wrapReply(text: string): string {
   const safe = text
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/\n/g, '<br>');
-  return `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#FAF7F2;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif"><div style="max-width:600px;margin:0 auto;padding:24px"><div style="background:#fff;padding:24px;border-radius:12px;border:1px solid #E7E5E4;font-size:15px;line-height:1.6;color:#44403C">${safe}</div><div style="text-align:center;padding:16px 0;color:#A8A29E;font-size:11px">Nexigrate Support · reply to this email to continue the conversation</div></div></body></html>`;
+  const header = `<div style="text-align:center;padding:16px 0;border-bottom:3px solid #D97706"><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto"><tr><td style="vertical-align:middle;padding-right:9px"><img src="https://app.nexigrate.com/logo.png" alt="Nexigrate" width="34" height="34" style="display:block;border-radius:8px"></td><td style="vertical-align:middle"><span style="font-size:20px;font-weight:700;color:#1C1917;letter-spacing:-0.4px">Nexigrate</span></td></tr></table></div>`;
+  return `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#FAF7F2;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif"><div style="max-width:600px;margin:0 auto;padding:24px">${header}<div style="background:#fff;padding:24px;border-radius:12px;border:1px solid #E7E5E4;margin-top:16px;font-size:15px;line-height:1.6;color:#44403C">${safe}</div><div style="text-align:center;padding:16px 0;color:#A8A29E;font-size:11px">Nexigrate Support · reply to this email to continue the conversation</div></div></body></html>`;
 }
 
 /** Build the per-thread reply-to address: support+<threadId>@domain. */

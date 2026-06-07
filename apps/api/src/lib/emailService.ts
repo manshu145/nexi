@@ -21,8 +21,33 @@ export interface EmailService {
   sendThreaded(to: string, subject: string, htmlBody: string, opts: { replyTo: string; inReplyTo?: string }): Promise<{ success: boolean; id?: string }>;
 }
 
+/**
+ * Branded email header. Renders the Nexigrate icon AND a text wordmark
+ * side-by-side. The text wordmark matters because Gmail/Outlook block
+ * remote images by default — without it, image-blocked clients showed a
+ * blank header (this was the "no logo" bug). The logo.png lives in the
+ * web app's /public so it resolves at https://app.nexigrate.com/logo.png.
+ */
+function brandHeader(): string {
+  return `<div style="text-align:center;padding:20px 0 18px;border-bottom:3px solid #D97706">`
+    + `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto"><tr>`
+    + `<td style="vertical-align:middle;padding-right:10px"><img src="https://app.nexigrate.com/logo.png" alt="Nexigrate" width="40" height="40" style="display:block;border-radius:9px"></td>`
+    + `<td style="vertical-align:middle"><span style="font-size:23px;font-weight:700;color:#1C1917;letter-spacing:-0.5px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">Nexigrate</span></td>`
+    + `</tr></table>`
+    + `</div>`;
+}
+
+/**
+ * The branded email shell (header + card + footer). Exported so the admin
+ * broadcast composer can wrap raw HTML bodies in the same branding instead
+ * of sending bare, logo-less HTML.
+ */
+export function brandEmailShell(content: string): string {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;padding:0;background:#FAF7F2;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif"><div style="max-width:600px;margin:0 auto;padding:24px">${brandHeader()}<div style="background:#fff;padding:32px 24px;border-radius:12px;margin-top:16px;border:1px solid #E7E5E4">${content}</div><div style="text-align:center;padding:24px 0;color:#78716C;font-size:12px"><p>&copy; 2026 Nexigrate &middot; <a href="https://app.nexigrate.com/unsubscribe" style="color:#78716C">Unsubscribe</a> &middot; <a href="https://nexigrate.com/privacy" style="color:#78716C">Privacy Policy</a></p></div></div></body></html>`;
+}
+
 function baseTemplate(content: string): string {
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;padding:0;background:#FAF7F2;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif"><div style="max-width:600px;margin:0 auto;padding:24px"><div style="text-align:center;padding:16px 0;border-bottom:3px solid #D97706"><img src="https://app.nexigrate.com/logo.png" alt="Nexigrate" width="120" style="display:inline-block"></div><div style="background:#fff;padding:32px 24px;border-radius:12px;margin-top:16px;border:1px solid #E7E5E4">${content}</div><div style="text-align:center;padding:24px 0;color:#78716C;font-size:12px"><p>&copy; 2026 Nexigrate &middot; <a href="https://app.nexigrate.com/unsubscribe" style="color:#78716C">Unsubscribe</a> &middot; <a href="https://nexigrate.com/privacy" style="color:#78716C">Privacy Policy</a></p></div></div></body></html>`;
+  return brandEmailShell(content);
 }
 
 function ctaButton(text: string, url: string): string {
@@ -258,6 +283,6 @@ export function createEmailService(env: Env, logger: Logger, serviceKeys?: Servi
 export function announcementEmailTemplate(title: string, body: string): { subject: string; html: string } {
   return {
     subject: title,
-    html: `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#FAF7F2;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif"><div style="max-width:600px;margin:0 auto;padding:24px"><div style="background:#fff;padding:32px 24px;border-radius:12px;border:1px solid #E7E5E4"><h1 style="color:#1C1917;font-size:24px;margin:0 0 16px">${title}</h1><div style="font-size:16px;line-height:1.6;color:#44403C">${body}</div></div></div></body></html>`,
+    html: brandEmailShell(`<h1 style="color:#1C1917;font-size:24px;margin:0 0 16px">${title}</h1><div style="font-size:16px;line-height:1.6;color:#44403C">${body}</div>`),
   };
 }
