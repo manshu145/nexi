@@ -198,7 +198,7 @@ export function buildApp(deps: AppDeps): Hono {
   //   GET  /v1/branding    -- splash-screen boot data (logo, tagline,
   //     welcome-bonus preview). Used before sign-in, so cannot require auth.
   // Both have their own validation + rate limiting inside makePublicRoutes.
-  app.route('/v1', makePublicRoutes({ adminStore, config, logger, blog, firebaseAuth, serviceKeys, env }));
+  app.route('/v1', makePublicRoutes({ adminStore, config, logger, blog, firebaseAuth, serviceKeys, env, db: fs }));
 
   // Cron endpoint — NO auth required (uses x-cron-secret header instead)
   const cronRoutes = makeCurrentAffairsRoutes({ users, aiEngine, currentAffairs, env, logger });
@@ -485,7 +485,7 @@ export function buildApp(deps: AppDeps): Hono {
   v1.route('/chat', makeChatRoutes({ users, aiEngine, chat: chatStore, logger, env, config, usage: featureUsage }));
   v1.route('/credits', makeCreditsRoutes({ users, logger, db: fs, ledger, config }));
   v1.route('/billing', makeBillingRoutes({ users, env, logger, db: fs, coupons: couponStore, idempotency, config, serviceKeys }));
-  v1.route('/admin', makeAdminRoutes({ users, adminStore, env, logger, coupons: couponStore, db: fs, config, aiSpend, firebaseAuth, blog, aiEngine, aiProviderStore, modelResolver, currentAffairs, serviceKeys, push, teamInvites }));
+  v1.route('/admin', makeAdminRoutes({ users, adminStore, env, logger, coupons: couponStore, db: fs, config, aiSpend, firebaseAuth, blog, aiEngine, aiProviderStore, modelResolver, currentAffairs, serviceKeys, push, notifications, teamInvites }));
   v1.route('/support', makeSupportRoutes({ users, db: fs, logger }));
   v1.route('/essay', makeEssayRoutes({ users, aiEngine, logger, db: fs, config, usage: featureUsage }));
   v1.route('/mock-tests', makeMockTestRoutes({ users, aiEngine, mockTests, ledger, config, logger }));

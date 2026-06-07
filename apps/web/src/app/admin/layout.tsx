@@ -33,10 +33,8 @@ import { toast } from 'sonner';
  * page is unambiguous on both phone and laptop without screaming colour.
  */
 const NAV_ITEMS = [
-  { label: 'Stats', href: '/admin', icon: '📊' },
-  { label: 'Analytics', href: '/admin/analytics', icon: '📈' },
+  { label: 'Dashboard', href: '/admin', icon: '📊' },
   { label: 'Users', href: '/admin/users', icon: '👥' },
-  { label: 'Live Sessions', href: '/admin/sessions', icon: '🟢' },
   { label: 'Plans', href: '/admin/plans', icon: '💳' },
   { label: 'Credit Rewards', href: '/admin/credit-rewards', icon: '💎' },
   { label: 'Observability', href: '/admin/observability', icon: '📊' },
