@@ -266,20 +266,20 @@ export default function CurrentAffairsDetailPage() {
 
       {/* Fixed bottom action bar — sits above BottomNav */}
       <div className="fixed bottom-[calc(3.5rem+env(safe-area-inset-bottom))] left-0 right-0 z-30 border-t border-paper-200 bg-paper-50/95 backdrop-blur-md">
-        <div className="mx-auto max-w-2xl flex items-center justify-around py-3 px-4">
-          <button onClick={handleLike} className="flex flex-col items-center gap-0.5 transition-transform active:scale-90">
+        <div className="mx-auto max-w-2xl flex items-center justify-around py-2 px-2">
+          <button onClick={handleLike} className="flex min-h-[48px] min-w-[60px] flex-col items-center justify-center gap-0.5 rounded-xl py-1 transition-all active:scale-90 hover:bg-paper-200/60">
             <span className={`text-2xl transition-all ${liked ? 'scale-110' : ''}`}>{liked ? '❤️' : '🤍'}</span>
             <span className="text-[10px] text-muted-500 font-medium">{likeCount || (lang === 'hi' ? 'पसंद' : 'Like')}</span>
           </button>
-          <button onClick={handleBookmark} className="flex flex-col items-center gap-0.5 transition-transform active:scale-90">
+          <button onClick={handleBookmark} className="flex min-h-[48px] min-w-[60px] flex-col items-center justify-center gap-0.5 rounded-xl py-1 transition-all active:scale-90 hover:bg-paper-200/60">
             <span className={`text-2xl transition-all ${bookmarked ? 'scale-110' : ''}`}>{bookmarked ? '🔖' : '📑'}</span>
             <span className="text-[10px] text-muted-500 font-medium">{bookmarked ? (lang === 'hi' ? 'सेव' : 'Saved') : (lang === 'hi' ? 'सेव' : 'Save')}</span>
           </button>
-          <button onClick={handleShare} className="flex flex-col items-center gap-0.5 transition-transform active:scale-90">
+          <button onClick={handleShare} className="flex min-h-[48px] min-w-[60px] flex-col items-center justify-center gap-0.5 rounded-xl py-1 transition-all active:scale-90 hover:bg-paper-200/60">
             <span className="text-2xl">↗️</span>
             <span className="text-[10px] text-muted-500 font-medium">{lang === 'hi' ? 'शेयर' : 'Share'}</span>
           </button>
-          <button onClick={handleTTS} className="flex flex-col items-center gap-0.5 transition-transform active:scale-90">
+          <button onClick={handleTTS} className="flex min-h-[48px] min-w-[60px] flex-col items-center justify-center gap-0.5 rounded-xl py-1 transition-all active:scale-90 hover:bg-paper-200/60">
             <span className={`text-2xl ${speaking ? 'animate-pulse' : ''}`}>{speaking ? '⏸️' : '🎧'}</span>
             <span className="text-[10px] text-muted-500 font-medium">{speaking ? (lang === 'hi' ? 'रोकें' : 'Stop') : (lang === 'hi' ? 'सुनें' : 'Listen')}</span>
           </button>
