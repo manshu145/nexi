@@ -586,7 +586,7 @@ export default function KindleReaderPage() {
       {/* Personalization badge */}
       {contentLevel && (
         <div className="flex justify-center px-4 pt-2">
-          <span className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-3 py-1 text-xs font-medium text-stone-900">
+          <span className="inline-flex items-center gap-1 rounded-full border border-gold-500/30 bg-gold-500/15 px-3 py-1 text-xs font-medium text-gold-700 dark:text-gold-500">
             📊 Personalized for: {contentLevel.charAt(0).toUpperCase() + contentLevel.slice(1)}
           </span>
         </div>
@@ -603,8 +603,8 @@ export default function KindleReaderPage() {
             <div className="reader">
               <div className="reader-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(currentPageContent) }} />
               {showSimplified && simplifiedPages[currentPage] && (
-                <div className="mt-3 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30">
-                  <p className="text-[10px] text-amber-700 dark:text-amber-400 font-medium">💡 Simplified version — tap &quot;Original&quot; to go back</p>
+                <div className="mt-3 px-3 py-2 rounded-lg bg-gold-500/10 border border-gold-500/30">
+                  <p className="text-[10px] text-gold-700 dark:text-gold-500 font-medium">💡 Simplified version — tap &quot;Original&quot; to go back</p>
                 </div>
               )}
             </div>
@@ -661,22 +661,22 @@ export default function KindleReaderPage() {
               <div className="flex border-t border-line">
                 <button
                   onClick={() => loadVisualizationTab('diagram')}
-                  className={`flex-1 px-4 py-2.5 text-xs font-medium transition-colors ${vizTab === 'diagram' ? 'text-amber-600 dark:text-amber-400 border-b-2 border-amber-500' : 'text-muted-500 hover:text-ink-700'}`}
+                  className={`flex-1 px-4 py-2.5 text-xs font-medium transition-colors ${vizTab === 'diagram' ? 'text-ember-600 dark:text-ember-500 border-b-2 border-ember-500' : 'text-muted-500 hover:text-ink-700'}`}
                 >📊 Diagram</button>
                 <button
                   onClick={() => loadVisualizationTab('mindmap')}
-                  className={`flex-1 px-4 py-2.5 text-xs font-medium transition-colors ${vizTab === 'mindmap' ? 'text-amber-600 dark:text-amber-400 border-b-2 border-amber-500' : 'text-muted-500 hover:text-ink-700'}`}
+                  className={`flex-1 px-4 py-2.5 text-xs font-medium transition-colors ${vizTab === 'mindmap' ? 'text-ember-600 dark:text-ember-500 border-b-2 border-ember-500' : 'text-muted-500 hover:text-ink-700'}`}
                 >🧠 Mind Map</button>
                 <button
                   onClick={() => loadVisualizationTab('image')}
-                  className={`flex-1 px-4 py-2.5 text-xs font-medium transition-colors ${vizTab === 'image' ? 'text-amber-600 dark:text-amber-400 border-b-2 border-amber-500' : 'text-muted-500 hover:text-ink-700'}`}
+                  className={`flex-1 px-4 py-2.5 text-xs font-medium transition-colors ${vizTab === 'image' ? 'text-ember-600 dark:text-ember-500 border-b-2 border-ember-500' : 'text-muted-500 hover:text-ink-700'}`}
                 >🎨 AI Image</button>
               </div>
             </div>
             <div className="p-5">
               {vizLoading ? (
                 <div className="flex flex-col items-center justify-center py-16">
-                  <div className="h-48 w-full rounded-lg bg-gradient-to-br from-amber-100 via-paper-100 to-amber-50 dark:from-amber-900/20 dark:via-ink-800 dark:to-amber-950/20 animate-pulse" />
+                  <div className="h-48 w-full rounded-lg bg-gradient-to-br from-paper-200 via-paper-100 to-paper-200 dark:from-ink-800 dark:via-ink-900 dark:to-ink-800 animate-pulse" />
                   <p className="mt-4 text-sm text-muted-500">{vizTab === 'image' ? '🎨 Generating AI image...' : '📊 Generating visualization...'}</p>
                 </div>
               ) : vizError ? (

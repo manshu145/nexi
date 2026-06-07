@@ -228,7 +228,7 @@ export default function CurrentAffairsShortsPage() {
             <button onClick={() => router.push('/current-affairs/quiz/leaderboard')} className="rounded-full p-1.5 hover:bg-paper-300/50 text-ink-700 transition-colors active:scale-95" title="Leaderboard">🏆</button>
             <button onClick={() => router.push('/current-affairs/bookmarks')} className="rounded-full p-1.5 hover:bg-paper-300/50 text-ink-700 transition-colors active:scale-95" title="Saved">🔖</button>
             <button onClick={() => router.push('/current-affairs/quiz')} className="inline-flex items-center gap-1 rounded-full bg-ember-500 px-3 py-1.5 text-xs font-semibold text-paper-50 hover:bg-ember-600 transition-all shadow-sm active:scale-95">
-              Quiz
+              {getLang() === 'hi' ? 'क्विज़' : 'Quiz'}
             </button>
           </div>
         </div>
@@ -401,7 +401,7 @@ export default function CurrentAffairsShortsPage() {
             className="w-full rounded-xl bg-ember-500 px-4 py-3.5 text-sm font-bold text-paper-50 shadow-lg hover:bg-ember-600 transition-all duration-150 active:scale-[0.97] flex items-center justify-center gap-2"
           >
             <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-            Take Today&apos;s Quiz
+            {getLang() === 'hi' ? 'आज का क्विज़ दें' : "Take Today's Quiz"}
           </button>
         </div>
       )}
