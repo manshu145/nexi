@@ -156,7 +156,7 @@ export default function SupportPage() {
   if (loading || !user) return <main className="flex min-h-dvh items-center justify-center"><AILoader context="general" /></main>;
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-lg flex-col px-5 pt-6 pb-4">
+    <main className="mx-auto flex min-h-dvh max-w-lg flex-col px-5 pt-6 pb-24">
       <header className="flex items-center justify-between">
         <Logo height={36} />
         <button onClick={() => router.push('/dashboard')} className="btn-ghost-sm">← Dashboard</button>
