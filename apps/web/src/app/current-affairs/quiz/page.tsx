@@ -6,6 +6,7 @@ import { api, type GeneratedMCQ } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 import { AILoader } from '~/components/ui/AILoader';
 import { getClientLocale } from '~/lib/locale';
+import { track } from '~/lib/analytics';
 
 type Phase = 'rules' | 'loading' | 'quiz' | 'submitting' | 'result';
 
@@ -56,6 +57,7 @@ export default function CurrentAffairsQuizPage() {
     const timeTaken = Math.max(1, Math.round((Date.now() - startTimeRef.current) / 1000));
     try {
       const res = await api.submitCurrentAffairsQuiz(answersRef.current, timeTaken);
+      track('ca_quiz_attempt');
       setResult(res);
       setPhase('result');
     } catch (e) {
