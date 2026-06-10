@@ -30,6 +30,11 @@ export default function DashboardPage() {
   // Tracks whether we've already kicked off the one-shot credit-retry
   // for brand-new users whose signup bonus hasn't credited yet.
   const creditRetryFiredRef = useRef(false);
+  // One-shot guard: before bouncing a user BACK into onboarding we force
+  // exactly one fresh /me (the shared store doesn't refetch on navigation,
+  // so a user who JUST finished a step can arrive with a stale record).
+  // This ref stops that forced refresh from looping forever.
+  const onboardingRecheckedRef = useRef(false);
   const deferredPromptRef = useRef<any>(null);
 
   // PWA install prompt
@@ -99,35 +104,41 @@ export default function DashboardPage() {
       const isPhoneVerified =
         me.phoneVerified === true ||
         (me.phoneVerified === undefined && Boolean(me.phone));
-      if (!isPhoneVerified) {
-        router.replace('/verify-phone');
-        return;
-      }
-      if (!me.targetExam) { router.replace('/onboarding/language'); return; }
-      // Assessment is mandatory and cannot be skipped by closing the tab
-      // mid-quiz (lock §4.5: "assessment force rahega bhai!!"). If the
-      // user has picked an exam but never produced an `onboardingLevel`,
-      // we send them back to /onboarding/assessment until it completes.
-      // Grandfathered users with an exam set but no level on file are
-      // also bounced -- one-time cost; once they finish, the guard
-      // never fires again.
-      if (!me.onboardingLevel) {
-        router.replace('/onboarding/assessment');
-        return;
-      }
-      // Plan-selection step (PR-05 lock §2.6) is mandatory for new users.
-      // The flag is undefined for users grandfathered in before this PR
-      // -- we treat undefined as "already chosen" so they aren't bounced
-      // back into onboarding mid-product. For new users, false sends
-      // them to /onboarding/plan; the page flips it to true on Continue.
-      //
-      // FIX (onboarding double-plan): if the user already has a paid
-      // plan active, never redirect to /onboarding/plan even if the
-      // flag is false (e.g. markPlanChosen API call failed during
-      // onboarding but Razorpay checkout succeeded). A paid plan is
-      // proof the user chose one.
-      if (me.onboardingPlanChosen === false && (me.plan === 'free' || !me.plan)) {
-        router.replace('/onboarding/plan');
+
+      // Work out which (if any) onboarding step still looks incomplete on
+      // the record we currently hold. Order matters: phone → exam →
+      // assessment → plan. `onboardingPlanChosen === undefined` is treated
+      // as "already chosen" (grandfathered users); a paid plan is also
+      // proof a plan was chosen (double-plan fix), so we only bounce to
+      // /onboarding/plan when the flag is explicitly false AND the user is
+      // still on free.
+      const bounceTo =
+        !isPhoneVerified ? '/verify-phone'
+        : !me.targetExam ? '/onboarding/language'
+        : !me.onboardingLevel ? '/onboarding/assessment'
+        : (me.onboardingPlanChosen === false && (me.plan === 'free' || !me.plan)) ? '/onboarding/plan'
+        : null;
+
+      if (bounceTo) {
+        // CRITICAL (founder report: "plan select karne ke baad fir se
+        // assessment ke page me chala ja raha hai"). The shared user store
+        // does NOT refetch on navigation — it serves the sessionStorage
+        // snapshot taken at login and only revalidates on a 5-min timer /
+        // tab-visibility change. A user who JUST finished assessment (or
+        // plan, or phone) therefore lands here with a STALE record whose
+        // onboardingLevel / onboardingPlanChosen is still empty, and the
+        // guard wrongly throws them back into onboarding.
+        //
+        // Before bouncing BACKWARD, force exactly one fresh /me. If the
+        // server confirms the step is genuinely incomplete, the effect
+        // re-runs on the fresh record and the redirect fires then. The
+        // ref guarantees we never loop (one forced refresh per mount).
+        if (!onboardingRecheckedRef.current) {
+          onboardingRecheckedRef.current = true;
+          void refresh();
+          return;
+        }
+        router.replace(bounceTo);
         return;
       }
     } catch (e) {

@@ -44,7 +44,7 @@ export default function AssessmentPage() {
   const ts = useTranslations('onboarding');
   const tc = useTranslations('common');
   const router = useRouter();
-  const { user: me } = useUser();
+  const { user: me, mutate } = useUser();
 
   const [phase, setPhase] = useState<Phase>('intro');
   const [personalQuestions, setPersonalQuestions] = useState<PersonalQuestion[]>([]);
@@ -174,6 +174,14 @@ export default function AssessmentPage() {
       const examResults = { questions: examQ, answers: Object.entries(examA).map(([questionId, chosen]) => ({ questionId, chosen })) };
       const reasoningResults = { questions: reasoningQ, answers: Object.entries(reasoningA).map(([questionId, chosen]) => ({ questionId, chosen })) };
       const result = await api.submitAssessmentV2(personalAnswers, examResults, reasoningResults);
+      // Propagate the freshly-computed level/score into the SHARED user
+      // store immediately. Without this the store keeps serving the stale
+      // login snapshot (onboardingLevel still null), and the dashboard
+      // guard bounces the user straight back to /onboarding/assessment
+      // after they finish the plan step (founder report). submitAssessmentV2
+      // only returns the AssessmentResult, so we patch the two fields the
+      // guard reads rather than waiting for a /me round-trip.
+      mutate((prev) => (prev ? { ...prev, onboardingLevel: result.level, onboardingScore: result.score } : prev));
       sessionStorage.setItem('nexigrate-assessment-result', JSON.stringify(result));
       sessionStorage.removeItem(STORAGE_KEY);
       router.push('/onboarding/complete');
@@ -181,7 +189,7 @@ export default function AssessmentPage() {
       toast.error(err instanceof Error ? err.message : 'Submit failed');
       setPhase('reasoning');
     }
-  }, [examQ, examA, reasoningQ, reasoningA, personalAnswers, router]);
+  }, [examQ, examA, reasoningQ, reasoningA, personalAnswers, router, mutate]);
 
   // ── Active quiz stage helpers ─────────────────────────────────────────
   const isExam = phase === 'exam';
