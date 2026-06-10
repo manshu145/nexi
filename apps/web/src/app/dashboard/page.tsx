@@ -174,7 +174,7 @@ export default function DashboardPage() {
   };
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-4xl flex-col px-5 pt-6 pb-8 overflow-x-hidden">
+    <main className="mx-auto flex min-h-dvh max-w-4xl flex-col px-5 pt-6 pb-24 overflow-x-hidden">
       {/* Onboarding tour for first-time users */}
       <OnboardingTour />
       {/* Header */}
