@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useAuth } from '~/lib/auth-context';
@@ -9,7 +9,7 @@ import { Skeleton } from '~/components/Skeleton';
 import { AILoader } from '~/components/ui/AILoader';
 import { getClientLocale } from '~/lib/locale';
 import { track } from '~/lib/analytics';
-import { CATEGORY_EMOJIS, CATEGORY_IMAGES } from './_shared';
+import { CATEGORY_IMAGES } from './_shared';
 
 const CATEGORIES = [
   { key: 'all', tKey: 'catAll', emoji: '\u{1F4F0}' },
@@ -230,8 +230,8 @@ export default function CurrentAffairsShortsPage() {
             {isFromYesterday && <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-ember-500/15 text-ember-600 font-medium align-middle">{getLang() === 'hi' ? 'कल' : 'Yesterday'}</span>}
           </h1>
           <div className="flex items-center gap-1.5">
-            <button onClick={() => router.push('/current-affairs/quiz/leaderboard')} className="rounded-full p-1.5 hover:bg-paper-300/50 text-ink-700 transition-colors active:scale-95" title="Leaderboard">🏆</button>
-            <button onClick={() => router.push('/current-affairs/bookmarks')} className="rounded-full p-1.5 hover:bg-paper-300/50 text-ink-700 transition-colors active:scale-95" title="Saved">🔖</button>
+            <button onClick={() => router.push('/current-affairs/quiz/leaderboard')} className="rounded-full p-1.5 hover:bg-paper-300/50 text-ink-700 transition-colors active:scale-95" title="Leaderboard"><IconTrophy className="h-[18px] w-[18px]" /></button>
+            <button onClick={() => router.push('/current-affairs/bookmarks')} className="rounded-full p-1.5 hover:bg-paper-300/50 text-ink-700 transition-colors active:scale-95" title="Saved"><IconBookmark className="h-[18px] w-[18px]" /></button>
             <button onClick={() => router.push('/current-affairs/quiz')} className="inline-flex items-center gap-1 rounded-full bg-ember-500 px-3 py-1.5 text-xs font-semibold text-paper-50 hover:bg-ember-600 transition-all shadow-sm active:scale-95">
               {getLang() === 'hi' ? 'क्विज़' : 'Quiz'}
             </button>
@@ -243,7 +243,7 @@ export default function CurrentAffairsShortsPage() {
           least one state, so the default national feed is unchanged. */}
       {states.length > 0 && (
         <div className="relative z-20 px-3 pt-1 flex items-center gap-2">
-          <span className="flex-shrink-0 text-[11px] font-semibold uppercase tracking-wide text-muted-500">📍 {t('edition')}</span>
+          <span className="flex-shrink-0 text-[11px] font-semibold uppercase tracking-wide text-muted-500">{t('edition')}</span>
           <div className="flex gap-2 overflow-x-auto scrollbar-hide">
             <button
               onClick={() => setActiveState('all')}
@@ -253,7 +253,7 @@ export default function CurrentAffairsShortsPage() {
                   : 'bg-paper-50 text-ink-700 border border-line hover:bg-paper-300'
               }`}
             >
-              🗞️ {getLang() === 'hi' ? 'सभी' : 'All'}
+              {getLang() === 'hi' ? 'सभी' : 'All'}
             </button>
             <button
               onClick={() => setActiveState('national')}
@@ -263,7 +263,7 @@ export default function CurrentAffairsShortsPage() {
                   : 'bg-paper-50 text-ink-700 border border-line hover:bg-paper-300'
               }`}
             >
-              🇮🇳 {getLang() === 'hi' ? 'राष्ट्रीय' : 'National'}
+              {getLang() === 'hi' ? 'राष्ट्रीय' : 'National'}
             </button>
             {states.map(s => (
               <button
@@ -294,7 +294,6 @@ export default function CurrentAffairsShortsPage() {
                 : 'bg-paper-50 text-ink-700 border border-line hover:bg-paper-300 hover:border-muted-400'
             }`}
           >
-            <span className="text-sm">{cat.emoji}</span>
             <span>{t(cat.tKey)}</span>
           </button>
         ))}
@@ -365,10 +364,10 @@ export default function CurrentAffairsShortsPage() {
             <div className="hidden lg:flex flex-col items-center justify-center gap-6 pl-6 pr-4">
               {filtered[currentIdx] && (
                 <>
-                  <ActionBtn icon={userLikes.has(filtered[currentIdx]!.id) ? '❤️' : '🤍'} label={String(likeCounts[filtered[currentIdx]!.id] || '')} active={userLikes.has(filtered[currentIdx]!.id)} onClick={() => handleLike(filtered[currentIdx]!.id)} />
-                  <ActionBtn icon={userBookmarks.has(filtered[currentIdx]!.id) ? '🔖' : '📑'} label={t('save')} active={userBookmarks.has(filtered[currentIdx]!.id)} onClick={() => handleBookmark(filtered[currentIdx]!.id)} />
-                  <ActionBtn icon="↗️" label={t('share')} onClick={() => handleShare(filtered[currentIdx]!)} />
-                  <ActionBtn icon="🤖" label={t('askAI')} onClick={() => router.push(`/chat?topic=${encodeURIComponent(filtered[currentIdx]!.headline)}`)} />
+                  <ActionBtn icon={<IconHeart filled={userLikes.has(filtered[currentIdx]!.id)} />} label={String(likeCounts[filtered[currentIdx]!.id] || '')} active={userLikes.has(filtered[currentIdx]!.id)} onClick={() => handleLike(filtered[currentIdx]!.id)} />
+                  <ActionBtn icon={<IconBookmark filled={userBookmarks.has(filtered[currentIdx]!.id)} />} label={t('save')} active={userBookmarks.has(filtered[currentIdx]!.id)} onClick={() => handleBookmark(filtered[currentIdx]!.id)} />
+                  <ActionBtn icon={<IconShare />} label={t('share')} onClick={() => handleShare(filtered[currentIdx]!)} />
+                  <ActionBtn icon={<IconChat />} label={t('askAI')} onClick={() => router.push(`/chat?topic=${encodeURIComponent(filtered[currentIdx]!.headline)}`)} />
                 </>
               )}
             </div>
@@ -378,7 +377,7 @@ export default function CurrentAffairsShortsPage() {
               like Instagram's reel position bar. Cleaner than the dot
               cluster pre-PR-39 and doesn't overlap action buttons. */}
           {filtered.length > 1 && (
-            <div className="absolute right-1.5 top-1/2 -translate-y-1/2 z-10 lg:hidden">
+            <div className="absolute left-1.5 top-1/2 -translate-y-1/2 z-10 lg:hidden">
               <div className="h-32 w-1 rounded-full bg-muted-400/30 overflow-hidden">
                 <div
                   className="w-full bg-ember-500 rounded-full transition-all duration-300 ease-out"
@@ -419,10 +418,10 @@ export default function CurrentAffairsShortsPage() {
 }
 
 /* ─── Desktop Action Button ─── */
-function ActionBtn({ icon, label, active, onClick }: { icon: string; label: string; active?: boolean; onClick: () => void }) {
+function ActionBtn({ icon, label, active, onClick }: { icon: ReactNode; label: string; active?: boolean; onClick: () => void }) {
   return (
-    <button onClick={onClick} className={`flex flex-col items-center gap-1.5 group transition-all duration-150 hover:scale-110 active:scale-90 ${active ? 'scale-105' : ''}`}>
-      <span className={`text-2xl transition-transform duration-200 ${active ? 'scale-110' : 'group-hover:scale-105'}`}>{icon}</span>
+    <button onClick={onClick} className={`flex flex-col items-center gap-1.5 group transition-all duration-150 active:scale-90`}>
+      <span className={`flex h-11 w-11 items-center justify-center rounded-full border transition-all duration-200 ${active ? 'bg-ember-500/10 border-ember-500/40 text-ember-600 scale-105' : 'bg-paper-50 border-line text-ink-700 group-hover:bg-paper-200 group-hover:scale-105'}`}>{icon}</span>
       <span className="text-[11px] text-muted-500 group-hover:text-ink-900 font-medium transition-colors">{label}</span>
     </button>
   );
@@ -444,7 +443,6 @@ interface ShortCardProps {
 
 function ShortCard({ item, isActive, liked, bookmarked, likeCount, onLike, onBookmark, onShare, onTap, onAskNexi }: ShortCardProps) {
   const t = useTranslations('caFeed');
-  const emoji = CATEGORY_EMOJIS[item.category] ?? '📰';
   const keyPoints = (item.bullets && item.bullets.length > 0) ? item.bullets : extractKeyPoints(item.summary || item.body);
   // Prefer the REAL article image extracted from the source RSS feed;
   // fall back to a category stock image, then (on load error) the emoji tile.
@@ -467,13 +465,13 @@ function ShortCard({ item, isActive, liked, bookmarked, likeCount, onLike, onBoo
             <img src={imageUrl} alt={item.category} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 ease-out" style={{ transform: isActive ? 'scale(1)' : 'scale(1.1)' }} loading="lazy" onError={() => { if (!usedFallback && item.imageUrl) { setUsedFallback(true); } else { setImgError(true); } }} />
           ) : (
             <div className="absolute inset-0 w-full h-full bg-gradient-to-br from-paper-200 to-paper-300 dark:from-ink-800 dark:to-ink-900 flex items-center justify-center">
-              <span className="text-4xl">{emoji}</span>
+              <IconNewspaper className="h-10 w-10 text-muted-500" />
             </div>
           )}
           <div className="absolute inset-0" style={{ background: `linear-gradient(180deg, ${getCategoryOverlay(item.category)}70 0%, ${getCategoryOverlay(item.category)}30 40%, transparent 100%)` }} />
           <div className="absolute top-3 left-3 flex items-center gap-2">
             <span className="px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider bg-paper-50/90 text-ink-900 backdrop-blur-sm shadow-sm border border-line/30">
-              {emoji} {item.category}
+              {item.category}
             </span>
             {item.factChecked && (
               <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gold-500/90 text-paper-50 shadow-sm">✓ {t('verified')}</span>
@@ -481,8 +479,9 @@ function ShortCard({ item, isActive, liked, bookmarked, likeCount, onLike, onBoo
           </div>
         </div>
 
-        {/* Content area */}
-        <div className="flex flex-col px-4 pt-3.5 pb-4 h-[65%] overflow-hidden">
+        {/* Content area (reserve a right gutter on mobile so text never sits
+            under the floating action rail) */}
+        <div className="flex flex-col px-4 pr-14 lg:pr-4 pt-3.5 pb-4 h-[65%] overflow-hidden">
           <h2 className="font-serif text-[15px] lg:text-base font-bold leading-snug text-ink-900 line-clamp-3">
             {item.headline}
           </h2>
@@ -518,11 +517,11 @@ function ShortCard({ item, isActive, liked, bookmarked, likeCount, onLike, onBoo
             Action buttons at bottom-32 to clear quiz bar + BottomNav. */}
         <div className="absolute right-2.5 bottom-32 flex flex-col items-center gap-2.5 z-20 lg:hidden">
           <button onClick={(e) => { e.stopPropagation(); onLike(); }} className={`flex flex-col items-center gap-0.5 rounded-full p-2.5 border transition-all duration-150 active:scale-90 ${liked ? 'bg-paper-50/90 border-ember-500/30 shadow-md' : 'bg-paper-50/70 backdrop-blur-sm border-line/50'}`}>
-            <span className={`text-lg transition-transform duration-200 ${liked ? 'scale-110' : ''}`}>{liked ? '❤️' : '🤍'}</span>
+            <IconHeart filled={liked} className={`h-[18px] w-[18px] ${liked ? 'text-ember-600' : 'text-ink-700'}`} />
             {likeCount > 0 && <span className="text-[9px] text-ink-800 font-semibold">{likeCount}</span>}
           </button>
           <button onClick={(e) => { e.stopPropagation(); onBookmark(); }} className={`rounded-full p-2.5 border transition-all duration-150 active:scale-90 ${bookmarked ? 'bg-paper-50/90 border-gold-500/30 shadow-md' : 'bg-paper-50/70 backdrop-blur-sm border-line/50'}`}>
-            <span className={`text-lg transition-transform duration-200 ${bookmarked ? 'scale-110' : ''}`}>{bookmarked ? '🔖' : '📑'}</span>
+            <IconBookmark filled={bookmarked} className={`h-[18px] w-[18px] ${bookmarked ? 'text-gold-600' : 'text-ink-700'}`} />
           </button>
           <button onClick={(e) => { e.stopPropagation(); onShare(); }} className="bg-paper-50/70 backdrop-blur-sm rounded-full p-2.5 border border-line/50 transition-all duration-150 active:scale-90">
             <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="text-ink-700"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/></svg>
@@ -556,4 +555,30 @@ function getCategoryOverlay(category: string): string {
     politics: '#7C3AED', defence: '#1E3A5F',
   };
   return colors[category] ?? '#1E293B';
+}
+
+/* ─── Inline SVG icons (replace emoji for a cleaner, professional look) ─── */
+type IconProps = { className?: string; filled?: boolean };
+function SVG(props: { children: ReactNode; className?: string; fill?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill={props.fill ?? 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={props.className ?? 'h-5 w-5'} aria-hidden>{props.children}</svg>
+  );
+}
+function IconHeart({ className, filled }: IconProps) {
+  return <SVG className={className} fill={filled ? 'currentColor' : 'none'}><path d="M19 14c1.49-1.46 3-3.21 3-5.5A3.5 3.5 0 0 0 12 6 3.5 3.5 0 0 0 2 8.5c0 2.29 1.51 4.04 3 5.5l7 7Z"/></SVG>;
+}
+function IconBookmark({ className, filled }: IconProps) {
+  return <SVG className={className} fill={filled ? 'currentColor' : 'none'}><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></SVG>;
+}
+function IconShare({ className }: IconProps) {
+  return <SVG className={className}><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/></SVG>;
+}
+function IconChat({ className }: IconProps) {
+  return <SVG className={className}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></SVG>;
+}
+function IconTrophy({ className }: IconProps) {
+  return <SVG className={className}><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6m12 5h1.5a2.5 2.5 0 0 0 0-5H18M6 4h12v4a6 6 0 0 1-12 0V4zM8 21h8m-4-3v3"/></SVG>;
+}
+function IconNewspaper({ className }: IconProps) {
+  return <SVG className={className}><path d="M19 20H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1m2 13a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2zM8 8h6M8 12h6M8 16h4"/></SVG>;
 }
