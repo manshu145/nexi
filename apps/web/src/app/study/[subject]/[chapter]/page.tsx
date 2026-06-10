@@ -566,20 +566,20 @@ export default function KindleReaderPage() {
       {/* Header */}
       <div className="kindle-header">
         <button onClick={() => router.back()} className="btn-ghost-sm">←</button>
-        <span className="text-xs font-medium text-muted-500 truncate max-w-[35%] sm:max-w-[40%] hidden sm:inline">{chapterName}</span>
-        <span className="text-xs font-medium text-muted-500 sm:hidden">{currentPage + 1}/{pages.length}</span>
-        <div className="flex items-center gap-1.5 sm:gap-2">
+        <span className="text-xs font-medium text-muted-500 truncate min-w-0 max-w-[35%] lg:max-w-[40%] hidden lg:inline">{chapterName}</span>
+        <span className="text-xs font-medium text-muted-500 lg:hidden">{currentPage + 1}/{pages.length}</span>
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
           <button onClick={handleSimplify} disabled={simplifying} className={`tts-btn ${showSimplified ? 'playing' : ''}`} title={showSimplified ? 'Show original' : 'Simplify this page'}>
-            {simplifying ? '⏳' : showSimplified ? '📝' : '💡'}<span className="hidden sm:inline"> {simplifying ? '...' : showSimplified ? 'Original' : 'Simplify'}</span>
+            {simplifying ? '⏳' : showSimplified ? '📝' : '💡'}<span className="hidden lg:inline"> {simplifying ? '...' : showSimplified ? 'Original' : 'Simplify'}</span>
           </button>
           <button onClick={handleTTS} className={`tts-btn ${speaking ? 'playing' : ''}`}>
-            {speaking ? '⏸' : '🔊'}<span className="hidden sm:inline"> {speaking ? 'Pause' : 'Listen'}</span>
+            {speaking ? '⏸' : '🔊'}<span className="hidden lg:inline"> {speaking ? 'Pause' : 'Listen'}</span>
           </button>
           <button onClick={handleSavePage} disabled={savingImage} className="tts-btn" title="Save this page as an image">
-            {savingImage ? '⏳' : '📷'}<span className="hidden sm:inline"> {savingImage ? '...' : 'Save'}</span>
+            {savingImage ? '⏳' : '📷'}<span className="hidden lg:inline"> {savingImage ? '...' : 'Save'}</span>
           </button>
           <button onClick={() => handleVisualize('page')} className="tts-btn">
-            📊<span className="hidden sm:inline"> Visualize</span>
+            📊<span className="hidden lg:inline"> Visualize</span>
           </button>
         </div>
       </div>

@@ -933,10 +933,12 @@ html.dark ::selection {
   .kindle-toolbar {
     padding: 0.5rem 0.75rem;
     padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+    gap: 0.35rem;
   }
   .kindle-toolbar button {
-    padding: 0.55rem 0.85rem;
+    padding: 0.55rem 0.7rem;
     font-size: 0.75rem;
+    min-width: 0;
   }
   .kindle-header {
     padding: 0.5rem 0.75rem;
