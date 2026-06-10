@@ -96,7 +96,7 @@ export interface BlogPostInput {
   seoTitle?: string; seoDescription?: string; ogImage?: string;
   tags?: string[]; authorName?: string;
 }
-export interface CompleteResult { progress: StudyProgress; nextChapter: string | null; unlocked: boolean; creditsAwarded: number; passed: boolean; }
+export interface CompleteResult { progress: StudyProgress; nextChapter: string | null; unlocked: boolean; creditsAwarded: number; passed: boolean; levelUp?: { from: string; to: string } | null; }
 
 export const api = {
   async me(): Promise<MeResponse> { return (await authedFetch('/v1/users/me')).json() as Promise<MeResponse>; },

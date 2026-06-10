@@ -8,12 +8,24 @@ import { Logo } from '~/components/Logo';
 import { AILoader } from '~/components/ui/AILoader';
 import { track } from '~/lib/analytics';
 import { getClientLocale } from '~/lib/locale';
+import { toast } from 'sonner';
 
 type Phase = 'loading' | 'quiz' | 'submitting' | 'result';
 
 /** Get user's selected language (cookie → localStorage), unified app-wide. */
 function getLanguageFromCookie(): 'en' | 'hi' {
   return getClientLocale();
+}
+
+/** Localized level name for the progression toast/banner. */
+function levelLabel(level: string, isHi: boolean): string {
+  const map: Record<string, { en: string; hi: string }> = {
+    beginner: { en: 'Beginner', hi: 'शुरुआती' },
+    intermediate: { en: 'Intermediate', hi: 'मध्यम' },
+    advanced: { en: 'Advanced', hi: 'उन्नत' },
+  };
+  const m = map[level];
+  return m ? (isHi ? m.hi : m.en) : level;
 }
 
 export default function ChapterQuizPage() {
@@ -37,7 +49,7 @@ export default function ChapterQuizPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [timeUp, setTimeUp] = useState(false);
-  const [result, setResult] = useState<{ score: number; total: number; passed: boolean; creditsAwarded: number; nextChapter: string | null } | null>(null);
+  const [result, setResult] = useState<{ score: number; total: number; passed: boolean; creditsAwarded: number; nextChapter: string | null; levelUp?: { from: string; to: string } | null } | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const restoredRef = useRef(false);
   const autoRetriedRef = useRef(false);
@@ -135,7 +147,19 @@ export default function ChapterQuizPage() {
       // dashboard / level / leaderboard pages see the awarded credits
       // without each running their own /me fetch (Pattern C from PR-32).
       void refresh();
-      setResult({ score, total: questions.length, passed: res.passed, creditsAwarded: res.creditsAwarded, nextChapter: res.nextChapter });
+      setResult({ score, total: questions.length, passed: res.passed, creditsAwarded: res.creditsAwarded, nextChapter: res.nextChapter, levelUp: res.levelUp ?? null });
+      // Celebrate a difficulty-level promotion (PR1 adaptive progression):
+      // future chapters/quizzes now generate at the harder level.
+      if (res.levelUp) {
+        const isHi = getLanguageFromCookie() === 'hi';
+        const to = levelLabel(res.levelUp.to, isHi);
+        toast.success(
+          isHi
+            ? `🎉 बधाई! आप अब ${to} स्तर पर पहुँच गए — अब अध्याय और क्विज़ इसी कठिनाई पर बनेंगे।`
+            : `🎉 Level up! You've reached ${to} — chapters & quizzes will now match this level.`,
+          { duration: 6000 },
+        );
+      }
       track('quiz_complete', { subject, chapter, score: String(score), passed: String(res.passed) });
       if (res.passed) track('chapter_complete', { subject, chapter });
       setPhase('result');
@@ -231,6 +255,22 @@ export default function ChapterQuizPage() {
         ) : (
           <p className="mt-2 text-sm text-muted-500">You need 80% to unlock the next chapter. +5 credits for attempting.</p>
         )}
+
+        {/* Difficulty-level promotion banner (PR1 adaptive progression). */}
+        {result.levelUp && (() => {
+          const isHi = getLanguageFromCookie() === 'hi';
+          const to = levelLabel(result.levelUp!.to, isHi);
+          return (
+            <div className="mt-4 w-full max-w-xs rounded-xl border border-gold-500/40 bg-gold-500/10 px-4 py-3 text-center">
+              <p className="text-sm font-semibold text-gold-700 dark:text-gold-500">
+                {isHi ? `🎉 स्तर बढ़ा: अब ${to}` : `🎉 Level up: now ${to}`}
+              </p>
+              <p className="mt-0.5 text-xs text-muted-600 dark:text-muted-400">
+                {isHi ? 'आगे के अध्याय और क्विज़ इसी कठिनाई पर बनेंगे।' : 'Future chapters & quizzes will match this level.'}
+              </p>
+            </div>
+          );
+        })()}
 
         <div className="mt-8 flex w-full max-w-xs flex-col gap-3">
           {result.passed && result.nextChapter && (
