@@ -180,7 +180,7 @@ export default function CurrentAffairsShortsPage() {
     //    Uses Web Share API Level 2 (files). Falls back gracefully below.
     try {
       const { buildNewsCardImage } = await import('~/lib/newsCard');
-      const points = extractKeyPoints(item.summary || item.body).slice(0, 3);
+      const points = ((item.bullets && item.bullets.length > 0) ? item.bullets : extractKeyPoints(item.summary || item.body)).slice(0, 3);
       const file = await buildNewsCardImage({
         headline: item.headline,
         points,
@@ -445,7 +445,7 @@ interface ShortCardProps {
 function ShortCard({ item, isActive, liked, bookmarked, likeCount, onLike, onBookmark, onShare, onTap, onAskNexi }: ShortCardProps) {
   const t = useTranslations('caFeed');
   const emoji = CATEGORY_EMOJIS[item.category] ?? '📰';
-  const keyPoints = extractKeyPoints(item.summary || item.body);
+  const keyPoints = (item.bullets && item.bullets.length > 0) ? item.bullets : extractKeyPoints(item.summary || item.body);
   // Prefer the REAL article image extracted from the source RSS feed;
   // fall back to a category stock image, then (on load error) the emoji tile.
   const categoryImage = CATEGORY_IMAGES[item.category] ?? CATEGORY_IMAGES['national']!;

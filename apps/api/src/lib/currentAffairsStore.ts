@@ -9,6 +9,7 @@ export interface CurrentAffairsStoreItem extends CurrentAffairsItem {
   publishedAt: string;
   headlineHi?: string;  // Hindi translation (pre-computed at ingestion)
   summaryHi?: string;   // Hindi translation (pre-computed at ingestion)
+  bulletsHi?: string[]; // Hindi translation of the key-point bullets
 }
 
 export interface DailyQuizResult {

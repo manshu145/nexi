@@ -126,8 +126,18 @@ export default function CurrentAffairsDetailPage() {
     </main>
   );
 
-  const keyPoints = extractKeyPoints(item.summary || item.body);
-  const fullBody = item.body || item.summary || '';
+  // Key Points come from the dedicated bullets field now (clean, crisp).
+  // Fall back to the old text-parsing only for legacy items without bullets.
+  const keyPoints = (Array.isArray(item.bullets) && item.bullets.length > 0)
+    ? item.bullets
+    : extractKeyPoints(item.summary || item.body);
+  // Full Details = the prose summary. Strip any legacy "**Key Points:**…"
+  // block and stray bold markers so it never duplicates the Key Points list
+  // or shows raw markdown.
+  const fullBody = (item.body || item.summary || '')
+    .replace(/\n*\*\*\s*(Key Points|मुख्य बिंदु)\s*:?\s*\**[\s\S]*$/i, '')
+    .replace(/\*\*/g, '')
+    .trim();
   const publishedTime = new Date(item.publishedAt).toLocaleString('en-IN', { 
     day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' 
   });
