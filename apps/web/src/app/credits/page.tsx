@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations, useLocale } from 'next-intl';
 import { useAuth } from '~/lib/auth-context';
 import { api, type CreditEvent } from '~/lib/api';
 import { AILoader } from '~/components/ui/AILoader';
@@ -8,45 +9,35 @@ import { AILoader } from '~/components/ui/AILoader';
 type FilterKind = 'all' | 'earned' | 'spent';
 
 /**
- * Human-friendly labels for every credit-economy source/reason. The keys here
- * mirror the backend enums in `apps/api/src/lib/creditLedger.ts`. When PR-04
- * makes earn/spend rates admin-editable, this label table stays the canonical
- * UI copy for each event kind.
+ * Icons for every credit-economy source/reason. The keys here mirror the
+ * backend enums in `apps/api/src/lib/creditLedger.ts`. Human-readable labels
+ * live in the i18n catalog (credits.earnLabels / credits.spendLabels) so they
+ * localize; the icon stays here since it's language-agnostic.
  */
-const EARN_LABELS: Record<string, { label: string; icon: string }> = {
-  signup_verified: { label: 'Sign-up bonus', icon: '🎉' },
-  daily_login: { label: 'Daily login', icon: '📅' },
-  chapter_complete: { label: 'Completed a chapter', icon: '📖' },
-  mcq_pass: { label: 'Passed a quiz', icon: '✅' },
-  mcq_fail_attempted: { label: 'Attempted a quiz', icon: '📝' },
-  streak_7d: { label: '7-day streak', icon: '🔥' },
-  streak_30d: { label: '30-day streak', icon: '🏆' },
-  referral_signup: { label: 'Friend signed up via your code', icon: '🎁' },
-  referral_retained_7d: { label: 'Referral retention bonus', icon: '🌟' },
-  referral_bonus: { label: 'Welcome via referral', icon: '🎊' },
-  admin_grant: { label: 'Adjustment from team', icon: '⚙️' },
-  subscription_grant: { label: 'Subscription bonus', icon: '⭐' },
+const EARN_ICONS: Record<string, string> = {
+  signup_verified: '🎉',
+  daily_login: '📅',
+  chapter_complete: '📖',
+  mcq_pass: '✅',
+  mcq_fail_attempted: '📝',
+  streak_7d: '🔥',
+  streak_30d: '🏆',
+  referral_signup: '🎁',
+  referral_retained_7d: '🌟',
+  referral_bonus: '🎊',
+  admin_grant: '⚙️',
+  subscription_grant: '⭐',
 };
 
-const SPEND_LABELS: Record<string, { label: string; icon: string }> = {
-  read_chapter: { label: 'Unlocked a chapter', icon: '📚' },
-  focus_session_1h: { label: 'Focus session', icon: '⏳' },
-  mock_test: { label: 'Mock test', icon: '🧪' },
-  ai_tutor_question: { label: 'Asked Nexi AI', icon: '🤖' },
-  concept_video: { label: 'Watched a video', icon: '🎬' },
-  long_answer_grading: { label: 'Essay grading', icon: '✍️' },
-  admin_revoke: { label: 'Adjustment from team', icon: '⚙️' },
+const SPEND_ICONS: Record<string, string> = {
+  read_chapter: '📚',
+  focus_session_1h: '⏳',
+  mock_test: '🧪',
+  ai_tutor_question: '🤖',
+  concept_video: '🎬',
+  long_answer_grading: '✍️',
+  admin_revoke: '⚙️',
 };
-
-function describe(event: CreditEvent): { label: string; icon: string } {
-  if (event.event.kind === 'earn') {
-    return EARN_LABELS[event.event.source] ?? { label: event.event.source, icon: '💎' };
-  }
-  if (event.event.kind === 'spend') {
-    return SPEND_LABELS[event.event.reason] ?? { label: event.event.reason, icon: '💎' };
-  }
-  return { label: 'Bucket expired', icon: '⌛' };
-}
 
 function formatTimestamp(iso: string): string {
   try {
@@ -64,8 +55,30 @@ function formatTimestamp(iso: string): string {
 }
 
 export default function CreditsPage() {
+  const t = useTranslations('credits');
+  const locale = useLocale();
+  const dateLocale = locale === 'hi' ? 'hi-IN' : 'en-IN';
   const { user, loading } = useAuth();
   const router = useRouter();
+
+  // Resolve a credit event into a localized label + its language-agnostic icon.
+  const describe = (event: CreditEvent): { label: string; icon: string } => {
+    if (event.event.kind === 'earn') {
+      const src = event.event.source;
+      return {
+        label: EARN_ICONS[src] ? t(`earnLabels.${src}` as never) : src,
+        icon: EARN_ICONS[src] ?? '💎',
+      };
+    }
+    if (event.event.kind === 'spend') {
+      const reason = event.event.reason;
+      return {
+        label: SPEND_ICONS[reason] ? t(`spendLabels.${reason}` as never) : reason,
+        icon: SPEND_ICONS[reason] ?? '💎',
+      };
+    }
+    return { label: t('bucketExpired'), icon: '⌛' };
+  };
   const [pageLoading, setPageLoading] = useState(true);
   const [balance, setBalance] = useState(0);
   const [earnRates, setEarnRates] = useState<Record<string, number>>({});
@@ -106,24 +119,27 @@ export default function CreditsPage() {
     return events.filter((e) => e.amount < 0);
   }, [events, filter]);
 
-  const grouped = useMemo(() => groupByDay(filtered), [filtered]);
+  const grouped = useMemo(
+    () => groupByDay(filtered, { today: t('today'), yesterday: t('yesterday'), dateLocale }),
+    [filtered, t, dateLocale],
+  );
 
   // Earn options shown in the "Earn more" card. Read directly from the rate
   // table the server returned, so the number a user sees is the number the
   // server will award. No more drift between UI copy and backend logic.
   const earnOptions = useMemo(() => {
     const order: Array<{ key: string; label: string; icon: string }> = [
-      { key: 'daily_login', label: 'Daily login', icon: '📅' },
-      { key: 'chapter_complete', label: 'Complete a chapter', icon: '📖' },
-      { key: 'mcq_pass', label: 'Pass a quiz (≥70%)', icon: '✅' },
-      { key: 'streak_7d', label: '7-day streak', icon: '🔥' },
-      { key: 'streak_30d', label: '30-day streak', icon: '🏆' },
-      { key: 'referral_signup', label: 'Friend signs up (per friend)', icon: '🎁' },
+      { key: 'daily_login', label: t('earn.daily_login'), icon: '📅' },
+      { key: 'chapter_complete', label: t('earn.chapter_complete'), icon: '📖' },
+      { key: 'mcq_pass', label: t('earn.mcq_pass'), icon: '✅' },
+      { key: 'streak_7d', label: t('earn.streak_7d'), icon: '🔥' },
+      { key: 'streak_30d', label: t('earn.streak_30d'), icon: '🏆' },
+      { key: 'referral_signup', label: t('earn.referral_signup'), icon: '🎁' },
     ];
     return order
       .map((o) => ({ ...o, amount: earnRates[o.key] ?? null }))
       .filter((o) => o.amount && o.amount > 0);
-  }, [earnRates]);
+  }, [earnRates, t]);
 
   async function handleLoadMore() {
     if (loadingMore || !hasMore || events.length === 0) return;
@@ -147,20 +163,20 @@ export default function CreditsPage() {
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-lg flex-col px-5 pt-6 pb-16">
-      <button onClick={() => router.back()} className="btn-ghost-sm self-start">← Back</button>
+      <button onClick={() => router.back()} className="btn-ghost-sm self-start">{t('back')}</button>
 
-      <h1 className="font-serif mt-4 text-2xl font-bold text-ink-900">Your Credits</h1>
+      <h1 className="font-serif mt-4 text-2xl font-bold text-ink-900">{t('title')}</h1>
 
       {/* Hero balance card */}
       <section className="mt-6 paper-card flex flex-col items-center p-8 text-center">
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">Available balance</p>
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-500">{t('availableBalance')}</p>
         <p className="mt-2 font-serif text-5xl font-bold text-ember-500">{balance.toLocaleString('en-IN')}</p>
-        <p className="mt-1 text-sm text-muted-500">credits</p>
+        <p className="mt-1 text-sm text-muted-500">{t('credits')}</p>
       </section>
 
       {/* Earn more — read straight from the server's rate table */}
       <section className="mt-8">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">How to earn more</h2>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">{t('howToEarn')}</h2>
         <ul className="mt-3 paper-card divide-y divide-line p-0">
           {earnOptions.map((opt) => (
             <li key={opt.key} className="flex items-center justify-between p-4">
@@ -176,17 +192,17 @@ export default function CreditsPage() {
 
       {/* Get more credits CTAs */}
       <section className="mt-6">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">Get more credits</h2>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">{t('getMore')}</h2>
         <div className="mt-3 grid grid-cols-2 gap-3">
           <button onClick={() => router.push('/refer')} className="paper-card flex flex-col items-start p-4 text-left transition-shadow hover:shadow-md">
             <span className="text-xl">🎁</span>
-            <p className="mt-2 text-sm font-semibold text-ink-900">Refer &amp; Earn</p>
-            <p className="mt-0.5 text-xs font-medium text-ember-500">+{earnRates.referral_signup ?? 50} per referral →</p>
+            <p className="mt-2 text-sm font-semibold text-ink-900">{t('referEarn')}</p>
+            <p className="mt-0.5 text-xs font-medium text-ember-500">{t('perReferral', { amount: earnRates.referral_signup ?? 50 })}</p>
           </button>
           <button onClick={() => router.push('/upgrade')} className="paper-card flex flex-col items-start p-4 text-left transition-shadow hover:shadow-md">
             <span className="text-xl">⭐</span>
-            <p className="mt-2 text-sm font-semibold text-ink-900">Upgrade Plan</p>
-            <p className="mt-0.5 text-xs font-medium text-ember-500">No credit deduction →</p>
+            <p className="mt-2 text-sm font-semibold text-ink-900">{t('upgradePlan')}</p>
+            <p className="mt-0.5 text-xs font-medium text-ember-500">{t('noDeduction')}</p>
           </button>
         </div>
       </section>
@@ -194,15 +210,15 @@ export default function CreditsPage() {
       {/* History timeline with filters */}
       <section className="mt-8">
         <div className="flex items-center justify-between">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">History</h2>
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">{t('history')}</h2>
           <div className="inline-flex rounded-full border border-line bg-paper-50 p-0.5 text-xs">
             {(['all', 'earned', 'spent'] as const).map((k) => (
               <button
                 key={k}
                 onClick={() => setFilter(k)}
-                className={`rounded-full px-3 py-1 capitalize transition-colors ${filter === k ? 'bg-ember-500 text-white' : 'text-muted-600 hover:text-ink-900'}`}
+                className={`rounded-full px-3 py-1 transition-colors ${filter === k ? 'bg-ember-500 text-white' : 'text-muted-600 hover:text-ink-900'}`}
               >
-                {k}
+                {t(k)}
               </button>
             ))}
           </div>
@@ -210,7 +226,7 @@ export default function CreditsPage() {
 
         {grouped.length === 0 ? (
           <p className="mt-6 text-center text-sm text-muted-500">
-            No {filter === 'all' ? 'activity' : filter} yet. Start a chapter or take a quiz to see it here.
+            {filter === 'all' ? t('emptyActivity') : t('emptyFiltered', { filter: t(filter) })}
           </p>
         ) : (
           <div className="mt-3 space-y-5">
@@ -251,14 +267,14 @@ export default function CreditsPage() {
                 disabled={loadingMore}
                 className="btn-ghost mx-auto block text-sm"
               >
-                {loadingMore ? 'Loading…' : 'Load more'}
+                {loadingMore ? t('loading') : t('loadMore')}
               </button>
             )}
           </div>
         )}
 
         <p className="mt-8 text-center text-[11px] leading-relaxed text-muted-400">
-          History begins after the credit-ledger upgrade. Older balance changes from before this redesign do not appear here, but your current balance includes them.
+          {t('historyNote')}
         </p>
       </section>
     </main>
@@ -275,7 +291,10 @@ interface DayGroup {
  * Group events into "Today / Yesterday / DD MMM" buckets. Events arrive
  * already sorted desc by occurredAt; we preserve that order within groups.
  */
-function groupByDay(events: CreditEvent[]): DayGroup[] {
+function groupByDay(
+  events: CreditEvent[],
+  labels: { today: string; yesterday: string; dateLocale: string },
+): DayGroup[] {
   const out: DayGroup[] = [];
   const today = new Date();
   const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
@@ -286,9 +305,9 @@ function groupByDay(events: CreditEvent[]): DayGroup[] {
     const d = new Date(e.occurredAt);
     const k = d.toDateString();
     let label: string;
-    if (k === todayKey) label = 'Today';
-    else if (k === yKey) label = 'Yesterday';
-    else label = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+    if (k === todayKey) label = labels.today;
+    else if (k === yKey) label = labels.yesterday;
+    else label = d.toLocaleDateString(labels.dateLocale, { day: 'numeric', month: 'short', year: 'numeric' });
     const last = out[out.length - 1];
     if (last && last.dayKey === k) {
       last.items.push(e);

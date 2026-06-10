@@ -9,12 +9,14 @@
  */
 
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { registerPushToken, getLastPushError } from '~/lib/pushClient';
 
 type Perm = NotificationPermission | 'unsupported';
 
 export function NotificationSetting() {
+  const t = useTranslations('notify');
   const [perm, setPerm] = useState<Perm>('default');
   const [busy, setBusy] = useState(false);
 
@@ -27,44 +29,42 @@ export function NotificationSetting() {
     setBusy(true);
     const ok = await registerPushToken();
     setBusy(false);
-    if (ok) { setPerm('granted'); toast.success('Notifications enabled! 🔔'); return; }
+    if (ok) { setPerm('granted'); toast.success(t('enabledToast')); return; }
     if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'denied') {
       setPerm('denied');
-      toast.error('Notifications are blocked. Enable them in your browser/site settings.');
+      toast.error(t('blockedToast'));
       return;
     }
     const reason = getLastPushError();
-    toast.error(reason ? `Could not enable: ${reason}` : 'Could not enable notifications.');
+    toast.error(reason ? t('couldNotEnableReason', { reason }) : t('couldNotEnable'));
   };
 
   return (
     <section className="mt-6">
-      <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">Notifications</h2>
+      <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">{t('heading')}</h2>
       <div className="mt-3 paper-card p-4">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-sm font-medium text-ink-900">Push Notifications</p>
+            <p className="text-sm font-medium text-ink-900">{t('pushTitle')}</p>
             <p className="text-xs text-muted-500">
-              Daily current affairs, streak reminders, exam alerts & doubt replies
+              {t('pushDesc')}
             </p>
           </div>
           {perm === 'granted' ? (
             <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-ember-500/15 px-3 py-1.5 text-xs font-semibold text-ember-600">
-              <span className="h-1.5 w-1.5 rounded-full bg-ember-500" /> Enabled
+              <span className="h-1.5 w-1.5 rounded-full bg-ember-500" /> {t('enabled')}
             </span>
           ) : perm === 'unsupported' ? (
-            <span className="shrink-0 text-xs text-muted-400">Not supported</span>
+            <span className="shrink-0 text-xs text-muted-400">{t('notSupported')}</span>
           ) : (
             <button onClick={enable} disabled={busy} className="btn-primary shrink-0 text-sm">
-              {busy ? 'Enabling…' : 'Enable'}
+              {busy ? t('enabling') : t('enable')}
             </button>
           )}
         </div>
         {perm === 'denied' && (
           <p className="mt-3 rounded-lg bg-paper-100 px-3 py-2 text-xs text-muted-500">
-            Notifications are blocked for this site. To turn them on, open your browser&apos;s
-            site settings (tap the lock icon near the address bar) and allow notifications, then
-            reload. On iPhone, install the app to your Home Screen first.
+            {t('blockedMsg')}
           </p>
         )}
       </div>
