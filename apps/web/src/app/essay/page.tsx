@@ -7,19 +7,13 @@ import { api } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 import { AILoader } from '~/components/ui/AILoader';
 import { track } from '~/lib/analytics';
+import { getClientLocale } from '~/lib/locale';
 
 const API = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com';
 
+/** Get user's selected language (cookie → localStorage), unified app-wide. */
 function getUserLanguage(): 'en' | 'hi' {
-  if (typeof document !== 'undefined') {
-    const m = document.cookie.match(/nexigrate-language=(en|hi)/);
-    if (m) return m[1] as 'en' | 'hi';
-  }
-  if (typeof localStorage !== 'undefined') {
-    const s = localStorage.getItem('nexigrate-language');
-    if (s === 'hi' || s === 'en') return s;
-  }
-  return 'en';
+  return getClientLocale();
 }
 
 interface EssayQuestion {

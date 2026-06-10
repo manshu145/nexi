@@ -361,8 +361,54 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
   app.post('/:exam/:subject/:chapter/complete', async (c) => {
     const principal = requireAuth(c);
     const { exam, subject, chapter } = c.req.param();
-    const body = await c.req.json().catch(() => null) as { score?: number } | null;
-    const score = Math.max(0, Math.min(100, Math.round(body?.score ?? 0)));
+    const body = await c.req.json().catch(() => null) as {
+      score?: number;
+      answers?: Array<{ questionId: string; chosen: string | null }>;
+      lang?: 'en' | 'hi';
+    } | null;
+
+    // Default: clamp the client-reported score. Kept for legacy clients
+    // and as a safe fallback when server-side re-scoring can't resolve the
+    // pool (so a Firestore/pool miss never wrongly zeroes a real student).
+    let score = Math.max(0, Math.min(100, Math.round(body?.score ?? 0)));
+
+    // SERVER-AUTHORITATIVE SCORING (anti-cheat). When the client sends the
+    // per-question answers, recompute the score from the stored MCQ pool's
+    // correctOption. This closes the exploit where a client could POST an
+    // arbitrary `score` (e.g. 100) to farm the mcq_pass credit and unlock
+    // the next chapter without actually passing. We only override the score
+    // when we can resolve at least one question from the pool; otherwise we
+    // keep the client value (fallback) so the happy path never regresses.
+    const answers = body?.answers;
+    if (Array.isArray(answers) && answers.length > 0) {
+      const lang: 'en' | 'hi' = body?.lang === 'hi' ? 'hi' : 'en';
+      try {
+        const correctMap = await mcqPool.lookupCorrectOptions(
+          exam, subject, chapter, lang, answers.map((a) => a.questionId),
+        );
+        if (correctMap.size > 0) {
+          let correct = 0;
+          for (const a of answers) {
+            const co = correctMap.get(a.questionId);
+            if (co && a.chosen === co) correct++;
+          }
+          score = Math.round((correct / answers.length) * 100);
+          deps.logger.info('study.quiz_server_scored', {
+            userId: principal.userId, exam, subject, chapter,
+            total: answers.length, resolved: correctMap.size, score,
+          });
+        } else {
+          deps.logger.warn('study.quiz_server_score_fallback', {
+            userId: principal.userId, exam, subject, chapter, reason: 'no_pool_match',
+          });
+        }
+      } catch (err) {
+        deps.logger.warn('study.quiz_server_score_error', {
+          userId: principal.userId, exam, subject, chapter,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
 
     const progress = await deps.chapters.saveProgress(principal.userId, exam, subject, chapter, score);
 
