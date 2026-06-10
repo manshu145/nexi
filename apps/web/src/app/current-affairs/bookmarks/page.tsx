@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { useAuth } from '~/lib/auth-context';
 import { useUser } from '~/lib/userStore';
@@ -26,6 +27,7 @@ import { getClientLocale } from '~/lib/locale';
 import { CATEGORY_EMOJIS, CATEGORY_IMAGES } from '../_shared';
 
 export default function SavedNewsPage() {
+  const t = useTranslations('caBookmarks');
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const { user: me, loading: meLoading } = useUser();
@@ -53,12 +55,12 @@ export default function SavedNewsPage() {
       );
       setItems(results.filter((x): x is CurrentAffairsItem => x !== null));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to load bookmarks');
+      toast.error(e instanceof Error ? e.message : t('failLoad'));
       setItems([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (!user) return;
@@ -72,10 +74,10 @@ export default function SavedNewsPage() {
         // Optimistically drop from the list — server is source of truth
         // but we already know it's gone.
         setItems((prev) => prev?.filter((it) => it.id !== id) ?? prev);
-        toast.success('Removed from saved');
+        toast.success(t('removed'));
       }
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to remove');
+      toast.error(e instanceof Error ? e.message : t('failRemove'));
     }
   };
 
@@ -86,24 +88,24 @@ export default function SavedNewsPage() {
   return (
     <main className="mx-auto flex min-h-dvh max-w-2xl flex-col px-5 pt-6 pb-16">
       <header className="flex items-center justify-between">
-        <button type="button" onClick={() => router.back()} className="btn-ghost-sm">← Back</button>
+        <button type="button" onClick={() => router.back()} className="btn-ghost-sm">{t('back')}</button>
         <Logo height={36} />
       </header>
 
       <section className="mt-6">
-        <h1 className="font-serif text-2xl font-bold text-ink-900">Saved News</h1>
-        <p className="mt-1 text-sm text-muted-500">Articles you bookmarked from the daily reel.</p>
+        <h1 className="font-serif text-2xl font-bold text-ink-900">{t('title')}</h1>
+        <p className="mt-1 text-sm text-muted-500">{t('subtitle')}</p>
       </section>
 
       <section className="mt-6">
         {items && items.length === 0 ? (
           <div className="paper-card p-8 text-center">
-            <p className="text-sm text-muted-500">You haven&apos;t saved any news yet.</p>
+            <p className="text-sm text-muted-500">{t('empty')}</p>
             <Link
               href="/current-affairs"
               className="mt-3 inline-block text-sm font-medium text-ember-600 hover:underline"
             >
-              Browse today&apos;s reel →
+              {t('browse')}
             </Link>
           </div>
         ) : (
@@ -128,9 +130,9 @@ export default function SavedNewsPage() {
                     <button
                       type="button"
                       onClick={(e) => { e.preventDefault(); void handleRemove(item.id); }}
-                      aria-label="Remove bookmark"
+                      aria-label={t('removeAria')}
                       className="absolute right-2 top-2 rounded-full bg-paper-50/90 p-1.5 text-base shadow-sm backdrop-blur-sm transition-colors hover:bg-paper-50"
-                      title="Remove bookmark"
+                      title={t('removeAria')}
                     >
                       🔖
                     </button>
@@ -153,7 +155,7 @@ export default function SavedNewsPage() {
                       href={`/current-affairs/${item.id}`}
                       className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-ember-600 hover:underline"
                     >
-                      Read more →
+                      {t('readMore')}
                     </Link>
                   </div>
                 </article>

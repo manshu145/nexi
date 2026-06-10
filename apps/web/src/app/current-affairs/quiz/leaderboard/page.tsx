@@ -15,6 +15,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations, useLocale } from 'next-intl';
 import { toast } from 'sonner';
 import { useAuth } from '~/lib/auth-context';
 import { useUser } from '~/lib/userStore';
@@ -29,6 +30,8 @@ function fmtTime(seconds: number): string {
 }
 
 export default function CurrentAffairsLeaderboardPage() {
+  const t = useTranslations('caLeaderboard');
+  const locale = useLocale();
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const { user: me, loading: meLoading } = useUser();
@@ -51,7 +54,7 @@ export default function CurrentAffairsLeaderboardPage() {
         setDate(res.date);
       } catch (e) {
         if (!cancelled) {
-          toast.error(e instanceof Error ? e.message : 'Failed to load leaderboard');
+          toast.error(e instanceof Error ? e.message : t('loadFailed'));
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -71,19 +74,19 @@ export default function CurrentAffairsLeaderboardPage() {
   const myRank = top20.findIndex((e) => e.userId === myUid);
 
   const dateLabel = date
-    ? new Date(date).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
+    ? new Date(date).toLocaleDateString(locale === 'hi' ? 'hi-IN' : 'en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
     : '';
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-2xl flex-col px-5 pt-6 pb-16">
       <header className="flex items-center justify-between">
-        <button type="button" onClick={() => router.back()} className="btn-ghost-sm">← Back</button>
+        <button type="button" onClick={() => router.back()} className="btn-ghost-sm">{t('back')}</button>
         <Logo height={36} />
       </header>
 
       <section className="mt-6">
-        <h1 className="font-serif text-2xl font-bold text-ink-900">Current Affairs Leaderboard</h1>
-        <p className="mt-1 text-sm text-muted-500">{dateLabel ? `Today · ${dateLabel}` : 'Today\'s top scorers'}</p>
+        <h1 className="font-serif text-2xl font-bold text-ink-900">{t('title')}</h1>
+        <p className="mt-1 text-sm text-muted-500">{dateLabel ? t('todayWithDate', { date: dateLabel }) : t('todayTop')}</p>
       </section>
 
       {/* Yesterday's winner card */}
@@ -93,13 +96,13 @@ export default function CurrentAffairsLeaderboardPage() {
             <span className="text-2xl">🏆</span>
             <div className="min-w-0 flex-1">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-gold-600">
-                Yesterday&apos;s Winner
+                {t('yesterdayWinner')}
               </p>
               <p className="font-serif mt-0.5 truncate text-base font-semibold text-ink-900">
-                {yesterdayWinner.userName || 'Student'}
+                {yesterdayWinner.userName || t('student')}
               </p>
               <p className="text-xs text-muted-500">
-                Score {yesterdayWinner.score}% · {fmtTime(yesterdayWinner.timeTaken)}
+                {t('scoreTime', { score: yesterdayWinner.score, time: fmtTime(yesterdayWinner.timeTaken) })}
               </p>
             </div>
           </div>
@@ -112,16 +115,16 @@ export default function CurrentAffairsLeaderboardPage() {
           <div className="paper-card p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs font-medium uppercase tracking-wider text-muted-500">Your score</p>
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-500">{t('yourScore')}</p>
                 <p className="font-serif mt-1 text-2xl font-semibold text-ink-900">
                   {myEntry.score}%
                   <span className="ml-2 text-sm font-normal text-muted-500">
-                    in {fmtTime(myEntry.timeTaken)}
+                    {t('inTime', { time: fmtTime(myEntry.timeTaken) })}
                   </span>
                 </p>
               </div>
               <div className="text-right">
-                <p className="text-xs font-medium uppercase tracking-wider text-muted-500">Your rank</p>
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-500">{t('yourRank')}</p>
                 <p className="font-serif mt-1 text-2xl font-semibold text-ember-600">#{myRank + 1}</p>
               </div>
             </div>
@@ -134,14 +137,14 @@ export default function CurrentAffairsLeaderboardPage() {
         {top20.length === 0 ? (
           <div className="paper-card p-8 text-center">
             <p className="text-sm text-muted-500">
-              No scores yet today. Be the first to take the quiz!
+              {t('noScores')}
             </p>
             <button
               type="button"
               onClick={() => router.push('/current-affairs/quiz')}
               className="mt-4 text-sm font-medium text-ember-600 hover:underline"
             >
-              Take today&apos;s quiz →
+              {t('takeQuiz')}
             </button>
           </div>
         ) : (
@@ -166,15 +169,15 @@ export default function CurrentAffairsLeaderboardPage() {
                       </span>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium text-ink-900">
-                          {entry.userName || 'Student'}
+                          {entry.userName || t('student')}
                           {isMe && (
                             <span className="ml-2 rounded-full bg-ember-500 px-1.5 py-0.5 text-[10px] font-semibold text-paper-50">
-                              you
+                              {t('you')}
                             </span>
                           )}
                         </p>
                         <p className="text-[11px] text-muted-500">
-                          {fmtTime(entry.timeTaken)} taken
+                          {t('timeTaken', { time: fmtTime(entry.timeTaken) })}
                         </p>
                       </div>
                       <div className="text-right">

@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import Script from 'next/script';
 import { useAuth } from '~/lib/auth-context';
 import { api, authedFetch, newIdempotencyKey, type Plan } from '~/lib/api';
@@ -63,6 +64,7 @@ const FALLBACK_FEATURES: Record<PlanKey, string[]> = { scholar: SCHOLAR_FEATURES
 export default function UpgradePage() {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const t = useTranslations('upgrade');
   const [currentPlan, setCurrentPlan] = useState<string>('free');
   const [credits, setCredits] = useState(0);
   const [period, setPeriod] = useState<BillingPeriod>('monthly');
@@ -321,7 +323,7 @@ export default function UpgradePage() {
             type="text"
             value={couponCodes[planId]}
             onChange={(e) => setCouponCode(planId, e.target.value.toUpperCase())}
-            placeholder="Coupon code"
+            placeholder={t('couponPlaceholder')}
             className="input flex-1 text-sm"
           />
           <button
@@ -329,14 +331,14 @@ export default function UpgradePage() {
             disabled={!couponCodes[planId].trim() || validatingPlan === planId}
             className="btn-ghost-sm text-xs px-3 disabled:opacity-50"
           >
-            {validatingPlan === planId ? '...' : 'Apply'}
+            {validatingPlan === planId ? '...' : t('apply')}
           </button>
         </div>
         {result?.valid && (
-          <p className="text-xs text-amber-600 dark:text-amber-400">✓ Code applied! ₹{result.discount / 100} off</p>
+          <p className="text-xs text-amber-600 dark:text-amber-400">{t('couponApplied', { amount: result.discount / 100 })}</p>
         )}
         {result && !result.valid && (
-          <p className="text-xs text-red-500">✗ {result.error || 'Invalid code'}</p>
+          <p className="text-xs text-red-500">{t('couponInvalid', { error: result.error || t('invalidCode') })}</p>
         )}
       </div>
     );
@@ -358,12 +360,12 @@ export default function UpgradePage() {
 
         <header className="flex items-center justify-between">
           <Logo height={36} />
-          <button onClick={() => router.push('/dashboard')} className="btn-ghost-sm">← Back</button>
+          <button onClick={() => router.push('/dashboard')} className="btn-ghost-sm">{t('back')}</button>
         </header>
 
         <section className="mt-8 text-center">
-          <h1 className="font-serif text-2xl font-bold text-ink-900">Complete your upgrade</h1>
-          <p className="mt-2 text-sm text-muted-500">Review your plan and apply a coupon before you pay.</p>
+          <h1 className="font-serif text-2xl font-bold text-ink-900">{t('completeUpgrade')}</h1>
+          <p className="mt-2 text-sm text-muted-500">{t('reviewPlan')}</p>
         </section>
 
         {/* Monthly / Yearly toggle */}
@@ -372,15 +374,15 @@ export default function UpgradePage() {
             onClick={() => setPeriod('monthly')}
             className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${period === 'monthly' ? 'bg-ember-500 text-white' : 'text-muted-600 hover:text-ink-900'}`}
           >
-            Monthly
+            {t('monthly')}
           </button>
           <button
             onClick={() => setPeriod('yearly')}
             className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors flex items-center gap-2 ${period === 'yearly' ? 'bg-ember-500 text-white' : 'text-muted-600 hover:text-ink-900'}`}
           >
-            Yearly
+            {t('yearly')}
             <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 ${period === 'yearly' ? 'bg-white text-ember-600' : 'bg-ember-500 text-white'}`}>
-              SAVE {yearlySavings.pct}%
+              {t('save', { pct: yearlySavings.pct })}
             </span>
           </button>
         </div>
@@ -393,7 +395,7 @@ export default function UpgradePage() {
             <h3 className="font-serif text-lg font-bold text-ink-900">{planName}</h3>
             <p className="text-right">
               <span className="font-serif text-2xl font-bold text-ink-900">₹{finalPriceFor(checkoutPlan)}</span>
-              <span className="text-sm text-muted-500">/{period === 'yearly' ? 'yr' : 'mo'}</span>
+              <span className="text-sm text-muted-500">/{period === 'yearly' ? t('perYear') : t('perMonth')}</span>
               {strikeFor(checkoutPlan) !== null && (
                 <span className="ml-2 text-sm line-through text-muted-400">₹{strikeFor(checkoutPlan)}</span>
               )}
@@ -419,14 +421,14 @@ export default function UpgradePage() {
             disabled={processing}
             className="btn-primary mt-5 w-full disabled:opacity-60"
           >
-            {processing ? 'Processing...' : `Pay ₹${finalPriceFor(checkoutPlan)} — ${planName}`}
+            {processing ? t('processing') : t('payCta', { price: finalPriceFor(checkoutPlan), name: planName })}
           </button>
         </div>
 
-        <button onClick={goBackToPlans} className="btn-ghost-sm mt-4 self-center text-sm">← Choose a different plan</button>
+        <button onClick={goBackToPlans} className="btn-ghost-sm mt-4 self-center text-sm">{t('chooseDifferent')}</button>
 
         <p className="mt-6 text-center text-xs text-muted-400">
-          Payments processed securely via Razorpay. Plans are one-time charges for the period chosen — there is no auto-renewal. <strong className="text-muted-500">No refunds</strong> on paid plans.
+          {t('footerShort')}
         </p>
       </main>
     );
@@ -438,12 +440,12 @@ export default function UpgradePage() {
 
       <header className="flex items-center justify-between">
         <Logo height={36} />
-        <button onClick={() => router.push('/dashboard')} className="btn-ghost-sm">← Back</button>
+        <button onClick={() => router.push('/dashboard')} className="btn-ghost-sm">{t('back')}</button>
       </header>
 
       <section className="mt-8 text-center">
-        <h1 className="font-serif text-2xl font-bold text-ink-900">Choose Your Plan</h1>
-        <p className="mt-2 text-sm text-muted-500">Unlock unlimited access to accelerate your preparation.</p>
+        <h1 className="font-serif text-2xl font-bold text-ink-900">{t('choosePlan')}</h1>
+        <p className="mt-2 text-sm text-muted-500">{t('subtitle')}</p>
       </section>
 
       {/* Monthly / Yearly toggle */}
@@ -452,15 +454,15 @@ export default function UpgradePage() {
           onClick={() => setPeriod('monthly')}
           className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${period === 'monthly' ? 'bg-ember-500 text-white' : 'text-muted-600 hover:text-ink-900'}`}
         >
-          Monthly
+          {t('monthly')}
         </button>
         <button
           onClick={() => setPeriod('yearly')}
           className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors flex items-center gap-2 ${period === 'yearly' ? 'bg-ember-500 text-white' : 'text-muted-600 hover:text-ink-900'}`}
         >
-          Yearly
+          {t('yearly')}
           <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 ${period === 'yearly' ? 'bg-white text-ember-600' : 'bg-ember-500 text-white'}`}>
-            SAVE {yearlySavings.pct}%
+            {t('save', { pct: yearlySavings.pct })}
           </span>
         </button>
       </div>
@@ -502,7 +504,7 @@ export default function UpgradePage() {
             ))}
           </ul>
           <button disabled className="mt-5 w-full rounded-xl py-3 text-sm font-semibold bg-paper-200 text-muted-500 cursor-not-allowed">
-            {currentPlan === 'free' ? '✓ Your Current Plan' : 'Free Plan'}
+            {currentPlan === 'free' ? t('currentPlan') : t('freePlan')}
           </button>
         </div>
 
@@ -511,7 +513,7 @@ export default function UpgradePage() {
           <h3 className="font-serif text-lg font-bold text-ink-900">{nameOf('scholar', 'Scholar')}</h3>
           <p className="mt-2">
             <span className="font-serif text-3xl font-bold text-ink-900">₹{finalPriceFor('scholar')}</span>
-            <span className="text-sm text-muted-500">/{period === 'yearly' ? 'yr' : 'mo'}</span>
+            <span className="text-sm text-muted-500">/{period === 'yearly' ? t('perYear') : t('perMonth')}</span>
             {strikeFor('scholar') !== null && (
               <span className="ml-2 text-sm line-through text-muted-400">₹{strikeFor('scholar')}</span>
             )}
@@ -535,23 +537,23 @@ export default function UpgradePage() {
           <button
             onClick={() => handleBuyPlan('scholar')}
             disabled={isCurrentScholar || processing}
-            className={`mt-4 w-full rounded-xl py-3 text-sm font-semibold transition-colors ${isCurrentScholar ? 'bg-paper-200 text-muted-500 cursor-not-allowed' : 'btn-primary'}`}
+            className={`mt-4 w-full rounded-xl py-3 text-sm font-semibold transition-colors ${isCurrentScholar ? 'bg-paper-200 text-muted-500 cursor-not-allowed' : 'bg-ink-900 text-paper-100 hover:bg-ember-600 disabled:opacity-50 disabled:cursor-not-allowed'}`}
           >
             {processing
-              ? 'Processing...'
+              ? t('processing')
               : isCurrentScholar
-                ? '✓ Your Current Plan'
-                : `Buy Now — ₹${finalPriceFor('scholar')}/${period === 'yearly' ? 'yr' : 'mo'}`}
+                ? t('currentPlan')
+                : t('choosePlanCta', { name: nameOf('scholar', 'Scholar'), price: finalPriceFor('scholar'), period: period === 'yearly' ? t('perYear') : t('perMonth') })}
           </button>
         </div>
 
         {/* PRO (aspirant) — RECOMMENDED (industry-standard middle-tier highlight) */}
         <div className={`paper-card relative flex flex-col p-5 border-amber-500 shadow-[0_0_0_2px_rgba(245,158,11,0.3)] ${currentPlan === 'aspirant' ? 'border-2 border-amber-400' : ''}`}>
-          <span className="absolute -top-2.5 right-3 rounded-full bg-amber-500 px-3 py-0.5 text-xs font-semibold text-ink-900">Recommended</span>
+          <span className="absolute -top-2.5 right-3 rounded-full bg-amber-500 px-3 py-0.5 text-xs font-semibold text-ink-900">{t('recommended')}</span>
           <h3 className="font-serif text-lg font-bold text-ink-900">{nameOf('aspirant', 'Pro')}</h3>
           <p className="mt-2">
             <span className="font-serif text-3xl font-bold text-ink-900">₹{finalPriceFor('aspirant')}</span>
-            <span className="text-sm text-muted-500">/{period === 'yearly' ? 'yr' : 'mo'}</span>
+            <span className="text-sm text-muted-500">/{period === 'yearly' ? t('perYear') : t('perMonth')}</span>
             {strikeFor('aspirant') !== null && (
               <span className="ml-2 text-sm line-through text-muted-400">₹{strikeFor('aspirant')}</span>
             )}
@@ -576,12 +578,12 @@ export default function UpgradePage() {
                   className={`mt-4 w-full rounded-xl py-3 text-sm font-semibold transition-colors ${isComingSoon ? 'bg-paper-200 text-muted-500 cursor-not-allowed' : 'bg-ink-900 text-paper-100 hover:bg-ember-600 disabled:opacity-50 disabled:cursor-not-allowed'}`}
                 >
                   {currentPlan === 'aspirant'
-                    ? '✓ Current Plan'
+                    ? t('currentPlanShort')
                     : isComingSoon
-                      ? 'Coming Soon'
+                      ? t('comingSoon')
                       : processing
-                        ? 'Processing...'
-                        : `Choose Pro — ₹${finalPriceFor('aspirant')}/${period === 'yearly' ? 'yr' : 'mo'}`}
+                        ? t('processing')
+                        : t('choosePlanCta', { name: nameOf('aspirant', 'Pro'), price: finalPriceFor('aspirant'), period: period === 'yearly' ? t('perYear') : t('perMonth') })}
                 </button>
               </>
             );
@@ -593,7 +595,7 @@ export default function UpgradePage() {
           <h3 className="font-serif text-lg font-bold text-ink-900">{nameOf('achiever', 'Elite')}</h3>
           <p className="mt-2">
             <span className="font-serif text-3xl font-bold text-ink-900">₹{finalPriceFor('achiever')}</span>
-            <span className="text-sm text-muted-500">/{period === 'yearly' ? 'yr' : 'mo'}</span>
+            <span className="text-sm text-muted-500">/{period === 'yearly' ? t('perYear') : t('perMonth')}</span>
             {strikeFor('achiever') !== null && (
               <span className="ml-2 text-sm line-through text-muted-400">₹{strikeFor('achiever')}</span>
             )}
@@ -618,12 +620,12 @@ export default function UpgradePage() {
                   className={`mt-4 w-full rounded-xl py-3 text-sm font-semibold transition-colors ${isComingSoon ? 'bg-paper-200 text-muted-500 cursor-not-allowed' : 'bg-ink-900 text-paper-100 hover:bg-ember-600 disabled:opacity-50 disabled:cursor-not-allowed'}`}
                 >
                   {currentPlan === 'achiever'
-                    ? '✓ Current Plan'
+                    ? t('currentPlanShort')
                     : isComingSoon
-                      ? 'Coming Soon'
+                      ? t('comingSoon')
                       : processing
-                        ? 'Processing...'
-                        : `Choose Elite — ₹${finalPriceFor('achiever')}/${period === 'yearly' ? 'yr' : 'mo'}`}
+                        ? t('processing')
+                        : t('choosePlanCta', { name: nameOf('achiever', 'Elite'), price: finalPriceFor('achiever'), period: period === 'yearly' ? t('perYear') : t('perMonth') })}
                 </button>
               </>
             );
@@ -635,13 +637,12 @@ export default function UpgradePage() {
       {/* Credits info */}
       <div className="mt-8 paper-card p-4 text-center">
         <p className="text-sm text-muted-600 dark:text-muted-400">
-          Your current credits: <span className="font-bold text-ink-900">{credits}</span>
-          <span className="text-xs text-muted-500 ml-2">(preserved across plan changes)</span>
+          {t('creditsInfo', { credits })}
         </p>
       </div>
 
       <p className="mt-6 text-center text-xs text-muted-400">
-        Payments processed securely via Razorpay. Plans are one-time charges for the period chosen — there is no auto-renewal. <strong className="text-muted-500">No refunds</strong> on paid plans; cancel any time from your profile to stop the next charge while keeping access until the current period ends.
+        {t('footer')}
       </p>
     </main>
   );
