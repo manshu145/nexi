@@ -19,6 +19,24 @@ interface AdminUser {
   currentStreak?: number;
   bestStreak?: number;
   onboardingLevel?: string;
+  currentLevel?: string;
+  assessmentDetail?: {
+    submittedAt: string;
+    score: number;
+    total: number;
+    level: string;
+    subjectBreakdown: Record<string, { correct: number; total: number }>;
+    questions: Array<{
+      stage: string;
+      question: string;
+      subject?: string;
+      chosenKey: string | null;
+      chosen: string | null;
+      correctKey: string;
+      correct: string;
+      isCorrect: boolean;
+    }>;
+  } | null;
   banned?: boolean;
   bannedAt?: string | null;
   banReason?: string | null;
@@ -114,6 +132,17 @@ export default function AdminUsersPage() {
       }
     } catch { setActivity([]); }
     finally { setLoadingActivity(false); }
+    // Fetch the full user doc (the list row is trimmed) so we can show the
+    // detailed onboarding-assessment breakdown.
+    try {
+      const auth = getFirebaseAuthClient();
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch(`${API}/v1/admin/users/${u.id}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) {
+        const data = await res.json() as { user: AdminUser };
+        if (data.user) setSelectedUser((prev) => prev && prev.id === u.id ? { ...prev, ...data.user } : prev);
+      }
+    } catch { /* detail enrichment is best-effort */ }
     // Fetch chat sessions
     try {
       const auth = getFirebaseAuthClient();
@@ -403,10 +432,64 @@ export default function AdminUsersPage() {
                 {/* Info Grid */}
                 <div className="bg-paper-200 rounded-lg p-4 space-y-2 text-sm">
                   <div className="flex justify-between"><span className="text-muted-500">Exam</span><span className="text-ink-800">{selectedUser.targetExam ?? '—'}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-500">Level</span><span className="text-ink-800 capitalize">{selectedUser.onboardingLevel ?? '—'}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-500">Assessment Level</span><span className="text-ink-800 capitalize">{selectedUser.onboardingLevel ?? '—'}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-500">Current Level</span><span className="text-ink-800 capitalize">{selectedUser.currentLevel ?? selectedUser.onboardingLevel ?? '—'}</span></div>
                   <div className="flex justify-between"><span className="text-muted-500">Role</span><span className="text-ink-800">{selectedUser.role}</span></div>
                   <div className="flex justify-between"><span className="text-muted-500">Best Streak</span><span className="text-ink-800">{selectedUser.bestStreak ?? 0} days</span></div>
                 </div>
+
+                {/* Onboarding Assessment detail — which question, what the
+                    student answered, the correct answer, and per-subject score. */}
+                {selectedUser.assessmentDetail && (
+                  <div>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-muted-500 mb-3">Assessment Result</h4>
+                    <div className="bg-paper-200 rounded-lg p-4 space-y-3 text-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-500">Score</span>
+                        <span className="font-bold text-ink-900">
+                          {selectedUser.assessmentDetail.score}/{selectedUser.assessmentDetail.total}
+                          <span className="ml-2 capitalize text-ember-600">{selectedUser.assessmentDetail.level}</span>
+                        </span>
+                      </div>
+                      {/* Per-subject breakdown */}
+                      <div className="space-y-1">
+                        {Object.entries(selectedUser.assessmentDetail.subjectBreakdown).map(([subj, s]) => (
+                          <div key={subj} className="flex justify-between text-xs">
+                            <span className="text-muted-500 capitalize">{subj.replace(/-/g, ' ')}</span>
+                            <span className="text-ink-700">{s.correct}/{s.total}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    {/* Per-question answers */}
+                    <details className="mt-2">
+                      <summary className="cursor-pointer text-xs font-medium text-ember-600 hover:underline">
+                        View all {selectedUser.assessmentDetail.questions.length} questions &amp; answers
+                      </summary>
+                      <ol className="mt-2 space-y-2">
+                        {selectedUser.assessmentDetail.questions.map((q, i) => (
+                          <li key={i} className="bg-paper-200 rounded-lg p-3 text-xs">
+                            <div className="flex items-start gap-2">
+                              <span className={`mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white ${q.isCorrect ? 'bg-green-600' : q.chosenKey ? 'bg-red-500' : 'bg-stone-400'}`}>
+                                {q.isCorrect ? '\u2713' : q.chosenKey ? '\u2717' : '\u2013'}
+                              </span>
+                              <div className="min-w-0">
+                                <p className="font-medium text-ink-900">{i + 1}. {q.question}</p>
+                                <p className="mt-1 text-muted-600">
+                                  Answered: <span className={q.isCorrect ? 'text-green-700' : 'text-red-600'}>{q.chosen ? `${q.chosenKey}. ${q.chosen}` : 'Skipped'}</span>
+                                </p>
+                                {!q.isCorrect && (
+                                  <p className="text-muted-600">Correct: <span className="text-green-700">{q.correctKey}. {q.correct}</span></p>
+                                )}
+                                {q.subject && <p className="mt-0.5 text-[10px] uppercase tracking-wider text-muted-400">{q.subject}</p>}
+                              </div>
+                            </div>
+                          </li>
+                        ))}
+                      </ol>
+                    </details>
+                  </div>
+                )}
 
                 {/* Activity Timeline */}
                 <div>

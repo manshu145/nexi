@@ -24,6 +24,31 @@ export interface StoredUser {
    * onboardingLevel until the next chapter-complete recomputes it.
    */
   currentLevel?: 'beginner' | 'intermediate' | 'advanced' | null;
+  /**
+   * Full detail of the user's most recent onboarding assessment, persisted
+   * so admins can see exactly which question was asked, what the student
+   * answered, the correct answer, and the per-subject breakdown (previously
+   * only the aggregate score/level was stored). Written once on
+   * /assessment/submit. Trimmed (no option lists/explanations) to keep the
+   * user doc small. `undefined` for users who assessed before this field.
+   */
+  assessmentDetail?: {
+    submittedAt: ISODateTime;
+    score: number;
+    total: number;
+    level: 'beginner' | 'intermediate' | 'advanced';
+    subjectBreakdown: Record<string, { correct: number; total: number }>;
+    questions: Array<{
+      stage: 'exam' | 'reasoning' | 'general';
+      question: string;
+      subject?: string;
+      chosenKey: string | null;
+      chosen: string | null;
+      correctKey: string;
+      correct: string;
+      isCorrect: boolean;
+    }>;
+  } | null;
   credits: number; plan: 'free' | 'scholar' | 'aspirant' | 'achiever'; planExpiresAt: ISODateTime | null;
   /**
    * ISO datetime at which the user clicked "Cancel Plan" in profile.

@@ -9,6 +9,7 @@ import type { CreditLedger } from '../lib/creditLedger.js';
 import type { ServiceKeyStore } from '../lib/serviceKeyStore.js';
 import { getPersonalQuestions, getReasoningQuestions, PERSONAL_QUESTIONS } from '../lib/assessmentStatic.js';
 import { buildSyllabusPromptContext } from '../lib/syllabusStore.js';
+import { asISODateTime } from '@nexigrate/shared';
 
 export interface AssessmentRoutesDeps {
   users: UserStore;
@@ -61,6 +62,52 @@ const submitSchema = z.object({
 
 /** Valid personal-answer field keys (whitelist what we persist). */
 const PERSONAL_FIELDS = new Set(PERSONAL_QUESTIONS.map((q) => q.field));
+
+/**
+ * Flatten scored assessment stages into the compact, admin-readable detail
+ * persisted on the user doc (StoredUser.assessmentDetail). Records, per
+ * question: the prompt, the option the student picked (key + text), the
+ * correct option (key + text), and whether it was right — plus a per-subject
+ * breakdown. Keeps options/explanations OUT to stay small.
+ */
+function buildAssessmentDetail(
+  stages: Array<{ stage: 'exam' | 'reasoning' | 'general'; results: StageResults }>,
+  result: { score: number; total: number; level: 'beginner' | 'intermediate' | 'advanced' },
+) {
+  const questions: NonNullable<import('../lib/userStore.js').StoredUser['assessmentDetail']>['questions'] = [];
+  const subjectBreakdown: Record<string, { correct: number; total: number }> = {};
+  for (const { stage, results } of stages) {
+    for (const q of results.questions) {
+      const ans = results.answers.find((a) => a.questionId === q.id);
+      const chosenKey = (ans?.chosen ?? null) as string | null;
+      const chosenText = q.options.find((o) => o.key === chosenKey)?.text ?? null;
+      const correctText = q.options.find((o) => o.key === q.correctOption)?.text ?? '';
+      const isCorrect = chosenKey !== null && chosenKey === q.correctOption;
+      const subj = q.subject ?? stage;
+      if (!subjectBreakdown[subj]) subjectBreakdown[subj] = { correct: 0, total: 0 };
+      subjectBreakdown[subj].total++;
+      if (isCorrect) subjectBreakdown[subj].correct++;
+      questions.push({
+        stage,
+        question: q.question,
+        subject: q.subject,
+        chosenKey,
+        chosen: chosenText,
+        correctKey: q.correctOption,
+        correct: correctText,
+        isCorrect,
+      });
+    }
+  }
+  return {
+    submittedAt: asISODateTime(new Date().toISOString()),
+    score: result.score,
+    total: result.total,
+    level: result.level,
+    subjectBreakdown,
+    questions,
+  };
+}
 
 export function makeAssessmentRoutes(deps: AssessmentRoutesDeps): Hono {
   const app = new Hono();
@@ -198,6 +245,11 @@ export function makeAssessmentRoutes(deps: AssessmentRoutesDeps): Hono {
       };
       if (result.weakAreas) updateData.weakAreas = result.weakAreas;
       if (result.strongAreas) updateData.strongAreas = result.strongAreas;
+      // Persist the full per-question detail for admin visibility.
+      updateData.assessmentDetail = buildAssessmentDetail([
+        { stage: 'exam', results: parsed.data.examResults as StageResults },
+        { stage: 'reasoning', results: parsed.data.reasoningResults as StageResults },
+      ], result);
       if (parsed.data.personal) {
         const profile: Record<string, string> = {};
         for (const [field, value] of Object.entries(parsed.data.personal)) {
@@ -243,6 +295,11 @@ export function makeAssessmentRoutes(deps: AssessmentRoutesDeps): Hono {
       // Save weak/strong areas if available
       if (result.weakAreas) (updateData as any).weakAreas = result.weakAreas;
       if (result.strongAreas) (updateData as any).strongAreas = result.strongAreas;
+      updateData.assessmentDetail = buildAssessmentDetail([
+        { stage: 'exam', results: parsed.data.stage1 as StageResults },
+        { stage: 'exam', results: parsed.data.stage2 as StageResults },
+        { stage: 'reasoning', results: parsed.data.stage3 as StageResults },
+      ], result);
 
       await deps.users.update(principal.userId, updateData as any);
 
@@ -277,7 +334,13 @@ export function makeAssessmentRoutes(deps: AssessmentRoutesDeps): Hono {
       parsed.data.questions as GeneratedMCQ[],
       parsed.data.answers,
     );
-    await deps.users.update(principal.userId, { onboardingScore: result.score, onboardingLevel: result.level });
+    await deps.users.update(principal.userId, {
+      onboardingScore: result.score,
+      onboardingLevel: result.level,
+      assessmentDetail: buildAssessmentDetail([
+        { stage: 'general', results: { questions: parsed.data.questions as GeneratedMCQ[], answers: parsed.data.answers } as StageResults },
+      ], result),
+    } as never);
     deps.logger.info('assessment.submitted', { userId: principal.userId, score: result.score, level: result.level });
     return c.json(result);
   });

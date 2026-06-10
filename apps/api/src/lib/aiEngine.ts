@@ -2308,6 +2308,7 @@ Rules for your responses:
         `You are a professional Hindi (Devanagari) translator for an Indian competitive-exam current-affairs app.
 
 Translate EACH news item below into natural, fluent Hindi. STRICT RULES:
+- Translate the MEANING into idiomatic Hindi that reads like an Indian journalist wrote it — NOT a stiff word-for-word machine translation. Reorder words for natural Hindi flow where needed.
 - This is a FULL translation, NOT a summary. Translate every sentence — do NOT shorten, compress or skip anything. The Hindi summary MUST be the same length and detail as the English one.
 - PRESERVE the exact structure and formatting: keep blank lines between paragraphs, keep the "**Key Points:**" heading (translate it to "**मुख्य बिंदु:**"), and keep every "• " bullet line as a "• " bullet line. The number of bullet points in Hindi MUST equal the number in English (never fewer than 3).
 - Keep proper nouns, scheme names, org acronyms (ISRO, RBI, UN, GDP) and numbers/dates intact; transliterate names only when there is a well-known Hindi form.
