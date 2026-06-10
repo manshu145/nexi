@@ -50,7 +50,7 @@ export default function PlanPage() {
   const items = plan?.items ?? [];
 
   return (
-    <main className="min-h-dvh bg-paper-100 px-4 py-6">
+    <main className="min-h-dvh bg-paper-100 px-4 pt-6 pb-24">
       <div className="mx-auto max-w-2xl">
         <header className="flex items-center justify-between gap-3">
           <button onClick={() => router.push('/dashboard')} className="btn-ghost-sm" aria-label="Back to dashboard">← {tc('back')}</button>

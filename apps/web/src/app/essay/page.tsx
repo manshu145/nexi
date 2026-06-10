@@ -138,6 +138,7 @@ export default function EssayPage() {
   const handleGenerateQuestion = async () => {
     setGenerating(true);
     setLimitMsg(null);
+    track('essay_practice');
     try {
       const token = await user!.getIdToken();
       const lang = getUserLanguage();

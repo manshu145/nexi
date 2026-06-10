@@ -283,40 +283,67 @@ export default function AdminEmailPage() {
 
   if (loading || !user) return <div className="space-y-4"><div className="h-7 w-32 rounded bg-paper-300 animate-pulse" /><div className="h-40 rounded bg-paper-300 animate-pulse" /></div>;
 
+  const TABS = [
+    { id: 'compose', icon: '✏️', label: 'Compose' },
+    { id: 'mailbox', icon: '💬', label: 'Mailbox', badge: mailboxUnread > 0 ? mailboxUnread : undefined },
+    { id: 'templates', icon: '📝', label: 'Templates', count: templates.length },
+    { id: 'logs', icon: '📬', label: 'Logs', count: emailLogs.length },
+    { id: 'settings', icon: '⚙️', label: 'Settings' },
+  ] as const;
+
   return (
     <div className="max-w-5xl">
-      <h1 className="font-serif text-2xl font-bold text-ink-900">Email</h1>
-      <p className="mt-1 text-sm text-muted-500">Compose branded broadcasts, manage conversations &amp; review delivery logs</p>
+      {/* Module header */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-4">
+        <div className="flex items-center gap-3">
+          <span className="grid h-11 w-11 flex-shrink-0 place-items-center rounded-xl bg-ember-500/10 text-xl">✉️</span>
+          <div>
+            <h1 className="font-serif text-2xl font-bold leading-tight text-ink-900">Email</h1>
+            <p className="text-sm text-muted-500">Broadcasts, conversations &amp; delivery logs</p>
+          </div>
+        </div>
+        {configured === true ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-500">
+            <span className="h-2 w-2 rounded-full bg-emerald-500" /> Resend connected
+          </span>
+        ) : configured === false ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-red-500/10 px-3 py-1 text-xs font-medium text-red-600">
+            <span className="h-2 w-2 rounded-full bg-red-500" /> Not configured
+          </span>
+        ) : null}
+      </div>
 
       {configured === false && (
         <div className="banner banner-error mt-4">Email not configured. Set RESEND_API_KEY in environment variables.</div>
       )}
-      {configured === true && (
-        <span className="inline-flex items-center gap-1.5 mt-3 rounded-full bg-gold-500/10 px-3 py-1 text-xs font-medium text-gold-600 dark:text-gold-500">
-          <span className="h-2 w-2 rounded-full bg-gold-500" /> Resend Connected
-        </span>
-      )}
-
       {error && <div className="banner banner-error mt-4">{error}</div>}
       {result && <div className="banner banner-success mt-4">{result}</div>}
 
-      {/* Tabs */}
-      <div className="mt-6 flex gap-2">
-        <button onClick={() => setActiveTab('compose')} className={`pill ${activeTab === 'compose' ? 'bg-ink-900 text-paper-50 border-ink-900' : ''}`}>
-          Compose
-        </button>
-        <button onClick={() => setActiveTab('mailbox')} className={`pill ${activeTab === 'mailbox' ? 'bg-ink-900 text-paper-50 border-ink-900' : ''}`}>
-          Mailbox{mailboxUnread > 0 ? ` (${mailboxUnread})` : ''}
-        </button>
-        <button onClick={() => setActiveTab('templates')} className={`pill ${activeTab === 'templates' ? 'bg-ink-900 text-paper-50 border-ink-900' : ''}`}>
-          Templates ({templates.length})
-        </button>
-        <button onClick={() => setActiveTab('logs')} className={`pill ${activeTab === 'logs' ? 'bg-ink-900 text-paper-50 border-ink-900' : ''}`}>
-          Logs ({emailLogs.length})
-        </button>
-        <button onClick={() => setActiveTab('settings')} className={`pill ${activeTab === 'settings' ? 'bg-ink-900 text-paper-50 border-ink-900' : ''}`}>
-          Settings
-        </button>
+      {/* Tab bar — professional underlined nav */}
+      <div className="mt-5 border-b border-line">
+        <nav className="-mb-px flex gap-1 overflow-x-auto">
+          {TABS.map(tab => {
+            const active = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`relative flex items-center gap-1.5 whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+                  active ? 'border-ember-500 text-ink-900' : 'border-transparent text-muted-500 hover:text-ink-900 hover:border-line'
+                }`}
+              >
+                <span className="text-base leading-none">{tab.icon}</span>
+                {tab.label}
+                {'count' in tab && typeof tab.count === 'number' && (
+                  <span className="rounded-full bg-paper-200 px-1.5 py-0.5 text-[10px] font-semibold text-muted-600 tabular-nums">{tab.count}</span>
+                )}
+                {'badge' in tab && tab.badge !== undefined && (
+                  <span className="rounded-full bg-ember-500 px-1.5 py-0.5 text-[10px] font-bold text-paper-50 tabular-nums">{tab.badge}</span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
       </div>
 
       {activeTab === 'compose' && (
