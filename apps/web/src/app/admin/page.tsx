@@ -65,11 +65,11 @@ function KpiCard({ label, value, sub }: { label: string; value: string | number;
 function HealthBadge({ name, status }: { name: string; status: 'ok'|'error'|'unconfigured' }) {
   const mapped = status === 'ok' ? 'up' : status === 'error' ? 'down' : 'unknown';
   const colors: Record<string, string> = {
-    up: 'bg-gold-500/10 text-gold-600 dark:text-gold-500',
-    down: 'bg-ember-500/10 text-ember-600',
+    up: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-500',
+    down: 'bg-red-500/10 text-red-600',
     unknown: 'bg-paper-200 text-muted-500',
   };
-  const dots: Record<string, string> = { up: 'bg-gold-500', down: 'bg-ember-500', unknown: 'bg-muted-400' };
+  const dots: Record<string, string> = { up: 'bg-emerald-500', down: 'bg-red-500', unknown: 'bg-muted-400' };
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${colors[mapped]}`}>
       <span className={`h-2 w-2 rounded-full ${dots[mapped]}`} />{name}
@@ -296,12 +296,12 @@ export default function AdminDashboardPage() {
               {COMPARE_METRICS.map(({ key, label }) => {
                 const t = metricVal(cmp?.today, key); const y = metricVal(cmp?.yesterday, key);
                 const delta = t - y; const pct = y > 0 ? Math.round((delta / y) * 100) : (t > 0 ? 100 : 0);
-                const up = delta >= 0;
+                const trend = delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat';
                 return (
                   <div key={key} className="rounded-lg border border-line bg-paper-50 p-3">
                     <p className="text-[11px] font-medium uppercase tracking-wider text-muted-500">{label}</p>
                     <p className="mt-1 font-serif text-xl font-bold text-ink-900">{t}</p>
-                    <p className={`mt-0.5 text-[11px] font-semibold ${up ? 'text-ember-600' : 'text-muted-500'}`}>{up ? '▲' : '▼'} {Math.abs(pct)}% <span className="font-normal text-muted-400">vs {y}</span></p>
+                    <p className={`mt-0.5 text-[11px] font-semibold ${trend === 'up' ? 'text-emerald-600' : trend === 'down' ? 'text-red-600' : 'text-muted-500'}`}>{trend === 'up' ? '▲' : trend === 'down' ? '▼' : '—'} {Math.abs(pct)}% <span className="font-normal text-muted-400">vs {y}</span></p>
                   </div>
                 );
               })}
@@ -328,8 +328,8 @@ export default function AdminDashboardPage() {
             <h3 className="mb-3 text-sm font-semibold text-ink-900">Upgrade funnel</h3>
             <div className="grid grid-cols-3 gap-3 text-center">
               <div><p className="font-serif text-2xl font-bold text-ink-900">{funnel?.upgradeViews ?? 0}</p><p className="text-xs text-muted-500">Saw upgrade</p></div>
-              <div><p className="font-serif text-2xl font-bold text-ink-900">{funnel?.upgradeClicks ?? 0}</p><p className="text-xs text-muted-500">Clicked buy <span className="text-ember-600">({clickRate}%)</span></p></div>
-              <div><p className="font-serif text-2xl font-bold text-ink-900">{funnel?.payments ?? 0}</p><p className="text-xs text-muted-500">Paid <span className="text-ember-600">({buyRate}%)</span></p></div>
+              <div><p className="font-serif text-2xl font-bold text-ink-900">{funnel?.upgradeClicks ?? 0}</p><p className="text-xs text-muted-500">Clicked buy <span className="text-emerald-600">({clickRate}%)</span></p></div>
+              <div><p className="font-serif text-2xl font-bold text-ink-900">{funnel?.payments ?? 0}</p><p className="text-xs text-muted-500">Paid <span className="text-emerald-600">({buyRate}%)</span></p></div>
             </div>
           </div>
 
