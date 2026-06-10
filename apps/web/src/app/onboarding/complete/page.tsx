@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import type { AssessmentResult } from '~/lib/api';
 import { api } from '~/lib/api';
 import { AILoader } from '~/components/ui/AILoader';
+import { getClientLocale } from '~/lib/locale';
 
 function CreditCounter({ target }: { target: number }) {
   const [count, setCount] = useState(0);
@@ -85,25 +86,38 @@ export default function CompletePage() {
       })
       .catch(() => {});
 
-    // Apply pending referral code if exists
+    // Apply pending referral code if exists.
+    //
+    // ORDER MATTERS (bug fix): applyReferral CREATES the referral record
+    // (invitee -> referrer link + invitee bonus). completeReferral then
+    // looks that record up to pay the REFERRER their +50. Previously both
+    // fired in parallel, so completeReferral often raced ahead of the
+    // record being written and returned { completed:false } -> the referrer
+    // was never paid. We now await applyReferral first, and only call
+    // completeReferral if it actually succeeded.
     const pendingRef = localStorage.getItem('pendingReferral');
     if (pendingRef) {
       localStorage.removeItem('pendingReferral');
-      api.applyReferral(pendingRef).then(res => {
-        if (res.success && res.bonusCredits) {
-          setReferralBonus(res.bonusCredits);
+      void (async () => {
+        try {
+          const res = await api.applyReferral(pendingRef);
+          if (res.success && res.bonusCredits) {
+            setReferralBonus(res.bonusCredits);
+          }
+          // Only pay the referrer once the referral record exists. Applying
+          // an invalid/already-used code returns success:false -> nothing
+          // to complete.
+          if (res.success) {
+            await api.completeReferral().catch(() => {});
+          }
+        } catch {
+          /* network/transient — referral simply isn't applied this time */
         }
-      }).catch(() => {});
-      // Also complete the referral to award the referrer
-      api.completeReferral().catch(() => {});
+      })();
     }
   }, []);
 
-  const lang = typeof window !== 'undefined' ? (() => {
-    const m = document.cookie.match(/nexigrate-language=(en|hi)/);
-    if (m) return m[1] as 'en' | 'hi';
-    return (localStorage.getItem('nexigrate-language') as 'en'|'hi') || 'en';
-  })() : 'en';
+  const lang = getClientLocale();
 
   if (pageLoading) {
     return (

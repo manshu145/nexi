@@ -13,7 +13,7 @@ import type { Firestore } from 'firebase-admin/firestore';
  * (streaks, AI spend cap). All methods are best-effort / fail-open: a counter
  * read/write hiccup must never block a paying user from a feature.
  */
-export type UsageFeature = 'image' | 'essay' | 'aiTutor';
+export type UsageFeature = 'image' | 'essay' | 'aiTutor' | 'aiSupport';
 
 /**
  * Counter window. 'day' = per IST calendar day (default, used by image/essay

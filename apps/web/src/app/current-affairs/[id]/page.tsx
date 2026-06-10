@@ -33,7 +33,7 @@ export default function CurrentAffairsDetailPage() {
     track('reel_view', { id: String(id).slice(0, 40) });
     (async () => {
       try {
-        const lang = (localStorage.getItem('nexigrate-language') as 'en' | 'hi') || 'en';
+        const lang = getClientLocale();
         const res = await api.getCurrentAffairsDetail(id, lang);
         setItem(res.item);
       } catch (e) { setError(e instanceof Error ? e.message : 'Article not found'); }
@@ -55,7 +55,7 @@ export default function CurrentAffairsDetailPage() {
     }
     const text = `${item.headline}. ${item.summary || item.body}`;
     const utterance = new SpeechSynthesisUtterance(text);
-    const lang = (localStorage.getItem('nexigrate-language') as 'en' | 'hi') || 'en';
+    const lang = getClientLocale();
     utterance.lang = lang === 'hi' ? 'hi-IN' : 'en-IN';
     utterance.rate = 0.9;
     utterance.pitch = 1.0;

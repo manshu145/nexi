@@ -7,6 +7,7 @@ import { api, type SyllabusTree, type StudyProgress } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 import { Skeleton, ListSkeleton } from '~/components/Skeleton';
 import { AILoader } from '~/components/ui/AILoader';
+import { getClientLocale } from '~/lib/locale';
 
 export default function StudyPage() {
   const { user, loading } = useAuth();
@@ -29,9 +30,8 @@ export default function StudyPage() {
 
   useEffect(() => {
     if (!user || !me) return;
-    // Detect language
-    const m = document.cookie.match(/nexigrate-language=(en|hi)/);
-    const detected = m ? m[1] as 'en' | 'hi' : (localStorage.getItem('nexigrate-language') as 'en' | 'hi') || 'en';
+    // Detect language (unified app-wide via getClientLocale)
+    const detected = getClientLocale();
     setLang(detected);
     (async () => {
       try {

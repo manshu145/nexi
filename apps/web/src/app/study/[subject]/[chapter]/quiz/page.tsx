@@ -7,20 +7,13 @@ import { api, type GeneratedMCQ } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 import { AILoader } from '~/components/ui/AILoader';
 import { track } from '~/lib/analytics';
+import { getClientLocale } from '~/lib/locale';
 
 type Phase = 'loading' | 'quiz' | 'submitting' | 'result';
 
-/** Get user's selected language from cookie or localStorage */
+/** Get user's selected language (cookie → localStorage), unified app-wide. */
 function getLanguageFromCookie(): 'en' | 'hi' {
-  if (typeof document !== 'undefined') {
-    const match = document.cookie.match(/nexigrate-language=(en|hi)/);
-    if (match) return match[1] as 'en' | 'hi';
-  }
-  if (typeof localStorage !== 'undefined') {
-    const stored = localStorage.getItem('nexigrate-language');
-    if (stored === 'hi' || stored === 'en') return stored;
-  }
-  return 'en';
+  return getClientLocale();
 }
 
 export default function ChapterQuizPage() {
@@ -128,7 +121,12 @@ export default function ChapterQuizPage() {
         if (answers.get(q.id) === q.correctOption) correct++;
       }
       const score = Math.round((correct / questions.length) * 100);
-      const res = await api.completeChapter(exam, subject, chapter, score);
+      // Send the per-question answers + language so the server can re-score
+      // authoritatively from the MCQ pool (anti-cheat). The locally computed
+      // `score` above is kept as a fallback the server uses only if it can't
+      // resolve the pool.
+      const answerPayload = questions.map((q) => ({ questionId: q.id, chosen: answers.get(q.id) ?? null }));
+      const res = await api.completeChapter(exam, subject, chapter, score, answerPayload, getLanguageFromCookie());
       // Success — clear the saved in-progress quiz.
       try { sessionStorage.removeItem(storageKey); } catch { /* ignore */ }
       autoRetriedRef.current = false;

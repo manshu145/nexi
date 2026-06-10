@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { useAuth } from '~/lib/auth-context';
 import { api, type ReviewItem } from '~/lib/api';
 import { Logo } from '~/components/Logo';
@@ -37,7 +38,11 @@ export default function RevisePage() {
     try {
       await api.gradeReview(item.id, quality);
       setItems((prev) => prev.filter((i) => i.id !== item.id));
-    } catch { /* ignore */ }
+    } catch (e) {
+      // Previously failures were swallowed silently — the card just stayed
+      // put with no explanation. Tell the user so they can retry.
+      toast.error(e instanceof Error ? e.message : 'Could not save your review. Please try again.');
+    }
     finally { setBusy(null); }
   };
 

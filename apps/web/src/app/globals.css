@@ -545,11 +545,14 @@ html.dark .viz-modal {
   align-items: center;
   justify-content: space-between;
   padding: 0.75rem 1rem;
+  /* Clear the notch / status bar in iOS PWA + fullscreen. max() keeps
+     non-notch screens at the original 0.75rem. */
+  padding-top: max(0.75rem, env(safe-area-inset-top));
   background-color: var(--color-paper-50);
   border-bottom: 1px solid var(--color-line);
 }
 @media (min-width: 720px) {
-  .kindle-header { padding: 0.75rem 2rem; }
+  .kindle-header { padding: 0.75rem 2rem; padding-top: max(0.75rem, env(safe-area-inset-top)); }
 }
 .kindle-book-wrapper {
   flex: 1 1 auto;
@@ -664,12 +667,15 @@ html.dark .viz-modal {
   justify-content: space-between;
   gap: 0.5rem;
   padding: 0.6rem 1rem;
+  /* The reader hides the global BottomNav, so this toolbar must clear the
+     iOS home indicator itself. max() keeps non-home-bar screens at 0.6rem. */
+  padding-bottom: max(0.6rem, env(safe-area-inset-bottom));
   font-family: var(--font-sans);
   font-size: 0.82rem;
   color: var(--color-muted-500);
 }
 @media (min-width: 720px) {
-  .kindle-toolbar { padding: 0.6rem 2rem; }
+  .kindle-toolbar { padding: 0.6rem 2rem; padding-bottom: max(0.6rem, env(safe-area-inset-bottom)); }
 }
 .kindle-toolbar button {
   font-family: var(--font-sans);
@@ -926,6 +932,7 @@ html.dark ::selection {
   }
   .kindle-toolbar {
     padding: 0.5rem 0.75rem;
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
   }
   .kindle-toolbar button {
     padding: 0.55rem 0.85rem;
@@ -933,6 +940,7 @@ html.dark ::selection {
   }
   .kindle-header {
     padding: 0.5rem 0.75rem;
+    padding-top: max(0.5rem, env(safe-area-inset-top));
     gap: 0.35rem;
   }
   .kindle-page {
