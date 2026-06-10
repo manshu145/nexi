@@ -582,6 +582,12 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
   app.get('/plan/:examSlug', async (c) => {
     const principal = requireAuth(c);
     const examSlug = c.req.param('examSlug');
+    const lang = (c.req.query('lang') as 'en' | 'hi') || 'en';
+    const hi = lang === 'hi';
+    // Localized reason strings (composed server-side; no AI).
+    const reasonRevise = hi ? 'दोहराव के लिए तैयार' : 'Due for spaced revision';
+    const reasonLearn = hi ? 'आपके पाठ्यक्रम में अगला' : 'Next in your syllabus';
+    const reasonFix = (score: number) => hi ? `पिछला स्कोर ${score}% — इसे मज़बूत करें` : `Last score ${score}% — strengthen this`;
 
     const fallbackDeps: SyllabusFallbackDeps = { env: deps.env, db: deps.db, logger: deps.logger, resolver: deps.modelResolver, aiEngine: deps.aiEngine };
     const [progress, syllabus, dueItems] = await Promise.all([
@@ -597,7 +603,7 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
     const nameLookup = new Map<string, { chapterName: string; subjectName: string }>();
     if (syllabus) {
       for (const sub of syllabus.subjects) {
-        for (const ch of sub.chapters) nameLookup.set(`${sub.slug}/${ch.slug}`, { chapterName: ch.name, subjectName: sub.name });
+        for (const ch of sub.chapters) nameLookup.set(`${sub.slug}/${ch.slug}`, { chapterName: hi ? (ch.nameHi ?? ch.name) : ch.name, subjectName: hi ? (sub.nameHi ?? sub.name) : sub.name });
       }
     }
     const pretty = (s: string) => s.replace(/-/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
@@ -608,7 +614,7 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
       if (used.has(key)) continue;
       used.add(key);
       const nm = nameLookup.get(key);
-      items.push({ kind: 'revise', subject: it.subject, chapter: it.chapter, chapterName: nm?.chapterName ?? pretty(it.chapter), subjectName: nm?.subjectName ?? pretty(it.subject), reason: 'Due for spaced revision', minutes: 10 });
+      items.push({ kind: 'revise', subject: it.subject, chapter: it.chapter, chapterName: nm?.chapterName ?? pretty(it.chapter), subjectName: nm?.subjectName ?? pretty(it.subject), reason: reasonRevise, minutes: 10 });
     }
 
     // 2. Fix weak chapters (last score < 60) — up to 2.
@@ -619,7 +625,7 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
           const key = `${sub.slug}/${ch.slug}`;
           const score = progress.chapterScores[key];
           if (score !== undefined && score < 60 && !used.has(key)) {
-            weak.push({ kind: 'fix', subject: sub.slug, chapter: ch.slug, chapterName: ch.name, subjectName: sub.name, reason: `Last score ${score}% — strengthen this`, minutes: 20, score });
+            weak.push({ kind: 'fix', subject: sub.slug, chapter: ch.slug, chapterName: hi ? (ch.nameHi ?? ch.name) : ch.name, subjectName: hi ? (sub.nameHi ?? sub.name) : sub.name, reason: reasonFix(score), minutes: 20, score });
           }
         }
       }
@@ -635,7 +641,7 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
           if (learnAdded >= 3) break;
           const key = `${sub.slug}/${ch.slug}`;
           if (progress.completedChapters.includes(key) || used.has(key)) continue;
-          items.push({ kind: 'learn', subject: sub.slug, chapter: ch.slug, chapterName: ch.name, subjectName: sub.name, reason: 'Next in your syllabus', minutes: 25 });
+          items.push({ kind: 'learn', subject: sub.slug, chapter: ch.slug, chapterName: hi ? (ch.nameHi ?? ch.name) : ch.name, subjectName: hi ? (sub.nameHi ?? sub.name) : sub.name, reason: reasonLearn, minutes: 25 });
           used.add(key);
           learnAdded++;
         }

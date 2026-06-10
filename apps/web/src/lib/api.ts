@@ -238,7 +238,7 @@ export const api = {
   async getStudyProgress(examSlug: string) { return (await authedFetch(`/v1/study/progress/${examSlug}`)).json() as Promise<{progress:StudyProgress}>; },
   async getReviewDue(limit = 20) { return (await authedFetch(`/v1/review/due?limit=${limit}`)).json() as Promise<{items:ReviewItem[]; count:number}>; },
   async getReviewStats() { return (await authedFetch('/v1/review/stats')).json() as Promise<{dueCount:number}>; },
-  async getDailyPlan(examSlug: string) { return (await authedFetch(`/v1/study/plan/${examSlug}`)).json() as Promise<DailyPlan>; },
+  async getDailyPlan(examSlug: string) { const lang = getClientLocale(); return (await authedFetch(`/v1/study/plan/${examSlug}?lang=${lang}`)).json() as Promise<DailyPlan>; },
   async gradeReview(id: string, quality: number) { return (await authedFetch(`/v1/review/${encodeURIComponent(id)}/grade`, { method: 'POST', body: JSON.stringify({ quality }) })).json() as Promise<{item:ReviewItem}>; },
 
   // Current Affairs

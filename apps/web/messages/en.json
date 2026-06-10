@@ -187,6 +187,22 @@
     "easy": "Easy",
     "saveFailed": "Could not save your review. Please try again."
   },
+  "studyPlan": {
+    "title": "Today's Study Plan",
+    "subtitleTasks": "{count} focused tasks · about {min} min. Built from your revisions, weak areas and syllabus.",
+    "subtitleEmpty": "A personalized plan from your progress, weak areas and revisions.",
+    "nothingScheduled": "Nothing scheduled yet",
+    "nothingScheduledDesc": "Start studying a few chapters and we'll build your daily plan from your progress.",
+    "goToStudy": "Go to Study",
+    "min": "min",
+    "kindRevise": "Revise",
+    "kindFix": "Strengthen",
+    "kindLearn": "Learn",
+    "ctaRevise": "Flashcards",
+    "ctaFix": "Open chapter",
+    "ctaLearn": "Start chapter",
+    "dueNote": "You have {count} chapter(s) due for revision — open Revise →"
+  },
   "errors": {
     "title": "Something went wrong",
     "subtitle": "An unexpected error occurred. Our team has been notified.",
