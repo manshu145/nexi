@@ -31,6 +31,8 @@ import { z } from 'zod';
 import { asISODateTime, asUserId, isExamSlug } from '@nexigrate/shared';
 import type { ExamSlug, UserId } from '@nexigrate/shared';
 import { requireAuth } from '../auth.js';
+import { effectiveLevel } from '../lib/levelProgression.js';
+import { buildSyllabusPromptContext } from '../lib/syllabusStore.js';
 import type { Logger } from '../logger.js';
 import type { UserStore } from '../lib/userStore.js';
 import type { AIEngine, GeneratedMCQ } from '../lib/aiEngine.js';
@@ -175,24 +177,90 @@ export function makeMockTestRoutes(deps: MockTestRoutesDeps): Hono {
     };
     await deps.mockTests.create(placeholder);
 
+    // ── Personalization & repeat-prevention (PR adaptive-learning) ─────────
+    // Pull the student's level + recent mock history so this test is (a)
+    // calibrated to their level, (b) biased toward their weak subjects, and
+    // (c) free of questions they've already seen in earlier attempts.
+    const user = await deps.users.get(principal.userId);
+    const level = effectiveLevel(user);
+    const pastAttempts = await deps.mockTests.listByUser(principal.userId, 10).catch(() => []);
+    const seenStems = new Set<string>();
+    const avoidQuestions: string[] = [];
+    const subjAgg: Record<string, { correct: number; total: number }> = {};
+    for (const a of pastAttempts) {
+      for (const q of a.questions ?? []) {
+        const stem = normalizeStem(q.question);
+        if (stem && !seenStems.has(stem)) {
+          seenStems.add(stem);
+          if (avoidQuestions.length < 40) avoidQuestions.push(q.question);
+        }
+      }
+      // Aggregate per-subject accuracy to find weak areas.
+      const bd = a.subjectBreakdown;
+      if (bd) {
+        for (const [subj, s] of Object.entries(bd)) {
+          if (!subjAgg[subj]) subjAgg[subj] = { correct: 0, total: 0 };
+          subjAgg[subj].correct += s.correct;
+          subjAgg[subj].total += s.total;
+        }
+      }
+    }
+    const weakSubjects = Object.entries(subjAgg)
+      .filter(([, s]) => s.total >= 3 && s.correct / s.total < 0.5)
+      .sort((a, b) => a[1].correct / a[1].total - b[1].correct / b[1].total)
+      .slice(0, 3)
+      .map(([subj]) => subj);
+    const syllabusContext = buildSyllabusPromptContext(examSlug);
+
     // 3. Generate questions. Runs inside the handler (Cloud Run keeps it
     //    alive past a client disconnect), and on completion the attempt
     //    flips to 'in_progress' with the timer starting NOW (so a slow
     //    generation never eats into the candidate's time).
     let questions: GeneratedMCQ[];
     try {
-      const sections = parsed.data.questionCount
-        ? {
-            easy: Math.round(questionCount * 0.4),
-            medium: Math.round(questionCount * 0.4),
-            hard: questionCount - Math.round(questionCount * 0.4) * 2,
-          }
-        : { ...MOCK_SECTIONS };
-      questions = await deps.aiEngine.generateMockTest(examSlug, language, sections);
+      // Difficulty mix scales with the student's level: beginners get more
+      // easy questions, advanced aspirants get more hard ones.
+      const sections = adaptiveSections(questionCount, level);
+      const genOpts = { ...sections, userLevel: level, weakSubjects, avoidQuestions, syllabusContext };
+      questions = await deps.aiEngine.generateMockTest(examSlug, language, genOpts);
       await deps.aiEngine.recordAICost(principal.userId, 0.05);
       if (!questions || questions.length === 0) {
         throw new Error('AI returned 0 questions');
       }
+
+      // Repeat-prevention safety net: drop any generated question the student
+      // has already seen (exact/near-exact stem). If that leaves us short by
+      // more than ~15%, generate one top-up batch (excluding both the seen
+      // set and this batch) and merge. Then re-id and trim to target.
+      const fresh = questions.filter((q) => !seenStems.has(normalizeStem(q.question)));
+      if (fresh.length < Math.floor(questionCount * 0.85)) {
+        const deficit = questionCount - fresh.length;
+        const extraAvoid = [...avoidQuestions, ...fresh.map((q) => q.question)];
+        try {
+          const topUp = await deps.aiEngine.generateMockTest(examSlug, language, {
+            ...adaptiveSections(deficit, level),
+            userLevel: level,
+            weakSubjects,
+            avoidQuestions: extraAvoid,
+            syllabusContext,
+          });
+          for (const q of topUp) {
+            const stem = normalizeStem(q.question);
+            if (!seenStems.has(stem) && !fresh.some((f) => normalizeStem(f.question) === stem)) {
+              fresh.push(q);
+            }
+          }
+        } catch { /* best-effort top-up; fall through with what we have */ }
+      }
+      // Use the de-duplicated set when it's healthy; otherwise keep the
+      // original (never hand the user a near-empty test).
+      const chosen = fresh.length >= Math.floor(questionCount * 0.6) ? fresh : questions;
+      questions = chosen.slice(0, questionCount).map((q, i) => ({ ...q, id: `m-q${i + 1}` }));
+      deps.logger.info('mock_test.personalized', {
+        userId: principal.userId, examSlug, level,
+        weakSubjects, grounded: !!syllabusContext,
+        generated: chosen.length, seenAvoided: seenStems.size, served: questions.length,
+      });
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       // Refund — never leave a paying user out of pocket for an outage.
@@ -425,4 +493,42 @@ export function makeMockTestRoutes(deps: MockTestRoutesDeps): Hono {
  */
 function stripAnswers(questions: GeneratedMCQ[]): Array<Omit<GeneratedMCQ, 'correctOption' | 'explanation'>> {
   return questions.map(({ correctOption, explanation, ...rest }) => rest);
+}
+
+/**
+ * Difficulty split that scales with the student's working level. Beginners
+ * see more easy questions to build confidence; advanced aspirants get a
+ * harder mix that mirrors the real exam cut-off pressure. The intermediate
+ * profile matches the historical default (MOCK_SECTIONS ratio: 40/40/20).
+ */
+function adaptiveSections(
+  total: number,
+  level: 'beginner' | 'intermediate' | 'advanced',
+): { easy: number; medium: number; hard: number } {
+  const ratios: Record<typeof level, { e: number; m: number }> = {
+    beginner: { e: 0.5, m: 0.35 },
+    // 40/40/20 — same shape as the locked MOCK_SECTIONS default.
+    intermediate: { e: MOCK_SECTIONS.easy / 50, m: MOCK_SECTIONS.medium / 50 },
+    advanced: { e: 0.25, m: 0.4 },
+  };
+  const r = ratios[level];
+  const easy = Math.round(total * r.e);
+  const medium = Math.round(total * r.m);
+  const hard = Math.max(0, total - easy - medium);
+  return { easy, medium, hard };
+}
+
+/**
+ * Normalize a question stem for repeat-detection: drop punctuation/markup,
+ * collapse whitespace, lowercase. Unicode-aware so it works for Hindi
+ * (Devanagari) too. Capped so very long stems still hash stably.
+ */
+function normalizeStem(text: string): string {
+  if (!text) return '';
+  return text
+    .normalize('NFKC')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()
+    .toLowerCase()
+    .slice(0, 160);
 }

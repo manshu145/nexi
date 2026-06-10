@@ -1183,6 +1183,32 @@ export function getAllSyllabusExams(): string[] {
   return Array.from(SYLLABUS_MAP.keys());
 }
 
+/**
+ * Build a compact, prompt-ready summary of an exam's official syllabus
+ * (subjects + their leading chapters) for grounding AI question generation.
+ * Returns null when no curated syllabus exists for the slug, so callers can
+ * fall back to the generic exam-name prompt.
+ *
+ * Example output:
+ *   - Quantitative Aptitude: Number System, Simplification, Percentage, …
+ *   - Reasoning Ability: Coding-Decoding, Blood Relations, Syllogism, …
+ */
+export function buildSyllabusPromptContext(
+  examSlug: ExamSlug | string,
+  maxChaptersPerSubject = 8,
+): string | null {
+  const syllabus = getSyllabus(examSlug);
+  if (!syllabus || syllabus.subjects.length === 0) return null;
+  const lines = syllabus.subjects.map((sub) => {
+    const chapters = sub.chapters
+      .slice(0, maxChaptersPerSubject)
+      .map((ch) => ch.name)
+      .join(', ');
+    return `- ${sub.name}: ${chapters}`;
+  });
+  return lines.join('\n');
+}
+
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // SYLLABUS FALLBACK SYSTEM

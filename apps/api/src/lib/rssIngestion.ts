@@ -313,14 +313,14 @@ LAYER 2 — COMPREHENSIVE SUMMARY (MANDATORY 500+ WORDS):
 - Use plain prose paragraphs separated by blank lines. NO bullet points inside the summary itself.
 - 500 words is a HARD MINIMUM. Better to over-write than under-write — students rely on this as their study notes.
 
-LAYER 3 — BULLET POINTS (MANDATORY EXACTLY 3-5 BULLETS):
-- Generate 3 to 5 concise bullet points highlighting the SHARPEST facts for quick revision
-- Each bullet must be a standalone fact that could appear verbatim in an exam question
-- Keep each bullet under 100 characters
-- Do NOT pad with "the news said" or "according to the article" filler
+LAYER 3 — BULLET POINTS (MANDATORY EXACTLY 4-5 BULLETS):
+- Generate 4 to 5 bullet points, each a SHARP, self-contained, exam-ready fact.
+- Every bullet MUST contain a concrete detail: a name, number, date, place, rank, amount, or scheme/agency. A bullet with no specific fact is useless — rewrite it.
+- FORBIDDEN: meta-filler such as "Category: ...", "Source: ...", "the news said", "according to the article", or simply repeating the headline. These will be rejected.
+- Keep each bullet under 120 characters and revision-friendly.
 
 For each item output:
-- Keep the headline concise (max 80 chars)
+- Write a PUNCHY, SPECIFIC headline (max 100 chars) that leads with the single most important fact, name or number — it should make a student want to read on. Avoid vague/generic labels.
 - Write in simple, clear language suitable for students
 - Include "srcIndex": the NUMBER (from the list below) of the primary news item this summary is based on (for image attribution)
 
@@ -412,15 +412,24 @@ Respond ONLY with valid JSON:
           summary = `${summary}${padding}`;
         }
 
-        // Bullets: at least 3, at most 5. Pad from headline / category
-        // metadata if the AI under-delivered, trim if it over-delivered.
-        let bullets = (item.bullets ?? []).filter(b => typeof b === 'string' && b.trim().length > 0);
-        if (bullets.length < 3) {
-          while (bullets.length < 3) {
-            if (bullets.length === 0) bullets.push(item.headline);
-            else if (bullets.length === 1) bullets.push(`Category: ${item.category}`);
-            else bullets.push(`Source: ${item.sources.join(', ')}`);
+        // Bullets: aim for 4-5 sharp facts. If the AI under-delivered, pad
+        // from the summary's most fact-bearing sentences (those carrying a
+        // number or a proper noun) — NOT meta-filler like "Category:" /
+        // "Source:", which read as padding to students. Trim if over 5.
+        let bullets = (item.bullets ?? []).filter(b => typeof b === 'string' && b.trim().length > 0 && !/^(category|source)\s*:/i.test(b.trim()));
+        if (bullets.length < 4) {
+          const sentences = (summary || '')
+            .replace(/\n+/g, ' ')
+            .split(/(?<=[.!?])\s+/)
+            .map(s => s.trim())
+            .filter(s => s.length >= 30 && s.length <= 160 && /\d|[A-Z][a-z]+\s[A-Z]/.test(s));
+          for (const s of sentences) {
+            if (bullets.length >= 4) break;
+            if (!bullets.some(b => b.slice(0, 40) === s.slice(0, 40))) bullets.push(s);
           }
+          // Absolute floor: never fewer than 3 — fall back to the headline
+          // (a real fact) rather than a filler label.
+          while (bullets.length < 3) bullets.push(item.headline);
         } else if (bullets.length > 5) {
           bullets = bullets.slice(0, 5);
         }
