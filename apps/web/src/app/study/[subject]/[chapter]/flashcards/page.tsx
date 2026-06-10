@@ -6,16 +6,9 @@ import { useUser } from '~/lib/userStore';
 import { api } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 import { AILoader } from '~/components/ui/AILoader';
+import { getClientLocale } from '~/lib/locale';
 
 type Card = { front: string; back: string };
-
-function getLang(): 'en' | 'hi' {
-  if (typeof localStorage !== 'undefined') {
-    const s = localStorage.getItem('nexigrate-language');
-    if (s === 'hi' || s === 'en') return s;
-  }
-  return 'en';
-}
 
 function prettify(slug: string): string {
   return slug.replace(/-/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
@@ -44,7 +37,7 @@ export default function FlashcardsPage() {
     (async () => {
       try {
         const exam = me.targetExam ?? 'jee-main';
-        const res = await api.getChapterFlashcards(exam, subject, chapter, getLang());
+        const res = await api.getChapterFlashcards(exam, subject, chapter, getClientLocale());
         if (cancelled) return;
         if (!res.cards?.length) {
           setError(res.error || 'No flashcards available for this chapter yet.');

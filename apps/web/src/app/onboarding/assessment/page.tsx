@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { useUser } from '~/lib/userStore';
 import { api, type GeneratedMCQ, type PersonalQuestion } from '~/lib/api';
 import { AILoader } from '~/components/ui/AILoader';
+import { getClientLocale } from '~/lib/locale';
 
 /**
  * Redesigned onboarding assessment (25 questions, 3 stages):
@@ -64,16 +65,9 @@ export default function AssessmentPage() {
   const lang = useRef<'en' | 'hi'>('en');
   const hi = lang.current === 'hi';
 
-  // Language detection (cookie → localStorage).
+  // Language detection — unified via getClientLocale (cookie → localStorage).
   useEffect(() => {
-    if (typeof document !== 'undefined') {
-      const m = document.cookie.match(/nexigrate-language=(en|hi)/);
-      if (m) { lang.current = m[1] as 'en' | 'hi'; return; }
-    }
-    if (typeof window !== 'undefined') {
-      const s = localStorage.getItem('nexigrate-language');
-      if (s === 'hi' || s === 'en') lang.current = s;
-    }
+    lang.current = getClientLocale();
   }, []);
 
   // ── sessionStorage persistence (S9) ──────────────────────────────────

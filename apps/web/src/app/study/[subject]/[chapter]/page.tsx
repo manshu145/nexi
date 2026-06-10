@@ -9,6 +9,7 @@ import { PlanGate } from '~/components/PlanGate';
 import { AILoader } from '~/components/ui/AILoader';
 import { toast } from 'sonner';
 import { track } from '~/lib/analytics';
+import { getClientLocale } from '~/lib/locale';
 
 export default function KindleReaderPage() {
   const { user, loading } = useAuth();
@@ -713,19 +714,9 @@ export default function KindleReaderPage() {
   );
 }
 
-/** Get user's selected language from cookie or localStorage */
+/** Get user's selected language (cookie → localStorage), unified app-wide. */
 function getLanguage(): 'en' | 'hi' {
-  // Try cookie first (most reliable for SSR-aware scenarios)
-  if (typeof document !== 'undefined') {
-    const match = document.cookie.match(/nexigrate-language=(en|hi)/);
-    if (match) return match[1] as 'en' | 'hi';
-  }
-  // Fallback to localStorage
-  if (typeof localStorage !== 'undefined') {
-    const stored = localStorage.getItem('nexigrate-language');
-    if (stored === 'hi' || stored === 'en') return stored;
-  }
-  return 'en';
+  return getClientLocale();
 }
 
 /** Strip markdown for TTS */

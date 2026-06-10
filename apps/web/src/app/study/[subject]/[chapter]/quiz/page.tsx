@@ -7,20 +7,13 @@ import { api, type GeneratedMCQ } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 import { AILoader } from '~/components/ui/AILoader';
 import { track } from '~/lib/analytics';
+import { getClientLocale } from '~/lib/locale';
 
 type Phase = 'loading' | 'quiz' | 'submitting' | 'result';
 
-/** Get user's selected language from cookie or localStorage */
+/** Get user's selected language (cookie → localStorage), unified app-wide. */
 function getLanguageFromCookie(): 'en' | 'hi' {
-  if (typeof document !== 'undefined') {
-    const match = document.cookie.match(/nexigrate-language=(en|hi)/);
-    if (match) return match[1] as 'en' | 'hi';
-  }
-  if (typeof localStorage !== 'undefined') {
-    const stored = localStorage.getItem('nexigrate-language');
-    if (stored === 'hi' || stored === 'en') return stored;
-  }
-  return 'en';
+  return getClientLocale();
 }
 
 export default function ChapterQuizPage() {
