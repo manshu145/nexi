@@ -94,6 +94,7 @@ export default function MockTestsPage() {
   // one-line read that the dashboard already populated.
   const { user: me } = useUser();
   const tc = useTranslations('common');
+  const t = useTranslations('mockTests');
   const [attempts, setAttempts] = useState<AttemptListItem[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [historyError, setHistoryError] = useState<string | null>(null);
@@ -238,8 +239,8 @@ export default function MockTestsPage() {
     <main className="min-h-screen bg-paper-100 px-4 py-6 pb-24">
       <header className="mx-auto mb-6 max-w-2xl">
         <button type="button" onClick={() => router.back()} className="btn-ghost-sm mb-3">← {tc('back')}</button>
-        <h1 className="font-serif text-2xl font-semibold text-ink-900">Mock Tests</h1>
-        <p className="mt-1 text-sm text-muted-500">Realistic, AI-generated practice tests for your target exam. Server-timed, server-scored.</p>
+        <h1 className="font-serif text-2xl font-semibold text-ink-900">{t('title')}</h1>
+        <p className="mt-1 text-sm text-muted-500">{t('subtitle')}</p>
       </header>
 
       {/* Start card */}
@@ -248,8 +249,8 @@ export default function MockTestsPage() {
           <div className="flex items-start gap-4">
             <span aria-hidden className="grid h-12 w-12 place-items-center rounded-lg bg-ember-500/10 text-2xl">🧪</span>
             <div className="flex-1">
-              <h2 className="font-serif text-lg font-semibold text-ink-900">Start a new mock test</h2>
-              <p className="mt-1 text-xs text-muted-500">50 questions · 60 minutes · 3 sections (easy/medium/hard) · −0.25 negative marking · uses 20 credits · timer starts immediately</p>
+              <h2 className="font-serif text-lg font-semibold text-ink-900">{t('startCard')}</h2>
+              <p className="mt-1 text-xs text-muted-500">{t('startMeta')}</p>
             </div>
           </div>
           <button
@@ -258,7 +259,7 @@ export default function MockTestsPage() {
             disabled={startState.kind === 'starting'}
             className="btn-primary mt-4 w-full"
           >
-            {startState.kind === 'starting' ? tc('loading') : 'Start Mock Test'}
+            {startState.kind === 'starting' ? tc('loading') : t('startBtn')}
           </button>
         </div>
 
@@ -279,7 +280,7 @@ export default function MockTestsPage() {
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-ink-900">{progressMessage}</p>
                 <p className="mt-1 text-xs text-muted-500">
-                  Mock tests use multiple AI calls behind the scenes — this can take 30–90 seconds. We&apos;ll cancel automatically if it goes too long.
+                  {t('generatingNote')}
                 </p>
                 <ElapsedBar startedAtMs={startState.startedAtMs} ceilingMs={MOCK_TEST_TIMEOUT_MS} />
               </div>
@@ -297,7 +298,7 @@ export default function MockTestsPage() {
             <div className="flex items-start gap-3">
               <span aria-hidden className="grid h-9 w-9 flex-shrink-0 place-items-center rounded-full bg-ember-500/10 text-base">⚠️</span>
               <div className="flex-1 min-w-0">
-                <h3 className="font-serif text-base font-semibold text-ink-900">Mock test could not start</h3>
+                <h3 className="font-serif text-base font-semibold text-ink-900">{t('couldNotStart')}</h3>
                 <p className="mt-1 text-sm text-muted-500">{startState.message}</p>
                 <div className="mt-4 flex flex-col gap-2 sm:flex-row">
                   <button
@@ -305,18 +306,18 @@ export default function MockTestsPage() {
                     onClick={handleRetry}
                     className="btn-primary flex-1"
                   >
-                    Try Again
+                    {t('tryAgain')}
                   </button>
                   <button
                     type="button"
                     onClick={handleDismissError}
                     className="btn-ghost flex-1"
                   >
-                    Dismiss
+                    {t('dismiss')}
                   </button>
                 </div>
                 <p className="mt-3 text-[11px] text-muted-500">
-                  No credits were charged — the server only debits credits after the test is fully generated.
+                  {t('noCreditsCharged')}
                 </p>
               </div>
             </div>
@@ -326,10 +327,10 @@ export default function MockTestsPage() {
 
       {/* History */}
       <section className="mx-auto max-w-2xl">
-        <h2 className="mb-3 px-1 text-xs font-semibold uppercase tracking-wider text-muted-500">Past attempts</h2>
+        <h2 className="mb-3 px-1 text-xs font-semibold uppercase tracking-wider text-muted-500">{t('pastAttempts')}</h2>
         {historyError ? (
           <div role="alert" className="paper-card border border-ember-500/40 p-5">
-            <p className="text-sm font-medium text-ink-900">Could not load your past attempts</p>
+            <p className="text-sm font-medium text-ink-900">{t('couldNotLoadHistory')}</p>
             <p className="mt-1 text-xs text-muted-500">{historyError}</p>
             <button
               type="button"
@@ -349,15 +350,15 @@ export default function MockTestsPage() {
               }}
               className="btn-ghost-sm mt-3"
             >
-              Retry
+              {t('tryAgain')}
             </button>
           </div>
         ) : attempts.length === 0 ? (
           <div className="paper-card p-6 text-center">
             <p className="text-2xl mb-2">📋</p>
-            <p className="text-sm font-medium text-ink-900">No past attempts</p>
-            <p className="mt-1 text-xs text-muted-500">Your completed mock tests will appear here. Start one above — results are saved automatically when you submit.</p>
-            <p className="mt-2 text-[11px] text-muted-400">Note: Tests that failed to generate (timeout/network error) or were abandoned without submitting don&apos;t appear here.</p>
+            <p className="text-sm font-medium text-ink-900">{t('noPast')}</p>
+            <p className="mt-1 text-xs text-muted-500">{t('noPastDesc')}</p>
+            <p className="mt-2 text-[11px] text-muted-400">{t('noPastNote')}</p>
           </div>
         ) : (
           <ul className="space-y-2">
@@ -373,7 +374,7 @@ export default function MockTestsPage() {
                       <p className="text-sm font-medium text-ink-900">{a.examSlug.replace(/-/g, ' ').toUpperCase()}</p>
                       <p className="mt-0.5 text-xs text-muted-500">
                         {new Date(a.startedAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
-                        {' · '}{a.total} q · {a.durationMinutes} min
+                        {' · '}{a.total} {t('questionsShort')} · {a.durationMinutes} {t('minShort')}
                       </p>
                     </div>
                     <div className="text-right">
@@ -383,9 +384,9 @@ export default function MockTestsPage() {
                           <p className="text-xs text-muted-500">{a.score}/{a.total}</p>
                         </>
                       ) : a.status === 'in_progress' ? (
-                        <span className="rounded-full bg-ember-500/10 px-2 py-0.5 text-xs font-medium text-ember-600">In progress</span>
+                        <span className="rounded-full bg-ember-500/10 px-2 py-0.5 text-xs font-medium text-ember-600">{t('inProgress')}</span>
                       ) : (
-                        <span className="rounded-full bg-muted-500/10 px-2 py-0.5 text-xs font-medium text-muted-500">Expired</span>
+                        <span className="rounded-full bg-muted-500/10 px-2 py-0.5 text-xs font-medium text-muted-500">{t('expired')}</span>
                       )}
                     </div>
                   </div>
@@ -400,13 +401,13 @@ export default function MockTestsPage() {
       {confirmOpen && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-ink-900/50 p-4" onClick={() => setConfirmOpen(false)}>
           <div className="w-full max-w-sm rounded-xl bg-paper-50 p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="font-serif text-lg font-semibold text-ink-900">Start mock test?</h3>
+            <h3 className="font-serif text-lg font-semibold text-ink-900">{t('confirmTitle')}</h3>
             <p className="mt-2 text-sm text-muted-500">
-              Once you start, the timer is running and 20 credits will be charged. If our AI fails to generate the test, your credits are refunded automatically.
+              {t('confirmBody')}
             </p>
             <div className="mt-5 flex gap-2">
-              <button type="button" onClick={() => setConfirmOpen(false)} className="btn-ghost flex-1">Cancel</button>
-              <button type="button" onClick={handleStart} className="btn-primary flex-1">Yes, start</button>
+              <button type="button" onClick={() => setConfirmOpen(false)} className="btn-ghost flex-1">{tc('cancel')}</button>
+              <button type="button" onClick={handleStart} className="btn-primary flex-1">{t('confirmYes')}</button>
             </div>
           </div>
         </div>
