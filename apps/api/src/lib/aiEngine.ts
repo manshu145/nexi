@@ -39,8 +39,8 @@ export interface AIEngine {
    * fallback bank so the caller always gets a full-length test; if too
    * few REAL questions came back it throws so the route can refund.
    */
-  generateMockTest(examSlug: string, language: 'en' | 'hi', opts?: { easy?: number; medium?: number; hard?: number }): Promise<GeneratedMCQ[]>;
-  generateStage1Questions(examSlug: string, language: 'en' | 'hi', count?: number): Promise<GeneratedMCQ[]>;
+  generateMockTest(examSlug: string, language: 'en' | 'hi', opts?: { easy?: number; medium?: number; hard?: number; userLevel?: 'beginner' | 'intermediate' | 'advanced'; weakSubjects?: string[]; avoidQuestions?: string[]; syllabusContext?: string | null }): Promise<GeneratedMCQ[]>;
+  generateStage1Questions(examSlug: string, language: 'en' | 'hi', count?: number, syllabusContext?: string | null): Promise<GeneratedMCQ[]>;
   generateStage2Questions(examSlug: string, language: 'en' | 'hi', stage1Results: StageResults): Promise<GeneratedMCQ[]>;
   generateStage3Questions(examSlug: string, language: 'en' | 'hi', stage1Results: StageResults, stage2Results: StageResults): Promise<GeneratedMCQ[]>;
   scoreAssessment(questions: GeneratedMCQ[], answers: { questionId: string; chosen: string | null }[]): Promise<AssessmentResult>;
@@ -819,8 +819,29 @@ export function createAIEngine(
       const hard = opts?.hard ?? 10;
       const langInstr = language === 'hi' ? 'Generate all questions and options in Hindi (Devanagari script).' : 'Generate all questions and options in English.';
 
+      // Grounding + personalization context (PR adaptive-learning):
+      //  - syllabusContext: the exam's real subjects/chapters so questions
+      //    stay on-syllabus instead of "any X-exam question".
+      //  - weakSubjects: bias coverage toward the student's weak areas.
+      //  - avoidQuestions: recent question stems the student has already seen,
+      //    so a fresh attempt doesn't repeat earlier mock/quiz questions.
+      const syllabusBlock = opts?.syllabusContext
+        ? `\n\nThe OFFICIAL ${examSlug} syllabus is below. EVERY question MUST map to one of these subjects/topics — do not stray off-syllabus:\n${opts.syllabusContext}`
+        : `\n\nCover DIFFERENT subjects/topics from the official ${examSlug} syllabus.`;
+      const weakBlock = opts?.weakSubjects && opts.weakSubjects.length > 0
+        ? `\n- Allocate a few extra questions to the student's WEAK areas: ${opts.weakSubjects.join(', ')}.`
+        : '';
+      const levelBlock = opts?.userLevel
+        ? `\n- Calibrate overall toughness for a ${opts.userLevel.toUpperCase()}-level aspirant (without changing the per-batch difficulty rule below).`
+        : '';
+      // Keep the avoid-list bounded so the prompt stays small; the route also
+      // hash-filters exact repeats as a safety net.
+      const avoidBlock = opts?.avoidQuestions && opts.avoidQuestions.length > 0
+        ? `\n- DO NOT repeat, reuse, or lightly reword any of these questions the student has already attempted:\n${opts.avoidQuestions.slice(0, 40).map((q, i) => `  ${i + 1}. ${q.slice(0, 120)}`).join('\n')}`
+        : '';
+
       const buildPrompt = (n: number, difficulty: 'easy' | 'medium' | 'hard', batchIdx: number) =>
-        `${JSON_ONLY_PREFIX}You are an expert Indian competitive exam question creator.\n\nGenerate exactly ${n} ${difficulty.toUpperCase()}-difficulty MCQs for "${examSlug}" exam mock test${batchIdx > 0 ? ` (continuation batch ${batchIdx + 1})` : ''}.\n${langInstr}\n\nRequirements:\n- ALL ${n} questions MUST be ${difficulty} difficulty.\n- ${difficulty === 'hard' ? 'Analytical / multi-step; all 4 options plausible; require deep understanding.' : difficulty === 'medium' ? 'Application-based; require careful thought; at least 2 close options.' : 'Direct factual recall; one clearly correct answer.'}\n- Cover DIFFERENT subjects/topics from the official ${examSlug} syllabus.\n- 4 options (A-D), correct answer, brief explanation.\n- MUST include subject and topic fields.\n\nRespond ONLY with JSON:\n{"questions":[{"id":"m-q1","question":"...","options":[{"key":"A","text":"..."},{"key":"B","text":"..."},{"key":"C","text":"..."},{"key":"D","text":"..."}],"correctOption":"A","explanation":"...","difficulty":"${difficulty}","subject":"...","topic":"..."}]}`;
+        `${JSON_ONLY_PREFIX}You are an expert Indian competitive exam question creator.\n\nGenerate exactly ${n} ${difficulty.toUpperCase()}-difficulty MCQs for "${examSlug}" exam mock test${batchIdx > 0 ? ` (continuation batch ${batchIdx + 1})` : ''}.\n${langInstr}${syllabusBlock}\n\nRequirements:\n- ALL ${n} questions MUST be ${difficulty} difficulty.\n- ${difficulty === 'hard' ? 'Analytical / multi-step; all 4 options plausible; require deep understanding.' : difficulty === 'medium' ? 'Application-based; require careful thought; at least 2 close options.' : 'Direct factual recall; one clearly correct answer.'}${levelBlock}${weakBlock}${avoidBlock}\n- 4 options (A-D), correct answer, brief explanation.\n- MUST include subject and topic fields.\n\nRespond ONLY with JSON:\n{"questions":[{"id":"m-q1","question":"...","options":[{"key":"A","text":"..."},{"key":"B","text":"..."},{"key":"C","text":"..."},{"key":"D","text":"..."}],"correctOption":"A","explanation":"...","difficulty":"${difficulty}","subject":"...","topic":"..."}]}`;
 
       // Build batch specs: chunks of 10 per difficulty.
       const specs: { difficulty: 'easy' | 'medium' | 'hard'; count: number }[] = [];
@@ -879,10 +900,16 @@ export function createAIEngine(
       return all;
     },
 
-    async generateStage1Questions(examSlug, language = 'en', count = 15) {
+    async generateStage1Questions(examSlug, language = 'en', count = 15, syllabusContext) {
       const langInstr = language === 'hi' ? 'Generate all questions and options in Hindi (Devanagari script).' : 'Generate all questions and options in English.';
       const buildPrompt = (n: number, batchIdx: number) => {
-        const subjectGuidance = `Based on the exam "${examSlug}", generate questions covering the OFFICIAL SYLLABUS subjects:\n- If exam is UPSC/upsc-cse: test History + Geography + Polity + Economy + Science\n- If exam is NEET/neet-ug: test Physics + Chemistry + Biology\n- If exam is JEE/jee-main: test Physics + Chemistry + Mathematics\n- If exam is SSC CGL/ssc-cgl or Banking: test Reasoning + Quant + GK + English\n- If exam is Class 10/class-10-cbse or Class 12/class-12-cbse: test Math + Science + Social Science + English\n- If exam is IT/Python/Web Dev/Data Science/digital-marketing/tally-accounting: test relevant technical topics proportionally\n- For any other exam: identify its core subjects and distribute questions proportionally`;
+        // Prefer the exam's REAL curated syllabus (subjects + chapters) when
+        // we have it, so assessment questions are genuinely on-syllabus
+        // rather than the model's loose idea of the exam. Fall back to the
+        // generic exam-family guidance only when no curated syllabus exists.
+        const subjectGuidance = syllabusContext
+          ? `Generate questions STRICTLY from this official "${examSlug}" syllabus. Distribute questions across these subjects proportionally and stay on-topic:\n${syllabusContext}`
+          : `Based on the exam "${examSlug}", generate questions covering the OFFICIAL SYLLABUS subjects:\n- If exam is UPSC/upsc-cse: test History + Geography + Polity + Economy + Science\n- If exam is NEET/neet-ug: test Physics + Chemistry + Biology\n- If exam is JEE/jee-main: test Physics + Chemistry + Mathematics\n- If exam is SSC CGL/ssc-cgl or Banking: test Reasoning + Quant + GK + English\n- If exam is Class 10/class-10-cbse or Class 12/class-12-cbse: test Math + Science + Social Science + English\n- If exam is IT/Python/Web Dev/Data Science/digital-marketing/tally-accounting: test relevant technical topics proportionally\n- For any other exam: identify its core subjects and distribute questions proportionally`;
         return `${JSON_ONLY_PREFIX}You are an expert Indian competitive exam question creator.\n\nGenerate exactly ${n} MCQs for "${examSlug}" exam — Stage 1 Core Subjects assessment${batchIdx > 0 ? ` (continuation batch ${batchIdx + 1})` : ''}.\n${langInstr}\n\n${subjectGuidance}\n\nRequirements:\n- Mix of easy and medium difficulty\n- 4 options (A-D), correct answer, brief explanation\n- MUST include subject and topic fields for each question\n- Questions must be relevant to the SPECIFIC exam syllabus\n\nRespond ONLY with JSON:\n{"questions":[{"id":"s1-q1","question":"...","options":[{"key":"A","text":"..."},{"key":"B","text":"..."},{"key":"C","text":"..."},{"key":"D","text":"..."}],"correctOption":"A","explanation":"...","difficulty":"medium","subject":"history","topic":"modern-india"}]}`;
       };
       // 15 questions → fallback: 3 batches of 5. Single-shot fast-path stays.

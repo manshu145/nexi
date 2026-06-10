@@ -14,6 +14,16 @@ export interface StoredUser {
   secondaryExams?: ExamSlug[];
   board: Board | null; school: string | null; dob: string | null; aim: string | null;
   onboardingScore: number | null; onboardingLevel: 'beginner' | 'intermediate' | 'advanced' | null;
+  /**
+   * Live difficulty level that PROGRESSES as the student studies (chapters
+   * completed + quiz scores), independent of the one-time assessment result
+   * in `onboardingLevel`. Content & quiz generation read this (falling back
+   * to onboardingLevel, then 'intermediate') so chapters get harder as the
+   * student improves. Ratchets upward only — a single bad quiz never demotes.
+   * `undefined`/null for users created before this field; treated as
+   * onboardingLevel until the next chapter-complete recomputes it.
+   */
+  currentLevel?: 'beginner' | 'intermediate' | 'advanced' | null;
   credits: number; plan: 'free' | 'scholar' | 'aspirant' | 'achiever'; planExpiresAt: ISODateTime | null;
   /**
    * ISO datetime at which the user clicked "Cancel Plan" in profile.
@@ -130,7 +140,7 @@ function newUser(uid: UserId, init: UserStoreInit, now: string): StoredUser {
     id: uid, firebaseUid: uid, email: init.email, name: init.name, phone: null,
     photoURL: init.photoURL, primaryProvider: init.primaryProvider, role: 'student',
     language: 'en', targetExam: null, classLevel: null, board: null, school: null,
-    dob: null, aim: null, onboardingScore: null, onboardingLevel: null,
+    dob: null, aim: null, onboardingScore: null, onboardingLevel: null, currentLevel: null,
     // Cached balance starts at zero -- the credit ledger is the source of
     // truth and the `users.ts /me` handler awards `signup_verified` (+100)
     // through the ledger on first contact, which updates this cache via

@@ -6,6 +6,7 @@ import type { UserStore } from '../lib/userStore.js';
 import type { AIEngine } from '../lib/aiEngine.js';
 import type { ChapterStore, UserContext } from '../lib/chapterStore.js';
 import { getSyllabusWithFallback, type SyllabusFallbackDeps } from '../lib/syllabusStore.js';
+import { effectiveLevel, nextLevel, isPromotion } from '../lib/levelProgression.js';
 import { triggerBackgroundRefresh } from '../lib/contentRefresh.js';
 import { asISODateTime, asUserId, EXAM_BY_SLUG, type SyllabusTree } from '@nexigrate/shared';
 import type { Firestore } from 'firebase-admin/firestore';
@@ -124,7 +125,7 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
 
     // Fetch user to get level and build context
     const user = await deps.users.get(principal.userId);
-    const userLevel = user?.onboardingLevel ?? 'intermediate';
+    const userLevel = effectiveLevel(user);
 
     // Check cache first (before deducting credits) — cache key now includes level
     let content = await deps.chapters.getChapter(exam, subject, chapter, language, userLevel);
@@ -250,7 +251,7 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
     try {
       // Get user level for difficulty calibration
       const user = await deps.users.get(principal.userId);
-      const userLevel = user?.onboardingLevel ?? 'intermediate';
+      const userLevel = effectiveLevel(user);
 
       // Fetch cached chapter content to ensure quiz is based on what student read
       const cachedContent = await deps.chapters.getChapter(exam, subject, chapter, language, userLevel);
@@ -286,7 +287,7 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
 
       // Base cards on the chapter the student actually read (any cached level).
       const user = await deps.users.get(principal.userId);
-      const userLevel = user?.onboardingLevel ?? 'intermediate';
+      const userLevel = effectiveLevel(user);
       const cachedContent = await deps.chapters.getChapter(exam, subject, chapter, language, userLevel);
       const chapterText = cachedContent?.content ?? undefined;
 
@@ -412,6 +413,34 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
 
     const progress = await deps.chapters.saveProgress(principal.userId, exam, subject, chapter, score);
 
+    // ── Level progression (PR adaptive-learning) ───────────────────────────
+    // Recompute the student's working level from cumulative evidence on this
+    // exam: how many chapters they've PASSED (≥80%) and their average score.
+    // Ratchets upward only (see levelProgression.ts); when it climbs, the
+    // next chapters/quizzes they open generate at the harder level because
+    // content generation reads `currentLevel`. Best-effort — never block
+    // completion on it.
+    let levelUp: { from: string; to: string } | null = null;
+    try {
+      const user = await deps.users.get(principal.userId);
+      const scores = Object.values(progress.chapterScores) as number[];
+      const avgScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+      const passedChapters = progress.completedChapters.length;
+      const computed = nextLevel(user, passedChapters, avgScore);
+      if (isPromotion(user, computed)) {
+        const from = user?.currentLevel ?? user?.onboardingLevel ?? 'beginner';
+        await deps.users.update(principal.userId, { currentLevel: computed });
+        levelUp = { from, to: computed };
+        deps.logger.info('study.level_up', {
+          userId: principal.userId, exam, from, to: computed, passedChapters, avgScore: Math.round(avgScore),
+        });
+      }
+    } catch (err) {
+      deps.logger.warn('study.level_progression_failed', {
+        userId: principal.userId, exam, error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
     // Award credits via the append-only ledger.
     //
     // Two distinct earn sources, both idempotent on `(userId, exam/subject/chapter)`:
@@ -501,7 +530,7 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
     }
 
     deps.logger.info('study.chapter_completed', { userId: principal.userId, exam, subject, chapter, score, unlocked });
-    return c.json({ progress, nextChapter, unlocked, creditsAwarded, passed });
+    return c.json({ progress, nextChapter, unlocked, creditsAwarded, passed, levelUp });
   });
 
   // GET /v1/study/progress/:examSlug — progress for current user

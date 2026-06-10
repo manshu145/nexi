@@ -8,6 +8,7 @@ import type { AIEngine, GeneratedMCQ, StageResults } from '../lib/aiEngine.js';
 import type { CreditLedger } from '../lib/creditLedger.js';
 import type { ServiceKeyStore } from '../lib/serviceKeyStore.js';
 import { getPersonalQuestions, getReasoningQuestions, PERSONAL_QUESTIONS } from '../lib/assessmentStatic.js';
+import { buildSyllabusPromptContext } from '../lib/syllabusStore.js';
 
 export interface AssessmentRoutesDeps {
   users: UserStore;
@@ -79,7 +80,7 @@ export function makeAssessmentRoutes(deps: AssessmentRoutesDeps): Hono {
     const parsed = questionsSchema.safeParse(body);
     if (!parsed.success) throw new HTTPException(400, { message: parsed.error.issues[0]?.message ?? 'invalid body' });
     try {
-      const questions = await deps.aiEngine.generateStage1Questions(parsed.data.examSlug, parsed.data.language, 15);
+      const questions = await deps.aiEngine.generateStage1Questions(parsed.data.examSlug, parsed.data.language, 15, buildSyllabusPromptContext(parsed.data.examSlug));
       deps.logger.info('assessment.exam_generated', { examSlug: parsed.data.examSlug, count: questions.length });
       return c.json({ questions, stage: 2, totalStages: 3 });
     } catch (err) {
@@ -104,7 +105,7 @@ export function makeAssessmentRoutes(deps: AssessmentRoutesDeps): Hono {
     const parsed = questionsSchema.safeParse(body);
     if (!parsed.success) throw new HTTPException(400, { message: parsed.error.issues[0]?.message ?? 'invalid body' });
     try {
-      const questions = await deps.aiEngine.generateStage1Questions(parsed.data.examSlug, parsed.data.language);
+      const questions = await deps.aiEngine.generateStage1Questions(parsed.data.examSlug, parsed.data.language, 15, buildSyllabusPromptContext(parsed.data.examSlug));
       deps.logger.info('assessment.stage1_generated', { examSlug: parsed.data.examSlug, count: questions.length });
       return c.json({ questions, stage: 1, totalStages: 3 });
     } catch (err) {
