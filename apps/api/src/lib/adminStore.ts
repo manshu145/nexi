@@ -168,7 +168,7 @@ export class FirestoreAdminStore implements AdminStore {
     const deletedUids = new Set(deletedSnap?.docs.map(d => d.id) ?? []);
 
     let totalUsers = 0;
-    let dau = 0, newUsersToday = 0, newUsersThisWeek = 0;
+    let dau = 0, mau = 0, newUsersToday = 0, newUsersThisWeek = 0;
     const tenMinAgo = new Date(now.getTime() - 10 * 60000).toISOString();
     let activeSessions = 0;
 
@@ -182,6 +182,12 @@ export class FirestoreAdminStore implements AdminStore {
 
       totalUsers++;
       if (data.lastDailyAt?.startsWith(todayStr)) dau++;
+      // MAU = users actually active in the last 30 days. (Bug fix: this used
+      // to be hardcoded to totalUsers, which made MAU meaningless and broke
+      // the DAU/MAU stickiness metric.) Use the freshest activity signal we
+      // have — session ping (lastActiveAt) or daily streak (lastDailyAt).
+      const lastActive = (data.lastActiveAt as string) || (data.lastDailyAt as string) || '';
+      if (lastActive && lastActive > monthAgo) mau++;
       if (data.createdAt?.startsWith(todayStr)) newUsersToday++;
       if (data.createdAt > weekAgo) newUsersThisWeek++;
       if (data.lastActiveAt && data.lastActiveAt > tenMinAgo) activeSessions++;
@@ -224,7 +230,7 @@ export class FirestoreAdminStore implements AdminStore {
     } catch { /* */ }
 
     return {
-      totalUsers, dau, mau: totalUsers, newUsersToday, newUsersThisWeek,
+      totalUsers, dau, mau, newUsersToday, newUsersThisWeek,
       revenueToday, revenue7d, revenue30d, revenueTotal,
       aiCallsToday, aiCallsThisWeek, aiCostToday, activeSessions, pwaInstalls,
       apiHealth: { openai: 'ok', groq: 'ok', gemini: 'ok', razorpay: 'ok' },
