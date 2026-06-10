@@ -92,8 +92,30 @@ export default function ProfilePage() {
     }
   };
 
-  const handleCancelPlan = async () => {
-    if (cancelling) return;
+  const handleSetLanguage = async (language: 'en' | 'hi') => {
+    // Set the cookie (next-intl UI chrome) + localStorage (feature pages
+    // that read the client-side language) so every surface flips at once.
+    localStorage.setItem('nexigrate-language', language);
+    document.cookie = `nexigrate-language=${language};path=/;max-age=31536000;samesite=lax`;
+    // CRITICAL: also persist to the DB + shared store. The dashboard
+    // greeting and other server-/me-driven copy read `me.language`, NOT
+    // the cookie. Previously this button only wrote the cookie+localStorage,
+    // so `me.language` stayed on the OLD language and the dashboard showed
+    // Hindi chrome under an English UI (and vice-versa) — the "eng me hindi,
+    // hindi me eng" crossover users reported. Optimistic store update first
+    // so the UI is instant; the DB write is best-effort (cookie/local are
+    // already set, so a failed write is non-fatal).
+    mutate((prev) => (prev ? { ...prev, language } : prev));
+    try {
+      await api.saveOnboarding({ language });
+    } catch {
+      /* cookie + localStorage already updated — non-fatal */
+    }
+    toast.success(language === 'hi' ? 'भाषा हिंदी में बदली गई' : 'Language set to English');
+    router.refresh(); // re-read the cookie for next-intl server messages
+  };
+
+  const handleCancelPlan = async () => {    if (cancelling) return;
     setCancelling(true);
     try {
       const res = await api.cancelSubscription(cancelReason);
@@ -205,14 +227,14 @@ export default function ProfilePage() {
             </div>
             <div className="flex rounded-lg bg-paper-200 p-1">
               <button
-                onClick={() => { localStorage.setItem('nexigrate-language', 'en'); document.cookie = 'nexigrate-language=en;path=/;max-age=31536000'; toast.success('Language set to English'); router.refresh(); }}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${(localStorage.getItem('nexigrate-language') || 'en') === 'en' ? 'bg-paper-50 text-ink-900 shadow-sm' : 'text-muted-500'}`}
+                onClick={() => void handleSetLanguage('en')}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${(me?.language ?? 'en') === 'en' ? 'bg-paper-50 text-ink-900 shadow-sm' : 'text-muted-500'}`}
               >
                 English
               </button>
               <button
-                onClick={() => { localStorage.setItem('nexigrate-language', 'hi'); document.cookie = 'nexigrate-language=hi;path=/;max-age=31536000'; toast.success('भाषा हिंदी में बदली गई'); router.refresh(); }}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${localStorage.getItem('nexigrate-language') === 'hi' ? 'bg-paper-50 text-ink-900 shadow-sm' : 'text-muted-500'}`}
+                onClick={() => void handleSetLanguage('hi')}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${me?.language === 'hi' ? 'bg-paper-50 text-ink-900 shadow-sm' : 'text-muted-500'}`}
               >
                 हिंदी
               </button>
