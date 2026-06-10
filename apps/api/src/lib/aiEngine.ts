@@ -72,7 +72,7 @@ export interface AIEngine {
    * cached per (exam, year, language) by the PYQ store.
    */
   generatePYQPaper(examSlug: string, examName: string, year: number, language: 'en' | 'hi', count?: number): Promise<GeneratedMCQ[]>;
-  translateToHindi(items: { headline: string; summary: string }[]): Promise<{ headline: string; summary: string }[]>;
+  translateToHindi(items: { headline: string; summary: string; bullets?: string[] }[]): Promise<{ headline: string; summary: string; bullets?: string[] }[]>;
   chat(messages: { role: 'user' | 'assistant'; content: string }[], userContext: { exam: string; level: string; language: 'en' | 'hi' }, preferredModel?: 'gpt4o' | 'groq' | 'gemini'): Promise<string>;
   /**
    * Generate an SEO-friendly blog draft (lock §5.3).
@@ -2288,43 +2288,46 @@ Rules for your responses:
       throw new Error('Chat AI unavailable. Please try again.');
     },
 
-    async translateToHindi(items: { headline: string; summary: string }[]) {
+    async translateToHindi(items: { headline: string; summary: string; bullets?: string[] }[]) {
       if (items.length === 0) return [];
 
-      // Founder report: "hindi version me 3 point nahi banta aur summary
-      // chhota aata hai". Two root causes, both fixed here:
-      //   1. The old prompt said "Keep them concise" — so Gemini SHORTENED
-      //      the Hindi summary instead of translating the full English one,
-      //      and it dropped the "**Key Points:**" heading + the "• " bullet
-      //      markers that the web extractKeyPoints() splits on (so Hindi
-      //      users got 0 quick-revision points).
-      //   2. ALL ~30 items were translated in ONE 3000-token call, so the
-      //      JSON got truncated mid-stream — later items came back empty
-      //      (then hidden by the strict-Hindi filter) and the last returned
-      //      item was cut short.
-      // Fix: translate in small batches with a faithful, structure-preserving
-      // prompt and a much larger output budget.
-      const buildPrompt = (batch: { headline: string; summary: string }[]) =>
+      // Strip any stray CJK (Chinese/Japanese/Korean) characters the model
+      // occasionally leaks into Hindi output (e.g. "नए रक्त को注入 करने"). We
+      // remove those code points and tidy the spacing so the reader never
+      // sees foreign glyphs.
+      const stripCJK = (s: string): string =>
+        (s ?? '')
+          .replace(/[\u3000-\u303F\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF\uAC00-\uD7AF]/g, '')
+          .replace(/[ \t]{2,}/g, ' ')
+          .replace(/\s+([।,.])/g, '$1')
+          .trim();
+
+      const buildPrompt = (batch: { headline: string; summary: string; bullets?: string[] }[]) =>
         `You are a professional Hindi (Devanagari) translator for an Indian competitive-exam current-affairs app.
 
 Translate EACH news item below into natural, fluent Hindi. STRICT RULES:
 - Translate the MEANING into idiomatic Hindi that reads like an Indian journalist wrote it — NOT a stiff word-for-word machine translation. Reorder words for natural Hindi flow where needed.
-- This is a FULL translation, NOT a summary. Translate every sentence — do NOT shorten, compress or skip anything. The Hindi summary MUST be the same length and detail as the English one.
-- PRESERVE the exact structure and formatting: keep blank lines between paragraphs, keep the "**Key Points:**" heading (translate it to "**मुख्य बिंदु:**"), and keep every "• " bullet line as a "• " bullet line. The number of bullet points in Hindi MUST equal the number in English (never fewer than 3).
-- Keep proper nouns, scheme names, org acronyms (ISRO, RBI, UN, GDP) and numbers/dates intact; transliterate names only when there is a well-known Hindi form.
-- Do NOT add commentary. Output ONLY the translation.
+- Translate the full summary faithfully (keep its paragraph breaks / blank lines) and translate EACH bullet. Do NOT shorten or drop content, and do NOT pad or repeat.
+- Output ONLY Hindi (Devanagari) text. NEVER output Chinese, Japanese, Korean or any non-Hindi script. Keep proper nouns, scheme names, acronyms (ISRO, RBI, UN, GDP) and numbers/dates intact.
+- The Hindi bullets array MUST have exactly the same number of items as the English one.
+- Do NOT add commentary or markdown headings. Output ONLY the translation as JSON.
 
 Items:
-${batch.map((it, i) => `### ITEM ${i + 1}\nHeadline: ${it.headline}\nSummary:\n${it.summary}`).join('\n\n')}
+${batch.map((it, i) => `### ITEM ${i + 1}\nHeadline: ${it.headline}\nSummary:\n${it.summary}\nBullets: ${JSON.stringify(it.bullets ?? [])}`).join('\n\n')}
 
-Respond ONLY with valid JSON (summary may contain \\n newlines and • bullets):
-{"items":[{"headline":"हिंदी headline","summary":"पूरा हिंदी सारांश\\n\\n**मुख्य बिंदु:**\\n• बिंदु 1\\n• बिंदु 2\\n• बिंदु 3"}]}`;
+Respond ONLY with valid JSON (summary may contain \\n newlines):
+{"items":[{"headline":"हिंदी शीर्षक","summary":"हिंदी सारांश (पैराग्राफ़ सहित)","bullets":["बिंदु 1","बिंदु 2","बिंदु 3"]}]}`;
+
+      type TItem = { headline: string; summary: string; bullets?: string[] };
+      const sanitize = (it: TItem): TItem => ({
+        headline: stripCJK(it.headline),
+        summary: stripCJK(it.summary),
+        ...(it.bullets ? { bullets: it.bullets.map(stripCJK).filter(Boolean) } : {}),
+      });
 
       // Translate a single batch via Gemini → Groq → OpenAI. Returns the
       // translated array, or null if every provider failed for this batch.
-      const translateBatch = async (
-        batch: { headline: string; summary: string }[],
-      ): Promise<{ headline: string; summary: string }[] | null> => {
+      const translateBatch = async (batch: TItem[]): Promise<TItem[] | null> => {
         const prompt = buildPrompt(batch);
 
         if (env.GEMINI_API_KEY) {
@@ -2333,10 +2336,10 @@ Respond ONLY with valid JSON (summary may contain \\n newlines and • bullets):
             if (r.ok) {
               const jsonMatch = r.text.match(/\{[\s\S]*\}/);
               if (jsonMatch) {
-                const parsed = JSON.parse(jsonMatch[0]) as { items?: { headline: string; summary: string }[] };
+                const parsed = JSON.parse(jsonMatch[0]) as { items?: TItem[] };
                 if (parsed.items?.length) {
                   logger.info('ai.translate_hindi', { provider: 'gemini', count: parsed.items.length, model: r.model });
-                  return parsed.items;
+                  return parsed.items.map(sanitize);
                 }
               }
             }
@@ -2347,10 +2350,10 @@ Respond ONLY with valid JSON (summary may contain \\n newlines and • bullets):
           try {
             const trGroq = await getGroqClient();
             const c = await (trGroq?.client ?? groq!).chat.completions.create({ model: trGroq?.model ?? 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.2, max_tokens: 8000, response_format: { type: 'json_object' } });
-            const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { items?: { headline: string; summary: string }[] };
+            const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { items?: TItem[] };
             if (parsed.items?.length) {
               logger.info('ai.translate_hindi', { provider: 'groq', count: parsed.items.length });
-              return parsed.items;
+              return parsed.items.map(sanitize);
             }
           } catch (err) { logger.warn('ai.translate_groq_failed', { error: err instanceof Error ? err.message : String(err) }); }
         }
@@ -2358,10 +2361,10 @@ Respond ONLY with valid JSON (summary may contain \\n newlines and • bullets):
         if (openai) {
           try {
             const c = await oaCreate({ messages: [{ role: 'user', content: prompt }], temperature: 0.2, max_tokens: 8000, response_format: { type: 'json_object' } });
-            const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { items?: { headline: string; summary: string }[] };
+            const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { items?: TItem[] };
             if (parsed.items?.length) {
               logger.info('ai.translate_hindi', { provider: 'openai', count: parsed.items.length });
-              return parsed.items;
+              return parsed.items.map(sanitize);
             }
           } catch (err) { logger.warn('ai.translate_openai_failed', { error: err instanceof Error ? err.message : String(err) }); }
         }
@@ -2374,7 +2377,7 @@ Respond ONLY with valid JSON (summary may contain \\n newlines and • bullets):
       // English originals (same as the previous total-failure behaviour)
       // rather than shifting every later item's index.
       const BATCH_SIZE = 5;
-      const out: { headline: string; summary: string }[] = [];
+      const out: TItem[] = [];
       let anyFailed = false;
       for (let i = 0; i < items.length; i += BATCH_SIZE) {
         const batch = items.slice(i, i + BATCH_SIZE);

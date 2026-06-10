@@ -708,7 +708,7 @@ export const api = {
   },
 };
 
-export interface CurrentAffairsItem { id: string; headline: string; body: string; category: string; sources: string[]; summary: string; factChecked: boolean; date: string; publishedAt: string; imageUrl?: string; state?: string; }
+export interface CurrentAffairsItem { id: string; headline: string; body: string; bullets?: string[]; category: string; sources: string[]; summary: string; factChecked: boolean; date: string; publishedAt: string; imageUrl?: string; state?: string; }
 export interface LeaderboardEntry { userId: string; userName: string; score: number; timeTaken: number; date: string; }
 export interface CurrentAffairsResponse { date: string; items: CurrentAffairsItem[]; yesterdayWinner: LeaderboardEntry | null; userLikes?: string[]; userBookmarks?: string[]; likeCounts?: Record<string, number>; isFromYesterday?: boolean; }
 export interface CAStateOption { slug: string; name: string; nameHi: string; isUT: boolean; }

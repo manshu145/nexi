@@ -76,8 +76,12 @@ export type CurrentAffairsDigestStatus = 'pending' | 'approved' | 'rejected';
 export interface CurrentAffairsItem {
   id: string;
   headline: string;
-  /** 2-4 sentence factual summary. Markdown bold + paragraph breaks only. */
+  /** Short factual summary in plain prose paragraphs (no bullets/headings). */
   body: string;
+  /** 3-5 crisp, exam-ready quick-revision facts, rendered as the Key Points
+   *  list. Stored separately from the prose summary so the UI never has to
+   *  parse bullets out of the body. */
+  bullets?: string[];
   category: CurrentAffairsCategory;
   /** Free-form citations -- prefer PIB / RBI / official Ministry pages. */
   sources: string[];

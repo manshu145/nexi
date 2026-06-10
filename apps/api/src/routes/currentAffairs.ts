@@ -144,6 +144,8 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
           headline: it.headlineHi,
           summary: it.summaryHi,
           body: it.summaryHi || it.body,
+          // Use the Hindi bullets when we have them, else the English ones.
+          bullets: (Array.isArray(it.bulletsHi) && it.bulletsHi.length > 0) ? it.bulletsHi : it.bullets,
           // Keep the originals around in case the detail page wants them.
           _headlineEn: it.headline,
           _summaryEn: it.summary,
@@ -301,6 +303,7 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
       if (language === 'hi') {
         if (item.headlineHi) (item as any).headline = item.headlineHi;
         if (item.summaryHi) { (item as any).summary = item.summaryHi; (item as any).body = item.summaryHi; }
+        if (Array.isArray(item.bulletsHi) && item.bulletsHi.length > 0) (item as any).bullets = item.bulletsHi;
       }
 
       return c.json({ item });
