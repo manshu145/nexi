@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { useAuth } from '~/lib/auth-context';
 import { api, type ReferralStats } from '~/lib/api';
 import { toast } from 'sonner';
@@ -30,6 +31,8 @@ import { AILoader } from '~/components/ui/AILoader';
 export default function ReferPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const t = useTranslations('refer');
+  const tc = useTranslations('common');
   const [stats, setStats] = useState<ReferralStats | null>(null);
   const [pageLoading, setPageLoading] = useState(true);
   // PR-34b (audit #44): the share message used to hardcode "100 bonus
@@ -84,14 +87,14 @@ export default function ReferPage() {
     if (!stats) return;
     try {
       await navigator.clipboard.writeText(stats.code);
-      toast.success('Referral code copied!');
+      toast.success(t('copied'));
     } catch {
-      toast.error('Failed to copy');
+      toast.error(t('copyFailed'));
     }
   };
 
   const shareMessage = stats
-    ? `Join Nexigrate - India's smartest exam prep app! Use my referral code: ${stats.code} and get ${signupBonus} bonus credits. Download now: ${stats.referralUrl}`
+    ? t('shareMessage', { code: stats.code, bonus: signupBonus, url: stats.referralUrl })
     : '';
 
   const handleShare = async () => {
@@ -123,21 +126,21 @@ export default function ReferPage() {
     <main className="mx-auto flex min-h-dvh max-w-lg flex-col px-5 pt-6 pb-24">
       {/* Header */}
       <header className="flex items-center justify-between">
-        <button onClick={() => router.push('/dashboard')} className="btn-ghost-sm">← Back</button>
+        <button onClick={() => router.push('/dashboard')} className="btn-ghost-sm">← {tc('back')}</button>
         <Logo height={36} />
       </header>
 
       {/* Title */}
       <section className="mt-8 text-center">
-        <h1 className="font-serif text-2xl font-bold text-ink-900">Refer &amp; Earn 🎁</h1>
-        <p className="mt-2 text-sm text-muted-500">Invite friends — you earn 50 credits, they get 100</p>
+        <h1 className="font-serif text-2xl font-bold text-ink-900">{t('title')}</h1>
+        <p className="mt-2 text-sm text-muted-500">{t('subtitle')}</p>
       </section>
 
       {/* Referral Code Box */}
       {stats && (
         <section className="mt-8">
           <div className="rounded-2xl border-2 border-ember-500 bg-ink-900 p-6 text-center">
-            <p className="text-xs font-medium uppercase tracking-wider text-paper-200 mb-2">Your Referral Code</p>
+            <p className="text-xs font-medium uppercase tracking-wider text-paper-200 mb-2">{t('yourCode')}</p>
             <p className="font-mono text-3xl font-bold tracking-widest text-gold-500">{stats.code}</p>
           </div>
 
@@ -147,13 +150,13 @@ export default function ReferPage() {
               onClick={handleCopy}
               className="flex-1 rounded-xl bg-ink-800 py-3 text-sm font-semibold text-paper-50 transition-colors hover:bg-ink-700"
             >
-              📋 Copy Code
+              {t('copyCode')}
             </button>
             <button
               onClick={handleShare}
               className="flex-1 rounded-xl bg-ember-500 py-3 text-sm font-semibold text-paper-50 transition-colors hover:bg-ember-600"
             >
-              🔗 Share
+              {t('share')}
             </button>
           </div>
 
@@ -162,7 +165,7 @@ export default function ReferPage() {
             onClick={handleWhatsApp}
             className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-line bg-ink-800 py-3 text-sm font-semibold text-paper-50 transition-colors hover:bg-ink-700"
           >
-            <span className="text-lg">💬</span> Share on WhatsApp
+            <span className="text-lg">💬</span> {t('shareWhatsapp')}
           </button>
         </section>
       )}
@@ -171,16 +174,16 @@ export default function ReferPage() {
       {stats && (
         <section className="mt-8">
           <div className="rounded-xl border border-line bg-paper-50 p-5">
-            <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-500">Your Referral Stats</h3>
+            <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-500">{t('statsHeading')}</h3>
             <div className="flex items-center justify-around">
               <div className="text-center">
                 <p className="font-serif text-2xl font-bold text-ink-900">{stats.totalReferrals}</p>
-                <p className="mt-1 text-xs text-muted-500">Friends Joined</p>
+                <p className="mt-1 text-xs text-muted-500">{t('friendsJoined')}</p>
               </div>
               <div className="h-10 w-px bg-line" />
               <div className="text-center">
                 <p className="font-serif text-2xl font-bold text-ember-500">{stats.totalEarned}</p>
-                <p className="mt-1 text-xs text-muted-500">Credits Earned</p>
+                <p className="mt-1 text-xs text-muted-500">{t('creditsEarned')}</p>
               </div>
             </div>
           </div>
@@ -189,34 +192,34 @@ export default function ReferPage() {
 
       {/* How it works */}
       <section className="mt-8">
-        <h3 className="mb-4 font-serif text-lg font-bold text-ink-900">How it works</h3>
+        <h3 className="mb-4 font-serif text-lg font-bold text-ink-900">{t('howItWorks')}</h3>
         <div className="space-y-4">
           <div className="flex items-start gap-3">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ember-500 text-sm font-bold text-paper-50">1</span>
             <div>
-              <p className="text-sm font-semibold text-ink-900">Share your code</p>
-              <p className="mt-0.5 text-xs text-muted-500">Send your unique referral code to friends via WhatsApp, SMS, or social media</p>
+              <p className="text-sm font-semibold text-ink-900">{t('step1Title')}</p>
+              <p className="mt-0.5 text-xs text-muted-500">{t('step1Desc')}</p>
             </div>
           </div>
           <div className="flex items-start gap-3">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ember-500 text-sm font-bold text-paper-50">2</span>
             <div>
-              <p className="text-sm font-semibold text-ink-900">Friend signs up</p>
-              <p className="mt-0.5 text-xs text-muted-500">Your friend opens Nexigrate and enters your code during sign-up</p>
+              <p className="text-sm font-semibold text-ink-900">{t('step2Title')}</p>
+              <p className="mt-0.5 text-xs text-muted-500">{t('step2Desc')}</p>
             </div>
           </div>
           <div className="flex items-start gap-3">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ember-500 text-sm font-bold text-paper-50">3</span>
             <div>
-              <p className="text-sm font-semibold text-ink-900">Both earn credits</p>
-              <p className="mt-0.5 text-xs text-muted-500">You get 50 credits and your friend gets 100 bonus credits to start with.</p>
+              <p className="text-sm font-semibold text-ink-900">{t('step3Title')}</p>
+              <p className="mt-0.5 text-xs text-muted-500">{t('step3Desc')}</p>
             </div>
           </div>
           <div className="flex items-start gap-3">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ember-500 text-sm font-bold text-paper-50">4</span>
             <div>
-              <p className="text-sm font-semibold text-ink-900">No limits</p>
-              <p className="mt-0.5 text-xs text-muted-500">Refer as many friends as you want — there&apos;s no cap on earning.</p>
+              <p className="text-sm font-semibold text-ink-900">{t('step4Title')}</p>
+              <p className="mt-0.5 text-xs text-muted-500">{t('step4Desc')}</p>
             </div>
           </div>
         </div>
