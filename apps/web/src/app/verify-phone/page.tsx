@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '~/lib/auth-context';
 import { Logo } from '~/components/Logo';
 import { AILoader } from '~/components/ui/AILoader';
+import { getClientLocale } from '~/lib/locale';
 import type { ConfirmationResult } from 'firebase/auth';
 
 export default function VerifyPhonePage() {
@@ -125,9 +126,7 @@ export default function VerifyPhonePage() {
   // useTranslations here because /verify-phone runs *before* the regular
   // onboarding layout in the auth flow, and we want it to work even if the
   // i18n provider is not yet mounted.
-  const isHi =
-    (typeof document !== 'undefined' && /nexigrate-language=hi/.test(document.cookie)) ||
-    (typeof window !== 'undefined' && window.localStorage.getItem('nexigrate-language') === 'hi');
+  const isHi = getClientLocale() === 'hi';
 
   const copy = isHi
     ? {
