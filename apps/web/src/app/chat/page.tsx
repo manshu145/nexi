@@ -11,6 +11,7 @@ import { api, type ChatSessionSummary, type ChatMessage } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 import { AILoader } from '~/components/ui/AILoader';
 import { getClientLocale } from '~/lib/locale';
+import { track } from '~/lib/analytics';
 
 export default function ChatPageWrapper() {
   return (
@@ -97,6 +98,7 @@ function ChatPage() {
       try {
         const res = await api.sendChat(contextMessage, undefined);
         setActiveSessionId(res.sessionId);
+        track('chat_message', { source: 'topic' });
         const aiMsg: ChatMessage = { role: 'assistant', content: res.response, timestamp: new Date().toISOString() };
         setMessages(prev => [...prev, aiMsg]);
         setSessions(prev => [{ id: res.sessionId, title: res.title, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), messageCount: 2 }, ...prev]);
@@ -212,6 +214,7 @@ function ChatPage() {
       const apiAttachments = currentAttachments.length > 0 ? currentAttachments.map(a => ({ type: a.type, name: a.name, data: a.data, mimeType: a.mimeType })) : undefined;
       const res = await api.sendChat(msgText, activeSessionId ?? undefined, apiAttachments, selectedModel);
       setActiveSessionId(res.sessionId);
+      track('chat_message', { model: selectedModel });
       const aiMsg: ChatMessage = { role: 'assistant', content: res.response, timestamp: new Date().toISOString() };
       setMessages(prev => [...prev, aiMsg]);
       setSessions(prev => {

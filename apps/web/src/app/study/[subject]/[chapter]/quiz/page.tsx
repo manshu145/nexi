@@ -87,6 +87,7 @@ export default function ChapterQuizPage() {
         setQuestions(res.questions);
         setPhase('quiz');
         setTimer(45);
+        track('quiz_start', { subject, chapter });
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Failed to load quiz';
         if (msg.toLowerCase().includes('failed to fetch')) {
@@ -136,6 +137,7 @@ export default function ChapterQuizPage() {
       void refresh();
       setResult({ score, total: questions.length, passed: res.passed, creditsAwarded: res.creditsAwarded, nextChapter: res.nextChapter });
       track('quiz_complete', { subject, chapter, score: String(score), passed: String(res.passed) });
+      if (res.passed) track('chapter_complete', { subject, chapter });
       setPhase('result');
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to submit';
