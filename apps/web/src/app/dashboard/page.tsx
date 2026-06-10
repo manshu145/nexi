@@ -9,6 +9,7 @@ import { useAuth } from '~/lib/auth-context';
 import { useUser } from '~/lib/userStore';
 import { api } from '~/lib/api';
 import { AILoader } from '~/components/ui/AILoader';
+import { track } from '~/lib/analytics';
 import { OnboardingTour } from '~/components/OnboardingTour';
 import { NotificationBell } from '~/components/NotificationBell';
 
@@ -279,7 +280,7 @@ export default function DashboardPage() {
       <section className="mt-8 animate-fadeIn">
         <button
           type="button"
-          onClick={() => router.push('/study')}
+          onClick={() => { track('feature_click', { feature: 'study' }); router.push('/study'); }}
           className="paper-card card-selectable w-full p-5 text-left hover:shadow-md transition-all group"
         >
           <div className="flex items-center justify-between">
@@ -307,7 +308,7 @@ export default function DashboardPage() {
         <h2 className="text-xs font-bold uppercase tracking-wider text-muted-500">{me?.language === 'hi' ? 'एक्सप्लोर करें' : 'Explore'}</h2>
         <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {/* Current Affairs */}
-          <button type="button" onClick={() => router.push('/current-affairs')} className="paper-card card-selectable group flex h-full flex-col p-4 text-left transition-all hover:shadow-md">
+          <button type="button" onClick={() => { track('feature_click', { feature: 'current_affairs' }); router.push('/current-affairs'); }} className="paper-card card-selectable group flex h-full flex-col p-4 text-left transition-all hover:shadow-md">
             <div className="flex items-center gap-2">
               <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ember-500/10 text-xl">📰</span>
               <span className="inline-flex items-center gap-1 rounded-full bg-ember-500/10 px-2 py-0.5 text-[10px] font-bold text-ember-600"><span className="h-1.5 w-1.5 rounded-full bg-ember-500 animate-pulse" />LIVE</span>
@@ -318,7 +319,7 @@ export default function DashboardPage() {
           </button>
 
           {/* Nexi AI */}
-          <button type="button" onClick={() => router.push('/chat')} className="paper-card card-selectable group flex h-full flex-col p-4 text-left transition-all hover:shadow-md">
+          <button type="button" onClick={() => { track('feature_click', { feature: 'chat' }); router.push('/chat'); }} className="paper-card card-selectable group flex h-full flex-col p-4 text-left transition-all hover:shadow-md">
             <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ember-500/10 text-xl">🤖</span>
             <h3 className="mt-3 font-serif text-base font-bold text-ink-900">{t('nexiAI')}</h3>
             <p className="mt-1 text-xs text-muted-500 line-clamp-2">{t('nexiAIDesc')}</p>
@@ -326,7 +327,7 @@ export default function DashboardPage() {
           </button>
 
           {/* Mock Tests */}
-          <button type="button" onClick={() => router.push('/mock-tests')} className="paper-card card-selectable group flex h-full flex-col p-4 text-left transition-all hover:shadow-md">
+          <button type="button" onClick={() => { track('feature_click', { feature: 'mock_tests' }); router.push('/mock-tests'); }} className="paper-card card-selectable group flex h-full flex-col p-4 text-left transition-all hover:shadow-md">
             <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ember-500/10 text-xl">🧪</span>
             <h3 className="mt-3 font-serif text-base font-bold text-ink-900">{t('mockTests')}</h3>
             <p className="mt-1 text-xs text-muted-500 line-clamp-2">{t('mockTestsDesc')}</p>
@@ -334,7 +335,7 @@ export default function DashboardPage() {
           </button>
 
           {/* PYQ */}
-          <button type="button" onClick={() => router.push('/pyq')} className="paper-card card-selectable group flex h-full flex-col p-4 text-left transition-all hover:shadow-md">
+          <button type="button" onClick={() => { track('feature_click', { feature: 'pyq' }); router.push('/pyq'); }} className="paper-card card-selectable group flex h-full flex-col p-4 text-left transition-all hover:shadow-md">
             <div className="flex items-center gap-2">
               <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ember-500/10 text-xl">📄</span>
               <span className="inline-flex items-center gap-1 rounded-full bg-ember-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ember-600">New</span>
@@ -352,7 +353,7 @@ export default function DashboardPage() {
             { icon: '🎁', title: t('refer'), desc: t('referDesc'), href: '/refer' },
             { icon: '🛟', title: t('support'), desc: t('supportDesc'), href: '/support' },
           ] as const).map((item) => (
-            <button key={item.href} type="button" onClick={() => router.push(item.href)} className="paper-card card-selectable group flex h-full flex-col p-4 text-left transition-all hover:shadow-md">
+            <button key={item.href} type="button" onClick={() => { track('feature_click', { feature: item.href.replace('/', '') }); router.push(item.href); }} className="paper-card card-selectable group flex h-full flex-col p-4 text-left transition-all hover:shadow-md">
               <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ember-500/10 text-xl">{item.icon}</span>
               <h3 className="mt-3 font-serif text-base font-bold text-ink-900">{item.title}</h3>
               <p className="mt-1 text-xs text-muted-500 line-clamp-2">{item.desc}</p>
