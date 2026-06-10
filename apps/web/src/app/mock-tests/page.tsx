@@ -43,6 +43,7 @@ import { useAuth } from '~/lib/auth-context';
 import { useUser } from '~/lib/userStore';
 import { api } from '~/lib/api';
 import { AILoader } from '~/components/ui/AILoader';
+import { track } from '~/lib/analytics';
 
 interface AttemptListItem {
   id: string;
@@ -201,6 +202,7 @@ export default function MockTestsPage() {
       const language = me.language ?? 'en';
       const res = await api.startMockTest({ examSlug, language, attemptId }, { signal: controller.signal });
       window.clearTimeout(timeoutId);
+      track('mock_test_start', { exam: examSlug });
       router.push(`/mock-tests/${encodeURIComponent(res.attemptId)}`);
     } catch (err) {
       window.clearTimeout(timeoutId);

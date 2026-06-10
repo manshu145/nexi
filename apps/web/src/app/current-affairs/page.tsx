@@ -7,6 +7,7 @@ import { Logo } from '~/components/Logo';
 import { Skeleton } from '~/components/Skeleton';
 import { AILoader } from '~/components/ui/AILoader';
 import { getClientLocale } from '~/lib/locale';
+import { track } from '~/lib/analytics';
 import { CATEGORY_EMOJIS, CATEGORY_IMAGES } from './_shared';
 
 const CATEGORIES = [
@@ -92,6 +93,7 @@ export default function CurrentAffairsShortsPage() {
         const res = await api.getCurrentAffairs(lang, activeState);
         if (cancelled) return;
         setItems(res.items);
+        track('current_affairs_view');
         if (res.userLikes) setUserLikes(new Set(res.userLikes));
         if (res.userBookmarks) setUserBookmarks(new Set(res.userBookmarks));
         if (res.likeCounts) setLikeCounts(res.likeCounts);
