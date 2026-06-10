@@ -11,6 +11,7 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { EXAMS } from '@nexigrate/shared';
 import { api, ApiError } from '~/lib/api';
@@ -38,6 +39,7 @@ function examName(slug: string | null | undefined): string {
 }
 
 export default function MyExams() {
+  const t = useTranslations('myExams');
   const { user, mutate, refresh } = useUser();
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null); // action key while in-flight
@@ -75,17 +77,17 @@ export default function MyExams() {
       const { user: updated } = await api.manageExam(action, exam);
       mutate(() => updated);
       void refresh();
-      if (action === 'switch') toast.success(`Switched to ${examName(exam)}`);
-      if (action === 'add') { toast.success(`Added ${examName(exam)}`); setPicking(false); setQuery(''); }
-      if (action === 'remove') toast.success(`Removed ${examName(exam)}`);
+      if (action === 'switch') toast.success(t('switchedTo', { exam: examName(exam) }));
+      if (action === 'add') { toast.success(t('added', { exam: examName(exam) })); setPicking(false); setQuery(''); }
+      if (action === 'remove') toast.success(t('removed', { exam: examName(exam) }));
     } catch (err) {
       // Plan limit reached → nudge to upgrade instead of a dead-end error.
       if (err instanceof ApiError && err.status === 403) {
-        toast.error(err.message || 'Upgrade your plan to add more exams.');
+        toast.error(err.message || t('upgradeToAdd'));
         router.push('/upgrade');
         return;
       }
-      toast.error(err instanceof Error ? err.message : 'Something went wrong');
+      toast.error(err instanceof Error ? err.message : t('somethingWrong'));
     } finally {
       setBusy(null);
     }
@@ -95,12 +97,12 @@ export default function MyExams() {
     <section className="paper-card p-5">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="font-serif text-lg font-semibold text-ink-900">My Exams</h2>
-          <p className="mt-0.5 text-xs text-muted-500">Study for multiple exams and switch anytime.</p>
+          <h2 className="font-serif text-lg font-semibold text-ink-900">{t('title')}</h2>
+          <p className="mt-0.5 text-xs text-muted-500">{t('subtitle')}</p>
         </div>
         {!picking && (
           <button type="button" onClick={() => setPicking(true)} className="btn-ghost text-sm">
-            + Add exam
+            {t('addExam')}
           </button>
         )}
       </div>
@@ -109,7 +111,7 @@ export default function MyExams() {
       <ul className="mt-4 space-y-2">
         {enrolled.length === 0 && (
           <li className="rounded-xl border border-line bg-paper-50 px-4 py-3 text-sm text-muted-500">
-            No exam selected yet.
+            {t('noExamSelected')}
           </li>
         )}
         {enrolled.map((slug) => {
@@ -123,10 +125,10 @@ export default function MyExams() {
                 <p className="truncate text-sm font-medium text-ink-900">{examName(slug)}</p>
                 {isActive ? (
                   <span className="mt-0.5 inline-block rounded-full bg-ember-500/15 px-2 py-0.5 text-[11px] font-semibold text-ember-600">
-                    Active
+                    {t('active')}
                   </span>
                 ) : (
-                  <span className="mt-0.5 inline-block text-[11px] text-muted-500">Enrolled</span>
+                  <span className="mt-0.5 inline-block text-[11px] text-muted-500">{t('enrolled')}</span>
                 )}
               </div>
               <div className="flex shrink-0 items-center gap-2">
@@ -137,7 +139,7 @@ export default function MyExams() {
                     onClick={() => runAction('switch', slug, `switch:${slug}`)}
                     className="btn-ghost px-3 py-1.5 text-xs"
                   >
-                    {busy === `switch:${slug}` ? '…' : 'Switch to'}
+                    {busy === `switch:${slug}` ? '…' : t('switchTo')}
                   </button>
                 )}
                 {!isActive && (
@@ -145,10 +147,10 @@ export default function MyExams() {
                     type="button"
                     disabled={busy !== null}
                     onClick={() => runAction('remove', slug, `remove:${slug}`)}
-                    aria-label={`Remove ${examName(slug)}`}
+                    aria-label={t('removeAria', { exam: examName(slug) })}
                     className="rounded-lg px-2 py-1.5 text-xs text-muted-500 hover:bg-paper-200 hover:text-ink-900"
                   >
-                    {busy === `remove:${slug}` ? '…' : 'Remove'}
+                    {busy === `remove:${slug}` ? '…' : t('remove')}
                   </button>
                 )}
               </div>
@@ -166,8 +168,8 @@ export default function MyExams() {
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search exams… (UPSC, NEET, SSC…)"
-              aria-label="Search exams to add"
+              placeholder={t('searchPlaceholder')}
+              aria-label={t('searchAria')}
               className="w-full rounded-lg border border-line bg-paper-100 px-3 py-2 text-sm text-ink-900 placeholder:text-muted-400 focus:outline-none focus:ring-2 focus:ring-ember-500"
             />
             <button
@@ -175,13 +177,13 @@ export default function MyExams() {
               onClick={() => { setPicking(false); setQuery(''); }}
               className="shrink-0 rounded-lg px-3 py-2 text-xs text-muted-500 hover:bg-paper-200"
             >
-              Cancel
+              {t('cancel')}
             </button>
           </div>
           <div className="mt-3 grid max-h-64 grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-3">
             {candidates.length === 0 ? (
               <p className="col-span-full py-4 text-center text-xs text-muted-500">
-                No matching exams.
+                {t('noMatching')}
               </p>
             ) : (
               candidates.map((ex) => (
@@ -192,7 +194,7 @@ export default function MyExams() {
                   onClick={() => runAction('add', ex.id, `add:${ex.id}`)}
                   className="paper-card card-selectable px-3 py-2.5 text-left text-xs font-medium"
                 >
-                  {busy === `add:${ex.id}` ? 'Adding…' : ex.name}
+                  {busy === `add:${ex.id}` ? t('adding') : ex.name}
                 </button>
               ))
             )}

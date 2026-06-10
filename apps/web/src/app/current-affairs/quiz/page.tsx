@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { useAuth } from '~/lib/auth-context';
 import { api, type GeneratedMCQ } from '~/lib/api';
 import { Logo } from '~/components/Logo';
@@ -11,6 +12,7 @@ import { track } from '~/lib/analytics';
 type Phase = 'rules' | 'loading' | 'quiz' | 'submitting' | 'result';
 
 export default function CurrentAffairsQuizPage() {
+  const t = useTranslations('caQuiz');
   const { user, loading } = useAuth();
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>('rules');
@@ -31,7 +33,7 @@ export default function CurrentAffairsQuizPage() {
       const lang = getClientLocale();
       const res = await api.getCurrentAffairsQuiz(lang);
       if (!res.questions || res.questions.length === 0) {
-        setError('No quiz available for today. News may not have been ingested yet. Try again later.');
+        setError(t('errNoQuiz'));
         setPhase('rules');
         return;
       }
@@ -41,8 +43,8 @@ export default function CurrentAffairsQuizPage() {
       startTimeRef.current = Date.now();
       setTimeLeft(600);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Failed to load quiz';
-      setError(msg.includes('fetch') ? 'Server is generating quiz questions. Please wait 10 seconds and try again.' : msg.includes('404') ? 'No quiz available today — news ingestion may not have run yet.' : msg);
+      const msg = e instanceof Error ? e.message : t('errLoad');
+      setError(msg.includes('fetch') ? t('errGenerating') : msg.includes('404') ? t('errNotRun') : msg);
       setPhase('rules');
     }
   };
@@ -61,10 +63,10 @@ export default function CurrentAffairsQuizPage() {
       setResult(res);
       setPhase('result');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Submit failed');
+      setError(e instanceof Error ? e.message : t('errSubmit'));
       setPhase('quiz');
     }
-  }, []);
+  }, [t]);
 
   // Global timer
   useEffect(() => {
@@ -84,16 +86,16 @@ export default function CurrentAffairsQuizPage() {
   if (phase === 'rules') return (
     <main className="mx-auto flex min-h-dvh max-w-lg flex-col items-center justify-center px-5 py-12">
       <span className="text-5xl">📝</span>
-      <h1 className="font-serif mt-6 text-2xl font-bold text-ink-900">Daily Current Affairs Quiz</h1>
+      <h1 className="font-serif mt-6 text-2xl font-bold text-ink-900">{t('title')}</h1>
       <div className="paper-card mt-6 w-full p-5 space-y-3">
-        <div className="flex items-center gap-3"><span className="text-lg">📋</span><p className="text-sm text-ink-800">20 questions from today's news</p></div>
-        <div className="flex items-center gap-3"><span className="text-lg">⏱️</span><p className="text-sm text-ink-800">10 minutes total time</p></div>
-        <div className="flex items-center gap-3"><span className="text-lg">🚫</span><p className="text-sm text-ink-800">No going back once you move forward</p></div>
-        <div className="flex items-center gap-3"><span className="text-lg">🏆</span><p className="text-sm text-ink-800">Compete on the daily leaderboard</p></div>
+        <div className="flex items-center gap-3"><span className="text-lg">📋</span><p className="text-sm text-ink-800">{t('rule20q')}</p></div>
+        <div className="flex items-center gap-3"><span className="text-lg">⏱️</span><p className="text-sm text-ink-800">{t('rule10min')}</p></div>
+        <div className="flex items-center gap-3"><span className="text-lg">🚫</span><p className="text-sm text-ink-800">{t('ruleNoBack')}</p></div>
+        <div className="flex items-center gap-3"><span className="text-lg">🏆</span><p className="text-sm text-ink-800">{t('ruleCompete')}</p></div>
       </div>
       {error && <div className="banner banner-error mt-4 w-full">{error}</div>}
-      <button onClick={startQuiz} className="btn-primary mt-6 w-full">Start Quiz →</button>
-      <button onClick={() => router.back()} className="btn-ghost mt-3 w-full">← Back</button>
+      <button onClick={startQuiz} className="btn-primary mt-6 w-full">{t('startQuiz')}</button>
+      <button onClick={() => router.back()} className="btn-ghost mt-3 w-full">{t('back')}</button>
     </main>
   );
 
@@ -101,7 +103,7 @@ export default function CurrentAffairsQuizPage() {
   if (phase === 'loading') return (
     <main className="flex min-h-dvh flex-col items-center justify-center gap-3">
       <AILoader context="quiz" />
-      <p className="text-sm text-muted-500">Loading today's quiz...</p>
+      <p className="text-sm text-muted-500">{t('loadingQuiz')}</p>
     </main>
   );
 
@@ -109,7 +111,7 @@ export default function CurrentAffairsQuizPage() {
   if (phase === 'submitting') return (
     <main className="flex min-h-dvh flex-col items-center justify-center gap-3">
       <AILoader context="quiz" />
-      <p className="text-sm text-muted-500">Calculating results...</p>
+      <p className="text-sm text-muted-500">{t('calculating')}</p>
     </main>
   );
 
@@ -119,22 +121,22 @@ export default function CurrentAffairsQuizPage() {
       <div className="flex h-20 w-20 items-center justify-center rounded-full bg-paper-200 border-2 border-gold-500">
         <span className="text-3xl">{result.score >= 70 ? '🎉' : result.score >= 40 ? '👍' : '📖'}</span>
       </div>
-      <h1 className="font-serif mt-6 text-2xl font-bold text-ink-900">Quiz Complete!</h1>
+      <h1 className="font-serif mt-6 text-2xl font-bold text-ink-900">{t('quizComplete')}</h1>
       <p className="mt-3 text-lg text-ink-800">
-        Score: <span className="font-bold text-ember-600">{result.score}%</span> ({result.correct}/{result.total})
+        {t('scoreLine', { score: result.score, correct: result.correct, total: result.total })}
       </p>
       <p className="mt-1 text-sm text-muted-500">
-        Time: {Math.floor(result.timeTaken / 60)}:{String(result.timeTaken % 60).padStart(2, '0')} · Rank: #{result.rank}
+        {t('timeRank', { time: `${Math.floor(result.timeTaken / 60)}:${String(result.timeTaken % 60).padStart(2, '0')}`, rank: result.rank })}
       </p>
       <div className="mt-8 flex w-full flex-col gap-3">
-        <button onClick={() => router.push('/current-affairs/quiz/leaderboard')} className="btn-primary w-full">🏆 View Leaderboard</button>
-        <button onClick={() => router.push('/current-affairs')} className="btn-ghost w-full">← Back to Current Affairs</button>
-        <button onClick={() => router.push('/dashboard')} className="btn-ghost w-full">Dashboard</button>
+        <button onClick={() => router.push('/current-affairs/quiz/leaderboard')} className="btn-primary w-full">{t('viewLeaderboard')}</button>
+        <button onClick={() => router.push('/current-affairs')} className="btn-ghost w-full">{t('backToCA')}</button>
+        <button onClick={() => router.push('/dashboard')} className="btn-ghost w-full">{t('dashboard')}</button>
       </div>
 
       {/* Answer review */}
       <section className="mt-10 w-full">
-        <h2 className="font-serif text-lg font-semibold text-ink-900">Review</h2>
+        <h2 className="font-serif text-lg font-semibold text-ink-900">{t('review')}</h2>
         <div className="mt-4 space-y-3">
           {questions.map((q, i) => {
             const userAns = answers[i];
@@ -149,7 +151,7 @@ export default function CurrentAffairsQuizPage() {
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-ink-900">{q.question}</p>
                     <p className="mt-1 text-xs text-muted-500">
-                      Your: {userAns != null && userAns >= 0 ? ansKeys[userAns] : (typeof document !== 'undefined' && /nexigrate-language=hi/.test(document.cookie) ? 'छोड़ा गया' : 'Skipped')} · Correct: {q.correctOption}
+                      {t('yourAnswer', { answer: userAns != null && userAns >= 0 ? ansKeys[userAns]! : t('skipped') })} · {t('correctAnswer', { answer: q.correctOption })}
                     </p>
                     <p className="mt-1 text-xs text-ink-700">{q.explanation}</p>
                   </div>
@@ -167,10 +169,10 @@ export default function CurrentAffairsQuizPage() {
   if (!q) return (
     <main className="mx-auto flex min-h-dvh max-w-lg flex-col items-center justify-center px-5 py-12">
       <span className="text-4xl">📭</span>
-      <h2 className="font-serif mt-4 text-xl font-bold text-ink-900">No quiz available today</h2>
-      <p className="mt-2 text-sm text-muted-500 text-center">The daily quiz hasn&apos;t been generated yet. This usually happens if current affairs haven&apos;t been ingested today.</p>
-      <button onClick={() => { setPhase('rules'); setError(null); }} className="btn-primary mt-6 w-full">Try Again</button>
-      <button onClick={() => router.push('/current-affairs')} className="btn-ghost mt-2 w-full">← Back to News</button>
+      <h2 className="font-serif mt-4 text-xl font-bold text-ink-900">{t('noQuizTitle')}</h2>
+      <p className="mt-2 text-sm text-muted-500 text-center">{t('noQuizDesc')}</p>
+      <button onClick={() => { setPhase('rules'); setError(null); }} className="btn-primary mt-6 w-full">{t('tryAgain')}</button>
+      <button onClick={() => router.push('/current-affairs')} className="btn-ghost mt-2 w-full">{t('backToNews')}</button>
     </main>
   );
   const mins = Math.floor(timeLeft / 60);
@@ -187,8 +189,8 @@ export default function CurrentAffairsQuizPage() {
 
       {/* Progress */}
       <div className="mt-4 flex items-center justify-between">
-        <p className="text-sm font-medium text-ink-800">Question {idx + 1} / {questions.length}</p>
-        <p className="text-xs text-muted-500">{answers.filter(a => a >= 0).length} answered</p>
+        <p className="text-sm font-medium text-ink-800">{t('question', { n: idx + 1, total: questions.length })}</p>
+        <p className="text-xs text-muted-500">{t('answeredCount', { n: answers.filter(a => a >= 0).length })}</p>
       </div>
       <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-paper-300">
         <div className="h-full rounded-full bg-ember-500 transition-all" style={{ width: `${((idx + 1) / questions.length) * 100}%` }} />
@@ -203,7 +205,7 @@ export default function CurrentAffairsQuizPage() {
 
       {/* Question card */}
       <div className="paper-card mt-5 p-5">
-        <p className="text-xs text-muted-500 mb-2">{q.topic ?? 'Current Affairs'} · {q.difficulty}</p>
+        <p className="text-xs text-muted-500 mb-2">{q.topic ?? t('currentAffairs')} · {q.difficulty}</p>
         <p className="font-serif text-base font-medium leading-relaxed text-ink-900">{q.question}</p>
         <div className="mt-4 space-y-2">
           {q.options.map((opt, optIdx) => (
@@ -225,9 +227,9 @@ export default function CurrentAffairsQuizPage() {
       {/* Navigation — no back button */}
       <div className="mt-4">
         {idx >= questions.length - 1 ? (
-          <button onClick={submitQuiz} className="btn-primary w-full">Submit Quiz →</button>
+          <button onClick={submitQuiz} className="btn-primary w-full">{t('submitQuiz')}</button>
         ) : (
-          <button onClick={() => setIdx(i => i + 1)} className="btn-primary w-full">Next →</button>
+          <button onClick={() => setIdx(i => i + 1)} className="btn-primary w-full">{t('next')}</button>
         )}
       </div>
     </main>

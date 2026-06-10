@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { useAuth } from '~/lib/auth-context';
 import { api, type CurrentAffairsItem, type CAStateOption } from '~/lib/api';
 import { Logo } from '~/components/Logo';
@@ -11,14 +12,14 @@ import { track } from '~/lib/analytics';
 import { CATEGORY_EMOJIS, CATEGORY_IMAGES } from './_shared';
 
 const CATEGORIES = [
-  { key: 'all', label: 'All', emoji: '\u{1F4F0}' },
-  { key: 'national', label: 'National', emoji: '\u{1F1EE}\u{1F1F3}' },
-  { key: 'international', label: 'International', emoji: '\u{1F30D}' },
-  { key: 'economy', label: 'Economy', emoji: '\u{1F4B0}' },
-  { key: 'science-tech', label: 'Science', emoji: '\u{1F52C}' },
-  { key: 'sports', label: 'Sports', emoji: '\u{1F3CF}' },
-  { key: 'environment', label: 'Environment', emoji: '\u{1F331}' },
-];
+  { key: 'all', tKey: 'catAll', emoji: '\u{1F4F0}' },
+  { key: 'national', tKey: 'catNational', emoji: '\u{1F1EE}\u{1F1F3}' },
+  { key: 'international', tKey: 'catInternational', emoji: '\u{1F30D}' },
+  { key: 'economy', tKey: 'catEconomy', emoji: '\u{1F4B0}' },
+  { key: 'science-tech', tKey: 'catScience', emoji: '\u{1F52C}' },
+  { key: 'sports', tKey: 'catSports', emoji: '\u{1F3CF}' },
+  { key: 'environment', tKey: 'catEnvironment', emoji: '\u{1F331}' },
+] as const;
 
 /**
  * Current Affairs reels — PR-39 native scroll-snap rebuild.
@@ -47,6 +48,7 @@ const CATEGORIES = [
  * height so the snap geometry stays correct.
  */
 export default function CurrentAffairsShortsPage() {
+  const t = useTranslations('caFeed');
   const { user, loading } = useAuth();
   const router = useRouter();
   const [items, setItems] = useState<CurrentAffairsItem[]>([]);
@@ -100,7 +102,7 @@ export default function CurrentAffairsShortsPage() {
         // PR-34b (audit #36): drop the `as any` cast — the field is now
         // typed on CurrentAffairsResponse so the optional read is safe.
         setIsFromYesterday(Boolean(res.isFromYesterday));
-      } catch (e) { if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load'); }
+      } catch (e) { if (!cancelled) setError(e instanceof Error ? e.message : t('failLoad')); }
       finally { if (!cancelled) setPageLoading(false); }
     })();
     return () => { cancelled = true; };
@@ -210,7 +212,7 @@ export default function CurrentAffairsShortsPage() {
     <main className="shorts-shell flex min-h-dvh items-center justify-center px-5">
       <div className="text-center">
         <p className="text-ink-800 text-sm">{error}</p>
-        <button onClick={() => router.back()} className="btn-ghost mt-4">← Back</button>
+        <button onClick={() => router.back()} className="btn-ghost mt-4">{t('back')}</button>
       </div>
     </main>
   );
@@ -241,7 +243,7 @@ export default function CurrentAffairsShortsPage() {
           least one state, so the default national feed is unchanged. */}
       {states.length > 0 && (
         <div className="relative z-20 px-3 pt-1 flex items-center gap-2">
-          <span className="flex-shrink-0 text-[11px] font-semibold uppercase tracking-wide text-muted-500">📍 Edition</span>
+          <span className="flex-shrink-0 text-[11px] font-semibold uppercase tracking-wide text-muted-500">📍 {t('edition')}</span>
           <div className="flex gap-2 overflow-x-auto scrollbar-hide">
             <button
               onClick={() => setActiveState('all')}
@@ -293,7 +295,7 @@ export default function CurrentAffairsShortsPage() {
             }`}
           >
             <span className="text-sm">{cat.emoji}</span>
-            <span>{cat.label}</span>
+            <span>{t(cat.tKey)}</span>
           </button>
         ))}
       </div>
@@ -364,9 +366,9 @@ export default function CurrentAffairsShortsPage() {
               {filtered[currentIdx] && (
                 <>
                   <ActionBtn icon={userLikes.has(filtered[currentIdx]!.id) ? '❤️' : '🤍'} label={String(likeCounts[filtered[currentIdx]!.id] || '')} active={userLikes.has(filtered[currentIdx]!.id)} onClick={() => handleLike(filtered[currentIdx]!.id)} />
-                  <ActionBtn icon={userBookmarks.has(filtered[currentIdx]!.id) ? '🔖' : '📑'} label="Save" active={userBookmarks.has(filtered[currentIdx]!.id)} onClick={() => handleBookmark(filtered[currentIdx]!.id)} />
-                  <ActionBtn icon="↗️" label="Share" onClick={() => handleShare(filtered[currentIdx]!)} />
-                  <ActionBtn icon="🤖" label="Ask AI" onClick={() => router.push(`/chat?topic=${encodeURIComponent(filtered[currentIdx]!.headline)}`)} />
+                  <ActionBtn icon={userBookmarks.has(filtered[currentIdx]!.id) ? '🔖' : '📑'} label={t('save')} active={userBookmarks.has(filtered[currentIdx]!.id)} onClick={() => handleBookmark(filtered[currentIdx]!.id)} />
+                  <ActionBtn icon="↗️" label={t('share')} onClick={() => handleShare(filtered[currentIdx]!)} />
+                  <ActionBtn icon="🤖" label={t('askAI')} onClick={() => router.push(`/chat?topic=${encodeURIComponent(filtered[currentIdx]!.headline)}`)} />
                 </>
               )}
             </div>
@@ -441,6 +443,7 @@ interface ShortCardProps {
 }
 
 function ShortCard({ item, isActive, liked, bookmarked, likeCount, onLike, onBookmark, onShare, onTap, onAskNexi }: ShortCardProps) {
+  const t = useTranslations('caFeed');
   const emoji = CATEGORY_EMOJIS[item.category] ?? '📰';
   const keyPoints = extractKeyPoints(item.summary || item.body);
   // Prefer the REAL article image extracted from the source RSS feed;
@@ -473,7 +476,7 @@ function ShortCard({ item, isActive, liked, bookmarked, likeCount, onLike, onBoo
               {emoji} {item.category}
             </span>
             {item.factChecked && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gold-500/90 text-paper-50 shadow-sm">✓ Verified</span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gold-500/90 text-paper-50 shadow-sm">✓ {t('verified')}</span>
             )}
           </div>
         </div>
@@ -498,7 +501,7 @@ function ShortCard({ item, isActive, liked, bookmarked, likeCount, onLike, onBoo
               <p className="text-[10px] text-muted-400 truncate max-w-[60%]">{item.sources.slice(0, 2).join(' · ')}</p>
             )}
             <span className="text-[11px] text-ember-500 font-semibold flex items-center gap-1">
-              Read more
+              {t('readMore')}
               <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
             </span>
           </div>
