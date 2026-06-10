@@ -22,6 +22,7 @@ import { useUser } from '~/lib/userStore';
 import { api, type CurrentAffairsItem } from '~/lib/api';
 import { AILoader } from '~/components/ui/AILoader';
 import { Logo } from '~/components/Logo';
+import { getClientLocale } from '~/lib/locale';
 import { CATEGORY_EMOJIS, CATEGORY_IMAGES } from '../_shared';
 
 export default function SavedNewsPage() {
@@ -35,9 +36,7 @@ export default function SavedNewsPage() {
 
   const load = useCallback(async () => {
     try {
-      const lang = (typeof window !== 'undefined'
-        ? (localStorage.getItem('nexigrate-language') as 'en' | 'hi' | null)
-        : null) ?? 'en';
+      const lang = getClientLocale();
       const { bookmarks } = await api.getNewsBookmarks();
       if (bookmarks.length === 0) { setItems([]); return; }
 

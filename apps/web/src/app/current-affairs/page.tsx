@@ -6,6 +6,7 @@ import { api, type CurrentAffairsItem, type CAStateOption } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 import { Skeleton } from '~/components/Skeleton';
 import { AILoader } from '~/components/ui/AILoader';
+import { getClientLocale } from '~/lib/locale';
 import { CATEGORY_EMOJIS, CATEGORY_IMAGES } from './_shared';
 
 const CATEGORIES = [
@@ -87,7 +88,7 @@ export default function CurrentAffairsShortsPage() {
     setPageLoading(true);
     (async () => {
       try {
-        const lang = (localStorage.getItem('nexigrate-language') as 'en' | 'hi') || 'en';
+        const lang = getClientLocale();
         const res = await api.getCurrentAffairs(lang, activeState);
         if (cancelled) return;
         setItems(res.items);
@@ -532,8 +533,7 @@ function ShortCard({ item, isActive, liked, bookmarked, likeCount, onLike, onBoo
 
 /* ─── Helpers ─── */
 function getLang(): 'en' | 'hi' {
-  if (typeof window === 'undefined') return 'en';
-  return (localStorage.getItem('nexigrate-language') as 'en' | 'hi') || 'en';
+  return getClientLocale();
 }
 
 function extractKeyPoints(text: string): string[] {
