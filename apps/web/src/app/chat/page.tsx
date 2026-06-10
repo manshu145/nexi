@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import 'highlight.js/styles/github-dark.css';
+import { toast } from 'sonner';
 import { useAuth } from '~/lib/auth-context';
 import { useUser } from '~/lib/userStore';
 import { api, type ChatSessionSummary, type ChatMessage } from '~/lib/api';
@@ -162,7 +163,12 @@ function ChatPage() {
     const files = e.target.files;
     if (!files) return;
     Array.from(files).forEach(file => {
-      if (file.size > 5 * 1024 * 1024) return; // 5MB limit
+      if (file.size > 5 * 1024 * 1024) {
+        // Previously oversized files were silently skipped, leaving the
+        // user wondering why their attachment vanished. Surface a clear error.
+        toast.error(`"${file.name}" is larger than 5MB and can't be attached. Please attach a smaller file or compress the image.`);
+        return;
+      }
       const reader = new FileReader();
       reader.onload = () => {
         const data = reader.result as string;

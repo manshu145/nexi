@@ -111,7 +111,7 @@ export default function SupportPage() {
       // would just burn tokens.
       const prefix = sessionId ? '' : supportPrefix;
       const messageToSend = prefix + text;
-      const res = await api.sendChat(messageToSend, sessionId ?? undefined);
+      const res = await api.sendChat(messageToSend, sessionId ?? undefined, undefined, undefined, true);
       setSessionId(res.sessionId);
       const aiMsg: ChatMessage = { role: 'assistant', content: res.response, timestamp: new Date().toISOString() };
       setMessages(prev => [...prev, aiMsg]);

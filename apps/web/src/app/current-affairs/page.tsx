@@ -302,8 +302,12 @@ export default function CurrentAffairsShortsPage() {
           <div className="w-16 h-16 rounded-2xl bg-paper-300 flex items-center justify-center">
             <svg width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" className="text-muted-500"><path d="M19 20H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1m2 13a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2z"/></svg>
           </div>
-          <p className="mt-4 font-serif text-xl font-semibold text-ink-900">No news yet</p>
-          <p className="mt-2 text-sm text-muted-500 max-w-xs">Refreshes every 30 minutes. Check back soon!</p>
+          <p className="mt-4 font-serif text-xl font-semibold text-ink-900">{getLang() === 'hi' ? 'अभी कोई खबर नहीं' : 'No news yet'}</p>
+          <p className="mt-2 text-sm text-muted-500 max-w-xs">
+            {getLang() === 'hi'
+              ? 'हिंदी अनुवाद तैयार हो रहा है — खबरें हर 30 मिनट में अपडेट होती हैं। थोड़ी देर में फिर देखें, या ऊपर अंग्रेज़ी पर स्विच करें।'
+              : 'Refreshes every 30 minutes. Check back soon!'}
+          </p>
         </div>
       ) : (
         <div className="flex-1 relative overflow-hidden">
