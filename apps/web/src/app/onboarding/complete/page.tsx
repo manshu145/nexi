@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import type { AssessmentResult } from '~/lib/api';
 import { api } from '~/lib/api';
 import { AILoader } from '~/components/ui/AILoader';
+import { getClientLocale } from '~/lib/locale';
 
 function CreditCounter({ target }: { target: number }) {
   const [count, setCount] = useState(0);
@@ -99,11 +100,7 @@ export default function CompletePage() {
     }
   }, []);
 
-  const lang = typeof window !== 'undefined' ? (() => {
-    const m = document.cookie.match(/nexigrate-language=(en|hi)/);
-    if (m) return m[1] as 'en' | 'hi';
-    return (localStorage.getItem('nexigrate-language') as 'en'|'hi') || 'en';
-  })() : 'en';
+  const lang = getClientLocale();
 
   if (pageLoading) {
     return (

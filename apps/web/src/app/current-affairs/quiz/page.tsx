@@ -5,6 +5,7 @@ import { useAuth } from '~/lib/auth-context';
 import { api, type GeneratedMCQ } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 import { AILoader } from '~/components/ui/AILoader';
+import { getClientLocale } from '~/lib/locale';
 
 type Phase = 'rules' | 'loading' | 'quiz' | 'submitting' | 'result';
 
@@ -26,7 +27,7 @@ export default function CurrentAffairsQuizPage() {
   const startQuiz = async () => {
     setPhase('loading');
     try {
-      const lang = (localStorage.getItem('nexigrate-language') as 'en' | 'hi') || 'en';
+      const lang = getClientLocale();
       const res = await api.getCurrentAffairsQuiz(lang);
       if (!res.questions || res.questions.length === 0) {
         setError('No quiz available for today. News may not have been ingested yet. Try again later.');

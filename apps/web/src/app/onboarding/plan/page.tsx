@@ -7,6 +7,7 @@ import { useUser } from '~/lib/userStore';
 import { api, type Plan, type StoredUser } from '~/lib/api';
 import { planFeatureBullets } from '~/lib/planDisplay';
 import { AILoader } from '~/components/ui/AILoader';
+import { getClientLocale } from '~/lib/locale';
 
 type PlanId = 'free' | 'scholar' | 'aspirant' | 'achiever';
 
@@ -122,11 +123,7 @@ export default function PlanSelectionPage() {
     setSelected(recommendPlan(me.onboardingLevel));
   }, [me]);
 
-  const lang = typeof window !== 'undefined' ? (() => {
-    const m = document.cookie.match(/nexigrate-language=(en|hi)/);
-    if (m) return m[1] as 'en' | 'hi';
-    return (localStorage.getItem('nexigrate-language') as 'en' | 'hi') || 'en';
-  })() : 'en';
+  const lang = getClientLocale();
 
   const recommended: PlanId = useMemo(
     () => recommendPlan(me?.onboardingLevel ?? null),

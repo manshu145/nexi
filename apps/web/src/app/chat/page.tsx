@@ -9,6 +9,7 @@ import { useUser } from '~/lib/userStore';
 import { api, type ChatSessionSummary, type ChatMessage } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 import { AILoader } from '~/components/ui/AILoader';
+import { getClientLocale } from '~/lib/locale';
 
 export default function ChatPageWrapper() {
   return (
@@ -230,7 +231,7 @@ function ChatPage() {
 
   const handleVisualize = async (text: string) => {
     try {
-      const lang = (localStorage.getItem('nexigrate-language') as 'en' | 'hi') || 'en';
+      const lang = getClientLocale();
       const res = await api.visualizeSelection(text.slice(0, 500), 'general', lang);
       setVizContent(res.mermaid);
     } catch { /* ignore */ }
@@ -315,8 +316,7 @@ function ChatPage() {
 
   useEffect(() => {
     if (!user) return;
-    const lang = (localStorage.getItem('nexigrate-language') as 'en' | 'hi') || 'en';
-    setUserLang(lang);
+    setUserLang(getClientLocale());
   }, [user]);
 
   useEffect(() => {
