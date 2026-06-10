@@ -12,6 +12,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { useAuth } from '~/lib/auth-context';
 import { useUser } from '~/lib/userStore';
 import { api } from '~/lib/api';
@@ -29,6 +30,8 @@ export default function LeaderboardPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const { user: me } = useUser();
+  const t = useTranslations('leaderboard');
+  const tc = useTranslations('common');
   const [rows, setRows] = useState<LeaderboardEntry[]>([]);
   const [yesterdayWinner, setYesterdayWinner] = useState<LeaderboardEntry | null>(null);
   const [loading, setLoading] = useState(true);
@@ -59,20 +62,20 @@ export default function LeaderboardPage() {
   return (
     <main className="min-h-screen bg-paper-100 px-4 py-6 pb-24">
       <header className="mx-auto mb-6 max-w-2xl">
-        <button type="button" onClick={() => router.back()} className="btn-ghost-sm mb-3">&larr; Back</button>
-        <h1 className="font-serif text-2xl font-semibold text-ink-900">Quiz Leaderboard</h1>
-        <p className="mt-1 text-sm text-muted-500">Top scorers on today&apos;s Current Affairs quiz. Take the quiz to compete!</p>
+        <button type="button" onClick={() => router.back()} className="btn-ghost-sm mb-3">&larr; {tc('back')}</button>
+        <h1 className="font-serif text-2xl font-semibold text-ink-900">{t('title')}</h1>
+        <p className="mt-1 text-sm text-muted-500">{t('subtitle')}</p>
       </header>
 
       {/* Yesterday's winner */}
       {yesterdayWinner && (
         <section className="mx-auto mb-4 max-w-2xl">
           <div className="paper-card p-4 border-gold-500/40 bg-gold-500/5">
-            <p className="text-[10px] uppercase tracking-wider text-gold-600 font-semibold mb-1">Yesterday&apos;s Champion</p>
+            <p className="text-[10px] uppercase tracking-wider text-gold-600 font-semibold mb-1">{t('yesterdayChampion')}</p>
             <div className="flex items-center justify-between">
               <div>
                 <p className="font-serif text-lg font-bold text-ink-900">{yesterdayWinner.userName}</p>
-                <p className="text-xs text-muted-500">Score: {yesterdayWinner.score}% &middot; Time: {Math.floor(yesterdayWinner.timeTaken / 60)}m {yesterdayWinner.timeTaken % 60}s</p>
+                <p className="text-xs text-muted-500">{t('score')}: {yesterdayWinner.score}% &middot; {t('time')}: {Math.floor(yesterdayWinner.timeTaken / 60)}m {yesterdayWinner.timeTaken % 60}s</p>
               </div>
               <span className="text-3xl">🏆</span>
             </div>
@@ -86,11 +89,11 @@ export default function LeaderboardPage() {
           <div className="paper-card p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs font-medium uppercase tracking-wider text-muted-500">Your rank today</p>
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-500">{t('yourRankToday')}</p>
                 <p className="font-serif mt-1 text-2xl font-semibold text-ember-600">#{myRank + 1}</p>
               </div>
               <div className="text-right">
-                <p className="text-xs font-medium uppercase tracking-wider text-muted-500">Score</p>
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-500">{t('score')}</p>
                 <p className="font-serif mt-1 text-2xl font-semibold text-ink-900">{rows[myRank]?.score}%</p>
               </div>
             </div>
@@ -103,8 +106,8 @@ export default function LeaderboardPage() {
         {rows.length === 0 ? (
           <div className="paper-card p-8 text-center">
             <p className="text-lg mb-2">📝</p>
-            <p className="text-sm text-muted-500">No quiz submissions yet today.</p>
-            <button onClick={() => router.push('/current-affairs/quiz')} className="btn-primary mt-4 text-sm">Take Today&apos;s Quiz</button>
+            <p className="text-sm text-muted-500">{t('noSubmissions')}</p>
+            <button onClick={() => router.push('/current-affairs/quiz')} className="btn-primary mt-4 text-sm">{t('takeQuiz')}</button>
           </div>
         ) : (
           <ol className="space-y-2">
@@ -129,8 +132,8 @@ export default function LeaderboardPage() {
                       </span>
                       <div className="flex-1 min-w-0">
                         <p className="truncate text-sm font-medium text-ink-900">
-                          {r.userName || 'Student'}
-                          {isMe && <span className="ml-2 rounded-full bg-ember-500 px-1.5 py-0.5 text-[10px] font-semibold text-paper-50">you</span>}
+                          {r.userName || t('student')}
+                          {isMe && <span className="ml-2 rounded-full bg-ember-500 px-1.5 py-0.5 text-[10px] font-semibold text-paper-50">{t('you')}</span>}
                         </p>
                         <p className="text-[11px] text-muted-500">{mins}m {secs}s</p>
                       </div>
