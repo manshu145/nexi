@@ -51,6 +51,19 @@ function newId(): string {
   return `n_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+/**
+ * In-app notifications auto-expire from the bell 12 hours after creation.
+ * Founder ask: "news ya notification 12 ghanta me hat jaye". We hide expired
+ * items on read (list + unreadCount) so they vanish from the bell without
+ * needing a scheduled cleanup job; the docs are harmless to leave behind.
+ */
+const NOTIFICATION_TTL_MS = 12 * 60 * 60 * 1000;
+
+/** ISO timestamp of the oldest notification still allowed to show (now − 12h). */
+function ttlCutoffIso(): string {
+  return new Date(Date.now() - NOTIFICATION_TTL_MS).toISOString();
+}
+
 // ─── Firestore ─────────────────────────────────────────────────────────────
 
 export class FirestoreNotificationStore implements NotificationStore {
@@ -77,18 +90,28 @@ export class FirestoreNotificationStore implements NotificationStore {
   }
 
   async list(userId: string, limit = 20): Promise<AppNotification[]> {
-    const snap = await this.col(userId).orderBy('createdAt', 'desc').limit(limit).get();
-    return snap.docs.map(d => {
-      const { dedupeKey, ...rest } = d.data() as AppNotification & { dedupeKey?: string };
-      return rest as AppNotification;
-    });
+    // Over-fetch a little, then drop items older than the 12h TTL so expired
+    // notifications disappear from the bell automatically.
+    const cutoff = ttlCutoffIso();
+    const snap = await this.col(userId).orderBy('createdAt', 'desc').limit(limit + 20).get();
+    return snap.docs
+      .map(d => {
+        const { dedupeKey, ...rest } = d.data() as AppNotification & { dedupeKey?: string };
+        return rest as AppNotification;
+      })
+      .filter(n => (n.createdAt ?? '') >= cutoff)
+      .slice(0, limit);
   }
 
   async unreadCount(userId: string): Promise<number> {
-    // Count within the most recent 30 — enough for a "9+" badge without a
-    // count() index. (A user with >30 unread sees "30+", which is fine.)
+    // Count unread within the most recent 30 that are still within the 12h
+    // TTL — enough for a "9+" badge without a count() index.
+    const cutoff = ttlCutoffIso();
     const snap = await this.col(userId).orderBy('createdAt', 'desc').limit(30).get();
-    return snap.docs.filter(d => (d.data() as AppNotification).isRead === false).length;
+    return snap.docs.filter(d => {
+      const data = d.data() as AppNotification;
+      return data.isRead === false && (data.createdAt ?? '') >= cutoff;
+    }).length;
   }
 
   async markRead(userId: string, id: string): Promise<void> {
@@ -126,11 +149,16 @@ export class InMemoryNotificationStore implements NotificationStore {
   }
 
   async list(userId: string, limit = 20): Promise<AppNotification[]> {
-    return (this.map.get(userId) ?? []).slice(0, limit).map(({ dedupeKey, ...rest }) => rest as AppNotification);
+    const cutoff = ttlCutoffIso();
+    return (this.map.get(userId) ?? [])
+      .filter(x => x.createdAt >= cutoff)
+      .slice(0, limit)
+      .map(({ dedupeKey, ...rest }) => rest as AppNotification);
   }
 
   async unreadCount(userId: string): Promise<number> {
-    return (this.map.get(userId) ?? []).filter(x => !x.isRead).length;
+    const cutoff = ttlCutoffIso();
+    return (this.map.get(userId) ?? []).filter(x => !x.isRead && x.createdAt >= cutoff).length;
   }
 
   async markRead(userId: string, id: string): Promise<void> {
