@@ -84,16 +84,40 @@ export class FirestoreAnalyticsStore implements AnalyticsStore {
     if (valid.length === 0) return;
 
     // 1. Increment today's rollup doc (one write).
+    //
+    // IMPORTANT: build NESTED objects (events:{...}, dims:{exam:{...}}) rather
+    // than dotted keys ("events.chapter_open"). With set({merge:true}) a dotted
+    // key is treated as a LITERAL field name containing a dot — NOT a nested
+    // path (only update() interprets dotted field paths). The old code wrote
+    // dotted keys, so `total` incremented but the nested `events` map stayed
+    // empty → the dashboard read `data.events` as {} and every per-type count
+    // (Chapters/Quizzes/Mock/Reels/Essays) and dimension breakdown showed 0
+    // even though events were flowing. Counting per-type first lets us apply a
+    // single increment(n) per type for a batch.
     const today = dateId(new Date());
-    const updates: Record<string, unknown> = { date: today, total: FieldValue.increment(valid.length) };
+    const typeCounts: Record<string, number> = {};
+    const examCounts: Record<string, number> = {};
+    const langCounts: Record<string, number> = {};
     for (const e of valid) {
-      updates[`events.${e.type}`] = FieldValue.increment(1);
-      // Dimension rollups (exam-wise engagement, language split) from props.
+      typeCounts[e.type] = (typeCounts[e.type] ?? 0) + 1;
       const exam = e.props?.['exam'];
-      if (exam && SAFE_DIM.test(exam)) updates[`dims.exam.${exam}`] = FieldValue.increment(1);
+      if (exam && SAFE_DIM.test(exam)) examCounts[exam] = (examCounts[exam] ?? 0) + 1;
       const lang = e.props?.['lang'];
-      if (lang && SAFE_DIM.test(lang)) updates[`dims.lang.${lang}`] = FieldValue.increment(1);
+      if (lang && SAFE_DIM.test(lang)) langCounts[lang] = (langCounts[lang] ?? 0) + 1;
     }
+    const toIncMap = (counts: Record<string, number>) =>
+      Object.fromEntries(Object.entries(counts).map(([k, n]) => [k, FieldValue.increment(n)]));
+
+    const updates: Record<string, unknown> = {
+      date: today,
+      total: FieldValue.increment(valid.length),
+      events: toIncMap(typeCounts),
+    };
+    const dims: Record<string, unknown> = {};
+    if (Object.keys(examCounts).length > 0) dims['exam'] = toIncMap(examCounts);
+    if (Object.keys(langCounts).length > 0) dims['lang'] = toIncMap(langCounts);
+    if (Object.keys(dims).length > 0) updates['dims'] = dims;
+
     await this.db.collection('analyticsDaily').doc(today).set(updates, { merge: true });
 
     // 2. Persist rich events to the user's activity log (best-effort).
