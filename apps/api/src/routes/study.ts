@@ -516,6 +516,7 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
   app.get('/analysis/:examSlug', async (c) => {
     const principal = requireAuth(c);
     const examSlug = c.req.param('examSlug');
+    const hi = ((c.req.query('lang') as 'en' | 'hi') || 'en') === 'hi';
 
     // Use the cache-backed fallback so analysis works for AI-generated exams
     // (e.g. CGPSC) too, not only hardcoded ones.
@@ -551,16 +552,16 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
           subScoreSum += score;
           subScoreCount++;
           if (score < 60) {
-            weakChapters.push({ subject: sub.slug, chapter: ch.slug, chapterName: ch.name, score });
+            weakChapters.push({ subject: sub.slug, chapter: ch.slug, chapterName: hi ? (ch.nameHi ?? ch.name) : ch.name, score });
           } else if (score >= 80) {
-            strongChapters.push({ subject: sub.slug, chapter: ch.slug, chapterName: ch.name, score });
+            strongChapters.push({ subject: sub.slug, chapter: ch.slug, chapterName: hi ? (ch.nameHi ?? ch.name) : ch.name, score });
           }
         }
       }
 
       subjectBreakdown.push({
         subject: sub.slug,
-        subjectName: sub.name,
+        subjectName: hi ? (sub.nameHi ?? sub.name) : sub.name,
         completed: subCompleted,
         total: subChapters,
         avgScore: subScoreCount > 0 ? Math.round(subScoreSum / subScoreCount) : 0,

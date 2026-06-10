@@ -1,11 +1,13 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { useAuth } from '~/lib/auth-context';
 import { useUser } from '~/lib/userStore';
 import { api } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 import { AILoader } from '~/components/ui/AILoader';
+import { getClientLocale } from '~/lib/locale';
 
 interface SubjectBreakdown { subject: string; subjectName: string; completed: number; total: number; avgScore: number; }
 interface ChapterInfo { subject: string; chapter: string; chapterName: string; score: number; }
@@ -17,6 +19,8 @@ export default function LevelPage() {
   const { user, loading } = useAuth();
   const { user: userInfo, loading: meLoading } = useUser();
   const router = useRouter();
+  const t = useTranslations('learningProfile');
+  const tc = useTranslations('common');
   const [analysis, setAnalysis] = useState<AnalysisData | null>(null);
   const [mockStats, setMockStats] = useState<{ count: number; best: number } | null>(null);
   const [pageLoading, setPageLoading] = useState(true);
@@ -30,7 +34,7 @@ export default function LevelPage() {
         const exam = userInfo.targetExam;
         if (!exam) { router.replace('/onboarding/language'); return; }
         const token = await user.getIdToken();
-        const res = await fetch(`${API}/v1/study/analysis/${exam}`, { headers: { Authorization: `Bearer ${token}` } });
+        const res = await fetch(`${API}/v1/study/analysis/${exam}?lang=${getClientLocale()}`, { headers: { Authorization: `Bearer ${token}` } });
         if (res.ok) setAnalysis(await res.json());
         // Mock-test activity (a now-prominent feature) — best-effort, never
         // blocks the page. Counts submitted attempts + best percentage.
@@ -53,7 +57,7 @@ export default function LevelPage() {
     </main>
   );
 
-  const levelLabel = userInfo?.onboardingLevel === 'advanced' ? 'Advanced' : userInfo?.onboardingLevel === 'intermediate' ? 'Intermediate' : 'Beginner';
+  const levelLabel = userInfo?.onboardingLevel === 'advanced' ? t('levelAdvanced') : userInfo?.onboardingLevel === 'intermediate' ? t('levelIntermediate') : t('levelBeginner');
   const levelColor = userInfo?.onboardingLevel === 'advanced' ? 'text-amber-600' : userInfo?.onboardingLevel === 'intermediate' ? 'text-amber-500' : 'text-stone-500';
   const totalChaptersDone = analysis?.subjectBreakdown.reduce((sum, s) => sum + s.completed, 0) ?? 0;
   const totalChapters = analysis?.subjectBreakdown.reduce((sum, s) => sum + s.total, 0) ?? 0;
@@ -61,34 +65,34 @@ export default function LevelPage() {
   return (
     <main className="mx-auto flex min-h-dvh max-w-lg flex-col px-5 pt-6 pb-28">
       <header className="flex items-center justify-between">
-        <button onClick={() => router.back()} className="btn-ghost-sm">← Back</button>
+        <button onClick={() => router.back()} className="btn-ghost-sm">← {tc('back')}</button>
         <Logo height={36} />
       </header>
 
       <section className="mt-6">
-        <h1 className="font-serif text-xl font-bold text-ink-900">Your Learning Profile</h1>
-        <p className="mt-1 text-sm text-muted-500">Track your progress across all activities</p>
+        <h1 className="font-serif text-xl font-bold text-ink-900">{t('title')}</h1>
+        <p className="mt-1 text-sm text-muted-500">{t('subtitle')}</p>
       </section>
 
       {/* Level & Assessment Card */}
       <div className="paper-card mt-6 p-5">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">Assessment Result</h2>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">{t('assessmentResult')}</h2>
         <div className="mt-3 space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-400">Exam</span>
+            <span className="text-xs text-muted-400">{t('exam')}</span>
             <span className="text-sm font-medium text-ink-900 text-right truncate max-w-[60%]">{userInfo?.targetExam?.replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-400">Assessment Score</span>
+            <span className="text-xs text-muted-400">{t('assessmentScore')}</span>
             <span className="text-sm font-medium text-ink-900">{userInfo?.onboardingScore ?? '—'}/15</span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-400">Level</span>
+            <span className="text-xs text-muted-400">{t('level')}</span>
             <span className={`text-sm font-bold ${levelColor}`}>{levelLabel}</span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-400">Member Since</span>
-            <span className="text-sm font-medium text-ink-900">{userInfo?.createdAt ? new Date(userInfo.createdAt).toLocaleDateString('en-IN') : '—'}</span>
+            <span className="text-xs text-muted-400">{t('memberSince')}</span>
+            <span className="text-sm font-medium text-ink-900">{userInfo?.createdAt ? new Date(userInfo.createdAt).toLocaleDateString(userInfo.language === 'hi' ? 'hi-IN' : 'en-IN') : '—'}</span>
           </div>
         </div>
       </div>
@@ -97,21 +101,21 @@ export default function LevelPage() {
       <div className="mt-4 grid grid-cols-3 gap-3">
         <div className="paper-card p-3 text-center">
           <p className="text-xl font-bold text-ink-900">{totalChaptersDone}</p>
-          <p className="text-[10px] text-muted-500 mt-0.5">Chapters Done</p>
+          <p className="text-[10px] text-muted-500 mt-0.5">{t('chaptersDone')}</p>
         </div>
         <div className="paper-card p-3 text-center">
           <p className="text-xl font-bold text-ink-900">{userInfo?.currentStreak ?? 0}</p>
-          <p className="text-[10px] text-muted-500 mt-0.5">Day Streak</p>
+          <p className="text-[10px] text-muted-500 mt-0.5">{t('dayStreak')}</p>
         </div>
         <div className="paper-card p-3 text-center">
           <p className="text-xl font-bold text-ink-900">{userInfo?.credits ?? 0}</p>
-          <p className="text-[10px] text-muted-500 mt-0.5">Credits</p>
+          <p className="text-[10px] text-muted-500 mt-0.5">{t('credits')}</p>
         </div>
       </div>
 
       {/* Keep practicing — surface the exam-prep features (PYQ is new). */}
       <div className="paper-card mt-4 p-5">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">Sharpen Up</h2>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">{t('sharpenUp')}</h2>
         <div className="mt-3 grid grid-cols-2 gap-3">
           <button
             type="button"
@@ -124,7 +128,7 @@ export default function LevelPage() {
                 PYQ
                 <span className="rounded-full bg-ember-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-ember-600">New</span>
               </p>
-              <p className="text-[10px] text-muted-500">Previous year questions</p>
+              <p className="text-[10px] text-muted-500">{t('pyqDesc')}</p>
             </div>
           </button>
           <button
@@ -134,8 +138,8 @@ export default function LevelPage() {
           >
             <span className="text-lg">🧪</span>
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-ink-900">Mock Tests</p>
-              <p className="text-[10px] text-muted-500">Full-length practice</p>
+              <p className="text-sm font-semibold text-ink-900">{t('mockTests')}</p>
+              <p className="text-[10px] text-muted-500">{t('mockTestsDesc')}</p>
             </div>
           </button>
         </div>
@@ -144,7 +148,7 @@ export default function LevelPage() {
       {/* Exam Readiness */}
       {analysis && (
         <div className="paper-card mt-4 p-5">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">Exam Readiness</h2>
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">{t('examReadiness')}</h2>
           <div className="mt-3 flex items-center gap-4">
             <div className="relative h-16 w-16 flex-shrink-0">
               <svg className="h-16 w-16 -rotate-90" viewBox="0 0 36 36">
@@ -154,8 +158,8 @@ export default function LevelPage() {
               <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-ink-900">{analysis.overallPercent}%</span>
             </div>
             <div>
-              <p className="text-sm font-medium text-ink-900">{totalChaptersDone}/{totalChapters} chapters completed</p>
-              <p className="text-xs text-muted-500 mt-0.5">Keep studying to improve your readiness</p>
+              <p className="text-sm font-medium text-ink-900">{t('chaptersCompleted', { done: totalChaptersDone, total: totalChapters })}</p>
+              <p className="text-xs text-muted-500 mt-0.5">{t('keepStudying')}</p>
             </div>
           </div>
         </div>
@@ -164,7 +168,7 @@ export default function LevelPage() {
       {/* Subject-wise Progress */}
       {analysis && analysis.subjectBreakdown.length > 0 && (
         <div className="paper-card mt-4 p-5">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">Subject Progress</h2>
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">{t('subjectProgress')}</h2>
           <div className="mt-3 space-y-3">
             {analysis.subjectBreakdown.map((sub) => (
               <div key={sub.subject}>
@@ -184,7 +188,7 @@ export default function LevelPage() {
       {/* Weak Areas */}
       {analysis && analysis.weakChapters.length > 0 && (
         <div className="paper-card mt-4 p-5">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-red-500">Needs Improvement</h2>
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-red-500">{t('needsImprovement')}</h2>
           <ul className="mt-3 space-y-2">
             {analysis.weakChapters.slice(0, 5).map((ch) => (
               <li key={`${ch.subject}/${ch.chapter}`} className="flex items-center justify-between rounded-lg bg-red-50 dark:bg-red-950/20 px-3 py-2">
@@ -199,7 +203,7 @@ export default function LevelPage() {
       {/* Strong Areas */}
       {analysis && analysis.strongChapters.length > 0 && (
         <div className="paper-card mt-4 p-5">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-amber-500">Strong Areas</h2>
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-amber-500">{t('strongAreas')}</h2>
           <ul className="mt-3 space-y-2">
             {analysis.strongChapters.slice(0, 5).map((ch) => (
               <li key={`${ch.subject}/${ch.chapter}`} className="flex items-center justify-between rounded-lg bg-amber-50 dark:bg-amber-950/20 px-3 py-2">
@@ -213,26 +217,26 @@ export default function LevelPage() {
 
       {/* Activity Summary */}
       <div className="paper-card mt-4 p-5">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">Activity Summary</h2>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">{t('activitySummary')}</h2>
         <div className="mt-3 space-y-2.5">
           <div className="flex items-center justify-between border-b border-line pb-2">
             <div className="flex items-center gap-2">
               <span className="text-sm">📖</span>
-              <span className="text-xs text-ink-800">Chapters Read</span>
+              <span className="text-xs text-ink-800">{t('chaptersRead')}</span>
             </div>
             <span className="text-sm font-bold text-ink-900">{totalChaptersDone}</span>
           </div>
           <div className="flex items-center justify-between border-b border-line pb-2">
             <div className="flex items-center gap-2">
               <span className="text-sm">🎯</span>
-              <span className="text-xs text-ink-800">Chapter Quizzes Passed</span>
+              <span className="text-xs text-ink-800">{t('quizzesPassed')}</span>
             </div>
             <span className="text-sm font-bold text-ink-900">{analysis?.strongChapters.length ?? 0}</span>
           </div>
           <div className="flex items-center justify-between border-b border-line pb-2">
             <div className="flex items-center gap-2">
               <span className="text-sm">🧪</span>
-              <span className="text-xs text-ink-800">Mock Tests Taken</span>
+              <span className="text-xs text-ink-800">{t('mockTestsTaken')}</span>
             </div>
             <span className="text-sm font-bold text-ink-900">{mockStats?.count ?? 0}</span>
           </div>
@@ -240,7 +244,7 @@ export default function LevelPage() {
             <div className="flex items-center justify-between border-b border-line pb-2">
               <div className="flex items-center gap-2">
                 <span className="text-sm">🏆</span>
-                <span className="text-xs text-ink-800">Best Mock Score</span>
+                <span className="text-xs text-ink-800">{t('bestMockScore')}</span>
               </div>
               <span className="text-sm font-bold text-ink-900">{mockStats.best}%</span>
             </div>
@@ -248,21 +252,21 @@ export default function LevelPage() {
           <div className="flex items-center justify-between border-b border-line pb-2">
             <div className="flex items-center gap-2">
               <span className="text-sm">📰</span>
-              <span className="text-xs text-ink-800">Current Affairs Quizzes</span>
+              <span className="text-xs text-ink-800">{t('caQuizzes')}</span>
             </div>
             <span className="text-sm font-bold text-ink-900">—</span>
           </div>
           <div className="flex items-center justify-between border-b border-line pb-2">
             <div className="flex items-center gap-2">
               <span className="text-sm">🔥</span>
-              <span className="text-xs text-ink-800">Best Streak</span>
+              <span className="text-xs text-ink-800">{t('bestStreak')}</span>
             </div>
-            <span className="text-sm font-bold text-ink-900">{userInfo?.bestStreak ?? 0} days</span>
+            <span className="text-sm font-bold text-ink-900">{userInfo?.bestStreak ?? 0} {t('days')}</span>
           </div>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="text-sm">💎</span>
-              <span className="text-xs text-ink-800">Total Credits Earned</span>
+              <span className="text-xs text-ink-800">{t('totalCreditsEarned')}</span>
             </div>
             <span className="text-sm font-bold text-ink-900">{userInfo?.credits ?? 0}</span>
           </div>

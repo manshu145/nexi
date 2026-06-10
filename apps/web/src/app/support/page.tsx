@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
 import { useAuth } from '~/lib/auth-context';
@@ -54,8 +55,9 @@ const DEFAULT_SUPPORT_PREFIX = buildSupportPrefix(DEFAULT_PRICE_LINE);
 export default function SupportPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const t = useTranslations('support');
   const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: 'assistant', content: "Hi! I'm Nexi Support. I can help you with:\n\n- **Account & billing** issues\n- **Credits & chapter unlock** problems\n- **Plan upgrades** & payment queries\n- **Technical bugs** on the platform\n\nHow can I help you today?", timestamp: new Date().toISOString() },
+    { role: 'assistant', content: '', timestamp: new Date().toISOString() },
   ]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [input, setInput] = useState('');
@@ -76,6 +78,13 @@ export default function SupportPage() {
 
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+
+  // Set the localized greeting once (can't use t() in useState initializer).
+  useEffect(() => {
+    setMessages((prev) => (prev.length === 1 && prev[0] && prev[0].content === ''
+      ? [{ ...prev[0], content: t('greeting') }]
+      : prev));
+  }, [t]);
 
   // Fetch the live plan matrix and rebuild the prompt with the real
   // prices. Failure is silent — DEFAULT_SUPPORT_PREFIX continues to apply.
@@ -136,18 +145,18 @@ export default function SupportPage() {
     const subject = ticketSubject.trim();
     const message = ticketMessage.trim().slice(0, 1000);
     if (!subject || !message) {
-      toast.error('Both subject and description are required');
+      toast.error(t('bothRequired'));
       return;
     }
     if (submittingTicket) return;
     setSubmittingTicket(true);
     try {
       await api.createSupportTicket(subject, message);
-      toast.success('Ticket created — admin will reply soon');
+      toast.success(t('ticketCreated'));
       setTicketSubject('');
       setTicketMessage('');
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to create ticket');
+      toast.error(e instanceof Error ? e.message : t('ticketFailed'));
     } finally {
       setSubmittingTicket(false);
     }
@@ -163,8 +172,8 @@ export default function SupportPage() {
       </header>
 
       <section className="mt-6">
-        <h1 className="font-serif text-2xl font-bold text-ink-900">Support</h1>
-        <p className="mt-1 text-sm text-muted-500">Chat with Nexi or contact admin for help.</p>
+        <h1 className="font-serif text-2xl font-bold text-ink-900">{t('title')}</h1>
+        <p className="mt-1 text-sm text-muted-500">{t('subtitle')}</p>
       </section>
 
       {/* Chat area */}
@@ -197,7 +206,7 @@ export default function SupportPage() {
       {/* Quick help buttons */}
       {messages.length <= 1 && (
         <div className="mt-3 flex flex-wrap gap-2">
-          {['Credits not updating', 'Next chapter locked', 'Payment failed', 'How to upgrade plan?', 'Account delete'].map(q => (
+          {[t('q1'), t('q2'), t('q3'), t('q4'), t('q5')].map(q => (
             <button key={q} onClick={() => setInput(q)} className="pill text-xs hover:bg-paper-300 transition-colors">{q}</button>
           ))}
         </div>
@@ -205,7 +214,7 @@ export default function SupportPage() {
 
       {/* Input */}
       <div className="mt-3 relative">
-        <textarea value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyDown} placeholder="Describe your issue..." rows={2} className="input w-full resize-none pr-12 min-h-[44px]" />
+        <textarea value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyDown} placeholder={t('inputPlaceholder')} rows={2} className="input w-full resize-none pr-12 min-h-[44px]" />
         <button onClick={sendMessage} disabled={!input.trim() || sending} className="absolute right-3 bottom-3 btn-primary h-8 w-8 rounded-lg p-0 flex items-center justify-center disabled:opacity-50 text-sm" aria-label="Send message">➤</button>
       </div>
 
@@ -214,28 +223,28 @@ export default function SupportPage() {
           students always have an escape hatch to a tracked ticket the
           admin actually receives. */}
       <section className="mt-8 border-t border-line pt-6">
-        <h2 className="font-serif text-lg font-semibold text-ink-900">Need human help? Create a ticket</h2>
-        <p className="mt-1 text-xs text-muted-500">Admin will reply on /profile/tickets — typically within 24 hours.</p>
+        <h2 className="font-serif text-lg font-semibold text-ink-900">{t('ticketHeading')}</h2>
+        <p className="mt-1 text-xs text-muted-500">{t('ticketSub')}</p>
 
         <div className="mt-4 space-y-3">
           <div>
-            <label className="mb-1 block text-xs font-medium text-muted-500">Subject</label>
+            <label className="mb-1 block text-xs font-medium text-muted-500">{t('subject')}</label>
             <input
               type="text"
               value={ticketSubject}
               onChange={(e) => setTicketSubject(e.target.value.slice(0, 120))}
-              placeholder="Brief summary (e.g. Payment didn't unlock plan)"
+              placeholder={t('subjectPlaceholder')}
               className="input w-full text-sm"
               maxLength={120}
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-muted-500">Describe your issue</label>
+            <label className="mb-1 block text-xs font-medium text-muted-500">{t('describe')}</label>
             <textarea
               value={ticketMessage}
               onChange={(e) => setTicketMessage(e.target.value.slice(0, 1000))}
               rows={4}
-              placeholder="What were you trying to do? What happened? What did you expect?"
+              placeholder={t('describePlaceholder')}
               className="input w-full resize-none text-sm"
               maxLength={1000}
             />
@@ -247,14 +256,14 @@ export default function SupportPage() {
             disabled={submittingTicket || !ticketSubject.trim() || !ticketMessage.trim()}
             className="btn-primary w-full text-sm disabled:opacity-50"
           >
-            {submittingTicket ? 'Submitting…' : 'Create ticket'}
+            {submittingTicket ? t('submitting') : t('createTicket')}
           </button>
           <button
             type="button"
             onClick={() => router.push('/profile/tickets')}
             className="btn-ghost w-full text-xs"
           >
-            View my tickets →
+            {t('viewTickets')}
           </button>
         </div>
       </section>
@@ -263,11 +272,11 @@ export default function SupportPage() {
       <div className="mt-6 border-t border-line pt-4">
         <button onClick={() => setShowContact(!showContact)} className="btn-ghost w-full text-sm flex items-center justify-center gap-2">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 6L2 7"/></svg>
-          {showContact ? 'Hide Contact Info' : 'Contact Admin'}
+          {showContact ? t('hideContact') : t('contactAdmin')}
         </button>
         {showContact && (
           <div className="paper-card mt-3 p-4 text-center">
-            <p className="text-sm text-ink-700">For billing or account issues, email:</p>
+            <p className="text-sm text-ink-700">{t('emailIntro')}</p>
             <a href="mailto:help@nexigrate.com" className="mt-2 inline-block font-medium text-ember-600 underline">help@nexigrate.com</a>
           </div>
         )}
