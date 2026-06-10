@@ -128,7 +128,12 @@ export default function ChapterQuizPage() {
         if (answers.get(q.id) === q.correctOption) correct++;
       }
       const score = Math.round((correct / questions.length) * 100);
-      const res = await api.completeChapter(exam, subject, chapter, score);
+      // Send the per-question answers + language so the server can re-score
+      // authoritatively from the MCQ pool (anti-cheat). The locally computed
+      // `score` above is kept as a fallback the server uses only if it can't
+      // resolve the pool.
+      const answerPayload = questions.map((q) => ({ questionId: q.id, chosen: answers.get(q.id) ?? null }));
+      const res = await api.completeChapter(exam, subject, chapter, score, answerPayload, getLanguageFromCookie());
       // Success — clear the saved in-progress quiz.
       try { sessionStorage.removeItem(storageKey); } catch { /* ignore */ }
       autoRetriedRef.current = false;

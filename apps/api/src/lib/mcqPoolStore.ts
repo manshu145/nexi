@@ -53,6 +53,22 @@ export interface MCQPoolStore {
     chapterContent?: string,
     userLevel?: 'beginner' | 'intermediate' | 'advanced',
   ): Promise<GeneratedMCQ[]>;
+
+  /**
+   * Look up the authoritative `correctOption` for a set of question ids
+   * straight from the stored pool. Used by the chapter-complete endpoint
+   * to re-score a quiz SERVER-SIDE instead of trusting a client-sent
+   * score. Returns a map id -> correctOption for every id found in the
+   * pool; ids not present are simply omitted so the caller can fall back
+   * safely (never punishes a legit student on a pool miss).
+   */
+  lookupCorrectOptions(
+    examSlug: string,
+    subjectSlug: string,
+    chapterSlug: string,
+    language: 'en' | 'hi',
+    ids: string[],
+  ): Promise<Map<string, 'A' | 'B' | 'C' | 'D'>>;
 }
 
 // ─── In-Memory Implementation ─────────────────────────────────────────────────
@@ -146,6 +162,26 @@ export class InMemoryMCQPoolStore implements MCQPoolStore {
     this.usedMCQs.set(uKey, newUsedIds);
 
     return selected;
+  }
+
+  async lookupCorrectOptions(
+    examSlug: string,
+    subjectSlug: string,
+    chapterSlug: string,
+    language: 'en' | 'hi',
+    ids: string[],
+  ): Promise<Map<string, 'A' | 'B' | 'C' | 'D'>> {
+    const map = new Map<string, 'A' | 'B' | 'C' | 'D'>();
+    if (!ids.length) return map;
+    const pool = this.pools.get(this.poolKey(examSlug, subjectSlug, chapterSlug, language));
+    if (!pool) return map;
+    // Match against stable ids (same transform the client received).
+    const questions = withStableIds(pool.questions ?? []);
+    const want = new Set(ids);
+    for (const q of questions) {
+      if (want.has(q.id) && q.correctOption) map.set(q.id, q.correctOption);
+    }
+    return map;
   }
 }
 
@@ -252,6 +288,30 @@ export class FirestoreMCQPoolStore implements MCQPoolStore {
     await usedRef.set({ questionIds: newUsedIds });
 
     return selected;
+  }
+
+  async lookupCorrectOptions(
+    examSlug: string,
+    subjectSlug: string,
+    chapterSlug: string,
+    language: 'en' | 'hi',
+    ids: string[],
+  ): Promise<Map<string, 'A' | 'B' | 'C' | 'D'>> {
+    const map = new Map<string, 'A' | 'B' | 'C' | 'D'>();
+    if (!ids.length) return map;
+    const poolDocId = this.poolDocId(examSlug, subjectSlug, chapterSlug, language);
+    const snap = await this.db.collection('chapterMCQPool').doc(poolDocId).get();
+    if (!snap.exists) return map;
+    const pool = snap.data() as MCQPool;
+    // Re-derive stable ids exactly as getChapterQuiz does, so the ids here
+    // match the ones the client was served (legacy pools may still carry
+    // the colliding q1..q10 ids on disk).
+    const questions = withStableIds(pool.questions ?? []);
+    const want = new Set(ids);
+    for (const q of questions) {
+      if (want.has(q.id) && q.correctOption) map.set(q.id, q.correctOption);
+    }
+    return map;
   }
 }
 
