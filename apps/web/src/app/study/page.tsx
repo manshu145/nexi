@@ -8,6 +8,7 @@ import { Logo } from '~/components/Logo';
 import { Skeleton, ListSkeleton } from '~/components/Skeleton';
 import { AILoader } from '~/components/ui/AILoader';
 import { getClientLocale } from '~/lib/locale';
+import { useTranslations } from 'next-intl';
 
 export default function StudyPage() {
   const { user, loading } = useAuth();
@@ -16,6 +17,7 @@ export default function StudyPage() {
   // api.me() just to read targetExam — replaced with a single store read.
   const { user: me, loading: meLoading } = useUser();
   const router = useRouter();
+  const t = useTranslations('studyList');
   const [syllabus, setSyllabus] = useState<SyllabusTree | null>(null);
   const [progress, setProgress] = useState<StudyProgress | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -67,8 +69,8 @@ export default function StudyPage() {
 
   if (!syllabus) return (
     <main className="mx-auto flex min-h-dvh max-w-lg flex-col items-center justify-center px-5">
-      <div className="banner banner-error">Unable to load syllabus. Please try again later.</div>
-      <button onClick={() => router.push('/dashboard')} className="btn-ghost mt-4">← Back to Dashboard</button>
+      <div className="banner banner-error">{t('unableSyllabus')}</div>
+      <button onClick={() => router.push('/dashboard')} className="btn-ghost mt-4">{t('backToDashboard')}</button>
     </main>
   );
 
@@ -235,7 +237,7 @@ export default function StudyPage() {
                             onClick={() => router.push('/upgrade')}
                             className="mt-3 w-full rounded-lg border border-gold-500/50 bg-gold-500/5 py-3 text-center text-sm font-medium text-gold-600 dark:text-gold-500 transition-colors hover:bg-gold-500/10"
                           >
-                            🔒 Load More Chapters — Upgrade to Pro
+                            {t('loadMoreUpgrade')}
                           </button>
                         );
                       }
@@ -243,7 +245,7 @@ export default function StudyPage() {
                       if (!allCompleted) {
                         return (
                           <p className="mt-3 text-center text-xs text-muted-400">
-                            Complete all chapters to generate advanced content ✨
+                            {t('completeAllToGenerate')}
                           </p>
                         );
                       }
@@ -251,7 +253,7 @@ export default function StudyPage() {
                       if (!allPassed) {
                         return (
                           <button disabled className="mt-3 w-full rounded-lg bg-paper-200 py-3 text-center text-sm font-medium text-muted-500 cursor-not-allowed">
-                            🔒 Generate More Chapters — Pass all chapters first (80%+)
+                            {t('passAllFirst')}
                           </button>
                         );
                       }
@@ -275,13 +277,13 @@ export default function StudyPage() {
                                 const syllRes = await api.getSyllabus(exam);
                                 setSyllabus(syllRes.syllabus);
                               }
-                            } catch { setGenSuccess('Failed to generate. Try again.'); }
+                            } catch { setGenSuccess(t('genFailed')); }
                             finally { setGenerating(null); }
                           }}
                           disabled={generating === subject.slug}
                           className="mt-3 w-full rounded-lg bg-gold-500 py-3 text-center text-sm font-semibold text-paper-50 transition-colors hover:bg-gold-600 disabled:opacity-60"
                         >
-                          {generating === subject.slug ? '✨ Generating...' : '✨ Generate More Chapters'}
+                          {generating === subject.slug ? t('generating') : t('generateMore')}
                         </button>
                       );
                     }
