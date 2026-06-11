@@ -29,6 +29,12 @@ export interface PlanFeatures {
   // /admin/plans matrix. Optional so older platformConfig docs default
   // safely to the compile-time value below.
   maxExams?: number;
+  // ── Boolean access flags (PR — plan restructure / Part 4 audit) ─────
+  // Features with no numeric quota — just on/off per plan. Admin-editable
+  // via /admin/plans. Optional so older platformConfig docs fall back to
+  // the compile-time defaults below.
+  pyqAccess?: boolean;       // open full Previous-Year-Question papers (not just the list)
+  revisionAccess?: boolean;  // spaced-repetition revision queue
 }
 
 export interface PlanConfig {
@@ -75,6 +81,8 @@ export const PLANS: Readonly<Record<PlanId, PlanConfig>> = {
       essaysPerDay: 1,
       imagesPerDay: 1,
       maxExams: 1,             // free: single exam
+      pyqAccess: false,        // free: can browse PYQ list, but opening a full paper needs upgrade
+      revisionAccess: true,    // free: basic spaced-repetition revision included
     },
   },
   scholar: {
@@ -97,6 +105,8 @@ export const PLANS: Readonly<Record<PlanId, PlanConfig>> = {
       essaysPerDay: 3,
       imagesPerDay: 6,
       maxExams: 2,             // starter: up to 2 exams
+      pyqAccess: true,         // full PYQ archive
+      revisionAccess: true,
     },
   },
   aspirant: {
@@ -119,6 +129,8 @@ export const PLANS: Readonly<Record<PlanId, PlanConfig>> = {
       essaysPerDay: 10,
       imagesPerDay: 15,
       maxExams: 3,             // pro: up to 3 exams
+      pyqAccess: true,         // full PYQ archive
+      revisionAccess: true,
     },
   },
   achiever: {
@@ -141,6 +153,8 @@ export const PLANS: Readonly<Record<PlanId, PlanConfig>> = {
       essaysPerDay: -1,        // unlimited (fair-use)
       imagesPerDay: 50,
       maxExams: -1,            // elite: unlimited exams
+      pyqAccess: true,         // full PYQ archive
+      revisionAccess: true,
     },
   },
 } as const;

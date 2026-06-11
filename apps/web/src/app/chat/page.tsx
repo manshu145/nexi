@@ -7,7 +7,7 @@ import 'highlight.js/styles/github-dark.css';
 import { toast } from 'sonner';
 import { useAuth } from '~/lib/auth-context';
 import { useUser } from '~/lib/userStore';
-import { api, type ChatSessionSummary, type ChatMessage } from '~/lib/api';
+import { api, type ChatSessionSummary, type ChatMessage, emitUpgradeRequired } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 import { AILoader } from '~/components/ui/AILoader';
 import { getClientLocale } from '~/lib/locale';
@@ -217,6 +217,9 @@ function ChatPage() {
       track('chat_message', { model: selectedModel });
       const aiMsg: ChatMessage = { role: 'assistant', content: res.response, timestamp: new Date().toISOString() };
       setMessages(prev => [...prev, aiMsg]);
+      // AI-tutor limit hit (credits exhausted / daily cap): surface the upgrade
+      // prompt in addition to the inline message.
+      if (res.upgrade || res.limitReached) emitUpgradeRequired({ message: res.response, feature: 'AI_CHAT', error: 'plan_limit' });
       setSessions(prev => {
         const exists = prev.find(s => s.id === res.sessionId);
         if (exists) return prev;
@@ -274,6 +277,7 @@ function ChatPage() {
     setGeneratingImage(true);
     try {
       const res = await api.generateImage(topic);
+      if (res.upgrade || res.limitReached) emitUpgradeRequired({ message: res.message ?? 'Daily image limit reached.', feature: 'AI_IMAGE', error: 'plan_limit' });
       if (res.fallback) {
         // API returned a mermaid fallback — show it WITH the reason so the
         // user isn't left wondering why they got a diagram instead of an

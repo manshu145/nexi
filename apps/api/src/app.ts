@@ -559,7 +559,7 @@ export function buildApp(deps: AppDeps): Hono {
   });
   v1.route('/users', makeUsersRoutes({ users, logger, db: fs, ledger, config, firebaseAuth }));
   v1.route('/assessment', makeAssessmentRoutes({ users, aiEngine, logger, env, ledger, serviceKeys }));
-  v1.route('/study', makeStudyRoutes({ users, aiEngine, chapters, logger, db: fs, env, ledger, config, modelResolver, review }));
+  v1.route('/study', makeStudyRoutes({ users, aiEngine, chapters, logger, db: fs, env, ledger, config, usage: featureUsage, modelResolver, review }));
   v1.route('/current-affairs', cronRoutes);
   v1.route('/chat', makeChatRoutes({ users, aiEngine, chat: chatStore, logger, env, config, usage: featureUsage }));
   v1.route('/credits', makeCreditsRoutes({ users, logger, db: fs, ledger, config }));
@@ -567,13 +567,13 @@ export function buildApp(deps: AppDeps): Hono {
   v1.route('/admin', makeAdminRoutes({ users, adminStore, env, logger, coupons: couponStore, db: fs, config, aiSpend, firebaseAuth, blog, aiEngine, aiProviderStore, modelResolver, currentAffairs, serviceKeys, push, notifications, notificationLogs, teamInvites }));
   v1.route('/support', makeSupportRoutes({ users, db: fs, logger }));
   v1.route('/essay', makeEssayRoutes({ users, aiEngine, logger, db: fs, config, usage: featureUsage }));
-  v1.route('/mock-tests', makeMockTestRoutes({ users, aiEngine, mockTests, ledger, config, logger }));
-  v1.route('/pyq', makePYQRoutes({ users, aiEngine, pyq, logger }));
+  v1.route('/mock-tests', makeMockTestRoutes({ users, aiEngine, mockTests, ledger, config, usage: featureUsage, logger }));
+  v1.route('/pyq', makePYQRoutes({ users, aiEngine, pyq, logger, config }));
   v1.route('/analytics', makeAnalyticsRoutes({ analytics, adminStore, users, env, logger, db: fs }));
   v1.route('/mailbox', makeMailboxRoutes({ threads: emailThreads, users, env, logger, serviceKeys }));
   v1.route('/notifications', makeNotificationRoutes({ notifications, logger }));
   v1.route('/exams', makeExamRoutes({ examDates, users, aiEngine, env, logger }));
-  v1.route('/review', makeReviewRoutes({ review, logger }));
+  v1.route('/review', makeReviewRoutes({ review, logger, users, config }));
 
   // (POST /v1/logs/error and GET /v1/branding are now mounted on the
   // PUBLIC router via makePublicRoutes() above, so the front-end error

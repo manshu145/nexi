@@ -4,10 +4,16 @@ import { z } from 'zod';
 import { requireAuth } from '../auth.js';
 import type { Logger } from '../logger.js';
 import type { ReviewStore } from '../lib/reviewStore.js';
+import type { UserStore } from '../lib/userStore.js';
+import type { PlatformConfigStore } from '../lib/platformConfigStore.js';
+import { PlanGate, FeatureKey } from '../lib/planGate.js';
 
 export interface ReviewRoutesDeps {
   review: ReviewStore;
   logger: Logger;
+  /** Used to gate spaced-repetition behind revisionAccess. Optional for tests. */
+  users?: UserStore;
+  config?: PlatformConfigStore;
 }
 
 /**
@@ -17,10 +23,18 @@ export interface ReviewRoutesDeps {
  */
 export function makeReviewRoutes(deps: ReviewRoutesDeps): Hono {
   const app = new Hono();
+  // revisionAccess gate (all plans include it by default; admin can disable
+  // for a plan). Fail-open if users/config aren't wired.
+  const planGate = deps.users && deps.config ? new PlanGate({ config: deps.config, logger: deps.logger }) : null;
 
   // GET /v1/review/due — chapters due for revision today (+ total due count).
   app.get('/due', async (c) => {
     const principal = requireAuth(c);
+    if (planGate && deps.users) {
+      const user = await deps.users.get(principal.userId);
+      const gate = await planGate.enforce(user, FeatureKey.REVISION, (user?.language ?? 'en') as 'en' | 'hi');
+      if (!gate.ok) return c.json(gate.body, gate.status);
+    }
     const now = new Date().toISOString();
     const limit = Math.min(50, Math.max(1, Number(c.req.query('limit') ?? 20)));
     const items = await deps.review.listDue(principal.userId, now, limit);

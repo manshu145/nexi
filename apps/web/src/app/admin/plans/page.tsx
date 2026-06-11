@@ -344,6 +344,8 @@ export default function AdminPlansPage() {
                     <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-500">Current Affairs</th>
                     <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-500">Essay Grade</th>
                     <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-500">Deduct credits</th>
+                    <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-500">PYQ</th>
+                    <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-500">Revision</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-line">
@@ -400,6 +402,16 @@ export default function AdminPlansPage() {
                       <td className="px-4 py-2">
                         <input type="checkbox" checked={p.features.creditDeduction}
                           onChange={(e) => patchDraft(p.id, { features: { ...p.features, creditDeduction: e.target.checked } })} />
+                      </td>
+                      <td className="px-4 py-2">
+                        <input type="checkbox" checked={p.features.pyqAccess ?? false}
+                          onChange={(e) => patchDraft(p.id, { features: { ...p.features, pyqAccess: e.target.checked } })}
+                          title="Open full previous-year question papers (not just the year list)." />
+                      </td>
+                      <td className="px-4 py-2">
+                        <input type="checkbox" checked={p.features.revisionAccess ?? true}
+                          onChange={(e) => patchDraft(p.id, { features: { ...p.features, revisionAccess: e.target.checked } })}
+                          title="Spaced-repetition revision queue." />
                       </td>
                     </tr>
                   ))}

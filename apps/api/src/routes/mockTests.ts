@@ -28,7 +28,7 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { asISODateTime, asUserId, isExamSlug } from '@nexigrate/shared';
+import { asISODateTime, asUserId, isExamSlug, shouldDeductCredits } from '@nexigrate/shared';
 import type { ExamSlug, UserId } from '@nexigrate/shared';
 import { requireAuth } from '../auth.js';
 import { effectiveLevel } from '../lib/levelProgression.js';
@@ -39,6 +39,19 @@ import type { AIEngine, GeneratedMCQ } from '../lib/aiEngine.js';
 import type { MockTestStore, MockTestAttempt } from '../lib/mockTestStore.js';
 import type { CreditLedger } from '../lib/creditLedger.js';
 import type { PlatformConfigStore } from '../lib/platformConfigStore.js';
+import type { FeatureUsageStore } from '../lib/featureUsageStore.js';
+import { PlanGate, FeatureKey } from '../lib/planGate.js';
+
+export interface MockTestRoutesDeps {
+  users: UserStore;
+  aiEngine: AIEngine;
+  mockTests: MockTestStore;
+  ledger: CreditLedger;
+  config: PlatformConfigStore;
+  logger: Logger;
+  /** Per-user usage counter for the monthly mock-test cap (paid plans). Optional for tests. */
+  usage?: FeatureUsageStore;
+}
 
 export interface MockTestRoutesDeps {
   users: UserStore;
@@ -85,6 +98,11 @@ const MOCK_SECTIONS = { easy: 20, medium: 20, hard: 10 } as const;
 
 export function makeMockTestRoutes(deps: MockTestRoutesDeps): Hono {
   const app = new Hono();
+  // Central gate for the monthly mock-test cap (active paid plans). Needs
+  // usage; falls back to no cap (fail-open) when missing.
+  const planGate = deps.usage
+    ? new PlanGate({ config: deps.config, usage: deps.usage, ledger: deps.ledger, logger: deps.logger })
+    : null;
 
   /**
    * POST /v1/mock-tests/start
@@ -129,25 +147,49 @@ export function makeMockTestRoutes(deps: MockTestRoutesDeps): Hono {
       });
     }
 
-    // 1. Charge credits up front. If insufficient balance, fail before
-    //    spending AI tokens. Idempotency key ties this to the attemptId
-    //    so a double-tap returns the same charge, not two.
-    try {
-      const result = await deps.ledger.spend({
-        userId: principal.userId,
-        reason: 'mock_test',
-        amount: cost,
-        idempotencyKey: `mock_test_start:${attemptId}`,
-        sourceRef: attemptId,
-      });
-      if (result.kind === 'insufficient') {
-        throw new HTTPException(402, { message: `Insufficient credits to start a mock test (need ${cost}, have ${result.balance}). Earn or buy more credits and try again.` });
+    // Plan gate (Part 4 audit fix). Free/expired users PAY `mock_test`
+    // credits up front (idempotent + refunded on AI failure). ACTIVE PAID
+    // users are NOT charged — they're metered by the monthly `mockTests` cap
+    // instead. This fixes the bug where paid users were charged credits for
+    // every mock test, and enforces the previously-ignored monthly limit.
+    // Either limit returns an upgrade-prompting response.
+    const gateUser = await deps.users.get(principal.userId);
+    const deduct = shouldDeductCredits(gateUser?.plan ?? 'free', gateUser?.planExpiresAt ?? null);
+    const gateLang = (gateUser?.language ?? language ?? 'en') as 'en' | 'hi';
+    let charged = false;
+    let mockCommit: () => Promise<void> = async () => {};
+
+    if (deduct) {
+      // 1a. Free/expired → charge credits. Idempotency key ties this to the
+      //     attemptId so a double-tap returns the same charge, not two.
+      try {
+        const result = await deps.ledger.spend({
+          userId: principal.userId,
+          reason: 'mock_test',
+          amount: cost,
+          idempotencyKey: `mock_test_start:${attemptId}`,
+          sourceRef: attemptId,
+        });
+        if (result.kind === 'insufficient') {
+          return c.json({
+            error: 'insufficient_credits',
+            feature: 'MOCK_TEST',
+            upgrade: true,
+            balance: result.balance,
+            message: `Not enough credits to start a mock test (need ${cost}, have ${result.balance}). Upgrade for more mock tests, or earn credits.`,
+          }, 402);
+        }
+        charged = result.kind === 'spent';
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        deps.logger.warn('mock_test.credit_charge_failed', { userId: principal.userId, examSlug, error: msg });
+        throw new HTTPException(500, { message: 'Could not charge credits. Please try again.' });
       }
-    } catch (err) {
-      if (err instanceof HTTPException) throw err;
-      const msg = err instanceof Error ? err.message : String(err);
-      deps.logger.warn('mock_test.credit_charge_failed', { userId: principal.userId, examSlug, error: msg });
-      throw new HTTPException(500, { message: 'Could not charge credits. Please try again.' });
+    } else if (planGate) {
+      // 1b. Active paid → monthly fair-use cap (no credit deduction).
+      const gate = await planGate.enforcePaidCap(gateUser, FeatureKey.MOCK_TEST, gateLang);
+      if (!gate.ok) return c.json(gate.body, gate.status);
+      mockCommit = gate.commit;
     }
 
     // 2. Persist a 'generating' placeholder BEFORE generation. This is the
@@ -264,18 +306,21 @@ export function makeMockTestRoutes(deps: MockTestRoutesDeps): Hono {
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       // Refund — never leave a paying user out of pocket for an outage.
-      try {
-        await deps.ledger.award({
-          userId: principal.userId,
-          source: 'admin_grant',
-          amount: cost,
-          idempotencyKey: `mock_test_refund:${attemptId}`,
-          sourceRef: attemptId,
-        });
-      } catch (refundErr) {
-        deps.logger.error('mock_test.refund_failed_after_generation_failure', {
-          userId: principal.userId, attemptId, error: refundErr instanceof Error ? refundErr.message : String(refundErr),
-        });
+      // Only if we actually charged credits (paid users weren't charged).
+      if (charged) {
+        try {
+          await deps.ledger.award({
+            userId: principal.userId,
+            source: 'admin_grant',
+            amount: cost,
+            idempotencyKey: `mock_test_refund:${attemptId}`,
+            sourceRef: attemptId,
+          });
+        } catch (refundErr) {
+          deps.logger.error('mock_test.refund_failed_after_generation_failure', {
+            userId: principal.userId, attemptId, error: refundErr instanceof Error ? refundErr.message : String(refundErr),
+          });
+        }
       }
       // Mark the attempt failed so a polling client sees a clean error
       // instead of an indefinite 'generating' spinner.
@@ -308,6 +353,10 @@ export function makeMockTestRoutes(deps: MockTestRoutesDeps): Hono {
       userId: principal.userId, attemptId, examSlug, language,
       questionCount: questions.length, durationMinutes, cost,
     });
+
+    // Count this mock test against the monthly cap (paid plans; no-op for
+    // free/expired users, who were metered by credits above).
+    await mockCommit();
 
     return c.json({
       attemptId,
