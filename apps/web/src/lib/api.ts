@@ -254,8 +254,8 @@ export const api = {
   async toggleNewsLike(id: string) { return (await authedFetch(`/v1/current-affairs/${id}/like`, { method: 'POST' })).json() as Promise<{liked: boolean; count: number}>; },
   async toggleNewsBookmark(id: string) { return (await authedFetch(`/v1/current-affairs/${id}/bookmark`, { method: 'POST' })).json() as Promise<{bookmarked: boolean}>; },
   async getNewsBookmarks() { return (await authedFetch('/v1/current-affairs/bookmarks')).json() as Promise<{bookmarks: string[]}>; },
-  async getCurrentAffairsQuiz(lang: 'en' | 'hi' = 'en') { return (await authedFetch(`/v1/current-affairs/quiz?lang=${lang}`)).json() as Promise<{date:string; questions:GeneratedMCQ[]}>; },
-  async submitCurrentAffairsQuiz(answers: number[], timeTaken: number) { const lang = getClientLocale(); return (await authedFetch('/v1/current-affairs/quiz/submit', { method: 'POST', body: JSON.stringify({ answers, timeTaken, lang }) })).json() as Promise<QuizSubmitResult>; },
+  async getCurrentAffairsQuiz(lang: 'en' | 'hi' = 'en') { return (await authedFetch(`/v1/current-affairs/quiz?lang=${lang}`)).json() as Promise<{date:string; questions:GeneratedMCQ[]; quizId?:string}>; },
+  async submitCurrentAffairsQuiz(answers: number[], timeTaken: number, quizId?: string) { const lang = getClientLocale(); return (await authedFetch('/v1/current-affairs/quiz/submit', { method: 'POST', body: JSON.stringify({ answers, timeTaken, lang, quizId }) })).json() as Promise<QuizSubmitResult>; },
   async getCurrentAffairsLeaderboard() { return (await authedFetch('/v1/current-affairs/leaderboard')).json() as Promise<LeaderboardResponse>; },
 
   // Chat

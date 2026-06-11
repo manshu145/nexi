@@ -612,7 +612,7 @@
   },
   "caQuiz": {
     "title": "Daily Current Affairs Quiz",
-    "rule20q": "20 questions from today's news",
+    "rule20q": "25-30 questions from the latest news",
     "rule10min": "10 minutes total time",
     "ruleNoBack": "No going back once you move forward",
     "ruleCompete": "Compete on the daily leaderboard",
