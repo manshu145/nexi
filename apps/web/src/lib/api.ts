@@ -5,7 +5,30 @@ import { getClientLocale } from './locale';
 
 const API = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com';
 
-class ApiError extends Error { constructor(public readonly status: number, message: string) { super(message); } }
+class ApiError extends Error {
+  constructor(public readonly status: number, message: string, public readonly body?: GateErrorBody) { super(message); }
+}
+
+/** Structured body returned by the API's planGate when a feature is blocked.
+ *  `upgrade: true` is the signal the web client uses to show an upgrade prompt. */
+export interface GateErrorBody {
+  error?: string;
+  message?: string;
+  feature?: string;
+  plan?: string;
+  limit?: number;
+  used?: number;
+  balance?: number;
+  upgrade?: boolean;
+}
+
+/** Fire-and-forget global signal so a single shared modal can prompt an
+ *  upgrade from anywhere a plan/credit limit is hit (founder rule: every
+ *  limit must surface a proper upgrade option). */
+export function emitUpgradeRequired(detail: { message: string; feature?: string; error?: string }): void {
+  if (typeof window === 'undefined') return;
+  try { window.dispatchEvent(new CustomEvent('nexigrate:upgrade-required', { detail })); } catch { /* noop */ }
+}
 
 export async function authedFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const auth = getFirebaseAuthClient();
@@ -23,7 +46,18 @@ export async function authedFetch(path: string, init: RequestInit = {}): Promise
   // gun -- a future refactor could have started trusting them again
   // without anyone noticing the original threat model. Removed.
   const res = await fetch(`${API}${path}`, { ...init, headers });
-  if (!res.ok) { let msg = `${res.status}`; try { const b = await res.json() as {error?:string}; if (b?.error) msg = b.error; } catch {} throw new ApiError(res.status, msg); }
+  if (!res.ok) {
+    let msg = `${res.status}`;
+    let body: GateErrorBody | undefined;
+    try {
+      body = await res.json() as GateErrorBody;
+      if (body?.message) msg = body.message; else if (body?.error) msg = body.error;
+    } catch { /* non-JSON error body */ }
+    // Any plan/credit limit with `upgrade:true` raises a global prompt so the
+    // user always gets an upgrade option, no matter which page they're on.
+    if (body?.upgrade) emitUpgradeRequired({ message: body.message ?? msg, feature: body.feature, error: body.error });
+    throw new ApiError(res.status, msg, body);
+  }
   return res;
 }
 
@@ -259,8 +293,8 @@ export const api = {
   async getCurrentAffairsLeaderboard() { return (await authedFetch('/v1/current-affairs/leaderboard')).json() as Promise<LeaderboardResponse>; },
 
   // Chat
-  async sendChat(message: string, sessionId?: string, attachments?: { type: 'image' | 'file'; name: string; data: string; mimeType?: string }[], model?: 'gpt4o' | 'groq' | 'gemini', supportMode?: boolean) { return (await authedFetch('/v1/chat', { method: 'POST', body: JSON.stringify({ message, sessionId, attachments, model, supportMode }) })).json() as Promise<{sessionId:string; response:string; title:string}>; },
-  async generateImage(topic: string) { return (await authedFetch('/v1/chat/generate-image', { method: 'POST', body: JSON.stringify({ topic }) })).json() as Promise<{type: 'mermaid' | 'image'; content: string; fallback?: boolean; message?: string}>; },
+  async sendChat(message: string, sessionId?: string, attachments?: { type: 'image' | 'file'; name: string; data: string; mimeType?: string }[], model?: 'gpt4o' | 'groq' | 'gemini', supportMode?: boolean) { return (await authedFetch('/v1/chat', { method: 'POST', body: JSON.stringify({ message, sessionId, attachments, model, supportMode }) })).json() as Promise<{sessionId:string; response:string; title:string; limitReached?:boolean; upgrade?:boolean}>; },
+  async generateImage(topic: string) { return (await authedFetch('/v1/chat/generate-image', { method: 'POST', body: JSON.stringify({ topic }) })).json() as Promise<{type: 'mermaid' | 'image'; content: string; fallback?: boolean; message?: string; limitReached?: boolean; upgrade?: boolean}>; },
   async getChatHistory() { return (await authedFetch('/v1/chat/history')).json() as Promise<{sessions:ChatSessionSummary[]}>; },
   async getChatSession(sessionId: string) { return (await authedFetch(`/v1/chat/history/${sessionId}`)).json() as Promise<{session:ChatSession}>; },
   async deleteChatSession(sessionId: string) { return (await authedFetch(`/v1/chat/history/${sessionId}`, { method: 'DELETE' })).json() as Promise<{success:boolean}>; },
@@ -718,7 +752,7 @@ export interface LeaderboardResponse { date: string; leaderboard: LeaderboardEnt
 export interface ChatMessage { role: 'user' | 'assistant'; content: string; timestamp: string; }
 export interface ChatSession { id: string; userId: string; title: string; messages: ChatMessage[]; createdAt: string; updatedAt: string; }
 export interface ChatSessionSummary { id: string; title: string; createdAt: string; updatedAt: string; messageCount: number; }
-export interface PlanFeatures { dailyMCQ: number; mockTests: number; aiTutor: boolean; currentAffairs: boolean; essayGrading: boolean; chaptersPerDay: number; creditDeduction: boolean; aiTutorPerDay?: number; essaysPerDay?: number; imagesPerDay?: number; maxExams?: number; }
+export interface PlanFeatures { dailyMCQ: number; mockTests: number; aiTutor: boolean; currentAffairs: boolean; essayGrading: boolean; chaptersPerDay: number; creditDeduction: boolean; aiTutorPerDay?: number; essaysPerDay?: number; imagesPerDay?: number; maxExams?: number; pyqAccess?: boolean; revisionAccess?: boolean; }
 export interface Plan { id: string; name: string; nameHi: string; price: number; yearlyPrice: number; isActive?: boolean; comingSoon?: boolean; features?: PlanFeatures; dailyMcq?: number; mockTests?: number; aiTutor?: boolean; currentAffairs?: boolean; essayGrading?: boolean; }
 export interface ReferralStats { code: string; referralUrl: string; totalReferrals: number; pendingReferrals: number; completedReferrals: number; totalEarned: number; }
 
@@ -757,6 +791,9 @@ export interface AdminPlanFeatures {
   imagesPerDay?: number;
   // Multi-exam (Sprint 5): how many exams this plan allows (-1 = unlimited).
   maxExams?: number;
+  // Boolean access flags (Part 4 audit). Optional for back-compat.
+  pyqAccess?: boolean;
+  revisionAccess?: boolean;
 }
 
 export interface AdminPlan {

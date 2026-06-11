@@ -1,6 +1,5 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { planDisplayName } from '@nexigrate/shared';
 import { requireAuth } from '../auth.js';
 import type { Logger } from '../logger.js';
 import type { UserStore } from '../lib/userStore.js';
@@ -8,6 +7,7 @@ import type { AIEngine } from '../lib/aiEngine.js';
 import type { PlatformConfigStore } from '../lib/platformConfigStore.js';
 import type { FeatureUsageStore } from '../lib/featureUsageStore.js';
 import type { Firestore } from 'firebase-admin/firestore';
+import { PlanGate, FeatureKey, effectivePlanId } from '../lib/planGate.js';
 
 export interface EssayRoutesDeps {
   users: UserStore;
@@ -23,6 +23,10 @@ export interface EssayRoutesDeps {
 
 export function makeEssayRoutes(deps: EssayRoutesDeps): Hono {
   const app = new Hono();
+  // Central gate — expiry-aware essaysPerDay cap. Fail-open if not wired.
+  const planGate = deps.config && deps.usage
+    ? new PlanGate({ config: deps.config, usage: deps.usage, logger: deps.logger })
+    : null;
 
   // GET /v1/essay/usage — get user's essay usage for TODAY (IST day).
   // The per-day cap comes from the admin-editable plan matrix
@@ -36,10 +40,13 @@ export function makeEssayRoutes(deps: EssayRoutesDeps): Hono {
 
     const plan = user.plan ?? 'free';
     let limit = -1; // default to unlimited if config is unreachable (fail-open)
-    if (deps.config) {
+    if (planGate) {
+      const l = await planGate.getFeatureLimit(user, FeatureKey.ESSAY_GRADING);
+      limit = l === 'unlimited' ? -1 : l;
+    } else if (deps.config) {
       try {
         const plans = await deps.config.getPlans();
-        limit = plans[plan]?.features?.essaysPerDay ?? -1;
+        limit = plans[effectivePlanId(user)]?.features?.essaysPerDay ?? -1;
       } catch { /* keep unlimited fallback */ }
     }
 
@@ -48,7 +55,7 @@ export function makeEssayRoutes(deps: EssayRoutesDeps): Hono {
       used = await deps.usage.getCount(principal.userId, 'essay');
     }
 
-    return c.json({ used, limit, period: 'day' });
+    return c.json({ used, limit, period: 'day', plan });
   });
 
   // POST /v1/essay/question — generate a question for user's exam
@@ -110,30 +117,19 @@ Respond ONLY with valid JSON:
     const user = await deps.users.get(principal.userId);
     if (!user) throw new HTTPException(404, { message: 'User not found' });
 
-    // Per-day essay-grading quota from the admin-editable plan matrix
-    // (features.essaysPerDay; -1 = unlimited, 0 = not included). Mirrors the
-    // image quota in chat.ts and counts via the per-IST-day usage store.
-    // Fail-open: a config/usage hiccup must never block grading.
-    const plan = user.plan ?? 'free';
-    if (deps.config && deps.usage) {
-      try {
-        const plans = await deps.config.getPlans();
-        const limit = plans[plan]?.features?.essaysPerDay ?? -1;
-        if (limit >= 0) {
-          const used = await deps.usage.getCount(principal.userId, 'essay');
-          if (used >= limit) {
-            const planLabel = planDisplayName(plan);
-            const message = limit === 0
-              ? `Essay grading isn't included in the ${planLabel} plan. Upgrade to grade essays.`
-              : `You've used all ${limit} essay grading${limit === 1 ? '' : 's'} for today on the ${planLabel} plan. The limit resets tomorrow — upgrade for more.`;
-            deps.logger.info('essay.limit_hit', { userId: principal.userId, plan, used, limit });
-            throw new HTTPException(429, { message });
-          }
-        }
-      } catch (limitErr) {
-        if (limitErr instanceof HTTPException) throw limitErr;
-        deps.logger.warn('essay.limit_check_failed', { error: limitErr instanceof Error ? limitErr.message : String(limitErr) });
+    // Per-day essay-grading quota via the central gate (expiry-aware
+    // essaysPerDay; -1 = unlimited, 0 = not included). We keep HTTP 429 (the
+    // essay page already handles it) but return the structured upgrade body
+    // so the limit prompt is consistent. Fail-open: enforce() never throws.
+    let essayCommit: () => Promise<void> = async () => {};
+    if (planGate) {
+      const lang = (user.language ?? 'en') as 'en' | 'hi';
+      const gate = await planGate.enforce(user, FeatureKey.ESSAY_GRADING, lang);
+      if (!gate.ok) {
+        deps.logger.info('essay.limit_hit', { userId: principal.userId, reason: gate.body.error, plan: gate.body.plan });
+        return c.json({ ...gate.body }, 429);
       }
+      essayCommit = gate.commit;
     }
 
     const body = await c.req.json().catch(() => null) as { topic?: string; answer?: string; wordLimit?: number; examContext?: string; language?: string } | null;
@@ -198,9 +194,7 @@ Respond ONLY with valid JSON:
 
       // Count this grading against the per-day quota (only on success, so a
       // failed/parse-error grading doesn't burn the user's daily allowance).
-      if (deps.usage) {
-        await deps.usage.increment(principal.userId, 'essay');
-      }
+      await essayCommit();
 
       deps.logger.info('essay.graded', { userId: principal.userId, score: feedback.overallScore, wordCount });
       return c.json({ feedback });

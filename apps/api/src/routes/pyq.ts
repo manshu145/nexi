@@ -6,6 +6,8 @@ import type { UserStore } from '../lib/userStore.js';
 import type { AIEngine } from '../lib/aiEngine.js';
 import type { PYQStore } from '../lib/pyqStore.js';
 import { pyqPaperId } from '../lib/pyqStore.js';
+import type { PlatformConfigStore } from '../lib/platformConfigStore.js';
+import { PlanGate, FeatureKey } from '../lib/planGate.js';
 import {
   isExamSlug,
   EXAM_BY_SLUG,
@@ -37,6 +39,8 @@ export interface PYQRoutesDeps {
   aiEngine: AIEngine;
   pyq: PYQStore;
   logger: Logger;
+  /** Admin-editable plan matrix — gates full-paper access (pyqAccess). Optional for tests. */
+  config?: PlatformConfigStore;
 }
 
 const DISCLAIMER_EN =
@@ -57,6 +61,9 @@ function defaultLatestYear(): number {
 
 export function makePYQRoutes(deps: PYQRoutesDeps): Hono {
   const app = new Hono();
+  // Gate opening a FULL paper behind pyqAccess (Free can browse the year list
+  // but not open papers). Fail-open if config isn't wired.
+  const planGate = deps.config ? new PlanGate({ config: deps.config, logger: deps.logger }) : null;
 
   const requireAdmin = async (c: any) => {
     const principal = requireAuth(c);
@@ -187,7 +194,7 @@ export function makePYQRoutes(deps: PYQRoutesDeps): Hono {
 
   // GET /v1/pyq/:examSlug/:year — the full paper (generate + cache on demand).
   app.get('/:examSlug/:year', async (c) => {
-    requireAuth(c);
+    const principal = requireAuth(c);
     const examSlug = c.req.param('examSlug');
     if (!isExamSlug(examSlug)) throw new HTTPException(404, { message: 'Unknown exam' });
     const language = (c.req.query('lang') as 'en' | 'hi') || 'en';
@@ -196,6 +203,16 @@ export function makePYQRoutes(deps: PYQRoutesDeps): Hono {
     if (!Number.isFinite(year) || year < min || year > max) {
       throw new HTTPException(400, { message: `year must be between ${min} and ${max}` });
     }
+
+    // Plan gate: opening a full PYQ paper needs pyqAccess (paid). Free users
+    // can still browse the year list above; this is the upgrade trigger.
+    // Expiry-aware. Fail-open if config isn't wired.
+    if (planGate) {
+      const user = await deps.users.get(principal.userId);
+      const gate = await planGate.enforce(user, FeatureKey.PYQ_ACCESS, language);
+      if (!gate.ok) return c.json(gate.body, gate.status);
+    }
+
     const paper = await ensurePaper(examSlug, year, language);
     return c.json({ paper });
   });
