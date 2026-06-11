@@ -5,7 +5,7 @@ import { useAuth } from '~/lib/auth-context';
 import { useUser } from '~/lib/userStore';
 import { api, type ChapterContent } from '~/lib/api';
 import { Logo } from '~/components/Logo';
-import { PlanGate } from '~/components/PlanGate';
+import { ChapterLockModal } from '~/components/ChapterLockModal';
 import { AILoader } from '~/components/ui/AILoader';
 import { toast } from 'sonner';
 import { track } from '~/lib/analytics';
@@ -478,7 +478,7 @@ export default function KindleReaderPage() {
 
   if (showPlanGate) return (
     <div className="kindle-frame">
-      <PlanGate credits={userCredits} onUseCredits={handleUseCredits} loading={unlocking} />
+      <ChapterLockModal credits={userCredits} onUseCredits={handleUseCredits} loading={unlocking} />
     </div>
   );
 

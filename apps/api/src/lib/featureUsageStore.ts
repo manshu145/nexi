@@ -13,18 +13,19 @@ import type { Firestore } from 'firebase-admin/firestore';
  * (streaks, AI spend cap). All methods are best-effort / fail-open: a counter
  * read/write hiccup must never block a paying user from a feature.
  */
-export type UsageFeature = 'image' | 'essay' | 'aiTutor' | 'aiSupport';
+export type UsageFeature = 'image' | 'essay' | 'aiTutor' | 'aiSupport' | 'mcq' | 'chapter' | 'mockTest';
 
 /**
  * Counter window. 'day' = per IST calendar day (default, used by image/essay
- * quotas). 'hour' = per IST clock hour (used by the free-tier AI-tutor rate
- * limit, e.g. 5 messages/hour).
+ * /mcq/chapter quotas). 'hour' = per IST clock hour (free-tier AI-tutor rate
+ * limit). 'month' = per IST calendar month (mock-test monthly cap for paid
+ * plans).
  */
-export type UsageGranularity = 'day' | 'hour';
+export type UsageGranularity = 'day' | 'hour' | 'month';
 
 export interface FeatureUsageStore {
   getCount(userId: string, feature: UsageFeature, granularity?: UsageGranularity): Promise<number>;
-  increment(userId: string, feature: UsageFeature, granularity?: UsageGranularity): Promise<void>;
+  increment(userId: string, feature: UsageFeature, granularity?: UsageGranularity, by?: number): Promise<void>;
 }
 
 function istDayKey(): string {
@@ -37,19 +38,27 @@ function istHourKey(): string {
   return ist.toISOString().slice(0, 13); // YYYY-MM-DDTHH
 }
 
+function istMonthKey(): string {
+  const ist = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+  return ist.toISOString().slice(0, 7); // YYYY-MM
+}
+
 /** Bucket string for the given window. Day = 'YYYY-MM-DD', hour =
- *  'YYYY-MM-DDTHH' — the 'T' guarantees the two never collide. */
+ *  'YYYY-MM-DDTHH', month = 'YYYY-MM' — none collide (day has two '-',
+ *  hour has a 'T', month has one '-'). */
 function bucketKey(granularity: UsageGranularity): string {
-  return granularity === 'hour' ? istHourKey() : istDayKey();
+  if (granularity === 'hour') return istHourKey();
+  if (granularity === 'month') return istMonthKey();
+  return istDayKey();
 }
 
 export class InMemoryFeatureUsageStore implements FeatureUsageStore {
   private counts = new Map<string, number>();
   private key(userId: string, feature: string, granularity: UsageGranularity) { return `${userId}:${bucketKey(granularity)}:${feature}`; }
   async getCount(userId: string, feature: UsageFeature, granularity: UsageGranularity = 'day') { return this.counts.get(this.key(userId, feature, granularity)) ?? 0; }
-  async increment(userId: string, feature: UsageFeature, granularity: UsageGranularity = 'day') {
+  async increment(userId: string, feature: UsageFeature, granularity: UsageGranularity = 'day', by = 1) {
     const k = this.key(userId, feature, granularity);
-    this.counts.set(k, (this.counts.get(k) ?? 0) + 1);
+    this.counts.set(k, (this.counts.get(k) ?? 0) + by);
   }
 }
 
@@ -72,11 +81,11 @@ export class FirestoreFeatureUsageStore implements FeatureUsageStore {
       return 0; // fail-open: don't block on a read error
     }
   }
-  async increment(userId: string, feature: UsageFeature, granularity: UsageGranularity = 'day'): Promise<void> {
+  async increment(userId: string, feature: UsageFeature, granularity: UsageGranularity = 'day', by = 1): Promise<void> {
     try {
       const { FieldValue } = await import('firebase-admin/firestore');
       await this.ref(userId, granularity).set(
-        { [feature]: FieldValue.increment(1), updatedAt: new Date().toISOString() },
+        { [feature]: FieldValue.increment(by), updatedAt: new Date().toISOString() },
         { merge: true },
       );
     } catch {

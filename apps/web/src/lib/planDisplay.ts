@@ -70,6 +70,18 @@ export function planFeatureBullets(plan: Plan | undefined, lang: 'en' | 'hi'): s
   }
   if (f.currentAffairs) bullets.push(hi ? 'डेली करंट अफेयर्स' : 'Daily Current Affairs');
 
+  // Previous-year question papers — full archive is a paid unlock (pyqAccess).
+  if (f.pyqAccess) bullets.push(hi ? 'पिछले वर्ष के पूरे प्रश्नपत्र' : 'Full Previous-Year Papers');
+
+  // Multi-exam — how many exams this plan covers.
+  {
+    const m = f.maxExams;
+    if (m !== undefined) {
+      if (unlimited(m)) bullets.push(hi ? 'सभी परीक्षाएँ एक साथ' : 'All exams in one plan');
+      else if (m > 1) bullets.push(hi ? `${m} परीक्षाएँ एक साथ` : `Up to ${m} exams`);
+    }
+  }
+
   return bullets;
 }
 

@@ -14,6 +14,8 @@ import type { Env } from '../env.js';
 import { InMemoryMCQPoolStore, FirestoreMCQPoolStore, type MCQPoolStore } from '../lib/mcqPoolStore.js';
 import type { CreditLedger } from '../lib/creditLedger.js';
 import type { PlatformConfigStore } from '../lib/platformConfigStore.js';
+import type { FeatureUsageStore } from '../lib/featureUsageStore.js';
+import { PlanGate, FeatureKey } from '../lib/planGate.js';
 
 export interface StudyRoutesDeps {
   users: UserStore;
@@ -34,6 +36,8 @@ export interface StudyRoutesDeps {
   modelResolver?: import('../lib/aiModelResolver.js').AIModelResolver | null;
   /** Spaced-repetition store — schedules a chapter for review on completion. Optional for tests. */
   review?: import('../lib/reviewStore.js').ReviewStore | null;
+  /** Per-user usage counter for the daily-MCQ cap + paid chapter fair-use cap. Optional for tests. */
+  usage?: FeatureUsageStore;
 }
 
 /** Human-readable exam name from the curated registry, with a slug-derived fallback. */
@@ -100,6 +104,9 @@ async function mergeAppendedChapters(
 export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
   const app = new Hono();
   const mcqPool = deps.mcqPool ?? (deps.db ? new FirestoreMCQPoolStore(deps.db) : new InMemoryMCQPoolStore());
+  // Central plan/feature gate — only when the usage counter is wired
+  // (production always wires it; some tests don't). Fail-open otherwise.
+  const planGate = deps.usage ? new PlanGate({ config: deps.config, usage: deps.usage, ledger: deps.ledger, logger: deps.logger }) : null;
 
   // GET /v1/study/syllabus/:examSlug — full syllabus tree (3-tier fallback)
   app.get('/syllabus/:examSlug', async (c) => {
@@ -139,6 +146,18 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
         deps.env.CONTENT_REFRESH_DAYS,
       );
       return c.json({ chapter: content, userLevel, contentPersonalizedFor: userLevel });
+    }
+
+    // Cache miss — this is a NEW chapter generation. Gate it:
+    //  • Active paid users → daily chapter fair-use cap (chaptersPerDay).
+    //  • Free / expired users → pay `read_chapter` credits (below).
+    // Re-reads of already-cached chapters are free for everyone (handled by
+    // the cache-hit early return above).
+    let chapterCommit: () => Promise<void> = async () => {};
+    if (planGate) {
+      const gate = await planGate.enforcePaidCap(user, FeatureKey.CHAPTER_ACCESS, language);
+      if (!gate.ok) return c.json(gate.body, gate.status);
+      chapterCommit = gate.commit;
     }
 
     // Free-plan users pay `read_chapter` credits via the append-only ledger.
@@ -206,6 +225,9 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
       };
       await deps.chapters.saveChapter(content);
       deps.logger.info('study.chapter_generated', { exam, subject, chapter, language, userId: principal.userId, level: userLevel });
+      // Count this new chapter against the paid daily cap (no-op for free/
+      // expired users, who were metered by credits above).
+      await chapterCommit();
     } catch (err) {
       // AI failed after we deducted credits -- award them back as an
       // admin_grant so the ledger stays balanced (we don't reverse the
@@ -253,6 +275,17 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
       const user = await deps.users.get(principal.userId);
       const userLevel = effectiveLevel(user);
 
+      // Daily-MCQ cap (admin-editable dailyMCQ; -1 = unlimited). A quiz serves
+      // up to 10 MCQs, so it consumes 10 against the daily allowance. Free
+      // users hit the cap → structured upgrade prompt. Fail-open if the gate
+      // isn't wired.
+      let mcqCommit: () => Promise<void> = async () => {};
+      if (planGate) {
+        const gate = await planGate.enforce(user, FeatureKey.DAILY_MCQ, language, { cost: 10 });
+        if (!gate.ok) return c.json(gate.body, gate.status);
+        mcqCommit = gate.commit;
+      }
+
       // Fetch cached chapter content to ensure quiz is based on what student read
       const cachedContent = await deps.chapters.getChapter(exam, subject, chapter, language, userLevel);
       const chapterText = cachedContent?.content ?? undefined;
@@ -260,6 +293,8 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
       const questions = await mcqPool.getChapterQuiz(
         exam, subject, chapter, principal.userId, language, 10, deps.aiEngine, deps.logger, chapterText, userLevel,
       );
+      // Count the served MCQs against the daily cap (only on success).
+      await mcqCommit();
       return c.json({ questions, userLevel });
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);

@@ -311,6 +311,11 @@ function sanitisePlanPatch(patch: Partial<PlanConfig>): Partial<PlanConfig> {
       // Multi-exam (Sprint 5) — how many exams this plan allows. Persist
       // only when present so older saves don't clobber the default.
       ...(f.maxExams !== undefined ? { maxExams: clampInt(f.maxExams, 1) } : {}),
+      // Boolean access flags (Part 4 audit) — PYQ archive + revision queue.
+      // Persist only when present so older saves keep the compile-time
+      // default from @nexigrate/shared.
+      ...(f.pyqAccess !== undefined ? { pyqAccess: !!f.pyqAccess } : {}),
+      ...(f.revisionAccess !== undefined ? { revisionAccess: !!f.revisionAccess } : {}),
     };
   }
   return out;

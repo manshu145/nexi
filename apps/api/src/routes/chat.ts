@@ -8,22 +8,23 @@ import type { ChatStore } from '../lib/chatStore.js';
 import type { Env } from '../env.js';
 import type { PlatformConfigStore } from '../lib/platformConfigStore.js';
 import type { FeatureUsageStore } from '../lib/featureUsageStore.js';
+import type { CreditLedger } from '../lib/creditLedger.js';
+import { PlanGate, FeatureKey } from '../lib/planGate.js';
 
-export interface ChatRoutesDeps { users: UserStore; aiEngine: AIEngine; chat: ChatStore; logger: Logger; env?: Env; config?: PlatformConfigStore; usage?: FeatureUsageStore; }
+export interface ChatRoutesDeps { users: UserStore; aiEngine: AIEngine; chat: ChatStore; logger: Logger; env?: Env; config?: PlatformConfigStore; usage?: FeatureUsageStore; ledger?: CreditLedger; }
 
-/** Free-tier AI-tutor allowance: messages per IST hour. All paid plans
- *  (scholar/aspirant/achiever) are unlimited. Founder: "free ko har ghante
- *  5, baaki sab ko unlimited." */
-const FREE_AI_TUTOR_PER_HOUR = 5;
-// Support chat gets its own, more generous hourly bucket so a free user who
-// has used up their tutor messages can STILL reach support (founder priority:
-// paying or free, nobody should be locked out of help). It's a separate
-// counter — not unlimited — so /support can't be used as a free-tutor bypass,
-// and the support system prompt refuses study questions anyway.
+/** Free-tier AI-SUPPORT allowance: messages per IST hour. Support stays on a
+ *  separate, generous hourly bucket (not credit-gated) so a user who has run
+ *  out of tutor credits can ALWAYS still reach help. */
 const FREE_AI_SUPPORT_PER_HOUR = 20;
 
 export function makeChatRoutes(deps: ChatRoutesDeps): Hono {
   const app = new Hono();
+  // Central plan/feature gate (AI tutor + image quotas). Needs config + usage
+  // + ledger; falls back to no gating (fail-open) when any is missing.
+  const planGate = deps.config && deps.usage && deps.ledger
+    ? new PlanGate({ config: deps.config, usage: deps.usage, ledger: deps.ledger, logger: deps.logger })
+    : null;
 
   // POST /v1/chat — send message, get AI response (supports text + attachments)
   app.post('/', async (c) => {
@@ -47,36 +48,40 @@ export function makeChatRoutes(deps: ChatRoutesDeps): Hono {
       const session = await deps.chat.getSession(principal.userId, sessionId);
       const messages = (session?.messages ?? []).map(m => ({ role: m.role, content: m.content }));
 
-      // Free-tier AI-tutor rate limit: 5 messages per IST hour. All paid plans
-      // are unlimited. The per-day aiTutorPerDay matrix field doesn't fit an
-      // hourly window, so this uses a dedicated hourly counter. We check BEFORE
-      // calling the model (so a blocked message costs nothing) and persist the
-      // notice as an assistant message so the chat stays coherent. Fail-open.
-      const plan = user?.plan ?? 'free';
-      // Support chat uses a separate, more generous hourly bucket so the
-      // tutor limit can't lock a user out of getting help.
+      // ── AI-tutor / support gating ──────────────────────────────────────
+      // Support chat stays on a free, generous hourly bucket so a user out of
+      // tutor credits can ALWAYS still reach help. The AI tutor goes through
+      // the central planGate: Free/expired pay credits (charged only on a
+      // successful reply), active paid users get the per-day aiTutorPerDay
+      // cap. Every limit returns an upgrade-prompting message. Fail-open.
       const supportMode = body.supportMode === true;
-      const limitFeature: 'aiTutor' | 'aiSupport' = supportMode ? 'aiSupport' : 'aiTutor';
-      const limitCap = supportMode ? FREE_AI_SUPPORT_PER_HOUR : FREE_AI_TUTOR_PER_HOUR;
-      if (plan === 'free' && deps.usage) {
-        try {
-          const usedThisHour = await deps.usage.getCount(principal.userId, limitFeature, 'hour');
-          if (usedThisHour >= limitCap) {
-            const lang = user?.language ?? 'en';
-            const limitMsg = supportMode
-              ? (lang === 'hi'
+      const lang = user?.language ?? 'en';
+      let aiChatCommit: () => Promise<void> = async () => {};
+
+      if (supportMode) {
+        if (deps.usage) {
+          try {
+            const usedThisHour = await deps.usage.getCount(principal.userId, 'aiSupport', 'hour');
+            if (usedThisHour >= FREE_AI_SUPPORT_PER_HOUR) {
+              const limitMsg = lang === 'hi'
                 ? `आपने इस घंटे के सपोर्ट संदेशों की सीमा पूरी कर ली है। कृपया थोड़ी देर बाद कोशिश करें, या नीचे एक टिकट बनाएँ / help@nexigrate.com पर ईमेल करें।`
-                : `You've reached the support message limit for this hour. Please try again shortly, or create a ticket below / email help@nexigrate.com.`)
-              : (lang === 'hi'
-                ? `आपने इस घंटे के सभी ${FREE_AI_TUTOR_PER_HOUR} फ्री AI-ट्यूटर संदेश इस्तेमाल कर लिए हैं। थोड़ी देर बाद दोबारा कोशिश करें, या अनलिमिटेड चैट के लिए अपग्रेड करें।`
-                : `You've used all ${FREE_AI_TUTOR_PER_HOUR} free AI-tutor messages for this hour. Please try again a bit later, or upgrade for unlimited AI tutoring.`);
-            await deps.chat.addMessage(principal.userId, sessionId, 'assistant', limitMsg);
-            deps.logger.info('chat.tutor_limit_hit', { userId: principal.userId, usedThisHour, supportMode });
-            return c.json({ sessionId, response: limitMsg, title: session?.title ?? body.message.slice(0, 50), limitReached: true });
+                : `You've reached the support message limit for this hour. Please try again shortly, or create a ticket below / email help@nexigrate.com.`;
+              await deps.chat.addMessage(principal.userId, sessionId, 'assistant', limitMsg);
+              deps.logger.info('chat.support_limit_hit', { userId: principal.userId, usedThisHour });
+              return c.json({ sessionId, response: limitMsg, title: session?.title ?? body.message.slice(0, 50), limitReached: true });
+            }
+          } catch (limitErr) {
+            deps.logger.warn('chat.support_limit_check_failed', { error: limitErr instanceof Error ? limitErr.message : String(limitErr) });
           }
-        } catch (limitErr) {
-          deps.logger.warn('chat.tutor_limit_check_failed', { error: limitErr instanceof Error ? limitErr.message : String(limitErr) });
         }
+      } else if (planGate) {
+        const gate = await planGate.enforce(user, FeatureKey.AI_CHAT, lang as 'en' | 'hi', { deferCredits: true });
+        if (!gate.ok) {
+          await deps.chat.addMessage(principal.userId, sessionId, 'assistant', gate.body.message);
+          deps.logger.info('chat.tutor_limit_hit', { userId: principal.userId, reason: gate.body.error, plan: gate.body.plan });
+          return c.json({ sessionId, response: gate.body.message, title: session?.title ?? body.message.slice(0, 50), limitReached: true, upgrade: true, gate: gate.body });
+        }
+        aiChatCommit = gate.commit;
       }
 
       const userContext = { exam: user?.targetExam ?? 'general', level: user?.onboardingLevel ?? 'intermediate', language: (user?.language ?? 'en') as 'en' | 'hi' };
@@ -116,10 +121,13 @@ export function makeChatRoutes(deps: ChatRoutesDeps): Hono {
       // Save AI response
       await deps.chat.addMessage(principal.userId, sessionId, 'assistant', response);
 
-      // Count this answered message against the free hourly allowance (only
-      // on success, so a failed generation doesn't burn the user's quota).
-      if (plan === 'free' && deps.usage) {
-        await deps.usage.increment(principal.userId, limitFeature, 'hour');
+      // Record usage on success only (a failed generation costs nothing):
+      // support → free hourly counter; tutor → planGate commit (credits for
+      // Free/expired, per-day count for active paid plans).
+      if (supportMode) {
+        if (deps.usage) await deps.usage.increment(principal.userId, 'aiSupport', 'hour');
+      } else {
+        await aiChatCommit();
       }
 
       deps.logger.info('chat.response', { userId: principal.userId, sessionId, responseLen: response.length, hasImage: imageAttachments.length > 0 });
@@ -172,39 +180,34 @@ export function makeChatRoutes(deps: ChatRoutesDeps): Hono {
     try {
       const user = await deps.users.get(principal.userId);
       const exam = user?.targetExam ?? 'general';
-      const plan = user?.plan ?? 'free';
+      const lang = (user?.language ?? 'en') as 'en' | 'hi';
 
-      // Per-day image-generation limit (admin-configurable: plan.features
-      // .imagesPerDay; -1 = unlimited). Founder ask: "limit laga to message
-      // bhi milna chahiye." Fail-open if config/usage isn't wired.
-      if (deps.config && deps.usage) {
-        try {
-          const plans = await deps.config.getPlans();
-          const limit = plans[plan]?.features?.imagesPerDay ?? -1;
-          if (limit >= 0) {
-            const used = await deps.usage.getCount(principal.userId, 'image');
-            if (used >= limit) {
-              deps.logger.info('chat.image_limit_hit', { userId: principal.userId, plan, used, limit });
-              return c.json({
-                type: 'mermaid',
-                content: `graph TD\n  A["Daily image limit reached"] --> B["${used}/${limit} used today"]\n  B --> C["Upgrade for more images"]`,
-                fallback: true,
-                limitReached: true,
-                message: limit === 0
-                  ? `AI image generation isn't included in the ${plan} plan. Upgrade to generate images.`
-                  : `You've used all ${limit} AI image${limit === 1 ? '' : 's'} for today on the ${plan} plan. The limit resets tomorrow — upgrade for more.`,
-              });
-            }
-          }
-        } catch (limitErr) {
-          deps.logger.warn('chat.image_limit_check_failed', { error: limitErr instanceof Error ? limitErr.message : String(limitErr) });
+      // Per-day image-generation cap via the central gate (imagesPerDay;
+      // -1 = unlimited, 0 = not included). Expiry-aware. Founder ask: "limit
+      // laga to message bhi milna chahiye" — blocked calls return an upgrade
+      // prompt. Fail-open if the gate isn't wired.
+      let imageCommit: () => Promise<void> = async () => {};
+      if (planGate) {
+        const gate = await planGate.enforce(user, FeatureKey.AI_IMAGE, lang);
+        if (!gate.ok) {
+          deps.logger.info('chat.image_limit_hit', { userId: principal.userId, reason: gate.body.error, plan: gate.body.plan });
+          return c.json({
+            type: 'mermaid',
+            content: `graph TD\n  A["Daily image limit reached"] --> B["Upgrade for more images"]`,
+            fallback: true,
+            limitReached: true,
+            upgrade: true,
+            gate: gate.body,
+            message: gate.body.message,
+          });
         }
+        imageCommit = gate.commit;
       }
 
       const result = await deps.aiEngine.generateVisualization(body.topic, 'general', exam, 'image');
-      // Count a successful generation against the daily quota.
-      if (deps.usage && result.type === 'image') {
-        await deps.usage.increment(principal.userId, 'image');
+      // Count a successful image against the daily quota.
+      if (result.type === 'image') {
+        await imageCommit();
       }
       deps.logger.info('chat.generate_image', { userId: principal.userId, topic: body.topic, type: result.type });
       return c.json({ type: result.type, content: result.content });
