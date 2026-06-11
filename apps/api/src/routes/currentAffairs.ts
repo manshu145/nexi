@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { createHash } from 'node:crypto';
 import { requireAuth } from '../auth.js';
 import type { Logger } from '../logger.js';
 import type { UserStore } from '../lib/userStore.js';
@@ -50,6 +51,25 @@ function normalizeHeadline(headline: string): string {
   const stopWords = new Set(['the', 'a', 'an', 'is', 'are', 'was', 'were', 'in', 'on', 'at', 'to', 'for', 'of', 'and', 'or', 'but', 'not', 'with', 'from', 'by', 'as', 'it', 'its', 'that', 'this', 'has', 'have', 'had', 'be', 'been', 'will', 'can', 'may']);
   const words = headline.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(w => w.length > 2 && !stopWords.has(w));
   return words.slice(0, 8).join(' ');
+}
+
+/**
+ * Content fingerprint for the daily quiz cache key.
+ *
+ * Founder report: "naya content aa gaya hai lekin quiz purane ke hisab se aa
+ * raha hai". Root cause: the quiz was cached by DATE only, so the first quiz
+ * generated in a day (often from a sparse early-morning bucket, or even
+ * yesterday's fallback) was frozen for the rest of the day while the feed
+ * kept refreshing every 30 min. By keying the cache on a hash of the current
+ * item set, a fresh quiz is generated whenever the content actually changes,
+ * and the cached one is reused only while the content set is identical.
+ */
+function quizFingerprint(items: any[]): string {
+  const ids = items
+    .map((it) => String(it.id || it.headline || ''))
+    .filter(Boolean)
+    .sort();
+  return createHash('sha1').update(ids.join('|')).digest('hex').slice(0, 12);
 }
 
 export interface CurrentAffairsRoutesDeps {
@@ -173,30 +193,39 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
     }
   });
 
-  // GET /v1/current-affairs/quiz — daily 20 MCQs
+  // GET /v1/current-affairs/quiz — daily quiz (up to 30 MCQs), always built
+  // from the LATEST ingested content via a content-fingerprint cache key.
   app.get('/quiz', async (c) => {
     try {
       requireAuth(c);
       const today = new Date().toISOString().split('T')[0]!;
       const language = (c.req.query('lang') as 'en' | 'hi') || 'en';
-      const quizKey = language === 'hi' ? `${today}-hi` : today;
 
-      // Check if quiz already generated for today + language
-      let questions = await deps.currentAffairs.getDailyQuiz(quizKey);
-      if (!questions) {
-        // Generate quiz from today's items
-        const items = await deps.currentAffairs.getTodayItems(today);
-        if (items.length === 0) {
-          throw new HTTPException(404, { message: 'No current affairs available for today. Try again later.' });
-        }
-        // Generate 20 MCQs from today's current affairs in user's language
-        const headlines = items.map(item => `[${item.category}] ${item.headline}: ${item.summary}`).join('\n');
-        questions = await deps.aiEngine.generateCurrentAffairsQuiz(headlines, 20, language);
-        await deps.currentAffairs.saveDailyQuiz(quizKey, questions);
-        deps.logger.info('ca.quiz_generated', { date: today, language, count: questions.length });
+      // Build the quiz from ALL of today's deduplicated items so it reflects
+      // every headline currently available — not a stale morning snapshot.
+      const items = deduplicateItems(await deps.currentAffairs.getTodayItems(today));
+      if (items.length === 0) {
+        throw new HTTPException(404, { message: 'No current affairs available for today. Try again later.' });
       }
 
-      return c.json({ date: today, questions });
+      // Fingerprint the current content set. When new content is ingested the
+      // fingerprint changes -> a fresh quiz is generated. While the content is
+      // unchanged the cached quiz is reused (no duplicate AI cost).
+      const fp = quizFingerprint(items);
+      const quizKey = `${today}${language === 'hi' ? '-hi' : ''}-${fp}`;
+
+      let questions = await deps.currentAffairs.getDailyQuiz(quizKey);
+      if (!questions) {
+        // Target 25-30 questions; scale down gracefully on sparse days so the
+        // AI isn't forced to pad from too few headlines.
+        const count = items.length >= 10 ? 30 : Math.min(30, Math.max(10, items.length * 3));
+        const headlines = items.map(item => `[${item.category}] ${item.headline}: ${item.summary}`).join('\n');
+        questions = await deps.aiEngine.generateCurrentAffairsQuiz(headlines, count, language);
+        await deps.currentAffairs.saveDailyQuiz(quizKey, questions);
+        deps.logger.info('ca.quiz_generated', { date: today, language, fp, requested: count, count: questions.length });
+      }
+
+      return c.json({ date: today, questions, quizId: quizKey });
     } catch (e) {
       if (e instanceof HTTPException) throw e;
       deps.logger.error('ca.quiz_error', { error: e instanceof Error ? e.message : String(e), stack: e instanceof Error ? e.stack : '' });
@@ -207,18 +236,23 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
   // POST /v1/current-affairs/quiz/submit — submit answers, update leaderboard
   app.post('/quiz/submit', async (c) => {
     const principal = requireAuth(c);
-    const body = await c.req.json().catch(() => null) as { answers: number[]; timeTaken: number; lang?: string } | null;
+    const body = await c.req.json().catch(() => null) as { answers: number[]; timeTaken: number; lang?: string; quizId?: string } | null;
     if (!body?.answers || body.timeTaken == null) throw new HTTPException(400, { message: 'answers and timeTaken required' });
 
     const today = new Date().toISOString().split('T')[0]!;
     // PR-44: Also check yesterday in case user started quiz before midnight
     const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]!;
-    // PR-41: respect language suffix — quiz might be stored as
-    // '2026-05-31-hi' for Hindi users. Try language-specific key first,
-    // fall back to the base date key.
     const lang = body.lang || 'en';
-    const quizKey = lang === 'hi' ? `${today}-hi` : today;
-    let questions = await deps.currentAffairs.getDailyQuiz(quizKey);
+
+    // Prefer the EXACT quiz version the user saw (quizId returned by GET /quiz).
+    // This keeps scoring correct even if newer content regenerated the quiz
+    // while the user was still answering.
+    let questions = body.quizId ? await deps.currentAffairs.getDailyQuiz(body.quizId) : null;
+    // Backward-compat fallbacks for older clients / pre-fingerprint quizzes.
+    if (!questions) {
+      const quizKey = lang === 'hi' ? `${today}-hi` : today;
+      questions = await deps.currentAffairs.getDailyQuiz(quizKey);
+    }
     if (!questions) {
       // Fallback: try the other language variant
       questions = await deps.currentAffairs.getDailyQuiz(lang === 'hi' ? today : `${today}-hi`);

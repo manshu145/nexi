@@ -24,6 +24,7 @@ export default function CurrentAffairsQuizPage() {
   const [result, setResult] = useState<{ score: number; correct: number; total: number; rank: number; timeTaken: number } | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number>(0);
+  const quizIdRef = useRef<string | undefined>(undefined);
 
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
 
@@ -37,6 +38,7 @@ export default function CurrentAffairsQuizPage() {
         setPhase('rules');
         return;
       }
+      quizIdRef.current = res.quizId;
       setQuestions(res.questions);
       setAnswers(new Array(res.questions.length).fill(-1));
       setPhase('quiz');
@@ -58,7 +60,7 @@ export default function CurrentAffairsQuizPage() {
     setPhase('submitting');
     const timeTaken = Math.max(1, Math.round((Date.now() - startTimeRef.current) / 1000));
     try {
-      const res = await api.submitCurrentAffairsQuiz(answersRef.current, timeTaken);
+      const res = await api.submitCurrentAffairsQuiz(answersRef.current, timeTaken, quizIdRef.current);
       track('ca_quiz_attempt');
       setResult(res);
       setPhase('result');
