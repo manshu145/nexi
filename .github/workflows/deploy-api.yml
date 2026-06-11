@@ -197,6 +197,12 @@ jobs:
           # API will resolve to role 'super_admin' on every request. Cannot
           # be locked out. To rotate, change the value here and re-deploy.
           BASE_ENV="^|^NODE_ENV=production|AUTH_MODE=firebase|PERSISTENCE=firestore|LOG_JSON=true|GCP_PROJECT_ID=nexigrate-prod|GCP_PROJECT_NUMBER=505978726927|GCP_REGION=asia-south1|GCP_SERVICE_ACCOUNT=${{ env.SA_EMAIL }}|CORS_ALLOWED_ORIGINS=https://app.nexigrate.com,https://nexigrate.com|SUPER_ADMIN_EMAIL=manshu.ibc24@gmail.com"
+          # --no-cpu-throttling + --min-instances=1: the API runs its OWN
+          # in-process cron scheduler (apps/api/src/lib/scheduler.ts) for the
+          # automatic notifications + current-affairs ingest. Cloud Run
+          # throttles CPU between requests by default, which would stall the
+          # background timer — so CPU must stay allocated and one instance must
+          # always be warm. This replaces the external GitHub Actions cron.
           DEPLOY_ARGS=(
             run deploy ${{ env.SERVICE }}
             --image=${{ steps.tag.outputs.image }}
@@ -208,6 +214,7 @@ jobs:
             --max-instances=3
             --min-instances=1
             --cpu=1 --memory=512Mi
+            --no-cpu-throttling
             --quiet
           )
           # Compose the --set-secrets value: Razorpay (when present) joined
