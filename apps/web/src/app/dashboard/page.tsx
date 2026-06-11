@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useTheme } from 'next-themes';
@@ -182,12 +182,12 @@ export default function DashboardPage() {
         <Logo height={44} />
         <div className="flex items-center gap-2">
           {installPrompt && !appInstalled && (
-            <button onClick={handleInstallApp} className="btn-ghost-sm text-xs flex items-center gap-1">📱 Install</button>
+            <button onClick={handleInstallApp} className="btn-ghost-sm text-xs flex items-center gap-1"><IconDownload className="h-3.5 w-3.5" /> Install</button>
           )}
           {appInstalled && (
-            <span className="text-[10px] text-gold-600 font-medium">✓ Installed</span>
+            <span className="text-[10px] text-gold-600 font-medium inline-flex items-center gap-1"><IconCheck className="h-3 w-3" /> Installed</span>
           )}
-          <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="btn-ghost-sm" aria-label="Toggle theme">{theme === 'dark' ? '☀️' : '🌙'}</button>
+          <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="btn-ghost-sm" aria-label="Toggle theme">{theme === 'dark' ? <IconSun className="h-4 w-4" /> : <IconMoon className="h-4 w-4" />}</button>
           <NotificationBell />
           <button onClick={() => router.push('/profile')} className="h-9 w-9 overflow-hidden rounded-full bg-paper-300 border border-line flex items-center justify-center">
             {user.photoURL ? <img src={user.photoURL} alt="" className="h-full w-full object-cover" /> : <span className="text-sm font-bold text-ink-800">{firstName?.[0]?.toUpperCase()}</span>}
@@ -197,7 +197,7 @@ export default function DashboardPage() {
 
       {/* Hero greeting */}
       <section className="mt-8">
-        <h1 className="font-serif text-2xl font-bold text-ink-900">{greeting}, {firstName}! 👋</h1>
+        <h1 className="font-serif text-2xl font-bold text-ink-900">{greeting}, {firstName}!</h1>
         {examName && (
           <div className="mt-3">
             {enrolledExams.length > 1 ? (
@@ -230,22 +230,22 @@ export default function DashboardPage() {
             {(me.plan ?? 'free') === 'free' ? (
               <><span>{t('freePlan')}</span><span className="text-ember-500">· {t('upgrade')} →</span></>
             ) : (
-              <span className="inline-flex items-center gap-1 rounded-full bg-gold-500 px-3 py-1 text-xs font-semibold text-paper-50">⭐ {planDisplayName(me.plan)} {tc('plan')}{me.planExpiresAt ? ` · ${tc('expires')} ${new Date(me.planExpiresAt).toLocaleDateString(me.language === 'hi' ? 'hi-IN' : 'en-IN', { day: 'numeric', month: 'short' })}` : ''}</span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-gold-500 px-3 py-1 text-xs font-semibold text-paper-50"><IconStar className="h-3.5 w-3.5" /> {planDisplayName(me.plan)} {tc('plan')}{me.planExpiresAt ? ` · ${tc('expires')} ${new Date(me.planExpiresAt).toLocaleDateString(me.language === 'hi' ? 'hi-IN' : 'en-IN', { day: 'numeric', month: 'short' })}` : ''}</span>
             )}
           </button>
         )}
         {/* Quick stats inline */}
         <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-ink-700">
-          {(me?.currentStreak ?? 0) > 0 && <span className="flex items-center gap-1">🔥 {me?.currentStreak} {tc('days')} {tc('streak')}</span>}
-          <span className="flex items-center gap-1 cursor-pointer hover:opacity-80" onClick={() => router.push('/credits')}>💎 {me?.credits ?? 0} {tc('credits')}</span>
-          <span className="flex items-center gap-1 capitalize">📊 {levelLabel}</span>
+          {(me?.currentStreak ?? 0) > 0 && <span className="flex items-center gap-1"><IconFlame className="h-4 w-4 text-ember-600" /> {me?.currentStreak} {tc('days')} {tc('streak')}</span>}
+          <span className="flex items-center gap-1 cursor-pointer hover:opacity-80" onClick={() => router.push('/credits')}><IconGem className="h-4 w-4 text-gold-600" /> {me?.credits ?? 0} {tc('credits')}</span>
+          <span className="flex items-center gap-1 capitalize"><IconChart className="h-4 w-4 text-muted-500" /> {levelLabel}</span>
         </div>
 
         {/* Zero-credits warning for free plan users */}
         {(me?.plan === 'free' || !me?.plan) && (me?.credits ?? 0) <= 0 && (
           <div className="mt-4 rounded-xl border border-ember-500/30 bg-ember-500/5 p-4">
             <div className="flex items-start gap-3">
-              <span className="text-xl flex-shrink-0">⚠️</span>
+              <span className="flex-shrink-0 text-ember-500"><IconAlert className="h-6 w-6" /></span>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-ink-900">{me?.language === 'hi' ? 'क्रेडिट खत्म हो गए!' : 'You\'re out of credits!'}</p>
                 <p className="mt-1 text-xs text-muted-500">
@@ -255,10 +255,10 @@ export default function DashboardPage() {
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button onClick={() => router.push('/upgrade')} className="inline-flex items-center gap-1 rounded-full bg-ember-500 px-3.5 py-1.5 text-xs font-semibold text-paper-50 hover:bg-ember-600 transition-colors">
-                    ⭐ Upgrade Plan
+                    <IconStar className="h-3.5 w-3.5" /> Upgrade Plan
                   </button>
                   <button onClick={() => router.push('/refer')} className="inline-flex items-center gap-1 rounded-full border border-line bg-paper-50 px-3.5 py-1.5 text-xs font-medium text-ink-900 hover:bg-paper-200 transition-colors">
-                    🎁 Refer & Earn
+                    <IconGift className="h-3.5 w-3.5" /> Refer & Earn
                   </button>
                 </div>
               </div>
@@ -285,7 +285,7 @@ export default function DashboardPage() {
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-ember-500/10 text-2xl">📖</span>
+              <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-ember-500/10 text-ember-600"><IconBook className="h-6 w-6" /></span>
               <div>
                 <h3 className="font-serif text-lg font-bold text-ink-900">{t('study')}</h3>
                 <p className="mt-0.5 text-sm text-muted-500">{t('studyDesc')}</p>
@@ -310,7 +310,7 @@ export default function DashboardPage() {
           {/* Current Affairs */}
           <button type="button" onClick={() => { track('feature_click', { feature: 'current_affairs' }); router.push('/current-affairs'); }} className="paper-card card-selectable group flex h-full flex-col p-4 text-left transition-all hover:shadow-md">
             <div className="flex items-center gap-2">
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ember-500/10 text-xl">📰</span>
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ember-500/10 text-ember-600"><IconNewspaper className="h-5 w-5" /></span>
               <span className="inline-flex items-center gap-1 rounded-full bg-ember-500/10 px-2 py-0.5 text-[10px] font-bold text-ember-600"><span className="h-1.5 w-1.5 rounded-full bg-ember-500 animate-pulse" />LIVE</span>
             </div>
             <h3 className="mt-3 font-serif text-base font-bold text-ink-900">{t('currentAffairs')}</h3>
@@ -320,7 +320,7 @@ export default function DashboardPage() {
 
           {/* Nexi AI */}
           <button type="button" onClick={() => { track('feature_click', { feature: 'chat' }); router.push('/chat'); }} className="paper-card card-selectable group flex h-full flex-col p-4 text-left transition-all hover:shadow-md">
-            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ember-500/10 text-xl">🤖</span>
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ember-500/10 text-ember-600"><IconBot className="h-5 w-5" /></span>
             <h3 className="mt-3 font-serif text-base font-bold text-ink-900">{t('nexiAI')}</h3>
             <p className="mt-1 text-xs text-muted-500 line-clamp-2">{t('nexiAIDesc')}</p>
             <div className="mt-auto pt-2.5 flex items-center gap-1 text-xs font-medium text-ember-500">{tc('chat')} <span className="transition-transform group-hover:translate-x-0.5">→</span></div>
@@ -328,7 +328,7 @@ export default function DashboardPage() {
 
           {/* Mock Tests */}
           <button type="button" onClick={() => { track('feature_click', { feature: 'mock_tests' }); router.push('/mock-tests'); }} className="paper-card card-selectable group flex h-full flex-col p-4 text-left transition-all hover:shadow-md">
-            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ember-500/10 text-xl">🧪</span>
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ember-500/10 text-ember-600"><IconFlask className="h-5 w-5" /></span>
             <h3 className="mt-3 font-serif text-base font-bold text-ink-900">{t('mockTests')}</h3>
             <p className="mt-1 text-xs text-muted-500 line-clamp-2">{t('mockTestsDesc')}</p>
             <div className="mt-auto pt-2.5 flex items-center gap-1 text-xs font-medium text-ember-500">{me?.language === 'hi' ? 'शुरू करें' : 'Start'} <span className="transition-transform group-hover:translate-x-0.5">→</span></div>
@@ -337,7 +337,7 @@ export default function DashboardPage() {
           {/* PYQ */}
           <button type="button" onClick={() => { track('feature_click', { feature: 'pyq' }); router.push('/pyq'); }} className="paper-card card-selectable group flex h-full flex-col p-4 text-left transition-all hover:shadow-md">
             <div className="flex items-center gap-2">
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ember-500/10 text-xl">📄</span>
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ember-500/10 text-ember-600"><IconFileText className="h-5 w-5" /></span>
               <span className="inline-flex items-center gap-1 rounded-full bg-ember-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ember-600">New</span>
             </div>
             <h3 className="mt-3 font-serif text-base font-bold text-ink-900">{me?.language === 'hi' ? 'पिछले वर्ष' : 'PYQ Papers'}</h3>
@@ -347,14 +347,14 @@ export default function DashboardPage() {
 
           {/* Secondary shortcuts — same card system, equal height */}
           {([
-            { icon: '🏆', title: t('leaderboard'), desc: t('quizScores'), href: '/leaderboard' },
-            { icon: '✍️', title: t('essay'), desc: t('essayDesc'), href: '/essay' },
-            { icon: '⭐', title: t('upgrade'), desc: t('upgradeDesc'), href: '/upgrade' },
-            { icon: '🎁', title: t('refer'), desc: t('referDesc'), href: '/refer' },
-            { icon: '🛟', title: t('support'), desc: t('supportDesc'), href: '/support' },
+            { icon: IconTrophy, title: t('leaderboard'), desc: t('quizScores'), href: '/leaderboard' },
+            { icon: IconPencil, title: t('essay'), desc: t('essayDesc'), href: '/essay' },
+            { icon: IconStar, title: t('upgrade'), desc: t('upgradeDesc'), href: '/upgrade' },
+            { icon: IconGift, title: t('refer'), desc: t('referDesc'), href: '/refer' },
+            { icon: IconLifebuoy, title: t('support'), desc: t('supportDesc'), href: '/support' },
           ] as const).map((item) => (
             <button key={item.href} type="button" onClick={() => { track('feature_click', { feature: item.href.replace('/', '') }); router.push(item.href); }} className="paper-card card-selectable group flex h-full flex-col p-4 text-left transition-all hover:shadow-md">
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ember-500/10 text-xl">{item.icon}</span>
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ember-500/10 text-ember-600"><item.icon className="h-5 w-5" /></span>
               <h3 className="mt-3 font-serif text-base font-bold text-ink-900">{item.title}</h3>
               <p className="mt-1 text-xs text-muted-500 line-clamp-2">{item.desc}</p>
               <div className="mt-auto pt-2.5 flex items-center gap-1 text-xs font-medium text-ember-500">{me?.language === 'hi' ? 'खोलें' : 'Open'} <span className="transition-transform group-hover:translate-x-0.5">→</span></div>
@@ -452,7 +452,7 @@ function ExamCountdown({ examSlug, onOpen }: { examSlug: string; onOpen: () => v
       <button type="button" onClick={onOpen} className="paper-card card-selectable w-full p-4 text-left hover:shadow-md transition-all">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <span className="inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-ember-500/10 text-xl">📅</span>
+            <span className="inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-ember-500/10 text-ember-600"><IconCalendar className="h-5 w-5" /></span>
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-ink-900">{info.examName} · {info.eventName}</p>
               <p className="mt-0.5 text-xs text-muted-500">
@@ -498,7 +498,7 @@ function ReviseTodayCard({ onOpen }: { onOpen: () => void }) {
     <section>
       <button onClick={onOpen} className="paper-card flex w-full items-center justify-between gap-3 p-4 text-left transition-shadow hover:shadow-md">
         <div className="flex items-center gap-3">
-          <span aria-hidden className="grid h-10 w-10 place-items-center rounded-xl bg-ember-500/10 text-xl">🔁</span>
+          <span aria-hidden className="grid h-10 w-10 place-items-center rounded-xl bg-ember-500/10 text-ember-600"><IconRepeat className="h-5 w-5" /></span>
           <div>
             <p className="text-sm font-semibold text-ink-900">Revise Today</p>
             <p className="text-xs text-muted-500">{dueCount} chapter{dueCount === 1 ? '' : 's'} due for spaced revision</p>
@@ -533,7 +533,7 @@ function DailyPlanCard({ examSlug, onOpen }: { examSlug: string; onOpen: () => v
       <button onClick={onOpen} className="paper-card w-full p-4 text-left transition-shadow hover:shadow-md">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <span aria-hidden className="grid h-10 w-10 place-items-center rounded-xl bg-ember-500/10 text-xl">🗺️</span>
+            <span aria-hidden className="grid h-10 w-10 place-items-center rounded-xl bg-ember-500/10 text-ember-600"><IconMap className="h-5 w-5" /></span>
             <div>
               <p className="text-sm font-semibold text-ink-900">Today&apos;s Study Plan</p>
               <p className="text-xs text-muted-500">{plan.items.length} tasks · ~{plan.estMinutes} min</p>
@@ -544,7 +544,7 @@ function DailyPlanCard({ examSlug, onOpen }: { examSlug: string; onOpen: () => v
         <ul className="mt-3 space-y-1.5">
           {top.map((it, i) => (
             <li key={`${it.subject}/${it.chapter}/${i}`} className="flex items-center gap-2 text-xs text-ink-700">
-              <span aria-hidden>{it.kind === 'revise' ? '🔁' : it.kind === 'fix' ? '🛠️' : '📘'}</span>
+              <span aria-hidden className="text-ember-600">{it.kind === 'revise' ? <IconRepeat className="h-4 w-4" /> : it.kind === 'fix' ? <IconWrench className="h-4 w-4" /> : <IconBook className="h-4 w-4" />}</span>
               <span className="truncate">{it.chapterName}</span>
             </li>
           ))}
@@ -552,4 +552,89 @@ function DailyPlanCard({ examSlug, onOpen }: { examSlug: string; onOpen: () => v
       </button>
     </section>
   );
+}
+
+
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Icon set — replaces the emojis the founder flagged as "cheap looking".
+ * All are 24×24 stroke icons inheriting `currentColor`, so size + colour are
+ * controlled by the call-site className (e.g. "h-5 w-5 text-ember-600"). This
+ * gives the dashboard one consistent, premium icon language instead of a
+ * rainbow of OS-rendered emojis.
+ * ──────────────────────────────────────────────────────────────────────── */
+type IconProps = { className?: string };
+function Svg({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      {children}
+    </svg>
+  );
+}
+
+function IconDownload({ className }: IconProps) {
+  return <Svg className={className}><path d="M12 3v12m0 0l-4-4m4 4l4-4" /><path d="M5 21h14" /></Svg>;
+}
+function IconCheck({ className }: IconProps) {
+  return <Svg className={className}><path d="M20 6L9 17l-5-5" /></Svg>;
+}
+function IconSun({ className }: IconProps) {
+  return <Svg className={className}><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></Svg>;
+}
+function IconMoon({ className }: IconProps) {
+  return <Svg className={className}><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z" /></Svg>;
+}
+function IconStar({ className }: IconProps) {
+  return <Svg className={className}><path d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8L6.6 19.6l1-6L3.3 9.4l6-.9L12 3z" /></Svg>;
+}
+function IconFlame({ className }: IconProps) {
+  return <Svg className={className}><path d="M12 3c.8 3-1.6 4.3-1.6 6.5a3.6 3.6 0 003.6 3.6c2 0 3.3-1.4 3.3-3.3 3 1.6 3 8.2-3.3 8.2-4 0-6.5-2.8-6.5-6 0-3.3 2.5-4.6 4.5-9z" /></Svg>;
+}
+function IconGem({ className }: IconProps) {
+  return <Svg className={className}><path d="M6 3h12l3 6-9 12L3 9l3-6z" /><path d="M3 9h18M9 3l-3 6 6 12 6-12-3-6" /></Svg>;
+}
+function IconChart({ className }: IconProps) {
+  return <Svg className={className}><path d="M3 21h18" /><rect x="6" y="11" width="3" height="7" rx="0.5" /><rect x="11" y="7" width="3" height="11" rx="0.5" /><rect x="16" y="13" width="3" height="5" rx="0.5" /></Svg>;
+}
+function IconAlert({ className }: IconProps) {
+  return <Svg className={className}><path d="M10.3 3.8L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.8a2 2 0 00-3.4 0z" /><path d="M12 9v4M12 17h.01" /></Svg>;
+}
+function IconGift({ className }: IconProps) {
+  return <Svg className={className}><rect x="3" y="8" width="18" height="4" rx="1" /><path d="M12 8v13M5 12v9h14v-9" /><path d="M12 8S10.5 3 7.8 4.2C6.2 5 7 8 7 8zM12 8s1.5-5 4.2-3.8C17.8 5 17 8 17 8z" /></Svg>;
+}
+function IconCalendar({ className }: IconProps) {
+  return <Svg className={className}><rect x="3" y="4.5" width="18" height="16" rx="2" /><path d="M3 9h18M8 2.5v4M16 2.5v4" /></Svg>;
+}
+function IconRepeat({ className }: IconProps) {
+  return <Svg className={className}><path d="M17 2l3 3-3 3" /><path d="M4 11V9a4 4 0 014-4h12" /><path d="M7 22l-3-3 3-3" /><path d="M20 13v2a4 4 0 01-4 4H4" /></Svg>;
+}
+function IconMap({ className }: IconProps) {
+  return <Svg className={className}><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z" /><path d="M9 4v14M15 6v14" /></Svg>;
+}
+function IconBook({ className }: IconProps) {
+  return <Svg className={className}><path d="M4 5a2 2 0 012-2h13v16H6a2 2 0 00-2 2V5z" /><path d="M19 17H6a2 2 0 00-2 2" /></Svg>;
+}
+function IconNewspaper({ className }: IconProps) {
+  return <Svg className={className}><path d="M4 5h13v14a1 1 0 001 1H5a1 1 0 01-1-1V5z" /><path d="M17 8h2a1 1 0 011 1v9a2 2 0 01-2 2" /><path d="M7 8h7M7 12h7M7 16h4" /></Svg>;
+}
+function IconBot({ className }: IconProps) {
+  return <Svg className={className}><rect x="4" y="8" width="16" height="11" rx="2.5" /><path d="M12 8V4M12 4h-1.5M9 13h.01M15 13h.01M9 16h6" /><path d="M2 12v3M22 12v3" /></Svg>;
+}
+function IconFlask({ className }: IconProps) {
+  return <Svg className={className}><path d="M9 3h6M10 3v6L5 18a2 2 0 001.8 3h10.4A2 2 0 0019 18l-5-9V3" /><path d="M7.5 14h9" /></Svg>;
+}
+function IconFileText({ className }: IconProps) {
+  return <Svg className={className}><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5z" /><path d="M14 3v5h5M9 13h6M9 17h6" /></Svg>;
+}
+function IconTrophy({ className }: IconProps) {
+  return <Svg className={className}><path d="M7 4h10v5a5 5 0 01-10 0V4z" /><path d="M7 6H4v1a3 3 0 003 3M17 6h3v1a3 3 0 01-3 3M9 19h6M10 15.5V19M14 15.5V19" /></Svg>;
+}
+function IconPencil({ className }: IconProps) {
+  return <Svg className={className}><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z" /><path d="M14 6l3 3" /></Svg>;
+}
+function IconLifebuoy({ className }: IconProps) {
+  return <Svg className={className}><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="3.5" /><path d="M4.5 4.5l5 5M14.5 14.5l5 5M19.5 4.5l-5 5M9.5 14.5l-5 5" /></Svg>;
+}
+function IconWrench({ className }: IconProps) {
+  return <Svg className={className}><path d="M14.5 6a3.5 3.5 0 00-4.8 4.3l-6 6 2 2 6-6A3.5 3.5 0 0018 9.5L15.5 12 12 8.5 14.5 6z" /></Svg>;
 }
