@@ -494,8 +494,8 @@ export default function UpgradePage() {
         </div>
       ) : (
       <div className="mt-8 grid gap-5 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
-        {/* FREE */}
-        <div className={`paper-card relative flex flex-col p-5 ${currentPlan === 'free' ? 'border-2 border-amber-400 dark:border-amber-600' : ''}`}>
+        {/* FREE — shown LAST on mobile (least likely to convert); natural grid order on desktop */}
+        <div className={`paper-card relative flex flex-col p-5 order-last md:order-none ${currentPlan === 'free' ? 'border-2 border-amber-400 dark:border-amber-600' : ''}`}>
           <h3 className="font-serif text-lg font-bold text-ink-900">{nameOf('free', 'Free')}</h3>
           <p className="mt-2"><span className="font-serif text-3xl font-bold text-ink-900">₹0</span></p>
           <ul className="mt-4 flex-1 space-y-2 text-sm text-muted-600 dark:text-muted-400">
@@ -508,8 +508,8 @@ export default function UpgradePage() {
           </button>
         </div>
 
-        {/* STARTER — ACTIVE */}
-        <div className={`paper-card relative flex flex-col p-5 ${isCurrentScholar ? 'border-2 border-amber-400' : ''}`}>
+        {/* STARTER — ACTIVE (mobile: 2nd, after the recommended Pro) */}
+        <div className={`paper-card relative flex flex-col p-5 order-2 md:order-none ${isCurrentScholar ? 'border-2 border-amber-400' : ''}`}>
           <h3 className="font-serif text-lg font-bold text-ink-900">{nameOf('scholar', 'Scholar')}</h3>
           <p className="mt-2">
             <span className="font-serif text-3xl font-bold text-ink-900">₹{finalPriceFor('scholar')}</span>
@@ -547,8 +547,9 @@ export default function UpgradePage() {
           </button>
         </div>
 
-        {/* PRO (aspirant) — RECOMMENDED (industry-standard middle-tier highlight) */}
-        <div className={`paper-card relative flex flex-col p-5 border-amber-500 shadow-[0_0_0_2px_rgba(245,158,11,0.3)] ${currentPlan === 'aspirant' ? 'border-2 border-amber-400' : ''}`}>
+        {/* PRO (aspirant) — RECOMMENDED. Shown FIRST on mobile so users see the
+           recommended plan before scrolling; natural grid order on desktop. */}
+        <div className={`paper-card relative flex flex-col p-5 order-first md:order-none border-amber-500 shadow-[0_0_0_2px_rgba(245,158,11,0.3)] ${currentPlan === 'aspirant' ? 'border-2 border-amber-400' : ''}`}>
           <span className="absolute -top-2.5 right-3 rounded-full bg-amber-500 px-3 py-0.5 text-xs font-semibold text-ink-900">{t('recommended')}</span>
           <h3 className="font-serif text-lg font-bold text-ink-900">{nameOf('aspirant', 'Pro')}</h3>
           <p className="mt-2">
@@ -590,8 +591,8 @@ export default function UpgradePage() {
           })()}
         </div>
 
-        {/* ELITE (achiever) — ACTIVE */}
-        <div className="paper-card relative flex flex-col p-5">
+        {/* ELITE (achiever) — ACTIVE (mobile: 3rd, before Free) */}
+        <div className="paper-card relative flex flex-col p-5 order-3 md:order-none">
           <h3 className="font-serif text-lg font-bold text-ink-900">{nameOf('achiever', 'Elite')}</h3>
           <p className="mt-2">
             <span className="font-serif text-3xl font-bold text-ink-900">₹{finalPriceFor('achiever')}</span>
