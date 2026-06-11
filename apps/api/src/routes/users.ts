@@ -188,6 +188,19 @@ export function makeUsersRoutes(deps: UsersRoutesDeps): Hono {
     // Re-read after ledger writes so the returned `credits` cache reflects
     // the just-awarded amounts.
     const freshUser = await deps.users.get(principal.userId);
+
+    // Re-engagement signal: keep `lastActiveAt` fresh on every app open so the
+    // hourly reengage cron can find users idle for 5-6h. Throttled to once per
+    // 15 min and fire-and-forget so it never adds latency to /me.
+    try {
+      const lastActive = freshUser?.lastActiveAt ? new Date(freshUser.lastActiveAt).getTime() : 0;
+      if (Date.now() - lastActive > 15 * 60 * 1000) {
+        void deps.users
+          .update(principal.userId, { lastActiveAt: asISODateTime(new Date().toISOString()) } as never)
+          .catch(() => { /* non-critical */ });
+      }
+    } catch { /* non-critical */ }
+
     return c.json({
       user: freshUser,
       dailyStreak: { streak: bump.streak, creditsEarned: dailyAwarded },
