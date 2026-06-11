@@ -24,6 +24,14 @@ import { toast } from 'sonner';
 
 const API = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com';
 
+/** Compact one-line summary of a job's last-run result object for the table. */
+function summariseResult(r: Record<string, unknown>): string {
+  return Object.entries(r)
+    .filter(([, v]) => typeof v === 'number' || typeof v === 'string' || typeof v === 'boolean')
+    .map(([k, v]) => `${k}: ${v}`)
+    .join(' · ');
+}
+
 interface PushStatus {
   configured: boolean;
   provider?: string;
@@ -69,6 +77,17 @@ export default function AdminPushPage() {
   const [autoLogs, setAutoLogs] = useState<AutoLog[]>([]);
   const [autoSource, setAutoSource] = useState<'' | 'reengage' | 'streak' | 'daily-digest'>('');
 
+  // Automatic schedule (in-process cron) — status + admin controls.
+  interface CronJob {
+    id: string; label: string; description: string; schedule: string; enabled: boolean;
+    lastRunAt: string | null; lastStatus: 'ok' | 'error' | null;
+    lastResult: Record<string, unknown> | null; lastError: string | null;
+    lastDurationMs: number | null; lastTrigger: 'schedule' | 'manual' | null; running: boolean;
+  }
+  interface CronStatus { available: boolean; enabled: boolean; tickIntervalMs: number; jobs: CronJob[]; }
+  const [cron, setCron] = useState<CronStatus | null>(null);
+  const [cronBusy, setCronBusy] = useState<string | null>(null); // jobId | 'config' while a request is in flight
+
   useEffect(() => {
     if (!loading && !user) router.replace('/admin/login');
   }, [user, loading, router]);
@@ -93,6 +112,49 @@ export default function AdminPushPage() {
       const res = await fetch(`${API}/v1/admin/notifications/log?limit=150${q}`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) { const d = (await res.json()) as { logs: AutoLog[] }; setAutoLogs(d.logs); }
     } catch { /* ignore */ }
+  };
+
+  const loadCron = async () => {
+    try {
+      const token = await getToken();
+      const res = await fetch(`${API}/v1/admin/cron/status`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) setCron((await res.json()) as CronStatus);
+    } catch { /* ignore */ }
+  };
+
+  const updateCronConfig = async (patch: { enabled?: boolean; jobs?: Record<string, boolean> }) => {
+    setCronBusy('config');
+    try {
+      const token = await getToken();
+      const res = await fetch(`${API}/v1/admin/cron/config`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(patch),
+      });
+      if (res.ok) { await loadCron(); toast.success('Schedule updated'); }
+      else toast.error('Failed to update schedule');
+    } catch { toast.error('Failed to update schedule'); }
+    finally { setCronBusy(null); }
+  };
+
+  const runJob = async (id: string) => {
+    setCronBusy(id);
+    try {
+      const token = await getToken();
+      const res = await fetch(`${API}/v1/admin/cron/run/${id}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = (await res.json().catch(() => ({}))) as { status?: CronJob; message?: string; error?: string };
+      if (res.ok) {
+        toast.success(`Ran "${id}" — ${data.status?.lastStatus === 'error' ? 'finished with error' : 'success'}`);
+        await loadCron();
+        void loadAutoLogs(); // re-engagement / digest / streak may have added rows
+      } else {
+        toast.error(data.message ?? data.error ?? `Run failed (HTTP ${res.status})`);
+      }
+    } catch (err) { toast.error(err instanceof Error ? err.message : 'Run failed'); }
+    finally { setCronBusy(null); }
   };
 
   const saveCfg = async () => {
@@ -123,6 +185,7 @@ export default function AdminPushPage() {
         // Load send history + prompt config in parallel (non-fatal).
         void loadLogs();
         void loadAutoLogs();
+        void loadCron();
         try {
           const cfgRes = await fetch(`${API}/v1/admin/push/config`, { headers: { Authorization: `Bearer ${token}` } });
           if (cfgRes.ok) { const d = (await cfgRes.json()) as { config: PromptCfg }; setPromptCfg(d.config); }
@@ -483,6 +546,100 @@ export default function AdminPushPage() {
                       {typeof l.inboxCreated === 'number' && l.inboxCreated > 0 ? ` · ${l.inboxCreated} inbox` : ''}
                     </td>
                     <td className="py-2 pr-3 text-[11px] text-muted-400">{l.sentAt ? new Date(l.sentAt).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* Automatic schedule (in-process cron) */}
+      <section className="mt-6 rounded-xl border border-line bg-paper-50 p-5">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <p className="text-sm font-semibold text-ink-700">Automatic schedule</p>
+            <p className="mt-0.5 text-xs text-muted-500">
+              These jobs run automatically inside the app — no external scheduler, no GitHub.
+              Turn the whole scheduler or any single job on/off, or trigger one right now.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            {cron?.available && (
+              <label className="flex items-center gap-2 text-xs font-medium text-ink-800">
+                <input
+                  type="checkbox"
+                  checked={cron.enabled}
+                  disabled={cronBusy !== null}
+                  onChange={(e) => updateCronConfig({ enabled: e.target.checked })}
+                  className="accent-ember-500"
+                />
+                {cron.enabled ? 'Scheduler ON' : 'Scheduler OFF'}
+              </label>
+            )}
+            <button type="button" onClick={loadCron} className="text-xs text-muted-500 hover:text-ink-800">↻ Refresh</button>
+          </div>
+        </div>
+
+        {!cron?.available ? (
+          <p className="mt-3 text-xs text-muted-400">Scheduler not available on this deployment.</p>
+        ) : (
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-line text-left">
+                  <th className="py-2 pr-3 text-[11px] font-semibold uppercase tracking-wider text-muted-500">Job</th>
+                  <th className="py-2 pr-3 text-[11px] font-semibold uppercase tracking-wider text-muted-500">Schedule</th>
+                  <th className="py-2 pr-3 text-[11px] font-semibold uppercase tracking-wider text-muted-500">Last run</th>
+                  <th className="py-2 pr-3 text-[11px] font-semibold uppercase tracking-wider text-muted-500">On</th>
+                  <th className="py-2 pr-3 text-[11px] font-semibold uppercase tracking-wider text-muted-500" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {cron.jobs.map((j) => (
+                  <tr key={j.id} className="align-top">
+                    <td className="py-2 pr-3">
+                      <p className="font-medium text-ink-900">{j.label}</p>
+                      <p className="max-w-[280px] text-[11px] text-muted-400">{j.description}</p>
+                    </td>
+                    <td className="py-2 pr-3 text-xs text-muted-600 whitespace-nowrap">{j.schedule}</td>
+                    <td className="py-2 pr-3 text-[11px]">
+                      {j.lastRunAt ? (
+                        <>
+                          <span className={j.lastStatus === 'error' ? 'text-ember-600' : 'text-emerald-600'}>
+                            {j.lastStatus === 'error' ? '✗ error' : '✓ ok'}
+                          </span>
+                          <span className="text-muted-400"> · {new Date(j.lastRunAt).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                          {j.lastTrigger === 'manual' ? <span className="text-muted-400"> · manual</span> : null}
+                          {j.lastResult && Object.keys(j.lastResult).length > 0 && (
+                            <p className="max-w-[260px] truncate text-muted-500">{summariseResult(j.lastResult)}</p>
+                          )}
+                          {j.lastError && <p className="max-w-[260px] truncate text-ember-600">{j.lastError}</p>}
+                        </>
+                      ) : (
+                        <span className="text-muted-400">Never run</span>
+                      )}
+                    </td>
+                    <td className="py-2 pr-3">
+                      <input
+                        type="checkbox"
+                        checked={j.enabled}
+                        disabled={cronBusy !== null || !cron.enabled}
+                        onChange={(e) => updateCronConfig({ jobs: { [j.id]: e.target.checked } })}
+                        className="accent-ember-500"
+                        title={cron.enabled ? '' : 'Enable the scheduler first'}
+                      />
+                    </td>
+                    <td className="py-2 pr-3">
+                      <button
+                        type="button"
+                        onClick={() => runJob(j.id)}
+                        disabled={cronBusy !== null || j.running}
+                        className="rounded-lg border border-line bg-paper-100 px-2.5 py-1 text-[11px] text-ink-800 hover:bg-paper-200 disabled:opacity-50 whitespace-nowrap"
+                      >
+                        {cronBusy === j.id || j.running ? 'Running…' : 'Run now'}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

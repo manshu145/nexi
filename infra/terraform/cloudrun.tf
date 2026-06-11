@@ -15,7 +15,9 @@ resource "google_cloud_run_v2_service" "api" {
     service_account = var.api_service_account_email
 
     scaling {
-      min_instance_count = 0
+      # Keep one instance always warm so the in-process cron scheduler
+      # (apps/api/src/lib/scheduler.ts) keeps ticking between requests.
+      min_instance_count = 1
       max_instance_count = 3
     }
 
@@ -27,7 +29,10 @@ resource "google_cloud_run_v2_service" "api" {
           cpu    = "1"
           memory = "512Mi"
         }
-        cpu_idle          = true
+        # CPU must stay allocated (no idle throttling) so the background
+        # cron timer fires reliably outside request handling. Mirrors the
+        # deploy pipeline's `--no-cpu-throttling`.
+        cpu_idle          = false
         startup_cpu_boost = true
       }
 
