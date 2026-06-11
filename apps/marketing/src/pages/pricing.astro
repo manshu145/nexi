@@ -3,13 +3,23 @@ import Layout from '~/layouts/Layout.astro';
 import Nav from '~/components/Nav.astro';
 import Footer from '~/components/Footer.astro';
 
-export const prerender = true;
+export const prerender = false; // PR-43: SSR — fetch live prices from API
 
 const APP_UPGRADE_URL = 'https://app.nexigrate.com/upgrade';
+const API_URL = 'https://api.nexigrate.com';
 
-// Plan data is inlined here (rather than imported from @nexigrate/shared) so
-// the marketing site stays statically buildable without the workspace
-// type graph. Keep these in sync with packages/shared/src/constants/subscriptions.ts.
+// Fetch live plan data from the backend. Falls back to hardcoded defaults
+// if the API is unreachable (Cloudflare edge timeout, etc).
+interface LivePlan { id: string; name: string; price: number; yearlyPrice: number; isActive: boolean; comingSoon: boolean; }
+let livePlans: LivePlan[] = [];
+try {
+  const res = await fetch(`${API_URL}/v1/branding`);
+  if (res.ok) {
+    const data = (await res.json()) as { plans?: LivePlan[] };
+    if (data.plans?.length) livePlans = data.plans;
+  }
+} catch { /* fall through to hardcoded defaults */ }
+
 interface PlanConfig {
   slug: 'scholar' | 'aspirant' | 'achiever';
   label: string;
@@ -21,24 +31,24 @@ interface PlanConfig {
 const plans: PlanConfig[] = [
   {
     slug: 'scholar',
-    label: 'Scholar',
-    description: 'Class 5-10 boards. Unlimited credits, ad-free.',
-    monthlyInr: 99,
-    yearlyInr: 999,
+    label: livePlans.find(p => p.id === 'scholar')?.name ?? 'Starter',
+    description: 'Ad-free, AI tutor, 8 chapters/day, 6 AI images/day. Great to begin.',
+    monthlyInr: livePlans.find(p => p.id === 'scholar')?.price ?? 79,
+    yearlyInr: livePlans.find(p => p.id === 'scholar')?.yearlyPrice ?? 599,
   },
   {
     slug: 'aspirant',
-    label: 'Aspirant',
-    description: 'Class 11-12, JEE, NEET. + Mock tests, PYQ vault, AI tutor.',
-    monthlyInr: 299,
-    yearlyInr: 2999,
+    label: livePlans.find(p => p.id === 'aspirant')?.name ?? 'Pro',
+    description: 'More of everything + essay grading. For serious aspirants.',
+    monthlyInr: livePlans.find(p => p.id === 'aspirant')?.price ?? 249,
+    yearlyInr: livePlans.find(p => p.id === 'aspirant')?.yearlyPrice ?? 1899,
   },
   {
     slug: 'achiever',
-    label: 'Achiever',
-    description: 'UPSC, SSC, State PSC. + Daily current affairs, essay grading, expert AMAs.',
-    monthlyInr: 599,
-    yearlyInr: 5999,
+    label: livePlans.find(p => p.id === 'achiever')?.name ?? 'Elite',
+    description: 'Unlimited study + priority AI + mentor support. Go all-in.',
+    monthlyInr: livePlans.find(p => p.id === 'achiever')?.price ?? 599,
+    yearlyInr: livePlans.find(p => p.id === 'achiever')?.yearlyPrice ?? 4499,
   },
 ];
 
@@ -51,31 +61,43 @@ interface FeatureRow {
 const featureRows: FeatureRow[] = [
   {
     label: 'Daily MCQ',
-    values: { scholar: '10 / day', aspirant: '25 / day', achiever: 'Unlimited' },
+    values: { scholar: '30 / day', aspirant: '100 / day', achiever: 'Unlimited' },
   },
   {
-    label: 'NCERT-grounded explanations',
-    values: { scholar: '✓', aspirant: '✓', achiever: '✓' },
+    label: 'Chapters per day',
+    values: { scholar: '8', aspirant: '25', achiever: 'Unlimited' },
   },
   {
     label: 'Mock tests',
-    values: { scholar: '0 / mo', aspirant: '4 / mo', achiever: 'Unlimited' },
-  },
-  {
-    label: 'Previous-year question vault',
-    values: { scholar: '—', aspirant: '✓', achiever: '✓' },
+    values: { scholar: '5 / mo', aspirant: '15 / mo', achiever: '40 / mo' },
   },
   {
     label: 'AI tutor (Q&A)',
-    values: { scholar: '—', aspirant: '50 / mo', achiever: 'Unlimited' },
-  },
-  {
-    label: 'Daily current affairs digest',
-    values: { scholar: '—', aspirant: '—', achiever: '✓' },
+    values: { scholar: '30 / day', aspirant: '100 / day', achiever: '300 / day' },
   },
   {
     label: 'Essay & answer grading',
+    values: { scholar: '3 / day', aspirant: '10 / day', achiever: 'Unlimited' },
+  },
+  {
+    label: 'AI image generation',
+    values: { scholar: '6 / day', aspirant: '15 / day', achiever: '50 / day' },
+  },
+  {
+    label: 'Daily current affairs + quiz',
+    values: { scholar: '✓', aspirant: '✓', achiever: '✓' },
+  },
+  {
+    label: 'Priority AI (GPT-4o)',
+    values: { scholar: '—', aspirant: '✓', achiever: '✓' },
+  },
+  {
+    label: 'Mentor support',
     values: { scholar: '—', aspirant: '—', achiever: '✓' },
+  },
+  {
+    label: 'Credit deduction',
+    values: { scholar: 'None', aspirant: 'None', achiever: 'None' },
   },
   {
     label: 'Ad-free, no distractions',
@@ -83,7 +105,7 @@ const featureRows: FeatureRow[] = [
   },
   {
     label: 'Cancel any time',
-    notes: 'No auto-renewal. See refund policy below.',
+    notes: 'No auto-renewal. No refunds on completed payments — see policy below.',
     values: { scholar: '✓', aspirant: '✓', achiever: '✓' },
   },
 ];
@@ -104,13 +126,19 @@ const featureRows: FeatureRow[] = [
       <p class="mt-4 text-lg leading-relaxed text-ink-800">
         The daily MCQ is free forever. Upgrade when you want unlimited
         attempts, mock tests, and an AI tutor that doesn't waste your time.
-        Pay in ₹ via Razorpay. Cancel any time.
+        Pay in ₹ via Razorpay. No auto-renewal — and no refunds on completed
+        payments, so choose the period that suits you.
       </p>
     </div>
 
     <section class="mt-12 grid gap-4 sm:grid-cols-3">
       {plans.map((plan) => (
-        <article class="paper-card flex flex-col p-6">
+        <article class={`paper-card flex flex-col p-6 relative ${plan.slug === 'aspirant' ? 'border-ember-500 ring-1 ring-ember-500/20' : ''}`}>
+          {plan.slug === 'aspirant' && (
+            <span class="absolute -top-2.5 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-ember-500 text-paper-50">
+              Most Popular
+            </span>
+          )}
           <h2 class="font-serif text-xl font-semibold text-ink-900">{plan.label}</h2>
           <p class="mt-2 text-sm text-ink-800">{plan.description}</p>
           <p class="font-serif mt-5 text-3xl font-semibold tabular-nums text-ink-900">
@@ -174,18 +202,22 @@ const featureRows: FeatureRow[] = [
         </p>
       </div>
       <div class="paper-card p-6">
-        <h3 class="font-serif text-lg font-semibold text-ink-900">Refunds</h3>
+        <h3 class="font-serif text-lg font-semibold text-ink-900">No refunds, but no surprises</h3>
         <p class="mt-2 text-sm text-ink-800">
-          Full refund within 7 days of purchase, no questions asked, subject
-          to our <a class="text-ember-600 underline" href="/refund">refund
-          policy</a>. Yearly plans pro-rate after that window.
+          Once a payment is completed we don't issue refunds. In return we
+          never auto-renew, never email you a renewal nudge, and the price
+          you sign up at is locked in. Read the full
+          <a class="text-ember-600 underline" href="/refund">cancellation
+          policy</a>.
         </p>
       </div>
       <div class="paper-card p-6">
-        <h3 class="font-serif text-lg font-semibold text-ink-900">No auto-renewal</h3>
+        <h3 class="font-serif text-lg font-semibold text-ink-900">Cancel any time</h3>
         <p class="mt-2 text-sm text-ink-800">
-          Subscriptions don't auto-renew. When the period ends you simply
-          drop back to the free plan unless you actively renew.
+          One click in your profile cancels the next charge. You keep full
+          access until the end of the period you've already paid for, then
+          drop to the Free plan automatically. Resume any time before then
+          and your plan picks up where it left off.
         </p>
       </div>
       <div class="paper-card p-6">

@@ -10,11 +10,14 @@ import { isoDateTimeSchema, userIdSchema } from './common.js';
 export const creditEarnSourceSchema = z.enum([
   'signup_verified',
   'daily_login',
+  'chapter_complete',
   'mcq_pass',
   'mcq_fail_attempted',
   'streak_7d',
+  'streak_30d',
   'referral_signup',
   'referral_retained_7d',
+  'referral_bonus',
   'admin_grant',
   'subscription_grant',
 ]);
@@ -25,6 +28,7 @@ export const creditSpendReasonSchema = z.enum([
   'mock_test',
   'ai_tutor_question',
   'concept_video',
+  'long_answer_grading',
   'admin_revoke',
 ]);
 

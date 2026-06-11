@@ -1,22 +1,21 @@
 import type { NextConfig } from 'next';
+import createNextIntlPlugin from 'next-intl/plugin';
+import withPWAInit from '@ducanh2912/next-pwa';
 
-/**
- * Next.js 15 / App Router config.
- *
- * `output: 'standalone'` produces a self-contained Node bundle that we
- * ship in the Cloud Run image. `transpilePackages` makes the workspace
- * package imports work cleanly in dev + prod without prebuilding.
- */
+const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts');
+
+const withPWA = withPWAInit({
+  dest: 'public',
+  register: true,
+  skipWaiting: true,
+  disable: process.env.NODE_ENV === 'development',
+});
+
 const config: NextConfig = {
   output: 'standalone',
   reactStrictMode: true,
   poweredByHeader: false,
   transpilePackages: ['@nexigrate/shared'],
-  experimental: {
-    typedRoutes: true,
-  },
-  // The Firebase Web SDK occasionally bundles an undici cookie helper that
-  // tries to import 'node:fs' from a client chunk; we don't need it.
   webpack(c) {
     c.resolve = c.resolve ?? {};
     c.resolve.fallback = { ...(c.resolve.fallback ?? {}), 'node:fs': false };
@@ -24,4 +23,6 @@ const config: NextConfig = {
   },
 };
 
-export default config;
+export default withNextIntl(withPWA(config));
+// Build trigger 1779951931
+

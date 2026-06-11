@@ -1,170 +1,518 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { HTTPException } from 'hono/http-exception';
-import { asExamSlug, type ExamSlug, type UserId } from '@nexigrate/shared';
-import { authMiddleware, makeVerifier } from './auth.js';
 import type { Env } from './env.js';
-import { getFirebaseFirestore } from './lib/firebaseAdmin.js';
-import { FirestoreLedgerStore } from './lib/firestoreLedger.js';
-import { FirestoreMcqStore, InMemoryMcqStore, type McqStore } from './lib/mcqStore.js';
-import {
-  FirestoreSubscriptionStore,
-  InMemorySubscriptionStore,
-  type SubscriptionStore,
-} from './lib/subscriptionStore.js';
+import { getFirebaseAuth, getFirebaseFirestore } from './lib/firebaseAdmin.js';
 import { FirestoreUserStore, InMemoryUserStore, type UserStore } from './lib/userStore.js';
-import { makeRateLimitMiddleware } from './lib/rateLimit.js';
+import { createAIEngine, type AIEngine } from './lib/aiEngine.js';
+import { InMemoryChapterStore, FirestoreChapterStore, type ChapterStore } from './lib/chapterStore.js';
+import { InMemoryCurrentAffairsStore, FirestoreCurrentAffairsStore, type CurrentAffairsStore } from './lib/currentAffairsStore.js';
+import { InMemoryAdminStore, FirestoreAdminStore, type AdminStore } from './lib/adminStore.js';
+import { FirestoreAIProviderStore, InMemoryAIProviderStore, type AIProviderStore } from './lib/aiProviderStore.js';
+import { DefaultAIModelResolver, type AIModelResolver } from './lib/aiModelResolver.js';
+import { authMiddleware } from './auth.js';
 import type { Logger } from './logger.js';
-import { makeBillingRoutes } from './routes/billing.js';
-import {
-  defaultEngineDeps,
-  InMemoryLedgerStore,
-  makeCreditsRoutes,
-  type LedgerStore,
-} from './routes/credits.js';
-import { makeHealthRoutes } from './routes/health.js';
-import { makeMcqsRoutes, makeMcqSessionsRoutes } from './routes/mcqs.js';
+import { makeHealthRoutes, makeDiagRoutes } from './routes/health.js';
 import { makeUsersRoutes } from './routes/users.js';
+import { makeAssessmentRoutes } from './routes/assessment.js';
+import { makeStudyRoutes } from './routes/study.js';
+import { makeCurrentAffairsRoutes } from './routes/currentAffairs.js';
+import { InMemoryChatStore, FirestoreChatStore, type ChatStore } from './lib/chatStore.js';
+import { makeChatRoutes } from './routes/chat.js';
+import { makeCreditsRoutes } from './routes/credits.js';
+import { makeBillingRoutes, makeBillingWebhookRoute } from './routes/billing.js';
+import { makeAdminRoutes } from './routes/admin.js';
+import { makeSupportRoutes } from './routes/support.js';
+import { makeEssayRoutes } from './routes/essay.js';
+import { InMemoryCouponStore, FirestoreCouponStore, type CouponStore } from './lib/couponStore.js';
+import { FirestoreIdempotencyStore, InMemoryIdempotencyStore, type IdempotencyStore } from './lib/idempotency.js';
+import { FirestoreCreditLedger, InMemoryCreditLedger, type CreditLedger } from './lib/creditLedger.js';
+import { FirestorePlatformConfigStore, InMemoryPlatformConfigStore, type PlatformConfigStore } from './lib/platformConfigStore.js';
+import { FirestoreMockTestStore, InMemoryMockTestStore, type MockTestStore } from './lib/mockTestStore.js';
+import { FirestoreAISpendStore, InMemoryAISpendStore, type AISpendStore, DEFAULT_DAILY_AI_CAP_USD } from './lib/aiSpendStore.js';
+import { FirestoreBlogStore, InMemoryBlogStore, type BlogStore } from './lib/blogStore.js';
+import { FirestoreServiceKeyStore, InMemoryServiceKeyStore, type ServiceKeyStore } from './lib/serviceKeyStore.js';
+import { createPushService, type PushService } from './lib/pushService.js';
+import { FirestoreFeatureUsageStore, InMemoryFeatureUsageStore, type FeatureUsageStore } from './lib/featureUsageStore.js';
+import { FirestoreTeamInviteStore, InMemoryTeamInviteStore, type TeamInviteStore } from './lib/teamInviteStore.js';
+import { makePublicRoutes } from './routes/public.js';
+import { makeMockTestRoutes } from './routes/mockTests.js';
+import { FirestorePYQStore, InMemoryPYQStore, type PYQStore } from './lib/pyqStore.js';
+import { FirestoreAnalyticsStore, InMemoryAnalyticsStore, type AnalyticsStore } from './lib/analyticsStore.js';
+import { makeAnalyticsRoutes } from './routes/analytics.js';
+import { FirestoreEmailThreadStore, InMemoryEmailThreadStore, type EmailThreadStore } from './lib/emailThreadStore.js';
+import { makeMailboxRoutes } from './routes/mailbox.js';
+import { FirestoreNotificationStore, InMemoryNotificationStore, type NotificationStore } from './lib/notificationStore.js';
+import { makeNotificationRoutes } from './routes/notifications.js';
+import { FirestoreNotificationLogStore, InMemoryNotificationLogStore, type NotificationLogStore } from './lib/notificationLogStore.js';
+import { type CronJobDeps, runStreakCheck, runDailyDigest, runReengage, runCurrentAffairsIngest, runContentRefresh } from './lib/cronJobs.js';
+import { CronScheduler } from './lib/scheduler.js';
+import { FirestoreExamDatesStore, InMemoryExamDatesStore, type ExamDatesStore } from './lib/examDatesStore.js';
+import { makeExamRoutes } from './routes/exams.js';
+import { FirestoreReviewStore, InMemoryReviewStore, type ReviewStore } from './lib/reviewStore.js';
+import { makeReviewRoutes } from './routes/review.js';
+import { makePYQRoutes } from './routes/pyq.js';
 
-/**
- * Build the Hono app.
- *
- * Pure factory: no listeners, no I/O. The composition root lives in
- * `server.ts` (Node) and starts an HTTP listener around the returned app.
- *
- * Tests construct a fresh app per test via this factory, injecting the
- * in-memory stores and a stub auth verifier.
- */
-export interface AppDeps {
-  env: Env;
-  logger: Logger;
-  ledger?: LedgerStore;
-  mcqs?: McqStore;
-  users?: UserStore;
-  subscriptions?: SubscriptionStore;
-}
+export interface AppDeps { env: Env; logger: Logger; users?: UserStore; aiEngine?: AIEngine; chapters?: ChapterStore; currentAffairs?: CurrentAffairsStore; chatStore?: ChatStore; adminStore?: AdminStore; couponStore?: CouponStore; idempotency?: IdempotencyStore; ledger?: CreditLedger; config?: PlatformConfigStore; mockTests?: MockTestStore; pyq?: PYQStore; blog?: BlogStore; aiProviderStore?: AIProviderStore; modelResolver?: AIModelResolver; serviceKeys?: ServiceKeyStore; push?: PushService; teamInvites?: TeamInviteStore; }
 
 export function buildApp(deps: AppDeps): Hono {
   const { env, logger } = deps;
   const useFirestore = env.PERSISTENCE === 'firestore';
   const fs = useFirestore ? getFirebaseFirestore(env) : null;
-
-  const ledger =
-    deps.ledger ?? (fs ? new FirestoreLedgerStore(fs) : new InMemoryLedgerStore());
-  const mcqs = deps.mcqs ?? (fs ? new FirestoreMcqStore(fs) : new InMemoryMcqStore());
   const users = deps.users ?? (fs ? new FirestoreUserStore(fs) : new InMemoryUserStore());
-  const subscriptions =
-    deps.subscriptions ??
-    (fs ? new FirestoreSubscriptionStore(fs) : new InMemorySubscriptionStore());
+  const adminStore = deps.adminStore ?? (fs ? new FirestoreAdminStore(fs) : new InMemoryAdminStore());
+  const aiSpend: AISpendStore = fs ? new FirestoreAISpendStore(fs) : new InMemoryAISpendStore();
+  // PR-29: provider config + resolver. Wired BEFORE the engine so the
+  // engine's verifier callbacks resolve the topmost-currently-working
+  // model on each call. Falls back to env-only behaviour if no
+  // Firestore (in-memory dev / test path).
+  const aiProviderStore = deps.aiProviderStore ?? (fs ? new FirestoreAIProviderStore(fs) : new InMemoryAIProviderStore());
+  const modelResolver = deps.modelResolver ?? new DefaultAIModelResolver(aiProviderStore, env, logger);
+  const aiEngine = deps.aiEngine ?? createAIEngine(env, logger, adminStore, aiSpend, modelResolver);
+  const chapters = deps.chapters ?? (fs ? new FirestoreChapterStore(fs) : new InMemoryChapterStore());
+  const currentAffairs = deps.currentAffairs ?? (fs ? new FirestoreCurrentAffairsStore(fs) : new InMemoryCurrentAffairsStore());
+  const chatStore = deps.chatStore ?? (fs ? new FirestoreChatStore(fs) : new InMemoryChatStore());
+  const couponStore = deps.couponStore ?? (fs ? new FirestoreCouponStore(fs) : new InMemoryCouponStore());
+  const idempotency = deps.idempotency ?? (fs ? new FirestoreIdempotencyStore(fs) : new InMemoryIdempotencyStore());
+  const ledger = deps.ledger ?? (fs ? new FirestoreCreditLedger(fs, logger) : new InMemoryCreditLedger());
+  const config = deps.config ?? (fs ? new FirestorePlatformConfigStore(fs, logger) : new InMemoryPlatformConfigStore());
+  const mockTests = deps.mockTests ?? (fs ? new FirestoreMockTestStore(fs) : new InMemoryMockTestStore());
+  const pyq = deps.pyq ?? (fs ? new FirestorePYQStore(fs) : new InMemoryPYQStore());
+  const analytics: AnalyticsStore = fs ? new FirestoreAnalyticsStore(fs) : new InMemoryAnalyticsStore();
+  const emailThreads: EmailThreadStore = fs ? new FirestoreEmailThreadStore(fs) : new InMemoryEmailThreadStore();
+  const notifications: NotificationStore = fs ? new FirestoreNotificationStore(fs) : new InMemoryNotificationStore();
+  const notificationLogs: NotificationLogStore = fs ? new FirestoreNotificationLogStore(fs) : new InMemoryNotificationLogStore();
+  const examDates: ExamDatesStore = fs ? new FirestoreExamDatesStore(fs) : new InMemoryExamDatesStore();
+  const review: ReviewStore = fs ? new FirestoreReviewStore(fs) : new InMemoryReviewStore();
+  const blog = deps.blog ?? (fs ? new FirestoreBlogStore(fs) : new InMemoryBlogStore());
+  // PR-37: Razorpay / Resend / WhatsApp / FCM keys come from this store
+  // first, env vars second. Mirrors the AI Providers pattern (PR-29) but
+  // for non-AI third-party services so the founder can rotate them from
+  // the admin panel without redeploys.
+  const serviceKeys = deps.serviceKeys ?? (fs ? new FirestoreServiceKeyStore(fs) : new InMemoryServiceKeyStore());
+  // PR-38: push notification dispatcher (FCM Admin SDK). Always
+  // constructed so call sites don't have to null-check; isConfigured()
+  // gates whether sends actually fire.
+  const push = deps.push ?? createPushService(env, logger, serviceKeys);
+  // PR-40: team invite store for RBAC
+  const teamInvites = deps.teamInvites ?? (fs ? new FirestoreTeamInviteStore(fs) : new InMemoryTeamInviteStore());
+  // Per-day feature usage counter (image / essay / AI-tutor quotas).
+  const featureUsage: FeatureUsageStore = fs ? new FirestoreFeatureUsageStore(fs) : new InMemoryFeatureUsageStore();
+  const firebaseAuth = getFirebaseAuth(env);
 
-  const verifier = makeVerifier(env);
-  const engineDeps = defaultEngineDeps();
-
-  const getTargetExam = async (userId: UserId): Promise<ExamSlug> => {
-    const u = await users.get(userId);
-    return u?.targetExam ?? asExamSlug('jee-main');
+  // ─── Cron jobs + internal scheduler ─────────────────────────────────
+  // Self-contained scheduling: the API drives its OWN automatic jobs
+  // (re-engagement, daily digest, streak, current-affairs ingest, weekly
+  // content refresh) via an in-process timer — no external GitHub Actions
+  // cron and no shared secret. The same job functions back the HTTP cron
+  // endpoints below and the admin "Run now" buttons. Admin panel toggles
+  // (system/cronConfig) and status (cronJobs/{id}) read through this.
+  //
+  // NOTE: relies on Cloud Run "CPU always allocated" (--no-cpu-throttling)
+  // so the timer keeps ticking between requests; see deploy-api.yml.
+  const cronDeps: CronJobDeps = {
+    fs, logger, env, users, notifications, notificationLogs, push,
+    examDates, currentAffairs, aiEngine, modelResolver, chapters, serviceKeys,
   };
+  const scheduler = new CronScheduler(cronDeps, logger, fs);
+  // Only run the background timer with Firestore + outside tests, so unit
+  // tests that build the app in-memory never spin a real interval.
+  if (fs && env.NODE_ENV !== 'test') scheduler.start();
 
   const app = new Hono();
 
-  app.use(
-    '*',
-    cors({
-      origin: (origin) => (env.CORS_ALLOWED_ORIGINS.includes(origin) ? origin : null),
-      allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowHeaders: [
-        'Authorization',
-        'Content-Type',
-        'X-Idempotency-Key',
-        'X-User-Email',
-        'X-User-Name',
-        'X-User-Photo',
-        'X-User-Provider',
-      ],
-      maxAge: 600,
-      credentials: true,
-    }),
-  );
-
-  // Per-IP rate limit guarding the whole API. Tuned generously enough that
-  // a normal classroom on shared NAT won't trip; see lib/rateLimit.ts.
-  // Skips Cloud Run health probes and Razorpay webhooks (which legitimately
-  // burst during payment reconciliation).
-  app.use(
-    '*',
-    makeRateLimitMiddleware({
-      burst: 30,
-      refillRatePerSecond: 2, // 120 req / minute sustained
-      logger,
-      skip: (path) =>
-        path === '/healthz' ||
-        path === '/readyz' ||
-        path === '/v1/billing/webhook',
-    }),
-  );
+  app.use('*', cors({
+    origin: (origin) => (env.CORS_ALLOWED_ORIGINS.includes(origin) ? origin : null),
+    allowMethods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+    allowHeaders: ['Authorization','Content-Type','X-User-Email','X-User-Name','X-User-Photo','X-User-Provider','x-cron-secret','Idempotency-Key'],
+    maxAge: 600, credentials: true,
+  }));
 
   app.use('*', async (c, next) => {
     const start = performance.now();
-    const requestId = c.req.header('x-request-id') ?? cryptoRandom();
-    c.header('x-request-id', requestId);
+    const rid = c.req.header('x-request-id') ?? crypto.randomUUID();
+    c.header('x-request-id', rid);
     await next();
-    const ms = performance.now() - start;
-    logger.info('request', {
-      method: c.req.method,
-      path: c.req.path,
-      status: c.res.status,
-      durationMs: Math.round(ms),
-      requestId,
-    });
+    logger.info('request', { method: c.req.method, path: c.req.path, status: c.res.status, ms: Math.round(performance.now()-start), rid });
   });
 
-  app.route('/', makeHealthRoutes(env));
+  // Rate limiting for AI endpoints (Fix #29)
+  const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 
-  app.get('/', (c) =>
-    c.json({
-      service: 'nexigrate-api',
-      version: '0.1.0',
-      docs: 'https://github.com/manshu145/nexi/blob/main/apps/api/README.md',
-    }),
-  );
+  // Periodic cleanup every 60s to prevent unbounded memory growth.
+  // The AI spend cap (per-user daily limit in Firestore) is the real
+  // protection against abuse; this in-memory limiter is a burst guard only.
+  const RATE_LIMIT_MAX_ENTRIES = 5000;
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, val] of rateLimitMap) {
+      if (val.resetAt < now) rateLimitMap.delete(key);
+    }
+  }, 60_000);
+
+  app.use('/v1/chat/*', async (c, next) => {
+    // Use the decoded principal userId if available (set by auth middleware
+    // above on the /v1 sub-router); for pre-auth routes fall back to IP.
+    const principal = c.get('principal' as never) as { userId: string } | undefined;
+    const userId = principal?.userId ?? c.req.header('x-forwarded-for') ?? 'anon';
+    const now = Date.now();
+    const entry = rateLimitMap.get(userId);
+    if (entry && entry.resetAt > now) {
+      if (entry.count >= 30) { // 30 requests per minute for AI endpoints
+        return c.json({ error: 'Rate limit exceeded. Please wait a moment.' }, 429);
+      }
+      entry.count++;
+    } else {
+      // Evict oldest entries if map is getting large
+      if (rateLimitMap.size >= RATE_LIMIT_MAX_ENTRIES) {
+        const oldest = [...rateLimitMap.entries()].sort((a, b) => a[1].resetAt - b[1].resetAt);
+        for (let i = 0; i < 1000 && i < oldest.length; i++) rateLimitMap.delete(oldest[i]![0]);
+      }
+      rateLimitMap.set(userId, { count: 1, resetAt: now + 60000 });
+    }
+    await next();
+  });
+
+  app.use('/v1/study/*', async (c, next) => {
+    const principal = c.get('principal' as never) as { userId: string } | undefined;
+    const userId = principal?.userId ?? c.req.header('x-forwarded-for') ?? 'anon';
+    const now = Date.now();
+    const key = `study_${userId}`;
+    const entry = rateLimitMap.get(key);
+    if (entry && entry.resetAt > now) {
+      if (entry.count >= 20) { // 20 requests per minute for study
+        return c.json({ error: 'Rate limit exceeded. Please wait a moment.' }, 429);
+      }
+      entry.count++;
+    } else {
+      rateLimitMap.set(key, { count: 1, resetAt: now + 60000 });
+    }
+    await next();
+  });
+
+  // Payload size validation (Fix #30) - reject bodies > 10MB
+  app.use('*', async (c, next) => {
+    const contentLength = c.req.header('content-length');
+    if (contentLength && parseInt(contentLength) > 10 * 1024 * 1024) {
+      return c.json({ error: 'Request body too large. Maximum 10MB allowed.' }, 413);
+    }
+    await next();
+  });
+
+  app.route('/', makeHealthRoutes());
+  app.route('/', makeDiagRoutes(env, modelResolver));
+  app.get('/', (c) => c.json({ service: 'nexigrate-api', version: '1.0.0' }));
+
+  // Razorpay webhook — MUST be mounted BEFORE the auth-gated /v1 router so
+  // that Razorpay's POST (which carries no Bearer token, only an HMAC
+  // signature) is not rejected by authMiddleware. Trust is established by
+  // verifying the x-razorpay-signature header against the raw request body
+  // inside makeBillingWebhookRoute.
+  app.route('/v1/billing', makeBillingWebhookRoute({
+    users, env, logger, db: fs, coupons: couponStore, idempotency, serviceKeys,
+  }));
+
+  // Public endpoints (no Firebase ID token required) -- mounted BEFORE the
+  // /v1 auth gate. Today this covers:
+  //   POST /v1/logs/error  -- the front-end error boundary fires this on a
+  //     React render crash, when getIdToken() may itself have failed. Was
+  //     auth-gated pre-PR-06 which silently dropped every crash report.
+  //   GET  /v1/branding    -- splash-screen boot data (logo, tagline,
+  //     welcome-bonus preview). Used before sign-in, so cannot require auth.
+  // Both have their own validation + rate limiting inside makePublicRoutes.
+  app.route('/v1', makePublicRoutes({ adminStore, config, logger, blog, firebaseAuth, serviceKeys, env, db: fs }));
+
+  // Cron endpoint — NO auth required (uses x-cron-secret header instead)
+  const cronRoutes = makeCurrentAffairsRoutes({ users, aiEngine, currentAffairs, env, logger });
+  app.post('/v1/current-affairs/ingest', async (c) => {
+    const cronSecret = c.req.header('x-cron-secret');
+    if (cronSecret !== env.CRON_SECRET) {
+      return c.json({ error: 'unauthorized' }, 401);
+    }
+    const result = await runCurrentAffairsIngest(cronDeps);
+    return c.json({ success: true, ...result });
+  });
+
+  // Webhook — Resend INBOUND email (user replies → mailbox threads).
+  // Configure in Resend: domain inbound routing → this URL with ?token=.
+  // Reply-To uses support+<threadId>@domain so we can route replies to the
+  // exact thread; falls back to matching the sender's email.
+  app.post('/v1/webhooks/resend-inbound', async (c) => {
+    const token = c.req.query('token');
+    const expected = env.RESEND_WEBHOOK_SECRET || env.CRON_SECRET;
+    if (token !== expected) return c.json({ error: 'unauthorized' }, 401);
+    try {
+      const body = await c.req.json().catch(() => ({}));
+      const d = (body?.data ?? body) as Record<string, unknown>;
+      const fromRaw = d.from as unknown;
+      const fromEmail = typeof fromRaw === 'string'
+        ? (fromRaw.match(/<([^>]+)>/)?.[1] ?? fromRaw).trim()
+        : ((fromRaw as { address?: string } | undefined)?.address ?? '').trim();
+      const toList = Array.isArray(d.to) ? d.to : (d.to ? [d.to] : []);
+      const toStr = toList.map((t) => (typeof t === 'string' ? t : (t as { address?: string })?.address ?? '')).join(',');
+      const subject = String(d.subject ?? '(no subject)');
+      const text = String(d.text ?? (d as { stripped_text?: string }).stripped_text ?? '');
+      const html = typeof d.html === 'string' ? d.html : undefined;
+      const headers = (d.headers ?? {}) as Record<string, string>;
+      const inboundMsgId = headers['message-id'] || headers['Message-ID'];
+
+      if (!fromEmail) { logger.warn('mailbox.inbound_no_from'); return c.json({ ok: true }); }
+
+      // Resolve thread: plus-token in the to-address → else open thread by sender → else new.
+      const tokenMatch = toStr.match(/\+([A-Za-z0-9_]+)@/);
+      let threadId = tokenMatch?.[1];
+      if (threadId) {
+        const exists = await emailThreads.getThread(threadId);
+        if (!exists) threadId = undefined;
+      }
+      if (!threadId) {
+        const open = await emailThreads.findOpenThreadByEmail(fromEmail);
+        if (open) threadId = open.id;
+      }
+      if (!threadId) {
+        const created = await emailThreads.createThread({ participantEmail: fromEmail, subject });
+        threadId = created.id;
+      }
+      await emailThreads.appendMessage(threadId, {
+        direction: 'inbound', from: fromEmail, to: toStr, subject, text,
+        ...(html ? { html } : {}), ...(inboundMsgId ? { messageId: inboundMsgId } : {}),
+      });
+      logger.info('mailbox.inbound_received', { threadId, from: fromEmail });
+      return c.json({ ok: true, threadId });
+    } catch (err) {
+      logger.error('mailbox.inbound_error', { error: err instanceof Error ? err.message : String(err) });
+      return c.json({ ok: false }, 200); // 200 so Resend doesn't endlessly retry
+    }
+  });
+
+  // Webhook — Resend DELIVERY events (delivered/opened/clicked/bounced) for
+  // analytics + per-message status in the mailbox.
+  app.post('/v1/webhooks/resend', async (c) => {
+    const token = c.req.query('token');
+    const expected = env.RESEND_WEBHOOK_SECRET || env.CRON_SECRET;
+    if (token !== expected) return c.json({ error: 'unauthorized' }, 401);
+    try {
+      const body = await c.req.json().catch(() => ({}));
+      const type = String(body?.type ?? '');
+      const data = (body?.data ?? {}) as { email_id?: string; to?: unknown };
+      const messageId = data.email_id;
+      const statusMap: Record<string, 'delivered' | 'opened' | 'clicked' | 'bounced'> = {
+        'email.delivered': 'delivered',
+        'email.opened': 'opened',
+        'email.clicked': 'clicked',
+        'email.bounced': 'bounced',
+      };
+      const status = statusMap[type];
+      if (messageId && status) {
+        await emailThreads.updateMessageStatusByMessageId(messageId, status);
+      }
+      // Append to emailEvents for analytics (best-effort).
+      if (fs && type) {
+        await fs.collection('emailEvents').add({
+          type, messageId: messageId ?? null, createdAt: new Date().toISOString(),
+        }).catch(() => {});
+      }
+      return c.json({ ok: true });
+    } catch (err) {
+      logger.error('mailbox.delivery_webhook_error', { error: err instanceof Error ? err.message : String(err) });
+      return c.json({ ok: false }, 200);
+    }
+  });
+
+  // Cron endpoint — weekly content refresh (Cloud Scheduler: weekly).
+  // Regenerates the stalest cached chapter content so study material stays
+  // current with the latest syllabus instead of being frozen forever.
+  app.post('/v1/study/content-refresh', async (c) => {
+    const cronSecret = c.req.header('x-cron-secret');
+    if (cronSecret !== env.CRON_SECRET) {
+      return c.json({ error: 'unauthorized' }, 401);
+    }
+    try {
+      // Allow per-call overrides (?days= & ?limit=) for manual admin runs,
+      // else the job falls back to the env-configured defaults.
+      const days = Number(c.req.query('days')) || undefined;
+      const limit = Number(c.req.query('limit')) || undefined;
+      const result = await runContentRefresh(cronDeps, days, limit);
+      return c.json({ success: true, ...result });
+    } catch (err) {
+      logger.error('cron.content_refresh_error', { error: err instanceof Error ? err.message : String(err) });
+      return c.json({ success: false, error: 'Content refresh failed' }, 500);
+    }
+  });
+
+  // Cron endpoint — streak reminder (Cloud Scheduler: daily 7pm IST)
+  app.post('/v1/notifications/streak-check', async (c) => {
+    const cronSecret = c.req.header('x-cron-secret');
+    if (cronSecret !== env.CRON_SECRET) {
+      return c.json({ error: 'unauthorized' }, 401);
+    }
+    try {
+      const result = await runStreakCheck(cronDeps);
+      return c.json({ success: true, ...result });
+    } catch (err) {
+      logger.error('cron.streak_check_error', { error: err instanceof Error ? err.message : String(err) });
+      return c.json({ success: false, error: 'Streak check failed' }, 500);
+    }
+  });
+
+  // Cron endpoint — daily current-affairs digest (Cloud Scheduler: daily 7am IST).
+  // Drops a single in-app notification (+ push) about fresh current affairs to
+  // recently-active users. Bounded + deduped (once/day) so it stays cheap and
+  // never spams. This is the main "come back daily" retention nudge.
+  app.post('/v1/notifications/daily-digest', async (c) => {
+    const cronSecret = c.req.header('x-cron-secret');
+    if (cronSecret !== env.CRON_SECRET) {
+      return c.json({ error: 'unauthorized' }, 401);
+    }
+    try {
+      const result = await runDailyDigest(cronDeps);
+      return c.json({ success: true, ...result });
+    } catch (err) {
+      logger.error('cron.daily_digest_error', { error: err instanceof Error ? err.message : String(err) });
+      return c.json({ success: false, error: 'Daily digest failed' }, 500);
+    }
+  });
+
+  // Cron endpoint — re-engagement nudge (Cloud Scheduler / GitHub cron: hourly).
+  // Founder ask: "koi agar is app ko 5-6 hour tak nahi open karta to usko
+  // personalized notification jaaye — kya karna bacha hai / exam najdik hai".
+  //
+  // Targets users who were active recently (so they're real, engaged users —
+  // not dormant) but have now been idle for 5h+. For each we send ONE
+  // personalized push (+ inbox) chosen from: nearest exam countdown → streak
+  // at risk → generic come-back. Deduped once/day (dedupeKey 'reengage') so a
+  // user gets at most one re-engagement nudge per day no matter how many times
+  // the hourly cron runs. Every send is recorded in notificationLogs so the
+  // admin can see who got what, on which channel, and when.
+  app.post('/v1/notifications/reengage', async (c) => {
+    const cronSecret = c.req.header('x-cron-secret');
+    if (cronSecret !== env.CRON_SECRET) {
+      return c.json({ error: 'unauthorized' }, 401);
+    }
+    try {
+      const result = await runReengage(cronDeps);
+      return c.json({ success: true, ...result });
+    } catch (err) {
+      logger.error('cron.reengage_error', { error: err instanceof Error ? err.message : String(err) });
+      return c.json({ success: false, error: 'Re-engagement nudge failed' }, 500);
+    }
+  });
 
   const v1 = new Hono();
-  v1.use('*', authMiddleware(verifier));
-  v1.route('/credits', makeCreditsRoutes({ ledger, logger, ...engineDeps }));
-  v1.route('/users', makeUsersRoutes({ users, logger }));
-  v1.route(
-    '/mcqs',
-    makeMcqsRoutes({ mcqs, ledger, users, logger, ...engineDeps, getTargetExam }),
-  );
-  v1.route(
-    '/mcq-sessions',
-    makeMcqSessionsRoutes({ mcqs, ledger, users, logger, ...engineDeps, getTargetExam }),
-  );
-  v1.route('/billing', makeBillingRoutes({ env, subscriptions, logger }));
+  v1.use('*', authMiddleware(firebaseAuth));
+
+  // ─── Banned user enforcement ────────────────────────────────────────
+  // If the Firestore user doc has `banned: true`, reject ALL requests.
+  // The admin /ban endpoint sets this flag; without this middleware a
+  // banned user's existing token still works until it expires.
+  v1.use('*', async (c, next) => {
+    const principal = c.get('principal' as never) as { userId: string } | undefined;
+    if (principal?.userId) {
+      const u = await users.get(principal.userId as never);
+      if (u && (u as unknown as { banned?: boolean }).banned) {
+        return c.json({ error: 'Your account has been suspended. Contact support for assistance.' }, 403);
+      }
+    }
+    await next();
+  });
+
+  // ─── AI cost cap enforcement (lock §3.8) ────────────────────────────
+  // Runs before any AI-heavy route. Reads the user's running daily
+  // spend; if it has crossed the per-plan cap, returns 429 with a
+  // friendly message. Spend itself is recorded AFTER each call (in
+  // logAICallToStore) so the next request sees the updated total.
+  //
+  // Why pre-check rather than per-call: if the user is already over the
+  // cap, we don't even want to spin up the AI provider call (which
+  // costs us money we won't recoup). Pre-check is a single Firestore
+  // doc.get() per request -- cheap.
+  const AI_GATED_PREFIXES = ['/study/', '/chat/', '/mock-tests/', '/essay/', '/assessment/'];
+  v1.use('*', async (c, next) => {
+    const path = c.req.path; // e.g. /v1/study/...
+    const isAiGated = AI_GATED_PREFIXES.some(p => path.includes(p));
+    if (!isAiGated) return next();
+    // Skip GET reads -- the cap is about WRITES that trigger AI calls.
+    // GETs that read cached chapter content don't burn provider tokens.
+    // The actual AI generation routes are POSTs.
+    if (c.req.method === 'GET') return next();
+    try {
+      const principal = c.get('principal' as never) as { userId: string } | undefined;
+      if (!principal?.userId) return next();
+      const user = await users.get(principal.userId as never);
+      if (!user) return next();
+      const planCap = DEFAULT_DAILY_AI_CAP_USD[user.plan] ?? DEFAULT_DAILY_AI_CAP_USD['free']!;
+      const spent = await aiSpend.getTodaySpend(principal.userId as never);
+      if (spent >= planCap) {
+        logger.warn('ai.daily_cap_hit', { userId: principal.userId, plan: user.plan, spent, cap: planCap, path });
+        return c.json({
+          error: `You have reached today's AI usage limit on the ${user.plan} plan. Resets at midnight UTC. Upgrade your plan or wait for the reset.`,
+          spent: Math.round(spent * 100) / 100,
+          cap: planCap,
+        }, 429);
+      }
+    } catch (err) {
+      // Cap check failures are non-blocking — we'd rather serve the
+      // request than fail-closed on an internal error.
+      logger.warn('ai.cap_check_error', { error: err instanceof Error ? err.message : String(err), path });
+    }
+    return next();
+  });
+  v1.route('/users', makeUsersRoutes({ users, logger, db: fs, ledger, config, firebaseAuth }));
+  v1.route('/assessment', makeAssessmentRoutes({ users, aiEngine, logger, env, ledger, serviceKeys }));
+  v1.route('/study', makeStudyRoutes({ users, aiEngine, chapters, logger, db: fs, env, ledger, config, usage: featureUsage, modelResolver, review }));
+  v1.route('/current-affairs', cronRoutes);
+  v1.route('/chat', makeChatRoutes({ users, aiEngine, chat: chatStore, logger, env, config, usage: featureUsage }));
+  v1.route('/credits', makeCreditsRoutes({ users, logger, db: fs, ledger, config }));
+  v1.route('/billing', makeBillingRoutes({ users, env, logger, db: fs, coupons: couponStore, idempotency, config, serviceKeys }));
+  v1.route('/admin', makeAdminRoutes({ users, adminStore, env, logger, coupons: couponStore, db: fs, config, aiSpend, firebaseAuth, blog, aiEngine, aiProviderStore, modelResolver, currentAffairs, serviceKeys, push, notifications, notificationLogs, teamInvites, scheduler }));
+  v1.route('/support', makeSupportRoutes({ users, db: fs, logger }));
+  v1.route('/essay', makeEssayRoutes({ users, aiEngine, logger, db: fs, config, usage: featureUsage }));
+  v1.route('/mock-tests', makeMockTestRoutes({ users, aiEngine, mockTests, ledger, config, usage: featureUsage, logger }));
+  v1.route('/pyq', makePYQRoutes({ users, aiEngine, pyq, logger, config }));
+  v1.route('/analytics', makeAnalyticsRoutes({ analytics, adminStore, users, env, logger, db: fs }));
+  v1.route('/mailbox', makeMailboxRoutes({ threads: emailThreads, users, env, logger, serviceKeys }));
+  v1.route('/notifications', makeNotificationRoutes({ notifications, logger }));
+  v1.route('/exams', makeExamRoutes({ examDates, users, aiEngine, env, logger }));
+  v1.route('/review', makeReviewRoutes({ review, logger, users, config }));
+
+  // (POST /v1/logs/error and GET /v1/branding are now mounted on the
+  // PUBLIC router via makePublicRoutes() above, so the front-end error
+  // boundary and the splash screen can reach them without an ID token.)
+
+  // GET /v1/announcements — active announcements for users (non-admin)
+  v1.get('/announcements', async (c) => {
+    try {
+      const all = await adminStore.getAnnouncements();
+      const now = new Date().toISOString();
+      const active = all.filter(a =>
+        a.isActive &&
+        (!a.expiresAt || a.expiresAt > now)
+      );
+      return c.json({ announcements: active });
+    } catch {
+      return c.json({ announcements: [] });
+    }
+  });
+
   app.route('/v1', v1);
 
   app.onError((err, c) => {
-    if (err instanceof HTTPException) {
-      logger.warn('http.error', {
-        status: err.status,
-        message: err.message,
-        path: c.req.path,
-      });
-      return c.json({ error: err.message }, err.status);
+    // CRITICAL FIX: Hono cors() middleware sets CORS headers on the way in,
+    // but onError creates a FRESH response — headers are LOST. Without this,
+    // browser sees 503 without Access-Control-Allow-Origin → blocks response
+    // → shows "Failed to fetch" instead of the real error message.
+    const origin = c.req.header('origin') ?? '';
+    if (env.CORS_ALLOWED_ORIGINS.includes(origin)) {
+      c.header('Access-Control-Allow-Origin', origin);
+      c.header('Access-Control-Allow-Credentials', 'true');
     }
-    logger.error('unhandled.error', {
-      message: err.message,
-      stack: err.stack,
-      path: c.req.path,
-    });
+    if (err instanceof HTTPException) { logger.warn('http.error', { status: err.status, message: err.message }); return c.json({ error: err.message }, err.status); }
+    logger.error('unhandled', { message: err.message, stack: err.stack });
+    adminStore.logError({ id: crypto.randomUUID(), message: err.message, stack: err.stack, route: c.req.path, timestamp: new Date().toISOString(), severity: 'critical' }).catch(() => {});
     return c.json({ error: 'internal server error' }, 500);
   });
 
   app.notFound((c) => c.json({ error: 'not found' }, 404));
-
   return app;
 }
-
-function cryptoRandom(): string {
-  return globalThis.crypto.randomUUID();
-}
+// API redeploy trigger 1780318400 — force fresh build after PR #239/#241/#243/#244 fixes

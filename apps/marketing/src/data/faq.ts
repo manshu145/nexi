@@ -7,26 +7,30 @@ export const FAQ: readonly FaqItem[] = [
   },
   {
     q: 'How do credits work?',
-    a: 'Every action you take to demonstrate effort earns credits, every action you take to learn spends them. Sign up earns 200 credits. Passing a daily MCQ earns 50. Referring a verified friend earns 100. Reading a chapter costs 5. A mock test costs 20. Even a failed MCQ attempt earns 5 credits, so no serious student ever gets locked out.',
+    a: 'Every action you take to demonstrate effort earns credits, every action you take to learn spends them. Sign-up earns 100 credits, daily login earns 5, completing a chapter earns 20, and passing the daily MCQ at 70%+ earns 10. A 7-day streak adds 5, a 30-day streak adds 10. Reading a chapter costs 5, a mock test costs 20, a question to the AI tutor costs 2. Refer a friend and you earn 50 while they get 100. Defaults can be tuned by us — your in-app Credits page always shows the live earn and spend rates.',
   },
   {
     q: 'Which exams are covered now?',
-    a: 'For the v0.1 launch we are focused on Class 11–12 CBSE, JEE Main, JEE Advanced, and NEET UG. Class 8–10 boards are next, followed by SSC and banking, then UPSC and State PSCs. We would rather do five exams flawlessly than fifty mediocrely.',
+    a: 'We cover 63+ exams including UPSC CSE, SSC CGL/CHSL, JEE Main & Advanced, NEET UG, Class 8-12 CBSE, IBPS PO/Clerk, SBI PO, RRB NTPC, NDA, CDS, Agniveer, CAPF, and State PSCs. All with AI-generated, NCERT-grounded content.',
   },
   {
     q: 'How do you make sure the content is correct?',
-    a: 'Every chapter, MCQ, and explanation goes through a 3-AI verification pipeline (OpenAI, Gemini, and Groq Llama, from three different model families) and is then reviewed by a human subject-matter expert before it is shown to a student. Every fact is traceable back to its primary source — NCERT, UPSC PYQs, or an official Government of India publication.',
+    a: 'Every chapter, MCQ, and explanation goes through a 3-layer AI verification pipeline (OpenAI, Gemini, and Groq Llama, from three different model families). Outputs where the three disagree, or any single model flags low confidence, are auto-regenerated rather than shipped to students. Every fact is traceable back to its primary source — NCERT, UPSC PYQs, or an official Government of India publication.',
   },
   {
-    q: 'When does the mobile app launch?',
-    a: 'The web PWA ships first; the React Native iOS and Android apps follow within four to six weeks. They share the same TypeScript codebase and the same backend, so the experience is identical.',
+    q: 'Is there a mobile app?',
+    a: 'Yes — Nexigrate is a Progressive Web App (PWA), which means you can install it on your phone like a native app. On Android: open nexigrate.com or app.nexigrate.com in Chrome and tap "Add to Home Screen" from the menu. On iPhone: open in Safari and tap the share button, then "Add to Home Screen". You\'ll get a fast, full-screen, native-feeling experience with offline support for cached chapters. Native iOS and Android apps may follow later, but the PWA is what we ship today and what we recommend for now.',
   },
   {
     q: 'Is my data safe?',
-    a: 'Your data is stored in India (Mumbai region), encrypted in transit and at rest, and never sold. We are building to be DPDP Act 2023 compliant from day one, including verifiable parental consent for users under 18. Your verification documents are deleted from active storage 30 days after approval.',
+    a: 'Your data is stored in India (Mumbai region), encrypted in transit and at rest, and never sold. We are building to be DPDP Act 2023 compliant from day one. We do not run third-party ad trackers on the site, and minors should use Nexigrate with the knowledge of a parent or guardian.',
   },
   {
-    q: 'Why do I need to verify I am a student?',
-    a: 'Two reasons. First, verified-only keeps the platform free of spam, scammers, and fake users. Second, it lets us tailor the syllabus tracking, current affairs, and mock tests to your actual exam and stage. Verification is a one-time upload of any school ID, admit card, or marksheet.',
+    q: 'How do I cancel my paid plan?',
+    a: 'One click — open your profile, go to Plan & Billing, and tap "Cancel Plan". You keep full access to whatever you paid for until the period ends, then drop to the Free plan automatically. There is no auto-renewal, no future charge, and no refund on completed payments — that trade-off is what lets us keep prices low and avoid renewal nag emails. You can resume any time before the period ends and your plan picks up where it left off.',
+  },
+  {
+    q: 'Why do I need to verify my phone number?',
+    a: 'Phone verification prevents duplicate accounts and spam. It ensures every user is a real student so we can keep the platform free and distraction-free. We never share your phone number with anyone.',
   },
 ];

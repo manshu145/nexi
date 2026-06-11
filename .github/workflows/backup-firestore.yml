@@ -1,0 +1,131 @@
+name: Daily Firestore backup
+
+# Closes lock §3.5 (Backups & DR -- "jo sabse best ho cost km aye our best ho").
+#
+# Scheduled daily Firestore export to a GCS Coldline bucket. Retention is
+# managed by a 7-day lifecycle rule on the bucket itself (one-time setup
+# documented in scripts/setup-backup-bucket.sh) so this workflow is
+# stateless and idempotent: each run just creates a new timestamped
+# export folder, the bucket auto-deletes anything older than 7 days.
+#
+# Cost (estimate at our current Firestore size ~50MB):
+#   - Firestore export operation: ~₹0.50 per export (free first GB/month)
+#   - Coldline storage: ~₹0.03/GB/month (7 days = negligible)
+#   - Restore-only egress charged on retrieval: not paid unless we
+#     actually restore.
+#   Total: well under ₹50/month.
+#
+# Why GitHub Actions rather than Cloud Scheduler:
+#   - We already have FIREBASE_SERVICE_ACCOUNT_JSON in GitHub Secrets,
+#     so no extra GCP IAM setup is needed.
+#   - Free tier (cron jobs are unlimited under GitHub's generic 2000
+#     min/month free allowance and this job runs ~2 minutes/day).
+#   - workflow_dispatch lets the founder trigger a backup on-demand
+#     before risky operations (DPDP test runs, schema migrations, etc.).
+
+on:
+  schedule:
+    # 03:00 IST = 21:30 UTC. Picks the quietest production hour.
+    - cron: '30 21 * * *'
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Reason for manual backup (optional, captured in run name)'
+        required: false
+        default: 'manual'
+
+concurrency:
+  group: firestore-backup
+  cancel-in-progress: false  # never cancel a running backup
+
+permissions:
+  contents: read
+
+env:
+  GCP_PROJECT: nexigrate-prod
+  BACKUP_BUCKET: nexigrate-prod-firestore-backups
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25  # Firestore exports for our size finish in ~3 min, generous headroom for cold-start + retries
+    steps:
+      - name: Authenticate to Google Cloud (Service Account Key)
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT }}
+
+      - name: Verify backup bucket exists
+        # Fail fast with a friendly message if the one-time bucket setup
+        # hasn't been run yet -- the founder hits this once on first
+        # workflow run, runs scripts/setup-backup-bucket.sh, then it's
+        # green forever.
+        run: |
+          if ! gcloud storage buckets describe gs://${{ env.BACKUP_BUCKET }} --project=${{ env.GCP_PROJECT }} >/dev/null 2>&1; then
+            echo "::error::Backup bucket gs://${{ env.BACKUP_BUCKET }} does not exist."
+            echo "::error::Run scripts/setup-backup-bucket.sh ONCE to create it (sets Coldline storage class + 7-day lifecycle rule)."
+            exit 1
+          fi
+          echo "Bucket exists. Proceeding."
+
+      - name: Export Firestore to GCS
+        # `gcloud firestore export` is asynchronous: it kicks off an
+        # operation and returns the operation name immediately. We then
+        # poll the operation until done so the workflow run truly fails
+        # if the export fails (rather than green-merging a half-finished
+        # export).
+        run: |
+          # Folder name = ISO date so backups land in clean per-day folders.
+          # Example: gs://nexigrate-prod-firestore-backups/2026-05-29T03-00-00Z/
+          STAMP=$(date -u +%Y-%m-%dT%H-%M-%SZ)
+          DEST="gs://${{ env.BACKUP_BUCKET }}/${STAMP}"
+          echo "Backup destination: ${DEST}"
+
+          # Kick off the export, capture the operation name.
+          OP_NAME=$(gcloud firestore export "${DEST}" \
+            --project=${{ env.GCP_PROJECT }} \
+            --async \
+            --format='value(name)')
+          echo "Operation: ${OP_NAME}"
+          echo "operation=${OP_NAME}" >> "$GITHUB_OUTPUT"
+          echo "destination=${DEST}" >> "$GITHUB_OUTPUT"
+
+          # Poll until the operation is done (timeout via workflow timeout-minutes).
+          while true; do
+            DONE=$(gcloud firestore operations describe "${OP_NAME}" \
+              --project=${{ env.GCP_PROJECT }} \
+              --format='value(done)' 2>/dev/null || echo "false")
+            if [ "${DONE}" = "True" ] || [ "${DONE}" = "true" ]; then
+              break
+            fi
+            echo "Still exporting… (sleeping 30s)"
+            sleep 30
+          done
+
+          # Surface any error.
+          ERR=$(gcloud firestore operations describe "${OP_NAME}" \
+            --project=${{ env.GCP_PROJECT }} \
+            --format='value(error.message)' 2>/dev/null || echo "")
+          if [ -n "${ERR}" ]; then
+            echo "::error::Firestore export failed: ${ERR}"
+            exit 1
+          fi
+          echo "::notice::Backup complete: ${DEST}"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### Daily Firestore backup" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Bucket: \`gs://${{ env.BACKUP_BUCKET }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Project: \`${{ env.GCP_PROJECT }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Retention: 7 days (managed by bucket lifecycle rule)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Trigger: \`${{ github.event_name }}\`" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "- Reason: ${{ inputs.reason }}" >> "$GITHUB_STEP_SUMMARY"
+          fi

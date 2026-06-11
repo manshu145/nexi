@@ -1,21 +1,19 @@
 name: Deploy marketing site to Cloudflare Pages
 
 # Auto-deploys the marketing site (nexigrate.com) on every push to main that
-# touches apps/marketing/**. Also exposed via workflow_dispatch so you can
-# manually redeploy a specific commit from the Actions UI.
+# touches apps/marketing/**. Also exposed via workflow_dispatch.
 #
-# REQUIRED GitHub Secrets:
-#   - CLOUDFLARE_API_TOKEN
+# Required GitHub Secrets:
+#   - CLOUDFLARE_API_TOKEN (must have Account / Cloudflare Pages / Edit
+#                           AND User / User Details / Read)
 #   - CLOUDFLARE_ACCOUNT_ID
 #
-# REQUIRED Cloudflare API Token permissions (set on the token in the
-# Cloudflare dashboard, under My Profile -> API Tokens):
-#   - Account / Cloudflare Pages / Edit
-#   - User / User Details / Read   (optional but recommended)
-#
-# Without those permissions wrangler returns:
-#   "Authentication error [code: 10000]"
-# The deploy step will then warn (not fail) so the rest of CI stays green.
+# Last verified: 23 May 2026. Token in the repo at that time was returning
+# {"success":false,"errors":[{"code":1000,"message":"Invalid API Token"}]}
+# from /user/tokens/verify -- the deploy step here will warn (not fail)
+# until that's replaced with a token created from the
+# "Edit Cloudflare Pages" template at
+# https://dash.cloudflare.com/profile/api-tokens.
 
 on:
   push:
@@ -40,103 +38,94 @@ env:
   NODE_VERSION: '22'
   PNPM_VERSION: '9.15.0'
   CLOUDFLARE_PROJECT: nexigrate-marketing
-  WRANGLER_VERSION: '3.90.0'
 
 jobs:
   deploy:
-    name: Build and deploy to Cloudflare
     runs-on: ubuntu-latest
     timeout-minutes: 12
     permissions:
       contents: read
       deployments: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v4
         with:
           version: ${{ env.PNPM_VERSION }}
           run_install: false
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile=false
+      - run: pnpm install --frozen-lockfile=false
 
-      - name: Build marketing site
-        run: pnpm build:marketing
+      - run: pnpm build:marketing
         env:
           NODE_ENV: production
 
-      - name: Check Cloudflare credentials
-        id: cf
+      - name: Verify Cloudflare token before deploy
+        id: verify
         env:
-          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          if [ -z "$CF_TOKEN" ] || [ -z "$CF_ACCOUNT" ]; then
-            echo "::warning::CLOUDFLARE_API_TOKEN or CLOUDFLARE_ACCOUNT_ID not set; skipping deploy. Add both as GitHub Secrets to enable auto-deploy."
-            echo "configured=false" >> "$GITHUB_OUTPUT"
+          if [ -z "$TOKEN" ] || [ -z "$ACCOUNT" ]; then
+            echo "::warning::CLOUDFLARE_API_TOKEN or CLOUDFLARE_ACCOUNT_ID not set; skipping deploy."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          STATUS=$(curl -s -o /tmp/cf.json -w '%{http_code}' \
+            -H "Authorization: Bearer $TOKEN" \
+            https://api.cloudflare.com/client/v4/user/tokens/verify)
+          BODY=$(cat /tmp/cf.json)
+          echo "verify HTTP $STATUS"
+          echo "$BODY"
+          if [ "$STATUS" = "200" ] && echo "$BODY" | grep -q '"success":true'; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
           else
-            echo "configured=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::Cloudflare token failed verify ($STATUS). Skipping deploy. Body: $BODY"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # Run wrangler directly via npx instead of cloudflare/wrangler-action so
-      # we sidestep its pnpm-add-to-workspace-root failure mode in monorepos
-      # (ERR_PNPM_ADDING_TO_ROOT). npx is happy to fetch wrangler globally.
-      #
-      # continue-on-error so a Cloudflare-side permission gap doesn't paint the
-      # whole pipeline red on every push. The follow-up step inspects the
-      # exit code and prints a focused fix-it message to the run summary.
-      - name: Deploy to Cloudflare Pages (wrangler via npx)
-        id: deploy
-        if: steps.cf.outputs.configured == 'true'
-        continue-on-error: true
+      - name: Deploy via local wrangler
+        if: steps.verify.outputs.ok == 'true'
+        working-directory: apps/marketing
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           BRANCH: ${{ inputs.branch || 'main' }}
         run: |
-          COMMIT_MSG="${{ github.event.head_commit.message || github.sha }}"
-          COMMIT_MSG_ONE_LINE="$(printf '%s' "$COMMIT_MSG" | head -n 1)"
-          npx --yes wrangler@${WRANGLER_VERSION} pages deploy apps/marketing/dist \
+          COMMIT_MSG_ONE_LINE="$(printf '%s' "${{ github.event.head_commit.message || github.sha }}" | head -n 1)"
+          pnpm exec wrangler pages deploy ./dist \
             --project-name=${CLOUDFLARE_PROJECT} \
             --branch="${BRANCH}" \
             --commit-hash=${{ github.sha }} \
             --commit-message="${COMMIT_MSG_ONE_LINE}"
 
-      - name: Summarise deploy result
-        if: steps.cf.outputs.configured == 'true'
+      - name: Skip-deploy summary
+        if: steps.verify.outputs.ok != 'true'
         run: |
-          if [ "${{ steps.deploy.outcome }}" = "success" ]; then
-            echo "::notice::Marketing site deployed to Cloudflare Pages (project=${CLOUDFLARE_PROJECT})."
-          else
-            cat <<'EOF' >> "$GITHUB_STEP_SUMMARY"
-          ## Cloudflare deploy did not complete
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+          ## Cloudflare deploy skipped
 
-          The wrangler step exited non-zero. Most common causes:
+          The CLOUDFLARE_API_TOKEN GitHub Secret did not pass
+          /user/tokens/verify. The build artifact (apps/marketing/dist) is
+          ready in this run; nothing was uploaded to Cloudflare.
 
-          1. **API token lacks `Cloudflare Pages: Edit` permission.**
-             Fix: https://dash.cloudflare.com/profile/api-tokens → edit the
-             token used in `CLOUDFLARE_API_TOKEN` → ensure it has
-             `Account → Cloudflare Pages → Edit`. Save. Re-run this workflow
-             from the Actions UI.
-          2. **Project name mismatch.** This workflow expects a Pages project
-             called `nexigrate-marketing`. Check
-             https://dash.cloudflare.com/?to=/:account/pages and rename the
-             project, or update `CLOUDFLARE_PROJECT` in this workflow.
-          3. **Wrong account.** `CLOUDFLARE_ACCOUNT_ID` must match the account
-             that owns the Pages project.
+          Fix in 60 seconds:
+          1. https://dash.cloudflare.com/profile/api-tokens -> Create Token.
+          2. Use the "Edit Cloudflare Pages" template (auto-grants
+             Account/Cloudflare Pages/Edit and User/User Details/Read).
+          3. Save and copy the token.
+          4. https://github.com/manshu145/nexi/settings/secrets/actions ->
+             update CLOUDFLARE_API_TOKEN with the new value.
+          5. Actions tab -> "Deploy marketing site to Cloudflare Pages" ->
+             "Run workflow".
 
-          Until this is resolved, marketing pages added to the repo will not
-          appear on https://nexigrate.com. Other deploys (api, web) are
-          unaffected.
+          Until that's done, only the Cloudflare-side Git auto-deploy will
+          publish updates -- and that has its own configuration in the
+          Cloudflare dashboard.
           EOF
-            echo "::warning::Cloudflare Pages deploy failed; see job summary for the fix-it checklist."
-          fi
+          echo "::warning::Cloudflare token invalid; deploy skipped. See run summary for the fix."

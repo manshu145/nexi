@@ -1,0 +1,171 @@
+---
+import Layout from '~/layouts/Layout.astro';
+import Nav from '~/components/Nav.astro';
+import Footer from '~/components/Footer.astro';
+
+export const prerender = false;
+
+const API_URL = 'https://api.nexigrate.com';
+const { slug } = Astro.params;
+
+interface BlogPost {
+  id: string; slug: string;
+  title: string; titleHi?: string;
+  excerpt: string; excerptHi?: string;
+  body: string; bodyHi?: string;
+  status: string;
+  seoTitle?: string; seoDescription?: string; ogImage?: string;
+  tags: string[]; authorName: string;
+  createdAt: string; updatedAt: string; publishedAt?: string;
+}
+
+let post: BlogPost | null = null;
+let bodyHtml = '';
+
+try {
+  const res = await fetch(`${API_URL}/v1/blog/posts/${slug}`, {
+    headers: { Accept: 'application/json' },
+  });
+  if (res.ok) {
+    const data = await res.json() as { post: BlogPost };
+    post = data.post;
+  }
+} catch {
+  // 404 fallthrough
+}
+
+if (!post) {
+  return Astro.redirect('/blog?missing=1', 302);
+}
+
+bodyHtml = renderMarkdown(post.body);
+
+const title = post.seoTitle || post.title;
+const description = post.seoDescription || post.excerpt || post.title;
+
+// JSON-LD Article structured data for SEO. Nexigrate's published-on
+// date + author + main image gives Google what it wants to rank this
+// in the rich-result Article carousel.
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: post.title,
+  description: post.excerpt,
+  author: { '@type': 'Person', name: post.authorName },
+  publisher: {
+    '@type': 'Organization',
+    name: 'Nexigrate',
+    logo: { '@type': 'ImageObject', url: 'https://nexigrate.com/brand/nexigrate-favicon.svg' },
+  },
+  datePublished: post.publishedAt ?? post.createdAt,
+  dateModified: post.updatedAt,
+  mainEntityOfPage: { '@type': 'WebPage', '@id': `https://nexigrate.com/blog/${post.slug}` },
+  ...(post.ogImage ? { image: post.ogImage } : {}),
+};
+
+/**
+ * Tiny markdown -> safe HTML renderer. Handles the structures the AI
+ * draft generator emits (## headings, ### subheadings, **bold**,
+ * *italic*, ```code```, > blockquotes, lists, paragraphs). Escapes
+ * input first so untrusted content never breaks out.
+ */
+function renderMarkdown(md: string): string {
+  if (!md) return '';
+  let s = md.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  s = s.replace(/```([a-zA-Z0-9]*)\n([\s\S]*?)```/g, (_m, _lang, code) =>
+    `<pre class="my-4 overflow-x-auto rounded-md bg-paper-200 p-4 text-sm"><code>${code}</code></pre>`,
+  );
+
+  s = s.replace(/^### (.+)$/gm, '<h3 class="mt-6 text-xl font-semibold text-ink-900">$1</h3>');
+  s = s.replace(/^## (.+)$/gm, '<h2 class="mt-8 text-2xl font-bold text-ink-900">$1</h2>');
+  s = s.replace(/^# (.+)$/gm, '<h1 class="mt-8 text-3xl font-bold text-ink-900">$1</h1>');
+  s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/(^|\W)\*([^*\n]+)\*(?=\W|$)/g, '$1<em>$2</em>');
+  s = s.replace(/`([^`]+)`/g, '<code class="rounded bg-paper-200 px-1 py-0.5 text-sm">$1</code>');
+  s = s.replace(/^> (.+)$/gm,
+    '<blockquote class="my-4 border-l-4 border-ember-500 pl-4 italic text-ink-700">$1</blockquote>',
+  );
+
+  s = s.replace(/(?:^|\n)((?:- .+\n?)+)/g, (_m, block: string) => {
+    const items = block.trim().split('\n').map(l => l.replace(/^- /, '').trim());
+    return '\n<ul class="my-4 list-disc space-y-2 pl-6">' + items.map(i => `<li>${i}</li>`).join('') + '</ul>\n';
+  });
+  s = s.replace(/(?:^|\n)((?:\d+\. .+\n?)+)/g, (_m, block: string) => {
+    const items = block.trim().split('\n').map(l => l.replace(/^\d+\. /, '').trim());
+    return '\n<ol class="my-4 list-decimal space-y-2 pl-6">' + items.map(i => `<li>${i}</li>`).join('') + '</ol>\n';
+  });
+
+  s = s
+    .split(/\n{2,}/)
+    .map((block) => {
+      const t = block.trim();
+      if (!t) return '';
+      if (/^<(h\d|ul|ol|pre|blockquote)/.test(t)) return t;
+      return `<p class="my-4 leading-relaxed text-ink-800">${t}</p>`;
+    })
+    .join('\n');
+
+  return s;
+}
+---
+<Layout title={title} description={description} pathname={`/blog/${post.slug}`}>
+  <script is:inline type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <Nav />
+  <main id="main" class="mx-auto max-w-3xl px-4 py-12 sm:py-16">
+    <a href="/blog" class="text-sm text-ember-700 hover:underline">← Back to all posts</a>
+
+    <article class="mt-6">
+      <header class="mb-8">
+        <div class="mb-3 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          {post.tags.map((tag) => (
+            <span class="rounded-full bg-ember-500/10 px-2 py-0.5 text-ember-700">{tag}</span>
+          ))}
+        </div>
+        <h1 class="text-3xl font-bold leading-tight text-ink-900 sm:text-4xl">{post.title}</h1>
+        {post.excerpt && (
+          <p class="mt-3 text-lg text-ink-700">{post.excerpt}</p>
+        )}
+        <div class="mt-4 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          <span>By {post.authorName}</span>
+          {post.publishedAt && (
+            <>
+              <span>·</span>
+              <time datetime={post.publishedAt}>
+                {new Date(post.publishedAt).toLocaleDateString('en-IN', {
+                  month: 'long', day: 'numeric', year: 'numeric',
+                })}
+              </time>
+            </>
+          )}
+        </div>
+      </header>
+
+      {post.ogImage && (
+        <img
+          src={post.ogImage}
+          alt={post.title}
+          class="mb-8 w-full rounded-xl object-cover"
+          loading="eager"
+        />
+      )}
+
+      <div class="prose-blog" set:html={bodyHtml} />
+
+      <hr class="my-10 border-line" />
+
+      <aside class="rounded-xl border border-line bg-paper-50 p-6 text-center">
+        <p class="text-ink-700">
+          Loved this? Get the free Nexigrate study app — verified content, no ads.
+        </p>
+        <a
+          href="https://app.nexigrate.com"
+          class="mt-3 inline-block rounded-lg bg-ember-600 px-5 py-2 text-paper-50 hover:bg-ember-500"
+        >
+          Start studying free
+        </a>
+      </aside>
+    </article>
+  </main>
+  <Footer />
+</Layout>
