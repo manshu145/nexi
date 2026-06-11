@@ -45,6 +45,8 @@ import { makeMailboxRoutes } from './routes/mailbox.js';
 import { FirestoreNotificationStore, InMemoryNotificationStore, type NotificationStore } from './lib/notificationStore.js';
 import { makeNotificationRoutes } from './routes/notifications.js';
 import { notifyUser } from './lib/notificationService.js';
+import { FirestoreNotificationLogStore, InMemoryNotificationLogStore, type NotificationLogStore } from './lib/notificationLogStore.js';
+import { nearestUpcomingExam, buildReengageNotification } from './lib/reengage.js';
 import { FirestoreExamDatesStore, InMemoryExamDatesStore, type ExamDatesStore } from './lib/examDatesStore.js';
 import { makeExamRoutes } from './routes/exams.js';
 import { FirestoreReviewStore, InMemoryReviewStore, type ReviewStore } from './lib/reviewStore.js';
@@ -79,6 +81,7 @@ export function buildApp(deps: AppDeps): Hono {
   const analytics: AnalyticsStore = fs ? new FirestoreAnalyticsStore(fs) : new InMemoryAnalyticsStore();
   const emailThreads: EmailThreadStore = fs ? new FirestoreEmailThreadStore(fs) : new InMemoryEmailThreadStore();
   const notifications: NotificationStore = fs ? new FirestoreNotificationStore(fs) : new InMemoryNotificationStore();
+  const notificationLogs: NotificationLogStore = fs ? new FirestoreNotificationLogStore(fs) : new InMemoryNotificationLogStore();
   const examDates: ExamDatesStore = fs ? new FirestoreExamDatesStore(fs) : new InMemoryExamDatesStore();
   const review: ReviewStore = fs ? new FirestoreReviewStore(fs) : new InMemoryReviewStore();
   const blog = deps.blog ?? (fs ? new FirestoreBlogStore(fs) : new InMemoryBlogStore());
@@ -364,13 +367,13 @@ export function buildApp(deps: AppDeps): Hono {
           if (success) sent++;
           // Also drop an in-app inbox notification (+ push) so users who
           // didn't grant email but use the app still get nudged.
-          await notifyUser({ notifications, users, push, logger }, doc.id, {
+          await notifyUser({ notifications, users, push, logs: notificationLogs, logger }, doc.id, {
             type: 'streak',
             title: `🔥 ${u.currentStreak ?? 0}-day streak at risk!`,
             body: 'Study a little today to keep your streak alive.',
             link: '/dashboard',
             dedupeKey: 'streak-reminder',
-          }, { push: true });
+          }, { push: true, source: 'streak', userInfo: { ...(u.email ? { email: u.email } : {}), ...(u.name ? { name: u.name } : {}) } });
         }
       }
       logger.info('cron.streak_check_done', { sent, skipped });
@@ -401,13 +404,14 @@ export function buildApp(deps: AppDeps): Hono {
           .limit(1000)
           .get();
         for (const doc of snap.docs) {
-          const ok = await notifyUser({ notifications, users, push, logger }, doc.id, {
+          const u = doc.data() as { email?: string; name?: string };
+          const ok = await notifyUser({ notifications, users, push, logs: notificationLogs, logger }, doc.id, {
             type: 'current_affairs',
             title: "📰 Today's current affairs are ready",
             body: 'Fresh headlines + a quick quiz are waiting. Keep your prep current!',
             link: '/current-affairs',
             dedupeKey: 'current-affairs-daily',
-          }, { push: true });
+          }, { push: true, source: 'daily-digest', userInfo: { ...(u.email ? { email: u.email } : {}), ...(u.name ? { name: u.name } : {}) } });
           if (ok) notified++;
         }
       }
@@ -416,6 +420,81 @@ export function buildApp(deps: AppDeps): Hono {
     } catch (err) {
       logger.error('cron.daily_digest_error', { error: err instanceof Error ? err.message : String(err) });
       return c.json({ success: false, error: 'Daily digest failed' }, 500);
+    }
+  });
+
+  // Cron endpoint — re-engagement nudge (Cloud Scheduler / GitHub cron: hourly).
+  // Founder ask: "koi agar is app ko 5-6 hour tak nahi open karta to usko
+  // personalized notification jaaye — kya karna bacha hai / exam najdik hai".
+  //
+  // Targets users who were active recently (so they're real, engaged users —
+  // not dormant) but have now been idle for 5h+. For each we send ONE
+  // personalized push (+ inbox) chosen from: nearest exam countdown → streak
+  // at risk → generic come-back. Deduped once/day (dedupeKey 'reengage') so a
+  // user gets at most one re-engagement nudge per day no matter how many times
+  // the hourly cron runs. Every send is recorded in notificationLogs so the
+  // admin can see who got what, on which channel, and when.
+  app.post('/v1/notifications/reengage', async (c) => {
+    const cronSecret = c.req.header('x-cron-secret');
+    if (cronSecret !== env.CRON_SECRET) {
+      return c.json({ error: 'unauthorized' }, 401);
+    }
+    logger.info('cron.reengage_start');
+    let sent = 0;
+    let skipped = 0;
+    try {
+      if (fs) {
+        const now = new Date();
+        // Idle window: last seen between 30h ago (lower) and 5h ago (upper).
+        // ≥5h idle = worth nudging; ≤30h ago = still an active user, not
+        // dormant (dormant users are handled by the 7-day daily-digest).
+        const upperIso = new Date(now.getTime() - 5 * 60 * 60 * 1000).toISOString();
+        const lowerIso = new Date(now.getTime() - 30 * 60 * 60 * 1000).toISOString();
+        // Single-field range query (no composite index needed).
+        const snap = await fs.collection('users')
+          .where('lastActiveAt', '>=', lowerIso)
+          .where('lastActiveAt', '<=', upperIso)
+          .limit(1000)
+          .get();
+
+        // Cache exam calendars per slug so we don't refetch for every user.
+        const examCache = new Map<string, Awaited<ReturnType<typeof examDates.get>>>();
+
+        for (const doc of snap.docs) {
+          const u = doc.data() as {
+            email?: string; name?: string; language?: 'en' | 'hi';
+            targetExam?: string | null; currentStreak?: number | null; lastDailyAt?: string | null;
+          };
+
+          let exam = null;
+          if (u.targetExam) {
+            if (!examCache.has(u.targetExam)) {
+              examCache.set(u.targetExam, await examDates.get(u.targetExam).catch(() => null));
+            }
+            exam = nearestUpcomingExam(examCache.get(u.targetExam) ?? null, now);
+          }
+
+          const notification = buildReengageNotification(
+            { language: u.language ?? 'en', currentStreak: u.currentStreak ?? 0, lastDailyAt: u.lastDailyAt ?? null },
+            exam,
+            now,
+          );
+          if (!notification) { skipped++; continue; }
+
+          const ok = await notifyUser(
+            { notifications, users, push, logs: notificationLogs, logger },
+            doc.id,
+            notification,
+            { push: true, source: 'reengage', userInfo: { ...(u.email ? { email: u.email } : {}), ...(u.name ? { name: u.name } : {}) } },
+          );
+          if (ok) sent++; else skipped++;
+        }
+      }
+      logger.info('cron.reengage_done', { sent, skipped });
+      return c.json({ success: true, sent, skipped });
+    } catch (err) {
+      logger.error('cron.reengage_error', { error: err instanceof Error ? err.message : String(err) });
+      return c.json({ success: false, error: 'Re-engagement nudge failed' }, 500);
     }
   });
 
@@ -485,7 +564,7 @@ export function buildApp(deps: AppDeps): Hono {
   v1.route('/chat', makeChatRoutes({ users, aiEngine, chat: chatStore, logger, env, config, usage: featureUsage }));
   v1.route('/credits', makeCreditsRoutes({ users, logger, db: fs, ledger, config }));
   v1.route('/billing', makeBillingRoutes({ users, env, logger, db: fs, coupons: couponStore, idempotency, config, serviceKeys }));
-  v1.route('/admin', makeAdminRoutes({ users, adminStore, env, logger, coupons: couponStore, db: fs, config, aiSpend, firebaseAuth, blog, aiEngine, aiProviderStore, modelResolver, currentAffairs, serviceKeys, push, notifications, teamInvites }));
+  v1.route('/admin', makeAdminRoutes({ users, adminStore, env, logger, coupons: couponStore, db: fs, config, aiSpend, firebaseAuth, blog, aiEngine, aiProviderStore, modelResolver, currentAffairs, serviceKeys, push, notifications, notificationLogs, teamInvites }));
   v1.route('/support', makeSupportRoutes({ users, db: fs, logger }));
   v1.route('/essay', makeEssayRoutes({ users, aiEngine, logger, db: fs, config, usage: featureUsage }));
   v1.route('/mock-tests', makeMockTestRoutes({ users, aiEngine, mockTests, ledger, config, logger }));

@@ -75,6 +75,16 @@ export interface StoredUser {
    */
   onboardingPlanChosen?: boolean;
   currentStreak: number; bestStreak: number; lastDailyAt: ISODateTime | null;
+  /**
+   * Last time the user was seen active in the app (app open / session ping).
+   * Distinct from `lastDailyAt` (which only advances once per IST day for the
+   * streak): this updates on every app open (throttled in /me) and on session
+   * start/ping, giving a fine-grained "are they currently using the app?"
+   * signal. The re-engagement cron uses it to find users who opened the app
+   * recently but have been idle for 5-6h. `undefined`/null for users who
+   * predate this field — treated as never-active until their next /me call.
+   */
+  lastActiveAt?: ISODateTime | null;
   isVerified: boolean;
   /**
    * True iff the user has completed Firebase phone-number verification
