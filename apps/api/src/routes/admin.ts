@@ -24,6 +24,7 @@ import { isHardcodedSuperAdmin } from '../lib/adminEmails.js';
 import { SERVICE_DEFINITIONS, getServiceDefinition, maskSecret, type ServiceId, type ServiceKeyStore } from '../lib/serviceKeyStore.js';
 import type { PushService, PushNotificationPayload } from '../lib/pushService.js';
 import type { NotificationStore } from '../lib/notificationStore.js';
+import type { NotificationLogStore } from '../lib/notificationLogStore.js';
 import type { TeamInviteStore } from '../lib/teamInviteStore.js';
 
 export interface AdminRoutesDeps {
@@ -90,6 +91,13 @@ export interface AdminRoutesDeps {
    * broadcast only fired FCM and the in-app bell stayed empty.
    */
   notifications?: NotificationStore;
+  /**
+   * Per-recipient audit log for AUTOMATIC / personalized notifications
+   * (re-engagement nudges, streak reminders, daily digest). Distinct from
+   * `pushLogs` (admin broadcasts, aggregate). Surfaced on the admin Push page
+   * as the "who got what, when, on which channel" trail the founder asked for.
+   */
+  notificationLogs?: NotificationLogStore;
   /** PR-40: team invite store for admin RBAC. */
   teamInvites?: TeamInviteStore;
 }
@@ -2079,6 +2087,31 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
     try {
       const snap = await deps.db.collection('pushLogs').orderBy('sentAt', 'desc').limit(limit).get();
       const logs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      return c.json({ logs, total: logs.length });
+    } catch { return c.json({ logs: [], total: 0 }); }
+  });
+
+  /**
+   * GET /v1/admin/notifications/log — per-recipient trail of AUTOMATIC /
+   * personalized notifications (re-engagement nudges, streak reminders, daily
+   * digest). Distinct from /push/logs (admin broadcasts, aggregate). Answers
+   * the founder's "kisko kya kaise kab gya" — who got what, on which channel
+   * (push / in-app), delivered or not, and when.
+   *
+   * Query: ?limit= (default 100, max 500), ?source= (e.g. reengage|streak|
+   * daily-digest), ?userId=.
+   */
+  app.get('/notifications/log', async (c) => {
+    if (!deps.notificationLogs) return c.json({ logs: [], total: 0 });
+    const limit = Math.min(Math.max(parseInt(c.req.query('limit') ?? '100', 10) || 100, 1), 500);
+    const source = c.req.query('source')?.trim();
+    const userId = c.req.query('userId')?.trim();
+    try {
+      const logs = await deps.notificationLogs.list({
+        limit,
+        ...(source ? { source } : {}),
+        ...(userId ? { userId } : {}),
+      });
       return c.json({ logs, total: logs.length });
     } catch { return c.json({ logs: [], total: 0 }); }
   });

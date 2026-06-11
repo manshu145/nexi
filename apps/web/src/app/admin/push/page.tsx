@@ -58,6 +58,17 @@ export default function AdminPushPage() {
   const [promptCfg, setPromptCfg] = useState<PromptCfg>({ enabled: true, promptDelaySeconds: 6, cooldownDays: 3, maxDismissals: 3 });
   const [savingCfg, setSavingCfg] = useState(false);
 
+  // Per-recipient log of AUTOMATIC / personalized notifications
+  // (re-engagement, streak, daily digest) — who got what, on which channel, when.
+  interface AutoLog {
+    id: string; userId: string; userEmail?: string; userName?: string;
+    type: string; title: string; body: string; link?: string;
+    channel: 'push' | 'in_app'; pushDelivered?: boolean; pushSuccess?: number; pushFailure?: number;
+    source: string; createdAt: string;
+  }
+  const [autoLogs, setAutoLogs] = useState<AutoLog[]>([]);
+  const [autoSource, setAutoSource] = useState<'' | 'reengage' | 'streak' | 'daily-digest'>('');
+
   useEffect(() => {
     if (!loading && !user) router.replace('/admin/login');
   }, [user, loading, router]);
@@ -72,6 +83,15 @@ export default function AdminPushPage() {
       const token = await getToken();
       const res = await fetch(`${API}/v1/admin/push/logs?limit=100`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) { const d = (await res.json()) as { logs: PushLog[] }; setLogs(d.logs); }
+    } catch { /* ignore */ }
+  };
+
+  const loadAutoLogs = async (src: '' | 'reengage' | 'streak' | 'daily-digest' = autoSource) => {
+    try {
+      const token = await getToken();
+      const q = src ? `&source=${src}` : '';
+      const res = await fetch(`${API}/v1/admin/notifications/log?limit=150${q}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) { const d = (await res.json()) as { logs: AutoLog[] }; setAutoLogs(d.logs); }
     } catch { /* ignore */ }
   };
 
@@ -102,6 +122,7 @@ export default function AdminPushPage() {
         else setStatus({ configured: false, reason: `HTTP ${res.status}` });
         // Load send history + prompt config in parallel (non-fatal).
         void loadLogs();
+        void loadAutoLogs();
         try {
           const cfgRes = await fetch(`${API}/v1/admin/push/config`, { headers: { Authorization: `Bearer ${token}` } });
           if (cfgRes.ok) { const d = (await cfgRes.json()) as { config: PromptCfg }; setPromptCfg(d.config); }
@@ -462,6 +483,75 @@ export default function AdminPushPage() {
                       {typeof l.inboxCreated === 'number' && l.inboxCreated > 0 ? ` · ${l.inboxCreated} inbox` : ''}
                     </td>
                     <td className="py-2 pr-3 text-[11px] text-muted-400">{l.sentAt ? new Date(l.sentAt).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* Automatic / personalized notification log (per recipient) */}
+      <section className="mt-6 rounded-xl border border-line bg-paper-50 p-5">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <p className="text-sm font-semibold text-ink-700">Automatic &amp; re-engagement nudges</p>
+            <p className="mt-0.5 text-xs text-muted-500">
+              Personalized notifications fired by the system (idle re-engagement, streak reminders,
+              daily digest) — who received what, on which channel, and when.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              value={autoSource}
+              onChange={(e) => { const v = e.target.value as typeof autoSource; setAutoSource(v); void loadAutoLogs(v); }}
+              className="rounded-lg border border-line bg-paper-100 px-2 py-1.5 text-xs text-ink-900 focus:border-ember-500 focus:outline-none"
+            >
+              <option value="">All sources</option>
+              <option value="reengage">Re-engagement</option>
+              <option value="streak">Streak</option>
+              <option value="daily-digest">Daily digest</option>
+            </select>
+            <button type="button" onClick={() => loadAutoLogs()} className="text-xs text-muted-500 hover:text-ink-800">↻ Refresh</button>
+          </div>
+        </div>
+        {autoLogs.length === 0 ? (
+          <p className="mt-3 text-xs text-muted-400">No automatic notifications sent yet. The hourly re-engagement cron records them here.</p>
+        ) : (
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-line text-left">
+                  <th className="py-2 pr-3 text-[11px] font-semibold uppercase tracking-wider text-muted-500">Recipient</th>
+                  <th className="py-2 pr-3 text-[11px] font-semibold uppercase tracking-wider text-muted-500">Notification</th>
+                  <th className="py-2 pr-3 text-[11px] font-semibold uppercase tracking-wider text-muted-500">Source</th>
+                  <th className="py-2 pr-3 text-[11px] font-semibold uppercase tracking-wider text-muted-500">Channel</th>
+                  <th className="py-2 pr-3 text-[11px] font-semibold uppercase tracking-wider text-muted-500">When</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {autoLogs.map((l) => (
+                  <tr key={l.id} className="align-top">
+                    <td className="py-2 pr-3">
+                      <p className="font-medium text-ink-900">{l.userName || '—'}</p>
+                      <p className="max-w-[180px] truncate text-[11px] text-muted-400">{l.userEmail || l.userId}</p>
+                    </td>
+                    <td className="py-2 pr-3">
+                      <p className="max-w-[260px] truncate font-medium text-ink-900">{l.title}</p>
+                      <p className="max-w-[260px] truncate text-[11px] text-muted-400">{l.body}</p>
+                    </td>
+                    <td className="py-2 pr-3"><span className="pill text-[11px]">{l.source}</span></td>
+                    <td className="py-2 pr-3 text-xs">
+                      {l.channel === 'push' ? (
+                        <span className={l.pushDelivered ? 'text-emerald-600' : 'text-ember-600'}>
+                          {l.pushDelivered ? 'Push ✓' : 'Push ✗'}
+                          {typeof l.pushSuccess === 'number' ? ` (${l.pushSuccess}/${(l.pushSuccess ?? 0) + (l.pushFailure ?? 0)})` : ''}
+                        </span>
+                      ) : (
+                        <span className="text-muted-600">In-app</span>
+                      )}
+                    </td>
+                    <td className="py-2 pr-3 text-[11px] text-muted-400">{l.createdAt ? new Date(l.createdAt).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : '—'}</td>
                   </tr>
                 ))}
               </tbody>
