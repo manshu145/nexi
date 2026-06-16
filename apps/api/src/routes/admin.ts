@@ -26,6 +26,7 @@ import type { PushService, PushNotificationPayload } from '../lib/pushService.js
 import type { NotificationStore } from '../lib/notificationStore.js';
 import type { NotificationLogStore } from '../lib/notificationLogStore.js';
 import type { TeamInviteStore } from '../lib/teamInviteStore.js';
+import type { CronScheduler, CronJobId } from '../lib/scheduler.js';
 
 export interface AdminRoutesDeps {
   users: UserStore;
@@ -100,6 +101,13 @@ export interface AdminRoutesDeps {
   notificationLogs?: NotificationLogStore;
   /** PR-40: team invite store for admin RBAC. */
   teamInvites?: TeamInviteStore;
+  /**
+   * In-process cron scheduler — the self-hosted replacement for the external
+   * GitHub Actions cron. Powers the admin "Automatic schedule" panel: per-job
+   * status (last run / result), global + per-job enable toggles, and manual
+   * "Run now". Optional so older test fixtures still construct admin routes.
+   */
+  scheduler?: CronScheduler;
 }
 
 /**
@@ -2114,6 +2122,53 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
       });
       return c.json({ logs, total: logs.length });
     } catch { return c.json({ logs: [], total: 0 }); }
+  });
+
+  // ─── Automatic schedule (in-process cron) ──────────────────────────
+  // Self-hosted scheduler controls — NO GitHub Actions, NO Cloud Scheduler.
+  // Founder ask: "jab mera app hai to GitHub pe kyun depend karu — sab admin
+  // panel se chale." These three endpoints let the admin see every automatic
+  // job's status, flip it on/off, and trigger it on demand.
+
+  /**
+   * GET /v1/admin/cron/status — every scheduled job's schedule, enabled
+   * state, last run time + status + result summary. Drives the admin
+   * "Automatic schedule" panel.
+   */
+  app.get('/cron/status', async (c) => {
+    if (!deps.scheduler) return c.json({ available: false, enabled: false, tickIntervalMs: 0, jobs: [] });
+    const status = await deps.scheduler.getStatus();
+    return c.json({ available: true, ...status });
+  });
+
+  /**
+   * PUT /v1/admin/cron/config — global kill-switch + per-job toggles.
+   * Body: { enabled?: boolean, jobs?: { [jobId]: boolean } }.
+   */
+  app.put('/cron/config', async (c) => {
+    if (!deps.scheduler) throw new HTTPException(503, { message: 'Scheduler not available on this deployment' });
+    const body = await c.req.json().catch(() => null) as { enabled?: boolean; jobs?: Record<string, boolean> } | null;
+    if (!body) throw new HTTPException(400, { message: 'body required' });
+    const config = await deps.scheduler.updateConfig({
+      ...(typeof body.enabled === 'boolean' ? { enabled: body.enabled } : {}),
+      ...(body.jobs ? { jobs: body.jobs as Partial<Record<CronJobId, boolean>> } : {}),
+    });
+    deps.logger.info('admin.cron_config_updated', { enabled: config.enabled, jobs: config.jobs });
+    return c.json({ config });
+  });
+
+  /**
+   * POST /v1/admin/cron/run/:job — manually trigger one job right now,
+   * bypassing its schedule. Returns 409 if the job is already running
+   * (lease held by this or another instance).
+   */
+  app.post('/cron/run/:job', async (c) => {
+    if (!deps.scheduler) throw new HTTPException(503, { message: 'Scheduler not available on this deployment' });
+    const job = c.req.param('job');
+    const result = await deps.scheduler.runNow(job);
+    if (!result.ok) throw new HTTPException(409, { message: result.reason ?? 'Could not run job' });
+    deps.logger.info('admin.cron_run_now', { job });
+    return c.json({ success: true, status: result.status });
   });
 
   /**

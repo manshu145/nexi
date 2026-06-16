@@ -44,9 +44,9 @@ import { FirestoreEmailThreadStore, InMemoryEmailThreadStore, type EmailThreadSt
 import { makeMailboxRoutes } from './routes/mailbox.js';
 import { FirestoreNotificationStore, InMemoryNotificationStore, type NotificationStore } from './lib/notificationStore.js';
 import { makeNotificationRoutes } from './routes/notifications.js';
-import { notifyUser } from './lib/notificationService.js';
 import { FirestoreNotificationLogStore, InMemoryNotificationLogStore, type NotificationLogStore } from './lib/notificationLogStore.js';
-import { nearestUpcomingExam, buildReengageNotification } from './lib/reengage.js';
+import { type CronJobDeps, runStreakCheck, runDailyDigest, runReengage, runCurrentAffairsIngest, runContentRefresh } from './lib/cronJobs.js';
+import { CronScheduler } from './lib/scheduler.js';
 import { FirestoreExamDatesStore, InMemoryExamDatesStore, type ExamDatesStore } from './lib/examDatesStore.js';
 import { makeExamRoutes } from './routes/exams.js';
 import { FirestoreReviewStore, InMemoryReviewStore, type ReviewStore } from './lib/reviewStore.js';
@@ -99,6 +99,25 @@ export function buildApp(deps: AppDeps): Hono {
   // Per-day feature usage counter (image / essay / AI-tutor quotas).
   const featureUsage: FeatureUsageStore = fs ? new FirestoreFeatureUsageStore(fs) : new InMemoryFeatureUsageStore();
   const firebaseAuth = getFirebaseAuth(env);
+
+  // ─── Cron jobs + internal scheduler ─────────────────────────────────
+  // Self-contained scheduling: the API drives its OWN automatic jobs
+  // (re-engagement, daily digest, streak, current-affairs ingest, weekly
+  // content refresh) via an in-process timer — no external GitHub Actions
+  // cron and no shared secret. The same job functions back the HTTP cron
+  // endpoints below and the admin "Run now" buttons. Admin panel toggles
+  // (system/cronConfig) and status (cronJobs/{id}) read through this.
+  //
+  // NOTE: relies on Cloud Run "CPU always allocated" (--no-cpu-throttling)
+  // so the timer keeps ticking between requests; see deploy-api.yml.
+  const cronDeps: CronJobDeps = {
+    fs, logger, env, users, notifications, notificationLogs, push,
+    examDates, currentAffairs, aiEngine, modelResolver, chapters, serviceKeys,
+  };
+  const scheduler = new CronScheduler(cronDeps, logger, fs);
+  // Only run the background timer with Firestore + outside tests, so unit
+  // tests that build the app in-memory never spin a real interval.
+  if (fs && env.NODE_ENV !== 'test') scheduler.start();
 
   const app = new Hono();
 
@@ -210,9 +229,7 @@ export function buildApp(deps: AppDeps): Hono {
     if (cronSecret !== env.CRON_SECRET) {
       return c.json({ error: 'unauthorized' }, 401);
     }
-    const { ingestCurrentAffairs } = await import('./lib/rssIngestion.js');
-    const result = await ingestCurrentAffairs(currentAffairs, env, logger, aiEngine, modelResolver);
-    await currentAffairs.setLastIngestedAt(new Date().toISOString());
+    const result = await runCurrentAffairsIngest(cronDeps);
     return c.json({ success: true, ...result });
   });
 
@@ -310,16 +327,13 @@ export function buildApp(deps: AppDeps): Hono {
     if (cronSecret !== env.CRON_SECRET) {
       return c.json({ error: 'unauthorized' }, 401);
     }
-    logger.info('cron.content_refresh_start');
     try {
-      const { refreshStaleContent } = await import('./lib/contentRefresh.js');
       // Allow per-call overrides (?days= & ?limit=) for manual admin runs,
-      // else fall back to the env-configured defaults.
-      const days = Number(c.req.query('days')) || env.CONTENT_REFRESH_DAYS;
-      const limit = Number(c.req.query('limit')) || env.CONTENT_REFRESH_BATCH;
-      const result = await refreshStaleContent({ aiEngine, chapters, logger }, days, limit);
-      logger.info('cron.content_refresh_done', result);
-      return c.json({ success: true, ...result, days, limit });
+      // else the job falls back to the env-configured defaults.
+      const days = Number(c.req.query('days')) || undefined;
+      const limit = Number(c.req.query('limit')) || undefined;
+      const result = await runContentRefresh(cronDeps, days, limit);
+      return c.json({ success: true, ...result });
     } catch (err) {
       logger.error('cron.content_refresh_error', { error: err instanceof Error ? err.message : String(err) });
       return c.json({ success: false, error: 'Content refresh failed' }, 500);
@@ -332,52 +346,9 @@ export function buildApp(deps: AppDeps): Hono {
     if (cronSecret !== env.CRON_SECRET) {
       return c.json({ error: 'unauthorized' }, 401);
     }
-    logger.info('cron.streak_check_start');
-    let sent = 0;
-    let skipped = 0;
     try {
-      const { createEmailService } = await import('./lib/emailService.js');
-      const emailService = createEmailService(env, logger, serviceKeys);
-
-      // Query users who haven't been active today (streak at risk)
-      if (fs) {
-        const todayStart = new Date();
-        todayStart.setHours(0, 0, 0, 0);
-        const todayISO = todayStart.toISOString();
-
-        // Get users with active streaks who haven't logged in today
-        const snap = await fs.collection('users')
-          .where('currentStreak', '>', 0)
-          .limit(500)
-          .get();
-
-        for (const doc of snap.docs) {
-          const u = doc.data() as { email?: string; name?: string; currentStreak?: number; lastDailyAt?: string; language?: string };
-          // Skip if already active today
-          if (u.lastDailyAt && u.lastDailyAt >= todayISO) { skipped++; continue; }
-          // Skip if no email
-          if (!u.email) { skipped++; continue; }
-
-          const success = await emailService.sendStreakReminder(
-            u.email,
-            u.name ?? 'Student',
-            u.currentStreak ?? 0,
-            (u.language as 'en' | 'hi') ?? 'en',
-          );
-          if (success) sent++;
-          // Also drop an in-app inbox notification (+ push) so users who
-          // didn't grant email but use the app still get nudged.
-          await notifyUser({ notifications, users, push, logs: notificationLogs, logger }, doc.id, {
-            type: 'streak',
-            title: `🔥 ${u.currentStreak ?? 0}-day streak at risk!`,
-            body: 'Study a little today to keep your streak alive.',
-            link: '/dashboard',
-            dedupeKey: 'streak-reminder',
-          }, { push: true, source: 'streak', userInfo: { ...(u.email ? { email: u.email } : {}), ...(u.name ? { name: u.name } : {}) } });
-        }
-      }
-      logger.info('cron.streak_check_done', { sent, skipped });
-      return c.json({ success: true, sent, skipped });
+      const result = await runStreakCheck(cronDeps);
+      return c.json({ success: true, ...result });
     } catch (err) {
       logger.error('cron.streak_check_error', { error: err instanceof Error ? err.message : String(err) });
       return c.json({ success: false, error: 'Streak check failed' }, 500);
@@ -393,30 +364,9 @@ export function buildApp(deps: AppDeps): Hono {
     if (cronSecret !== env.CRON_SECRET) {
       return c.json({ error: 'unauthorized' }, 401);
     }
-    logger.info('cron.daily_digest_start');
-    let notified = 0;
     try {
-      if (fs) {
-        // Active in the last 7 days = worth nudging; cap the batch for cost.
-        const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
-        const snap = await fs.collection('users')
-          .where('lastDailyAt', '>=', since)
-          .limit(1000)
-          .get();
-        for (const doc of snap.docs) {
-          const u = doc.data() as { email?: string; name?: string };
-          const ok = await notifyUser({ notifications, users, push, logs: notificationLogs, logger }, doc.id, {
-            type: 'current_affairs',
-            title: "📰 Today's current affairs are ready",
-            body: 'Fresh headlines + a quick quiz are waiting. Keep your prep current!',
-            link: '/current-affairs',
-            dedupeKey: 'current-affairs-daily',
-          }, { push: true, source: 'daily-digest', userInfo: { ...(u.email ? { email: u.email } : {}), ...(u.name ? { name: u.name } : {}) } });
-          if (ok) notified++;
-        }
-      }
-      logger.info('cron.daily_digest_done', { notified });
-      return c.json({ success: true, notified });
+      const result = await runDailyDigest(cronDeps);
+      return c.json({ success: true, ...result });
     } catch (err) {
       logger.error('cron.daily_digest_error', { error: err instanceof Error ? err.message : String(err) });
       return c.json({ success: false, error: 'Daily digest failed' }, 500);
@@ -439,59 +389,9 @@ export function buildApp(deps: AppDeps): Hono {
     if (cronSecret !== env.CRON_SECRET) {
       return c.json({ error: 'unauthorized' }, 401);
     }
-    logger.info('cron.reengage_start');
-    let sent = 0;
-    let skipped = 0;
     try {
-      if (fs) {
-        const now = new Date();
-        // Idle window: last seen between 30h ago (lower) and 5h ago (upper).
-        // ≥5h idle = worth nudging; ≤30h ago = still an active user, not
-        // dormant (dormant users are handled by the 7-day daily-digest).
-        const upperIso = new Date(now.getTime() - 5 * 60 * 60 * 1000).toISOString();
-        const lowerIso = new Date(now.getTime() - 30 * 60 * 60 * 1000).toISOString();
-        // Single-field range query (no composite index needed).
-        const snap = await fs.collection('users')
-          .where('lastActiveAt', '>=', lowerIso)
-          .where('lastActiveAt', '<=', upperIso)
-          .limit(1000)
-          .get();
-
-        // Cache exam calendars per slug so we don't refetch for every user.
-        const examCache = new Map<string, Awaited<ReturnType<typeof examDates.get>>>();
-
-        for (const doc of snap.docs) {
-          const u = doc.data() as {
-            email?: string; name?: string; language?: 'en' | 'hi';
-            targetExam?: string | null; currentStreak?: number | null; lastDailyAt?: string | null;
-          };
-
-          let exam = null;
-          if (u.targetExam) {
-            if (!examCache.has(u.targetExam)) {
-              examCache.set(u.targetExam, await examDates.get(u.targetExam).catch(() => null));
-            }
-            exam = nearestUpcomingExam(examCache.get(u.targetExam) ?? null, now);
-          }
-
-          const notification = buildReengageNotification(
-            { language: u.language ?? 'en', currentStreak: u.currentStreak ?? 0, lastDailyAt: u.lastDailyAt ?? null },
-            exam,
-            now,
-          );
-          if (!notification) { skipped++; continue; }
-
-          const ok = await notifyUser(
-            { notifications, users, push, logs: notificationLogs, logger },
-            doc.id,
-            notification,
-            { push: true, source: 'reengage', userInfo: { ...(u.email ? { email: u.email } : {}), ...(u.name ? { name: u.name } : {}) } },
-          );
-          if (ok) sent++; else skipped++;
-        }
-      }
-      logger.info('cron.reengage_done', { sent, skipped });
-      return c.json({ success: true, sent, skipped });
+      const result = await runReengage(cronDeps);
+      return c.json({ success: true, ...result });
     } catch (err) {
       logger.error('cron.reengage_error', { error: err instanceof Error ? err.message : String(err) });
       return c.json({ success: false, error: 'Re-engagement nudge failed' }, 500);
@@ -564,7 +464,7 @@ export function buildApp(deps: AppDeps): Hono {
   v1.route('/chat', makeChatRoutes({ users, aiEngine, chat: chatStore, logger, env, config, usage: featureUsage }));
   v1.route('/credits', makeCreditsRoutes({ users, logger, db: fs, ledger, config }));
   v1.route('/billing', makeBillingRoutes({ users, env, logger, db: fs, coupons: couponStore, idempotency, config, serviceKeys }));
-  v1.route('/admin', makeAdminRoutes({ users, adminStore, env, logger, coupons: couponStore, db: fs, config, aiSpend, firebaseAuth, blog, aiEngine, aiProviderStore, modelResolver, currentAffairs, serviceKeys, push, notifications, notificationLogs, teamInvites }));
+  v1.route('/admin', makeAdminRoutes({ users, adminStore, env, logger, coupons: couponStore, db: fs, config, aiSpend, firebaseAuth, blog, aiEngine, aiProviderStore, modelResolver, currentAffairs, serviceKeys, push, notifications, notificationLogs, teamInvites, scheduler }));
   v1.route('/support', makeSupportRoutes({ users, db: fs, logger }));
   v1.route('/essay', makeEssayRoutes({ users, aiEngine, logger, db: fs, config, usage: featureUsage }));
   v1.route('/mock-tests', makeMockTestRoutes({ users, aiEngine, mockTests, ledger, config, usage: featureUsage, logger }));
