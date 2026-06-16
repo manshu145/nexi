@@ -66,6 +66,19 @@ export default function DashboardPage() {
 
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
 
+  // Perf: prefetch the dashboard's feature destinations on mount so tapping
+  // any card navigates near-instantly. With the new loading.tsx boundaries,
+  // each prefetch fetches the route's loading shell ahead of time (Next
+  // dedupes prefetches, so this is cheap). Fixes the "har section khulne me
+  // bahut time" lag for the main hub.
+  useEffect(() => {
+    [
+      '/study', '/current-affairs', '/chat', '/mock-tests', '/pyq', '/plan',
+      '/revise', '/leaderboard', '/essay', '/upgrade', '/refer', '/support',
+      '/credits', '/profile', '/exam-calendar',
+    ].forEach((p) => { try { router.prefetch(p); } catch { /* no-op */ } });
+  }, [router]);
+
   // Onboarding gates + brand-new-user credit retry. Runs whenever the
   // shared store delivers a fresh `me` record. No /me fetch happens
   // here — the store has already resolved it once for the whole app.
