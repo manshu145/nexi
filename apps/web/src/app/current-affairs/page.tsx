@@ -22,6 +22,39 @@ const CATEGORIES = [
 ] as const;
 
 /**
+ * Stale-while-revalidate cache for the reel feed.
+ *
+ * Founder report: "news abhi bhi slow hai" — even after the route-transition
+ * fix, opening Current Affairs showed a full-screen loader while the API
+ * responded. We now paint the last-seen feed from sessionStorage instantly,
+ * then revalidate in the background, so revisiting the section feels instant.
+ * Keyed by language + state edition; short TTL so content stays fresh.
+ */
+interface FeedCache {
+  items: CurrentAffairsItem[];
+  userLikes: string[];
+  userBookmarks: string[];
+  likeCounts: Record<string, number>;
+  isFromYesterday: boolean;
+  ts: number;
+}
+const FEED_CACHE_TTL_MS = 15 * 60 * 1000;
+function readFeedCache(key: string): FeedCache | null {
+  if (typeof sessionStorage === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(key);
+    if (!raw) return null;
+    const c = JSON.parse(raw) as FeedCache;
+    if (!c || !Array.isArray(c.items) || c.items.length === 0 || Date.now() - c.ts > FEED_CACHE_TTL_MS) return null;
+    return c;
+  } catch { return null; }
+}
+function writeFeedCache(key: string, data: Omit<FeedCache, 'ts'>): void {
+  if (typeof sessionStorage === 'undefined') return;
+  try { sessionStorage.setItem(key, JSON.stringify({ ...data, ts: Date.now() })); } catch { /* quota — ignore */ }
+}
+
+/**
  * Current Affairs reels — PR-39 native scroll-snap rebuild.
  *
  * Founder lock (30 May 22:00 IST):
@@ -88,21 +121,46 @@ export default function CurrentAffairsShortsPage() {
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
-    setPageLoading(true);
+    const lang = getClientLocale();
+    const cacheKey = `ca:feed:${lang}:${activeState}`;
+
+    // Paint the cached feed instantly (stale-while-revalidate) so revisiting
+    // the section never blocks on a full-screen loader. We still fetch fresh
+    // below and overwrite once it arrives.
+    const cached = readFeedCache(cacheKey);
+    if (cached) {
+      setItems(cached.items);
+      setUserLikes(new Set(cached.userLikes));
+      setUserBookmarks(new Set(cached.userBookmarks));
+      setLikeCounts(cached.likeCounts);
+      setIsFromYesterday(cached.isFromYesterday);
+      setPageLoading(false);
+    } else {
+      setPageLoading(true);
+    }
+
     (async () => {
       try {
-        const lang = getClientLocale();
         const res = await api.getCurrentAffairs(lang, activeState);
         if (cancelled) return;
+        const likes = res.userLikes ?? [];
+        const bookmarks = res.userBookmarks ?? [];
+        const counts = res.likeCounts ?? {};
+        const fromYesterday = Boolean(res.isFromYesterday);
         setItems(res.items);
         track('current_affairs_view');
-        if (res.userLikes) setUserLikes(new Set(res.userLikes));
-        if (res.userBookmarks) setUserBookmarks(new Set(res.userBookmarks));
-        if (res.likeCounts) setLikeCounts(res.likeCounts);
+        setUserLikes(new Set(likes));
+        setUserBookmarks(new Set(bookmarks));
+        setLikeCounts(counts);
         // PR-34b (audit #36): drop the `as any` cast — the field is now
         // typed on CurrentAffairsResponse so the optional read is safe.
-        setIsFromYesterday(Boolean(res.isFromYesterday));
-      } catch (e) { if (!cancelled) setError(e instanceof Error ? e.message : t('failLoad')); }
+        setIsFromYesterday(fromYesterday);
+        writeFeedCache(cacheKey, { items: res.items, userLikes: likes, userBookmarks: bookmarks, likeCounts: counts, isFromYesterday: fromYesterday });
+      } catch (e) {
+        // Keep showing cached content on a refresh failure; only surface the
+        // error when we had nothing to show.
+        if (!cancelled && !cached) setError(e instanceof Error ? e.message : t('failLoad'));
+      }
       finally { if (!cancelled) setPageLoading(false); }
     })();
     return () => { cancelled = true; };

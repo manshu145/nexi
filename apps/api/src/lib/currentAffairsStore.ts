@@ -373,12 +373,22 @@ export class FirestoreCurrentAffairsStore implements CurrentAffairsStore {
 
   async getLikeCounts(itemIds: string[]) {
     const counts: Record<string, number> = {};
+    if (itemIds.length === 0) return counts;
     try {
-      for (const id of itemIds) {
-        const snap = await this.db.collection('newsLikeCounts').doc(id).get();
-        counts[id] = snap.exists ? (snap.data()?.count ?? 0) : 0;
+      // Single multi-get instead of one sequential round-trip per item.
+      // The reel loads ~30 items at once; the old per-id `await get()` loop
+      // added ~30x the Firestore round-trip latency to EVERY feed load
+      // (a big chunk of the "news abhi bhi slow hai" complaint). getAll
+      // fetches them all in one RPC.
+      const refs = itemIds.map(id => this.db.collection('newsLikeCounts').doc(id));
+      const snaps = await this.db.getAll(...refs);
+      for (const snap of snaps) {
+        counts[snap.id] = snap.exists ? ((snap.data()?.count as number) ?? 0) : 0;
       }
-    } catch { /* fallback to zeros */ }
+    } catch {
+      // Fallback to zeros so the feed still renders.
+      for (const id of itemIds) counts[id] = 0;
+    }
     return counts;
   }
 

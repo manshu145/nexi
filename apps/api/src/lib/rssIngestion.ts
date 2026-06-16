@@ -295,36 +295,42 @@ async function summarizeItems(
 
   for (const batch of batches.slice(0, MAX_BATCHES)) { // state batches first, then national
     try {
-      const prompt = `You are a current affairs summarizer for Indian competitive exam students (UPSC, SSC, Banking, NEET, JEE).
+      const prompt = `You are a current-affairs editor for Indian competitive-exam students (UPSC, SSC, Banking, State PCS, NEET, JEE). Your job is to turn raw news into GENUINELY USEFUL, exam-relevant notes — never filler.
 
-Given these news headlines, process them in 3 layers:
+Process the items below in layers:
 
-LAYER 1 — CATEGORIZE & DEDUPLICATE:
-- Assign a category from: national, international, economy, science-tech, environment, sports, awards, agreements, reports, other
-- Merge duplicate stories covering the same event into one
+LAYER 0 — RELEVANCE FILTER (be strict, this matters most):
+- KEEP items with real exam value: policy, government schemes & bills, economy & RBI, international relations & agreements, science / tech / space / defence, environment, reports & indices & rankings, key appointments, awards, important Supreme Court / constitutional matters, and significant sports achievements.
+- DROP pure noise: celebrity / film gossip, crime briefs, routine local accidents, paywalled teasers, opinion / op-eds, ad or sponsored content, daily market ticks, horoscopes. If an item has NO exam relevance, simply OMIT it from the output.
+- Merge duplicate stories about the same event into ONE item.
+
+LAYER 1 — CATEGORIZE:
+- Assign a category from: national, international, economy, science-tech, environment, sports, awards, agreements, reports, other.
 
 LAYER 2 — CONCISE SUMMARY (140-200 WORDS, IN PARAGRAPHS):
-- Write a tight, factual summary of about 140-200 words in 2-3 SHORT paragraphs separated by a blank line.
+- A tight, factual summary in 2-3 SHORT paragraphs separated by a blank line.
 - Cover what happened (names, dates, places, numbers), the essential background, and one line on why it matters for exams.
 - Plain prose only. NO bullet points, NO markdown headings inside the summary.
-- Do NOT repeat sentences or pad to hit a length. Every sentence must add a new fact. A crisp 150-word summary is FAR better than a repetitive long one.
+- Every sentence must add a NEW fact. Do NOT repeat or pad. A crisp 150-word summary beats a long repetitive one.
 
-LAYER 3 — BULLET POINTS (MANDATORY EXACTLY 4-5 BULLETS):
-- Generate 4 to 5 bullet points, each a SHARP, self-contained, exam-ready fact.
-- Every bullet MUST contain a concrete detail: a name, number, date, place, rank, amount, or scheme/agency. A bullet with no specific fact is useless — rewrite it.
-- FORBIDDEN: meta-filler such as "Category: ...", "Source: ...", "the news said", "according to the article", or simply repeating the headline. These will be rejected.
+LAYER 3 — KEY POINTS (EXACTLY 4-5 BULLETS):
+- Each bullet is a SHARP, self-contained, exam-ready fact.
+- Every bullet MUST carry a concrete detail: a name, number, date, place, rank, amount, scheme or agency. A bullet with no specific fact is useless — rewrite it.
+- FORBIDDEN (will be rejected): meta-filler like "Category: ...", "Source: ...", "the news said", "according to the article", or simply repeating the headline.
 - Keep each bullet under 120 characters and revision-friendly.
 
-For each item output:
-- Write a PUNCHY, SPECIFIC headline (max 100 chars) that leads with the single most important fact, name or number — it should make a student want to read on. Avoid vague/generic labels.
-- Write in simple, clear language suitable for students
-- Include "srcIndex": the NUMBER (from the list below) of the primary news item this summary is based on (for image attribution)
+HEADLINE:
+- A PUNCHY, SPECIFIC headline (max 100 chars) leading with the single most important fact, name or number. Make a student want to read on. NO vague/generic labels, NO clickbait.
+
+Also:
+- Write in simple, clear language suitable for students.
+- "srcIndex": the NUMBER (from the list) of the primary news item this is based on (for image attribution).
 
 News items:
 ${batch.map((item, i) => `${i + 1}. [${item.source}] ${item.title} — ${item.description.slice(0, 150)}`).join('\n')}
 
-Respond ONLY with valid JSON:
-{"items":[{"id":"ca-1","headline":"...","summary":"...","bullets":["fact 1","fact 2","fact 3"],"category":"national","sources":["Source Name"],"factChecked":true,"srcIndex":1}]}`;
+Respond ONLY with valid JSON (omit any item that fails the LAYER 0 relevance filter):
+{"items":[{"id":"ca-1","headline":"...","summary":"...","bullets":["fact 1","fact 2","fact 3","fact 4"],"category":"national","sources":["Source Name"],"factChecked":true,"srcIndex":1}]}`;
 
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiKey}`, {
         method: 'POST',

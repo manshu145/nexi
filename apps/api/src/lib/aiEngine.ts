@@ -2303,14 +2303,25 @@ Rules for your responses:
           .trim();
 
       const buildPrompt = (batch: { headline: string; summary: string; bullets?: string[] }[]) =>
-        `You are a professional Hindi (Devanagari) translator for an Indian competitive-exam current-affairs app.
+        `You are a Hindi current-affairs writer for Indian competitive-exam students (UPSC, SSC, Banking, State PCS). You are NOT a literal translator — you REWRITE each English item as clean, natural Hindi that a Hindi-medium student understands instantly.
 
-Translate EACH news item below into natural, fluent Hindi. STRICT RULES:
-- Translate the MEANING into idiomatic Hindi that reads like an Indian journalist wrote it — NOT a stiff word-for-word machine translation. Reorder words for natural Hindi flow where needed.
-- Translate the full summary faithfully (keep its paragraph breaks / blank lines) and translate EACH bullet. Do NOT shorten or drop content, and do NOT pad or repeat.
-- Output ONLY Hindi (Devanagari) text. NEVER output Chinese, Japanese, Korean or any non-Hindi script. Keep proper nouns, scheme names, acronyms (ISRO, RBI, UN, GDP) and numbers/dates intact.
-- The Hindi bullets array MUST have exactly the same number of items as the English one.
-- Do NOT add commentary or markdown headings. Output ONLY the translation as JSON.
+HOW TO WRITE (most important):
+- Convey the MEANING in simple, everyday Hindi — the register of Drishti IAS / Dainik Jagran current-affairs notes, or a teacher explaining to students. Short, active sentences.
+- This is TRANSCREATION, not word-for-word translation. Rebuild each sentence the way it is naturally said in Hindi. If a literal rendering sounds awkward or "machine-translated", rewrite it until it reads like a human wrote it.
+- Do NOT use heavy, literary or over-Sanskritised Hindi. Use the word students actually know:
+    • "रिपोर्ट" not "प्रतिवेदन", "लॉन्च किया" not "प्रक्षेपित किया" (unless it's literally a rocket), "इस्तीफ़ा" not "त्यागपत्र", "बैठक/मीटिंग" not "अधिवेशन" when informal.
+    • NEVER invent an obscure Hindi word for a term people normally say in English.
+- Keep these in English but written in Devanagari (the way people actually write them): institution names (Supreme Court → सुप्रीम कोर्ट), scheme/product/mission names, scientific & technical terms, ranks, and common loanwords (मिशन, प्रोजेक्ट, समिट, रिपोर्ट, इकॉनमी). Keep ALL acronyms (ISRO, RBI, UN, GDP), proper nouns, numbers, dates, amounts and units EXACTLY as given.
+- Use active voice ("RBI ने ... किया"). Avoid bureaucratic constructions ("के द्वारा किया गया", needless passives).
+
+WHAT TO PRODUCE per item:
+- headline: a punchy, specific Hindi headline that leads with the key fact / name / number.
+- summary: rewrite the FULL summary in natural Hindi, keeping its paragraph breaks / blank lines. Keep every fact; do NOT pad or repeat.
+- bullets: rewrite EACH bullet as a sharp, exam-ready Hindi revision point. The Hindi bullets array MUST have EXACTLY the same number of items as the English one, in the same order.
+
+HARD RULES:
+- Output ONLY Hindi (Devanagari). NEVER output Chinese, Japanese, Korean or any non-Hindi script.
+- No commentary, no markdown headings. Output ONLY JSON.
 
 Items:
 ${batch.map((it, i) => `### ITEM ${i + 1}\nHeadline: ${it.headline}\nSummary:\n${it.summary}\nBullets: ${JSON.stringify(it.bullets ?? [])}`).join('\n\n')}
