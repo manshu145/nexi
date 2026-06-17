@@ -207,6 +207,28 @@ export default function UpgradePage() {
     const idempotencyKey = newIdempotencyKey();
     const planLabel = planId.charAt(0).toUpperCase() + planId.slice(1);
 
+    // After Razorpay closes, the browser `handler` often does NOT fire for
+    // UPI (the user is bounced into their UPI app and back). So we ALSO poll
+    // our subscription endpoint, which self-heals by reconciling the just-paid
+    // order against Razorpay — activating the plan within a few seconds with
+    // no manual step. Used on the verify-failed and modal-dismiss paths.
+    const pollForActivation = async (): Promise<boolean> => {
+      const deadline = Date.now() + 45_000;
+      while (Date.now() < deadline) {
+        try {
+          const sub = await api.getSubscription();
+          if (sub.isActive && sub.plan && sub.plan !== 'free') {
+            setSuccess('Plan activated! Redirecting…');
+            setCurrentPlan(sub.plan as typeof currentPlan);
+            setTimeout(() => router.push('/dashboard'), 1200);
+            return true;
+          }
+        } catch { /* keep polling */ }
+        await new Promise((r) => setTimeout(r, 3000));
+      }
+      return false;
+    };
+
     try {
       const couponResult = couponResults[planId];
       const couponToSend = couponResult?.valid ? couponCodes[planId].trim() : undefined;
@@ -239,14 +261,19 @@ export default function UpgradePage() {
             setTimeout(() => router.push('/dashboard'), 2000);
           } catch (e) {
             // NOTE: If this fires, payment likely SUCCEEDED (Razorpay's
-            // handler callback only fires on successful payments). The
-            // webhook will activate the plan server-side. Show a softer
-            // message instead of alarming the user.
-            setSuccess('Payment received! Your plan is being activated. Redirecting...');
-            setTimeout(() => router.push('/dashboard'), 3000);
+            // handler callback only fires on successful payments) but our
+            // verify call hiccuped. Poll the subscription — the server
+            // self-heals by reconciling against Razorpay — so the plan still
+            // activates automatically, no manual step.
+            setSuccess('Payment received! Activating your plan…');
+            const ok = await pollForActivation();
+            if (!ok) {
+              setSuccess('Payment received! Your plan will activate automatically in a moment.');
+              setTimeout(() => router.push('/dashboard'), 3000);
+            }
           } finally { setProcessing(false); }
         },
-        modal: { ondismiss: () => setProcessing(false) },
+        modal: { ondismiss: () => { setProcessing(false); void pollForActivation(); } },
         prefill: { name: user?.displayName ?? '', email: user?.email ?? '' },
         theme: { color: '#F59E0B' },
       };

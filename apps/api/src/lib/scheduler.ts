@@ -34,8 +34,9 @@ import {
   runCurrentAffairsIngest,
   runContentRefresh,
 } from './cronJobs.js';
+import { reconcilePendingOrders } from '../routes/billing.js';
 
-export type CronJobId = 'ingest' | 'daily-digest' | 'streak-check' | 'reengage' | 'content-refresh';
+export type CronJobId = 'ingest' | 'daily-digest' | 'streak-check' | 'reengage' | 'content-refresh' | 'reconcile-payments';
 
 /** How often the scheduler wakes up to evaluate due jobs. */
 const TICK_INTERVAL_MS = 60_000;
@@ -101,6 +102,16 @@ interface JobDef {
 }
 
 const JOBS: JobDef[] = [
+  {
+    id: 'reconcile-payments',
+    label: 'Payment reconciliation',
+    description: 'Auto-activate paid plans for orders Razorpay captured but whose verify/webhook was missed (mainly UPI). Keeps activation automatic so no manual step is needed.',
+    schedule: 'Every 3 minutes',
+    isDue: everyInterval(3 * 60_000),
+    run: (d) => reconcilePendingOrders({
+      users: d.users, coupons: d.coupons, db: d.fs, logger: d.logger, serviceKeys: d.serviceKeys, env: d.env,
+    }) as Promise<Record<string, unknown>>,
+  },
   {
     id: 'reengage',
     label: 'Re-engagement nudge',

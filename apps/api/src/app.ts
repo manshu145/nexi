@@ -113,6 +113,7 @@ export function buildApp(deps: AppDeps): Hono {
   const cronDeps: CronJobDeps = {
     fs, logger, env, users, notifications, notificationLogs, push,
     examDates, currentAffairs, aiEngine, modelResolver, chapters, serviceKeys,
+    coupons: couponStore,
   };
   const scheduler = new CronScheduler(cronDeps, logger, fs);
   // Only run the background timer with Firestore + outside tests, so unit
