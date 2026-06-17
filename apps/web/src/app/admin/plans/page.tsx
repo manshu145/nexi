@@ -346,6 +346,7 @@ export default function AdminPlansPage() {
                     <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-500">Deduct credits</th>
                     <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-500">PYQ</th>
                     <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-500">Revision</th>
+                    <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-500 text-right">Save</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-line">
@@ -415,12 +416,34 @@ export default function AdminPlansPage() {
                           onChange={(e) => patchDraft(p.id, { features: { ...p.features, revisionAccess: e.target.checked } })}
                           title="Spaced-repetition revision queue." />
                       </td>
+                      <td className="px-4 py-2 text-right">
+                        {isDirty(p.id) ? (
+                          <div className="flex justify-end gap-2">
+                            <button
+                              onClick={() => savePlan(p.id)}
+                              disabled={savingId === p.id}
+                              className="btn-primary text-xs px-3 py-1.5 disabled:opacity-50"
+                            >
+                              {savingId === p.id ? '…' : 'Save'}
+                            </button>
+                            <button
+                              onClick={() => resetPlan(p.id)}
+                              disabled={savingId === p.id}
+                              className="btn-ghost-sm text-xs"
+                            >
+                              Reset
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-muted-400">Saved</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
               <p className="px-4 py-2 text-[11px] text-muted-400">
-                <code>-1</code> means &quot;unlimited&quot;. Use the per-row Save button above after changing any feature; one save commits the whole row.
+                <code>-1</code> means &quot;unlimited&quot;, <code>0</code> blocks the feature. Edit any cell, then hit <strong>Save</strong> on that row (here or in the pricing table above) — one save commits the whole row. Changes reach the app + marketing site within ~60s.
               </p>
             </div>
           </div>
