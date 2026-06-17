@@ -17,9 +17,10 @@ export type UsageFeature = 'image' | 'essay' | 'aiTutor' | 'aiSupport' | 'mcq' |
 
 /**
  * Counter window. 'day' = per IST calendar day (default, used by image/essay
- * /mcq/chapter quotas). 'hour' = per IST clock hour (free-tier AI-tutor rate
- * limit). 'month' = per IST calendar month (mock-test monthly cap for paid
- * plans).
+ * /mcq/chapter/mock-test quotas). 'hour' = per IST clock hour (free-tier
+ * AI-tutor rate limit). 'month' = per IST calendar month (kept for backward
+ * compatibility; no feature currently uses a monthly window — mock tests are
+ * now metered per day to stay consistent with every other daily cap).
  */
 export type UsageGranularity = 'day' | 'hour' | 'month';
 

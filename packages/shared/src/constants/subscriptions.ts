@@ -10,7 +10,7 @@
 
 export interface PlanFeatures {
   dailyMCQ: number;          // daily PRACTICE SETS (each set = one ~10-question quiz). -1 = unlimited
-  mockTests: number;         // mock tests per MONTH; -1 = unlimited
+  mockTests: number;         // mock tests per DAY; -1 = unlimited
   aiTutor: boolean;
   currentAffairs: boolean;
   essayGrading: boolean;
@@ -71,7 +71,7 @@ export const PLANS: Readonly<Record<PlanId, PlanConfig>> = {
     comingSoon: false,
     features: {
       dailyMCQ: 10,
-      mockTests: 1,            // per month
+      mockTests: 1,            // per day
       aiTutor: false,          // gated by credits, not a flat allowance
       currentAffairs: true,
       essayGrading: true,      // 1/day (see essaysPerDay)
@@ -95,7 +95,7 @@ export const PLANS: Readonly<Record<PlanId, PlanConfig>> = {
     comingSoon: false,
     features: {
       dailyMCQ: 30,
-      mockTests: 5,            // per month
+      mockTests: 5,            // per day
       aiTutor: true,
       currentAffairs: true,
       essayGrading: true,
@@ -119,7 +119,7 @@ export const PLANS: Readonly<Record<PlanId, PlanConfig>> = {
     comingSoon: false,
     features: {
       dailyMCQ: 100,
-      mockTests: 15,           // per month
+      mockTests: 15,           // per day
       aiTutor: true,
       currentAffairs: true,
       essayGrading: true,
@@ -143,7 +143,7 @@ export const PLANS: Readonly<Record<PlanId, PlanConfig>> = {
     comingSoon: false,
     features: {
       dailyMCQ: -1,            // unlimited (fair-use)
-      mockTests: 40,           // per month
+      mockTests: 40,           // per day
       aiTutor: true,
       currentAffairs: true,
       essayGrading: true,
