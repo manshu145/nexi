@@ -132,7 +132,10 @@ function estimateCost(model: string, tokens: number): number {
   // Try every provider's model list — the registry already does this
   // scan when called with a non-matching providerId, so we just pass
   // an empty string and let `getCostPer1k` walk all providers.
-  return getCostPer1k('', model) * tokens;
+  // `costPer1kUsd` is the rate PER 1,000 tokens, so divide by 1000 — the
+  // previous code multiplied by raw token count, inflating every logged AI
+  // cost ~1000x (which is why "AI Cost Today" was meaningless).
+  return (getCostPer1k('', model) * tokens) / 1000;
 }
 
 export function createAIEngine(

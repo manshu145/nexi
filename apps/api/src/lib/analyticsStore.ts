@@ -66,8 +66,8 @@ export interface IncomingEvent {
 export interface AnalyticsStore {
   /** Record a batch of events for a user (allow-listed types only). */
   recordEvents(userId: string, events: IncomingEvent[]): Promise<void>;
-  /** Read the last `days` daily rollups (oldest → newest). */
-  getDailySeries(days: number): Promise<DailyAnalytics[]>;
+  /** Read `days` daily rollups ending on `endDate` (default today), oldest → newest. */
+  getDailySeries(days: number, endDate?: string): Promise<DailyAnalytics[]>;
 }
 
 function dateId(d: Date): string {
@@ -134,12 +134,13 @@ export class FirestoreAnalyticsStore implements AnalyticsStore {
     }
   }
 
-  async getDailySeries(days: number): Promise<DailyAnalytics[]> {
-    const n = Math.min(Math.max(days, 1), 90);
+  async getDailySeries(days: number, endDate?: string): Promise<DailyAnalytics[]> {
+    const n = Math.min(Math.max(days, 1), 366);
+    const base = endDate && /^\d{4}-\d{2}-\d{2}$/.test(endDate) ? new Date(`${endDate}T00:00:00.000Z`) : new Date();
     const refs = [];
     const out: { date: string }[] = [];
     for (let i = n - 1; i >= 0; i--) {
-      const d = new Date(); d.setDate(d.getDate() - i);
+      const d = new Date(base); d.setUTCDate(d.getUTCDate() - i);
       const id = dateId(d);
       refs.push(this.db.collection('analyticsDaily').doc(id));
       out.push({ date: id });
@@ -174,11 +175,12 @@ export class InMemoryAnalyticsStore implements AnalyticsStore {
     this.days.set(today, day);
   }
 
-  async getDailySeries(days: number): Promise<DailyAnalytics[]> {
-    const n = Math.min(Math.max(days, 1), 90);
+  async getDailySeries(days: number, endDate?: string): Promise<DailyAnalytics[]> {
+    const n = Math.min(Math.max(days, 1), 366);
+    const base = endDate && /^\d{4}-\d{2}-\d{2}$/.test(endDate) ? new Date(`${endDate}T00:00:00.000Z`) : new Date();
     const out: DailyAnalytics[] = [];
     for (let i = n - 1; i >= 0; i--) {
-      const d = new Date(); d.setDate(d.getDate() - i);
+      const d = new Date(base); d.setUTCDate(d.getUTCDate() - i);
       const id = dateId(d);
       out.push(this.days.get(id) ?? { date: id, total: 0, events: {} });
     }

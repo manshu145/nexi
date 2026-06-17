@@ -64,11 +64,26 @@ export function makeAnalyticsRoutes(deps: AnalyticsRoutesDeps): Hono {
   // Admin analytics overview.
   app.get('/overview', async (c) => {
     await requireAdmin(c);
-    const days = Math.min(Math.max(Number(c.req.query('days')) || 30, 7), 90);
+    // Two ways to pick the window:
+    //  - `days` preset (7 / 28 / 90 / 365), ending today; OR
+    //  - a custom `from`/`to` date range (YYYY-MM-DD), like YouTube Studio.
+    const isDate = (s: string | undefined): s is string => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
+    const from = c.req.query('from');
+    const to = c.req.query('to');
+    let days: number;
+    let endDate: string | undefined;
+    if (isDate(from) && isDate(to)) {
+      const span = Math.floor((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000) + 1;
+      days = Math.min(Math.max(span, 1), 366);
+      endDate = to;
+    } else {
+      days = Math.min(Math.max(Number(c.req.query('days')) || 30, 1), 366);
+      endDate = undefined;
+    }
 
     const [stats, series] = await Promise.all([
       deps.adminStore.getFullStats(),
-      deps.analytics.getDailySeries(days),
+      deps.analytics.getDailySeries(days, endDate),
     ]);
 
     // Feature-usage totals across the range.
@@ -101,13 +116,18 @@ export function makeAnalyticsRoutes(deps: AnalyticsRoutesDeps): Hono {
     let payments = 0;
     if (deps.db) {
       try {
-        const since = new Date(); since.setDate(since.getDate() - days);
+        // Count payments within the SELECTED window (series first → last day),
+        // not always "today minus N", so a custom past range is accurate.
+        const winStart = series[0]?.date ?? '';
+        const winEnd = series[series.length - 1]?.date ?? '';
+        const lowerISO = winStart ? `${winStart}T00:00:00.000Z` : '';
+        const upperISO = winEnd ? `${winEnd}T23:59:59.999Z` : '';
         const snap = await deps.db.collection('billingOrders')
           .where('status', '==', 'captured')
-          .limit(1000).get();
+          .limit(2000).get();
         payments = snap.docs.filter(d => {
           const created = (d.data().createdAt ?? d.data().capturedAt ?? '') as string;
-          return created >= since.toISOString();
+          return (!lowerISO || created >= lowerISO) && (!upperISO || created <= upperISO);
         }).length;
       } catch { /* ignore */ }
     }
