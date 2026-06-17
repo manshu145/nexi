@@ -34,6 +34,7 @@ import type { BlogStore } from '../lib/blogStore.js';
 import type { Auth } from 'firebase-admin/auth';
 import type { ServiceKeyStore } from '../lib/serviceKeyStore.js';
 import type { Env } from '../env.js';
+import type { PlanFeatures } from '@nexigrate/shared';
 import { getPushPromptConfig } from './admin.js';
 
 export interface PublicRoutesDeps {
@@ -163,11 +164,14 @@ export function makePublicRoutes(deps: PublicRoutesDeps): Hono {
       signupBonusPreview = await deps.config.getEarnAmount('signup_verified');
     } catch { /* keep default */ }
 
-    // PR-43: include plan matrix for marketing site SSR pricing page
-    let plans: Array<{ id: string; name: string; price: number; yearlyPrice: number; isActive: boolean; comingSoon: boolean }> = [];
+    // PR-43: include plan matrix for marketing site SSR pricing page.
+    // Includes the full `features` object so the marketing pricing table
+    // (caps for MCQ/mocks/chapters/AI etc.) reflects admin /admin/plans
+    // edits everywhere — same single source of truth as the app plan cards.
+    let plans: Array<{ id: string; name: string; price: number; yearlyPrice: number; isActive: boolean; comingSoon: boolean; features: PlanFeatures }> = [];
     try {
       const planMap = await deps.config.getPlans();
-      plans = Object.values(planMap).filter(p => p.id !== 'free').map(p => ({ id: p.id, name: p.name, price: p.price, yearlyPrice: p.yearlyPrice, isActive: p.isActive, comingSoon: p.comingSoon }));
+      plans = Object.values(planMap).filter(p => p.id !== 'free').map(p => ({ id: p.id, name: p.name, price: p.price, yearlyPrice: p.yearlyPrice, isActive: p.isActive, comingSoon: p.comingSoon, features: p.features }));
     } catch { /* fall through with empty */ }
 
     // PR-48: VAPID key for web push — read from admin Service Keys → FCM

@@ -10,7 +10,14 @@ const API_URL = 'https://api.nexigrate.com';
 
 // Fetch live plan data from the backend. Falls back to hardcoded defaults
 // if the API is unreachable (Cloudflare edge timeout, etc).
-interface LivePlan { id: string; name: string; price: number; yearlyPrice: number; isActive: boolean; comingSoon: boolean; }
+interface LiveFeatures {
+  dailyMCQ?: number; mockTests?: number; chaptersPerDay?: number;
+  aiTutorPerDay?: number; essaysPerDay?: number; imagesPerDay?: number;
+  currentAffairs?: boolean; essayGrading?: boolean; aiTutor?: boolean;
+  creditDeduction?: boolean; pyqAccess?: boolean; revisionAccess?: boolean;
+  maxExams?: number;
+}
+interface LivePlan { id: string; name: string; price: number; yearlyPrice: number; isActive: boolean; comingSoon: boolean; features?: LiveFeatures; }
 let livePlans: LivePlan[] = [];
 try {
   const res = await fetch(`${API_URL}/v1/branding`);
@@ -32,7 +39,7 @@ const plans: PlanConfig[] = [
   {
     slug: 'scholar',
     label: livePlans.find(p => p.id === 'scholar')?.name ?? 'Starter',
-    description: 'Ad-free, AI tutor, 8 chapters/day, 6 AI images/day. Great to begin.',
+    description: 'Ad-free study with AI tutor, mock tests, and daily practice. Great to begin.',
     monthlyInr: livePlans.find(p => p.id === 'scholar')?.price ?? 79,
     yearlyInr: livePlans.find(p => p.id === 'scholar')?.yearlyPrice ?? 599,
   },
@@ -58,36 +65,95 @@ interface FeatureRow {
   values: { scholar: string; aspirant: string; achiever: string };
 }
 
+// ── Derive the feature table from the LIVE admin matrix ──────────────────
+// Founder ask: "agar mai yaha (admin) koi data update kar raha hoon to plan
+// cards aur marketing site — sab jagah update hona chahiye." So every
+// configurable cap below reads from the live `features` returned by
+// /v1/branding (the admin /admin/plans matrix), falling back to the static
+// strings only when the API is unreachable.
+const featOf = (slug: string): LiveFeatures | undefined => livePlans.find(p => p.id === slug)?.features;
+const fS = featOf('scholar');
+const fA = featOf('aspirant');
+const fC = featOf('achiever');
+
+// -1 = unlimited, 0 = not included, undefined = API unavailable (use fallback).
+const perDay = (n?: number): string | null =>
+  typeof n !== 'number' ? null : n < 0 ? 'Unlimited' : n === 0 ? '—' : `${n} / day`;
+const perMonth = (n?: number): string | null =>
+  typeof n !== 'number' ? null : n < 0 ? 'Unlimited' : `${n} / mo`;
+const count = (n?: number): string | null =>
+  typeof n !== 'number' ? null : n < 0 ? 'Unlimited' : `${n}`;
+const yesNo = (b?: boolean): string | null =>
+  typeof b !== 'boolean' ? null : b ? '✓' : '—';
+
 const featureRows: FeatureRow[] = [
   {
-    label: 'Daily MCQ',
-    values: { scholar: '30 / day', aspirant: '100 / day', achiever: 'Unlimited' },
+    label: 'Daily practice sets',
+    notes: 'Each set is a ~10-question quiz.',
+    values: {
+      scholar: perDay(fS?.dailyMCQ) ?? '10 / day',
+      aspirant: perDay(fA?.dailyMCQ) ?? '30 / day',
+      achiever: perDay(fC?.dailyMCQ) ?? 'Unlimited',
+    },
   },
   {
     label: 'Chapters per day',
-    values: { scholar: '8', aspirant: '25', achiever: 'Unlimited' },
+    values: {
+      scholar: count(fS?.chaptersPerDay) ?? '8',
+      aspirant: count(fA?.chaptersPerDay) ?? '25',
+      achiever: count(fC?.chaptersPerDay) ?? 'Unlimited',
+    },
   },
   {
     label: 'Mock tests',
-    values: { scholar: '5 / mo', aspirant: '15 / mo', achiever: '40 / mo' },
+    values: {
+      scholar: perMonth(fS?.mockTests) ?? '5 / mo',
+      aspirant: perMonth(fA?.mockTests) ?? '15 / mo',
+      achiever: perMonth(fC?.mockTests) ?? '40 / mo',
+    },
   },
   {
     label: 'AI tutor (Q&A)',
-    values: { scholar: '30 / day', aspirant: '100 / day', achiever: '300 / day' },
+    values: {
+      scholar: perDay(fS?.aiTutorPerDay) ?? '30 / day',
+      aspirant: perDay(fA?.aiTutorPerDay) ?? '100 / day',
+      achiever: perDay(fC?.aiTutorPerDay) ?? '300 / day',
+    },
   },
   {
     label: 'Essay & answer grading',
-    values: { scholar: '3 / day', aspirant: '10 / day', achiever: 'Unlimited' },
+    values: {
+      scholar: perDay(fS?.essaysPerDay) ?? '3 / day',
+      aspirant: perDay(fA?.essaysPerDay) ?? '10 / day',
+      achiever: perDay(fC?.essaysPerDay) ?? 'Unlimited',
+    },
   },
   {
     label: 'AI image generation',
-    values: { scholar: '6 / day', aspirant: '15 / day', achiever: '50 / day' },
+    values: {
+      scholar: perDay(fS?.imagesPerDay) ?? '6 / day',
+      aspirant: perDay(fA?.imagesPerDay) ?? '15 / day',
+      achiever: perDay(fC?.imagesPerDay) ?? '50 / day',
+    },
   },
   {
     label: 'Daily current affairs + quiz',
-    values: { scholar: '✓', aspirant: '✓', achiever: '✓' },
+    values: {
+      scholar: yesNo(fS?.currentAffairs) ?? '✓',
+      aspirant: yesNo(fA?.currentAffairs) ?? '✓',
+      achiever: yesNo(fC?.currentAffairs) ?? '✓',
+    },
   },
   {
+    label: 'Previous-year papers',
+    values: {
+      scholar: yesNo(fS?.pyqAccess) ?? '✓',
+      aspirant: yesNo(fA?.pyqAccess) ?? '✓',
+      achiever: yesNo(fC?.pyqAccess) ?? '✓',
+    },
+  },
+  {
+    // Not a per-plan configurable cap — a fixed product promise.
     label: 'Priority AI (GPT-4o)',
     values: { scholar: '—', aspirant: '✓', achiever: '✓' },
   },
@@ -169,9 +235,9 @@ const featureRows: FeatureRow[] = [
           <thead>
             <tr class="border-b border-line text-xs font-semibold uppercase tracking-[0.18em] text-muted-500">
               <th class="px-4 py-3">Feature</th>
-              <th class="px-4 py-3">Scholar</th>
-              <th class="px-4 py-3">Aspirant</th>
-              <th class="px-4 py-3">Achiever</th>
+              <th class="px-4 py-3">{plans.find(p => p.slug === 'scholar')?.label ?? 'Starter'}</th>
+              <th class="px-4 py-3">{plans.find(p => p.slug === 'aspirant')?.label ?? 'Pro'}</th>
+              <th class="px-4 py-3">{plans.find(p => p.slug === 'achiever')?.label ?? 'Elite'}</th>
             </tr>
           </thead>
           <tbody>
