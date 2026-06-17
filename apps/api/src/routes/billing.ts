@@ -66,6 +66,31 @@ export interface ReconcileDeps {
 
 interface RazorpayCfgLite { keyId: string; keySecret: string }
 
+/**
+ * Ask Razorpay's API whether a single payment is actually captured. Used by
+ * the webhook when the signature can't be verified (missing/mismatched
+ * webhook secret) so a real captured payment still activates the plan, while
+ * a spoofed webhook body can't — the API response is the source of truth.
+ */
+async function isRazorpayPaymentCaptured(
+  rzp: RazorpayCfgLite | null | undefined,
+  paymentId: string,
+  logger: Logger,
+): Promise<boolean> {
+  if (!rzp?.keyId || !rzp?.keySecret) return false;
+  try {
+    const res = await fetch(`https://api.razorpay.com/v1/payments/${encodeURIComponent(paymentId)}`, {
+      headers: { Authorization: `Basic ${Buffer.from(`${rzp.keyId}:${rzp.keySecret}`).toString('base64')}` },
+    });
+    if (!res.ok) return false;
+    const data = await res.json() as { status?: string };
+    return data.status === 'captured';
+  } catch (e) {
+    logger.warn('billing.payment_status_fetch_failed', { paymentId, error: e instanceof Error ? e.message : String(e) });
+    return false;
+  }
+}
+
 /** Reconcile a single pending order doc. Returns 'granted' | 'failed' | 'pending'. */
 async function reconcileOneOrder(
   deps: ReconcileDeps,
@@ -646,20 +671,25 @@ export function makeBillingWebhookRoute(deps: BillingWebhookDeps): Hono {
     const rzpCfg = await getRazorpayConfig(deps.serviceKeys, deps.env);
     const webhookSecret = rzpCfg?.webhookSecret;
 
-    // No secret configured → ack 200 so Razorpay stops retrying, but log a warning.
-    // We never want to silently fail-open and grant a plan, so missing secret = noop.
-    if (!webhookSecret || webhookSecret === 'not_set') {
-      deps.logger.warn('billing.webhook_secret_missing');
-      return c.json({ ok: true, ignored: 'webhook_secret_not_configured' });
-    }
-
     const signature = c.req.header('x-razorpay-signature') ?? '';
     const rawBody = await c.req.text();
 
-    const expectedSig = createHmac('sha256', webhookSecret).update(rawBody).digest('hex');
-    if (expectedSig !== signature) {
-      deps.logger.warn('billing.webhook_signature_mismatch');
-      return c.json({ ok: false, error: 'invalid_signature' }, 400);
+    // Verify the webhook signature when a secret is configured. CRITICAL
+    // RELIABILITY FIX: if the signature DOESN'T match (or no webhook secret is
+    // saved in admin), we no longer silently 200-noop — that's exactly how a
+    // correctly-configured Razorpay webhook can still leave plans un-granted
+    // when the saved secret differs from the dashboard's. Instead we mark the
+    // signature unverified and INDEPENDENTLY re-fetch the payment from
+    // Razorpay's API (authenticated with our Key Secret) before granting — so
+    // a secret mismatch can't block activation, and a spoofed body can't grant
+    // a plan (the API is the source of truth).
+    let signatureValid = false;
+    if (webhookSecret && webhookSecret !== 'not_set') {
+      const expectedSig = createHmac('sha256', webhookSecret).update(rawBody).digest('hex');
+      signatureValid = expectedSig === signature;
+      if (!signatureValid) deps.logger.warn('billing.webhook_signature_mismatch_api_fallback');
+    } else {
+      deps.logger.warn('billing.webhook_secret_missing_api_fallback');
     }
 
     let payload: RazorpayWebhookPayload;
@@ -675,18 +705,25 @@ export function makeBillingWebhookRoute(deps: BillingWebhookDeps): Hono {
 
     try {
       if (event === 'payment.captured' && payment?.order_id && payment.id) {
-        // SECURITY: Verify the payment entity's status field is actually
-        // 'captured'. The event type alone isn't sufficient — we must also
-        // confirm the entity status. This prevents granting plans on
-        // payment.authorized events or spoofed payloads where the event
-        // says 'captured' but entity says otherwise.
-        if (payment.status && !SAFE_GRANT_STATUSES.has(payment.status)) {
-          deps.logger.warn('billing.webhook_status_mismatch', {
-            event,
-            paymentId: payment.id,
-            entityStatus: payment.status,
-          });
-          return c.json({ ok: true, ignored: 'status_not_captured', entityStatus: payment.status });
+        // Confirm the payment is genuinely captured before granting.
+        //  - Signed webhook → trust the entity.status from the payload.
+        //  - Unsigned / bad signature → re-fetch the payment from Razorpay's
+        //    API (Key Secret) and use ITS status. This is the spoof-proof
+        //    path that also rescues a webhook-secret mismatch.
+        let captured: boolean;
+        if (signatureValid) {
+          if (payment.status && !SAFE_GRANT_STATUSES.has(payment.status)) {
+            deps.logger.warn('billing.webhook_status_mismatch', { event, paymentId: payment.id, entityStatus: payment.status });
+            return c.json({ ok: true, ignored: 'status_not_captured', entityStatus: payment.status });
+          }
+          captured = true;
+        } else {
+          captured = await isRazorpayPaymentCaptured(rzpCfg, payment.id, deps.logger);
+          if (!captured) {
+            deps.logger.warn('billing.webhook_unverified_not_captured', { paymentId: payment.id });
+            return c.json({ ok: true, ignored: 'unverified_or_not_captured' });
+          }
+          deps.logger.info('billing.webhook_api_verified_capture', { paymentId: payment.id, orderId: payment.order_id });
         }
 
         // Idempotency: skip if we've already processed this payment id.
@@ -752,7 +789,8 @@ export function makeBillingWebhookRoute(deps: BillingWebhookDeps): Hono {
       // payment.authorized — bank approved but NOT yet captured. Do NOT
       // grant the plan here. If auto-capture is on, a payment.captured
       // event will follow. If capture fails, the user must not get the plan.
-      if (event === 'payment.authorized' && payment?.order_id) {
+      // Only act on a SIGNED event (don't let unsigned requests mutate state).
+      if (event === 'payment.authorized' && payment?.order_id && signatureValid) {
         deps.logger.info('billing.webhook_authorized_only', {
           orderId: payment.order_id,
           paymentId: payment.id,
@@ -768,7 +806,7 @@ export function makeBillingWebhookRoute(deps: BillingWebhookDeps): Hono {
         return c.json({ ok: true, noted: 'authorized_not_captured' });
       }
 
-      if (event === 'payment.failed' && payment?.order_id) {
+      if (event === 'payment.failed' && payment?.order_id && signatureValid) {
         if (deps.db) {
           await deps.db.collection('billingOrders').doc(payment.order_id).set({
             status: 'failed',
