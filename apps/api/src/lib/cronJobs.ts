@@ -29,6 +29,7 @@ import type { AIEngine } from './aiEngine.js';
 import type { AIModelResolver } from './aiModelResolver.js';
 import type { ChapterStore } from './chapterStore.js';
 import type { ServiceKeyStore } from './serviceKeyStore.js';
+import type { CouponStore } from './couponStore.js';
 import { notifyUser } from './notificationService.js';
 import { nearestUpcomingExam, buildReengageNotification } from './reengage.js';
 
@@ -50,6 +51,9 @@ export interface CronJobDeps {
   modelResolver: AIModelResolver;
   chapters: ChapterStore;
   serviceKeys: ServiceKeyStore;
+  /** Coupon store — needed so the payment-reconciliation job can grant plans
+   *  (grantPlan records coupon usage). */
+  coupons: CouponStore;
 }
 
 /** A user row shape (subset) read from the `users` collection. */
