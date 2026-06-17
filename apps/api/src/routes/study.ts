@@ -3,7 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { requireAuth } from '../auth.js';
 import type { Logger } from '../logger.js';
 import type { UserStore } from '../lib/userStore.js';
-import type { AIEngine } from '../lib/aiEngine.js';
+import type { AIEngine, GeneratedMCQ } from '../lib/aiEngine.js';
 import type { ChapterStore, UserContext } from '../lib/chapterStore.js';
 import { getSyllabusWithFallback, type SyllabusFallbackDeps } from '../lib/syllabusStore.js';
 import { effectiveLevel, nextLevel, isPromotion } from '../lib/levelProgression.js';
@@ -44,6 +44,48 @@ export interface StudyRoutesDeps {
 function resolveExamName(examSlug: string): string {
   const info = EXAM_BY_SLUG.get(examSlug as Parameters<typeof EXAM_BY_SLUG.get>[0]);
   return info?.name ?? examSlug.replace(/-/g, ' ').replace(/\b\w/g, (ch) => ch.toUpperCase());
+}
+
+/**
+ * Short-lived cache of a generated practice quiz, keyed by the client's
+ * self-generated `attemptId`. Lets a retry after a dropped response replay the
+ * SAME quiz without re-charging the daily cap or pulling fresh pool questions.
+ * Best-effort: any Firestore hiccup falls through to a normal (charged) gen.
+ */
+const QUIZ_ATTEMPT_TTL_MS = 2 * 60 * 60 * 1000; // 2h, matches the client sessionStorage TTL
+
+function quizAttemptRef(db: Firestore, userId: string, attemptId: string) {
+  const safe = attemptId.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
+  return db.collection('quizAttempts').doc(`${userId}_${safe}`);
+}
+
+async function readCachedQuizAttempt(
+  db: Firestore,
+  userId: string,
+  attemptId: string,
+): Promise<{ questions: GeneratedMCQ[]; userLevel?: 'beginner' | 'intermediate' | 'advanced' } | null> {
+  try {
+    const snap = await quizAttemptRef(db, userId, attemptId).get();
+    if (!snap.exists) return null;
+    const data = snap.data() as { questions?: GeneratedMCQ[]; userLevel?: 'beginner' | 'intermediate' | 'advanced'; ts?: number } | undefined;
+    if (!data?.questions?.length) return null;
+    if (typeof data.ts === 'number' && Date.now() - data.ts > QUIZ_ATTEMPT_TTL_MS) return null; // expired
+    return { questions: data.questions, userLevel: data.userLevel };
+  } catch {
+    return null; // fail-open: a cache miss just means a normal generation
+  }
+}
+
+async function writeCachedQuizAttempt(
+  db: Firestore,
+  userId: string,
+  attemptId: string,
+  questions: GeneratedMCQ[],
+  userLevel: 'beginner' | 'intermediate' | 'advanced',
+): Promise<void> {
+  await quizAttemptRef(db, userId, attemptId).set({
+    questions, userLevel, ts: Date.now(), createdAt: new Date().toISOString(),
+  });
 }
 
 /**
@@ -275,6 +317,24 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
       const user = await deps.users.get(principal.userId);
       const userLevel = effectiveLevel(user);
 
+      // ── Idempotent replay (network-resilience fix) ───────────────────────
+      // The client sends a stable, self-generated `attemptId`. If we already
+      // generated a quiz for this attemptId, return it WITHOUT re-charging the
+      // daily cap or pulling fresh pool questions. This fixes the founder bug:
+      // on a flaky 5G connection the server would generate + charge the cap,
+      // then the response would drop in transit — so the student saw a
+      // "network error" yet their daily practice set was consumed, and a retry
+      // hit the upgrade wall. Now a retry with the same attemptId just replays
+      // the already-paid-for quiz.
+      const attemptId = c.req.query('attemptId');
+      if (attemptId && deps.db) {
+        const cached = await readCachedQuizAttempt(deps.db, principal.userId, attemptId);
+        if (cached && cached.questions.length > 0) {
+          deps.logger.info('study.quiz_replayed', { userId: principal.userId, attemptId, count: cached.questions.length });
+          return c.json({ questions: cached.questions, userLevel: cached.userLevel ?? userLevel, replayed: true });
+        }
+      }
+
       // Daily practice-set cap (admin-editable `dailyMCQ`; -1 = unlimited).
       // The cap counts PRACTICE SETS (quizzes), NOT individual questions: one
       // quiz serves up to 10 MCQs and consumes exactly ONE unit against the
@@ -299,6 +359,11 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
       );
       // Count this practice set (one unit) against the daily cap (only on success).
       await mcqCommit();
+      // Persist for idempotent retries BEFORE responding, so even if this
+      // response is lost on a flaky network the next retry replays it for free.
+      if (attemptId && deps.db) {
+        await writeCachedQuizAttempt(deps.db, principal.userId, attemptId, questions, userLevel).catch(() => { /* best-effort */ });
+      }
       return c.json({ questions, userLevel });
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);

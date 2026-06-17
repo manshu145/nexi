@@ -263,7 +263,7 @@ export const api = {
   // Study
   async getSyllabus(examSlug: string) { return (await authedFetch(`/v1/study/syllabus/${examSlug}`)).json() as Promise<{syllabus:SyllabusTree}>; },
   async getChapterContent(exam: string, subject: string, chapter: string, lang: 'en'|'hi' = 'en') { return (await authedFetch(`/v1/study/${exam}/${subject}/${chapter}?lang=${lang}`)).json() as Promise<{chapter:ChapterContent; userLevel?:string; contentPersonalizedFor?:string}>; },
-  async getChapterQuiz(exam: string, subject: string, chapter: string, lang: 'en'|'hi' = 'en') { return (await authedFetch(`/v1/study/${exam}/${subject}/${chapter}/quiz?lang=${lang}`)).json() as Promise<{questions:GeneratedMCQ[]}>; },
+  async getChapterQuiz(exam: string, subject: string, chapter: string, lang: 'en'|'hi' = 'en', attemptId?: string) { const qs = attemptId ? `?lang=${lang}&attemptId=${encodeURIComponent(attemptId)}` : `?lang=${lang}`; return (await authedFetch(`/v1/study/${exam}/${subject}/${chapter}/quiz${qs}`)).json() as Promise<{questions:GeneratedMCQ[]}>; },
   async getChapterFlashcards(exam: string, subject: string, chapter: string, lang: 'en'|'hi' = 'en') { return (await authedFetch(`/v1/study/${exam}/${subject}/${chapter}/flashcards?lang=${lang}`)).json() as Promise<{cards:{front:string; back:string}[]; cached?:boolean; error?:string}>; },
   async getChapterDiagram(exam: string, subject: string, chapter: string) { return (await authedFetch(`/v1/study/${exam}/${subject}/${chapter}/diagram`)).json() as Promise<{mermaid:string}>; },
   async visualizeSelection(text: string, subject: string, language: 'en'|'hi') { return (await authedFetch('/v1/study/visualize', { method: 'POST', body: JSON.stringify({ text, subject, language }) })).json() as Promise<{mermaid:string}>; },

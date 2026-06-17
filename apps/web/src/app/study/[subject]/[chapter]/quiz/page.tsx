@@ -59,6 +59,10 @@ export default function ChapterQuizPage() {
   // back-navigation resumes the SAME quiz instead of regenerating it (which
   // would lose answers AND burn AI tokens). Stamped with a 2-hour TTL.
   const storageKey = `nexigrate-quiz:${subject}:${chapter}`;
+  // Stable, client-owned id for THIS practice attempt. Sent to the quiz API so
+  // a retry after a dropped response (flaky 5G) replays the same already-paid
+  // quiz instead of consuming another daily practice set. Cleared on submit.
+  const attemptKey = `nexigrate-quiz-attempt:${subject}:${chapter}`;
   const QUIZ_TTL_MS = 2 * 60 * 60 * 1000;
 
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
@@ -90,7 +94,16 @@ export default function ChapterQuizPage() {
       try {
         const exam = me.targetExam ?? 'jee-main';
         const lang = getLanguageFromCookie();
-        const res = await api.getChapterQuiz(exam, subject, chapter, lang);
+        // Get-or-create a stable attemptId so a retry/reload after a dropped
+        // response replays the SAME quiz (server-cached) without eating another
+        // daily practice set. Cleared once the quiz is submitted.
+        let attemptId = '';
+        try { attemptId = sessionStorage.getItem(attemptKey) ?? ''; } catch { /* ignore */ }
+        if (!attemptId) {
+          attemptId = `q_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+          try { sessionStorage.setItem(attemptKey, attemptId); } catch { /* ignore */ }
+        }
+        const res = await api.getChapterQuiz(exam, subject, chapter, lang, attemptId);
         if (!res.questions || res.questions.length === 0) {
           const errMsg = (res as any).error || 'Quiz generation returned 0 questions. Tap Retry to regenerate.';
           setError(errMsg);
@@ -140,8 +153,10 @@ export default function ChapterQuizPage() {
       // resolve the pool.
       const answerPayload = questions.map((q) => ({ questionId: q.id, chosen: answers.get(q.id) ?? null }));
       const res = await api.completeChapter(exam, subject, chapter, score, answerPayload, getLanguageFromCookie());
-      // Success — clear the saved in-progress quiz.
+      // Success — clear the saved in-progress quiz + the attempt id so the
+      // next practice run generates a fresh quiz (and charges one new set).
       try { sessionStorage.removeItem(storageKey); } catch { /* ignore */ }
+      try { sessionStorage.removeItem(attemptKey); } catch { /* ignore */ }
       autoRetriedRef.current = false;
       // Pull the updated credit balance / streak into the shared store so
       // dashboard / level / leaderboard pages see the awarded credits
