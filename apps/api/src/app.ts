@@ -20,7 +20,7 @@ import { makeCurrentAffairsRoutes } from './routes/currentAffairs.js';
 import { InMemoryChatStore, FirestoreChatStore, type ChatStore } from './lib/chatStore.js';
 import { makeChatRoutes } from './routes/chat.js';
 import { makeCreditsRoutes } from './routes/credits.js';
-import { makeBillingRoutes, makeBillingWebhookRoute } from './routes/billing.js';
+import { makeBillingRoutes, makeBillingWebhookRoute, reconcilePendingOrders } from './routes/billing.js';
 import { makeAdminRoutes } from './routes/admin.js';
 import { makeSupportRoutes } from './routes/support.js';
 import { makeEssayRoutes } from './routes/essay.js';
@@ -231,6 +231,29 @@ export function buildApp(deps: AppDeps): Hono {
     }
     const result = await runCurrentAffairsIngest(cronDeps);
     return c.json({ success: true, ...result });
+  });
+
+  // Cron endpoint — reconcile stuck payments (Cloud Scheduler: every ~15 min).
+  // Money-safety net: UPI payments often don't fire Razorpay's browser
+  // `handler`, so POST /verify never runs; if the webhook also misses, the
+  // student paid but their order is stuck 'pending' and no plan was granted.
+  // This asks Razorpay for the real payment status of pending orders and
+  // activates any that are 'captured'. Idempotent via grantPlan's order
+  // transaction, so running it alongside verify/webhook is safe.
+  app.post('/v1/billing/reconcile-pending', async (c) => {
+    const cronSecret = c.req.header('x-cron-secret');
+    if (cronSecret !== env.CRON_SECRET) {
+      return c.json({ error: 'unauthorized' }, 401);
+    }
+    try {
+      const result = await reconcilePendingOrders(
+        { users, coupons: couponStore, db: fs, logger, serviceKeys, env },
+      );
+      return c.json({ success: true, ...result });
+    } catch (err) {
+      logger.error('cron.billing_reconcile_error', { error: err instanceof Error ? err.message : String(err) });
+      return c.json({ success: false, error: 'reconcile failed' }, 500);
+    }
   });
 
   // Webhook — Resend INBOUND email (user replies → mailbox threads).

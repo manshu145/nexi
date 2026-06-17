@@ -43,6 +43,143 @@ function parsePeriod(input: unknown): BillingPeriod {
   return input === 'yearly' ? 'yearly' : 'monthly';
 }
 
+// ---------------------------------------------------------------------------
+// Payment reconciliation — the money-safety net.
+//
+// UPI payments (PhonePe/GPay) on mobile web frequently do NOT fire Razorpay's
+// browser `handler` callback (the user is bounced into the UPI app and back),
+// so POST /verify never runs. If the webhook is also missing/misconfigured,
+// the order is stuck 'pending' forever — the student paid but never got their
+// plan. Reconciliation asks Razorpay for the REAL payment status of pending
+// orders and activates the plan when a 'captured' payment exists. Runs from a
+// cron, and opportunistically when a paying user reopens the app.
+// ---------------------------------------------------------------------------
+
+export interface ReconcileDeps {
+  users: UserStore;
+  coupons: CouponStore;
+  db: Firestore | null;
+  logger: Logger;
+  serviceKeys: ServiceKeyStore;
+  env: Env;
+}
+
+interface RazorpayCfgLite { keyId: string; keySecret: string }
+
+/** Reconcile a single pending order doc. Returns 'granted' | 'failed' | 'pending'. */
+async function reconcileOneOrder(
+  deps: ReconcileDeps,
+  rzp: RazorpayCfgLite,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  doc: FirebaseFirestore.QueryDocumentSnapshot | FirebaseFirestore.DocumentSnapshot,
+): Promise<'granted' | 'failed' | 'pending' | 'skipped'> {
+  const o = doc.data() as {
+    uid?: string; planId?: PlanId; period?: string; couponCode?: string | null; status?: string;
+  } | undefined;
+  if (!o || o.status === 'completed') return 'skipped';
+  if (!o.uid || !o.planId) return 'skipped';
+  try {
+    const res = await fetch(`https://api.razorpay.com/v1/orders/${doc.id}/payments`, {
+      headers: { Authorization: `Basic ${Buffer.from(`${rzp.keyId}:${rzp.keySecret}`).toString('base64')}` },
+    });
+    if (!res.ok) return 'pending';
+    const data = await res.json() as { items?: Array<{ id?: string; status?: string }> };
+    const items = data.items ?? [];
+    const captured = items.find(p => p.status === 'captured' && p.id);
+    if (captured?.id) {
+      await grantPlan(
+        { users: deps.users, coupons: deps.coupons, db: deps.db, logger: deps.logger },
+        {
+          uid: asUserId(o.uid),
+          planId: o.planId,
+          period: parsePeriod(o.period),
+          paymentId: captured.id,
+          orderId: doc.id,
+          couponCode: o.couponCode ?? null,
+          source: 'reconcile',
+        },
+      );
+      deps.logger.info('billing.reconcile_granted', { orderId: doc.id, uid: o.uid, planId: o.planId, paymentId: captured.id });
+      return 'granted';
+    }
+    // No captured payment. If there are only failed attempts, mark failed so
+    // it stops showing as 'pending' (audit clarity). Otherwise leave pending
+    // (payment may still be in-flight).
+    if (items.length > 0 && items.every(p => p.status === 'failed') && deps.db) {
+      await doc.ref.set({ status: 'failed', failedAt: new Date().toISOString(), reconciledAt: new Date().toISOString() }, { merge: true });
+      return 'failed';
+    }
+    return 'pending';
+  } catch (e) {
+    deps.logger.warn('billing.reconcile_order_error', { orderId: doc.id, error: e instanceof Error ? e.message : String(e) });
+    return 'pending';
+  }
+}
+
+/**
+ * Scan recent 'pending' orders and activate any that Razorpay reports as
+ * captured. Skips orders younger than `minAgeMinutes` (let the live
+ * verify/webhook finish first) and older than `maxAgeDays`.
+ */
+export async function reconcilePendingOrders(
+  deps: ReconcileDeps,
+  opts?: { maxAgeDays?: number; minAgeMinutes?: number; limit?: number },
+): Promise<{ scanned: number; granted: number; failed: number; stillPending: number }> {
+  const out = { scanned: 0, granted: 0, failed: 0, stillPending: 0 };
+  if (!deps.db) return out;
+  const rzp = await getRazorpayConfig(deps.serviceKeys, deps.env);
+  if (!rzp) { deps.logger.warn('billing.reconcile_no_razorpay_config'); return out; }
+
+  const minAgeMs = (opts?.minAgeMinutes ?? 2) * 60_000;
+  const maxAgeMs = (opts?.maxAgeDays ?? 14) * 86_400_000;
+  const now = Date.now();
+
+  const snap = await deps.db.collection('billingOrders')
+    .where('status', '==', 'pending')
+    .limit(opts?.limit ?? 200)
+    .get();
+
+  for (const doc of snap.docs) {
+    const createdAt = (doc.data().createdAt as string | undefined) ?? null;
+    const ageMs = createdAt ? now - new Date(createdAt).getTime() : 0;
+    if (createdAt && (ageMs < minAgeMs || ageMs > maxAgeMs)) continue;
+    out.scanned++;
+    const r = await reconcileOneOrder(deps, rzp, doc);
+    if (r === 'granted') out.granted++;
+    else if (r === 'failed') out.failed++;
+    else if (r === 'pending') out.stillPending++;
+  }
+  deps.logger.info('billing.reconcile_batch_done', out);
+  return out;
+}
+
+/**
+ * Reconcile the pending orders of ONE user — called opportunistically when a
+ * paying user reopens the app (GET /subscription), so their plan activates
+ * the moment they come back even if verify + webhook both missed.
+ */
+export async function reconcileUserPendingOrders(deps: ReconcileDeps, uid: string): Promise<boolean> {
+  if (!deps.db) return false;
+  const rzp = await getRazorpayConfig(deps.serviceKeys, deps.env);
+  if (!rzp) return false;
+  try {
+    const snap = await deps.db.collection('billingOrders')
+      .where('uid', '==', uid)
+      .limit(10)
+      .get();
+    let granted = false;
+    for (const doc of snap.docs) {
+      if ((doc.data().status as string | undefined) !== 'pending') continue;
+      const r = await reconcileOneOrder(deps, rzp, doc);
+      if (r === 'granted') granted = true;
+    }
+    return granted;
+  } catch (e) {
+    deps.logger.warn('billing.reconcile_user_error', { uid, error: e instanceof Error ? e.message : String(e) });
+    return false;
+  }
+}
+
 export function makeBillingRoutes(deps: BillingRoutesDeps): Hono {
   const app = new Hono();
 
@@ -311,7 +448,24 @@ export function makeBillingRoutes(deps: BillingRoutesDeps): Hono {
   // GET /v1/billing/subscription — current plan info
   app.get('/subscription', async (c) => {
     const principal = requireAuth(c);
-    const user = await deps.users.get(principal.userId);
+    let user = await deps.users.get(principal.userId);
+
+    // Self-healing: if the user looks unpaid (free / expired) but actually has
+    // a captured-but-unactivated order (UPI handler missed + webhook missed),
+    // reconcile it now so reopening the app activates their plan. Cheap: only
+    // runs when NOT already on an active paid plan, and is fully best-effort.
+    const curPlan = user?.plan ?? 'free';
+    const curExp = (user as unknown as { planExpiresAt?: string | null })?.planExpiresAt ?? null;
+    if (!isPlanActive(curPlan, curExp)) {
+      try {
+        const granted = await reconcileUserPendingOrders(
+          { users: deps.users, coupons: deps.coupons, db: deps.db, logger: deps.logger, serviceKeys: deps.serviceKeys, env: deps.env },
+          principal.userId,
+        );
+        if (granted) user = await deps.users.get(principal.userId); // re-read activated plan
+      } catch { /* best-effort */ }
+    }
+
     const plan = user?.plan ?? 'free';
     const planExpiresAt = (user as unknown as { planExpiresAt?: string | null })?.planExpiresAt ?? null;
     const planCancelledAt = (user as unknown as { planCancelledAt?: string | null })?.planCancelledAt ?? null;

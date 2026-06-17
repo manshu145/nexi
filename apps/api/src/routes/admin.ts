@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { requireAuth } from '../auth.js';
+import { reconcilePendingOrders } from './billing.js';
 import type { Logger } from '../logger.js';
 import type { UserStore, StoredUser } from '../lib/userStore.js';
 import type { AdminStore } from '../lib/adminStore.js';
@@ -637,6 +638,27 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
       }
     } catch { /* enrichment is best-effort */ }
     return c.json(revenue);
+  });
+
+  // POST /v1/admin/billing/reconcile — rescue stuck payments on demand.
+  // Asks Razorpay for the real status of every 'pending' order and activates
+  // any that are actually 'captured' (the UPI/webhook-missed case where the
+  // student paid but never got their plan). Safe to run repeatedly.
+  app.post('/billing/reconcile', async (c) => {
+    try {
+      const result = await reconcilePendingOrders({
+        users: deps.users,
+        coupons: deps.coupons,
+        db: deps.db ?? null,
+        logger: deps.logger,
+        serviceKeys: deps.serviceKeys,
+        env: deps.env,
+      });
+      return c.json({ success: true, ...result });
+    } catch (err) {
+      deps.logger.error('admin.billing_reconcile_error', { error: err instanceof Error ? err.message : String(err) });
+      throw new HTTPException(500, { message: 'Reconcile failed. Check Razorpay keys in Service Keys.' });
+    }
   });
 
   // GET /v1/admin/support — tickets
