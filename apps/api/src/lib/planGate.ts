@@ -5,7 +5,7 @@
  * Why this exists (Part 4 pricing/feature audit): plan checks were scattered
  * and inconsistent — some routes read the raw `user.plan` (so an EXPIRED paid
  * user kept paid perks), some advertised limits that were never enforced
- * (dailyMCQ, mock-test monthly cap), and mock tests charged credits even to
+ * (dailyMCQ, mock-test daily cap), and mock tests charged credits even to
  * active paid users. Every gated route now goes through this helper so the
  * behaviour is uniform:
  *
@@ -77,7 +77,7 @@ interface FeatureMeta {
 const FEATURE_META: Record<FeatureKey, FeatureMeta> = {
   [FeatureKey.DAILY_MCQ]: { limitField: 'dailyMCQ', usage: 'mcq', window: 'day', labelEn: 'daily practice sets', labelHi: 'डेली प्रैक्टिस सेट' },
   [FeatureKey.CHAPTER_ACCESS]: { limitField: 'chaptersPerDay', usage: 'chapter', window: 'day', creditReason: 'read_chapter', labelEn: 'chapter reads', labelHi: 'चैप्टर' },
-  [FeatureKey.MOCK_TEST]: { limitField: 'mockTests', usage: 'mockTest', window: 'month', creditReason: 'mock_test', labelEn: 'mock tests', labelHi: 'मॉक टेस्ट' },
+  [FeatureKey.MOCK_TEST]: { limitField: 'mockTests', usage: 'mockTest', window: 'day', creditReason: 'mock_test', labelEn: 'mock tests', labelHi: 'मॉक टेस्ट' },
   [FeatureKey.AI_CHAT]: { limitField: 'aiTutorPerDay', usage: 'aiTutor', window: 'day', creditReason: 'ai_tutor_question', labelEn: 'AI tutor messages', labelHi: 'AI ट्यूटर संदेश' },
   [FeatureKey.AI_IMAGE]: { limitField: 'imagesPerDay', usage: 'image', window: 'day', labelEn: 'AI images', labelHi: 'AI इमेज' },
   [FeatureKey.ESSAY_GRADING]: { limitField: 'essaysPerDay', usage: 'essay', window: 'day', labelEn: 'essay gradings', labelHi: 'निबंध जाँच' },

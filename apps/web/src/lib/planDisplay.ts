@@ -43,7 +43,7 @@ export function planFeatureBullets(plan: Plan | undefined, lang: 'en' | 'hi'): s
   bullets.push(
     unlimited(f.mockTests)
       ? (hi ? 'असीमित मॉक टेस्ट' : 'Unlimited Mock Tests')
-      : (hi ? `${f.mockTests} मॉक टेस्ट / माह` : `${f.mockTests} Mock Tests / month`),
+      : (hi ? `${f.mockTests} मॉक टेस्ट / दिन` : `${f.mockTests} Mock Tests / day`),
   );
 
   // AI Tutor (Nexi chat) — show the admin-configured per-day message cap.

@@ -49,7 +49,7 @@ export interface MockTestRoutesDeps {
   ledger: CreditLedger;
   config: PlatformConfigStore;
   logger: Logger;
-  /** Per-user usage counter for the monthly mock-test cap (paid plans). Optional for tests. */
+  /** Per-user usage counter for the daily mock-test cap (paid plans). Optional for tests. */
   usage?: FeatureUsageStore;
 }
 
@@ -98,7 +98,7 @@ const MOCK_SECTIONS = { easy: 20, medium: 20, hard: 10 } as const;
 
 export function makeMockTestRoutes(deps: MockTestRoutesDeps): Hono {
   const app = new Hono();
-  // Central gate for the monthly mock-test cap (active paid plans). Needs
+  // Central gate for the daily mock-test cap (active paid plans). Needs
   // usage; falls back to no cap (fail-open) when missing.
   const planGate = deps.usage
     ? new PlanGate({ config: deps.config, usage: deps.usage, ledger: deps.ledger, logger: deps.logger })
@@ -149,9 +149,9 @@ export function makeMockTestRoutes(deps: MockTestRoutesDeps): Hono {
 
     // Plan gate (Part 4 audit fix). Free/expired users PAY `mock_test`
     // credits up front (idempotent + refunded on AI failure). ACTIVE PAID
-    // users are NOT charged — they're metered by the monthly `mockTests` cap
+    // users are NOT charged — they're metered by the daily `mockTests` cap
     // instead. This fixes the bug where paid users were charged credits for
-    // every mock test, and enforces the previously-ignored monthly limit.
+    // every mock test, and enforces the previously-ignored daily limit.
     // Either limit returns an upgrade-prompting response.
     const gateUser = await deps.users.get(principal.userId);
     const deduct = shouldDeductCredits(gateUser?.plan ?? 'free', gateUser?.planExpiresAt ?? null);
@@ -186,7 +186,7 @@ export function makeMockTestRoutes(deps: MockTestRoutesDeps): Hono {
         throw new HTTPException(500, { message: 'Could not charge credits. Please try again.' });
       }
     } else if (planGate) {
-      // 1b. Active paid → monthly fair-use cap (no credit deduction).
+      // 1b. Active paid → daily fair-use cap (no credit deduction).
       const gate = await planGate.enforcePaidCap(gateUser, FeatureKey.MOCK_TEST, gateLang);
       if (!gate.ok) return c.json(gate.body, gate.status);
       mockCommit = gate.commit;
@@ -354,7 +354,7 @@ export function makeMockTestRoutes(deps: MockTestRoutesDeps): Hono {
       questionCount: questions.length, durationMinutes, cost,
     });
 
-    // Count this mock test against the monthly cap (paid plans; no-op for
+    // Count this mock test against the daily cap (paid plans; no-op for
     // free/expired users, who were metered by credits above).
     await mockCommit();
 

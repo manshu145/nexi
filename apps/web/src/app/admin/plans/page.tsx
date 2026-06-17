@@ -334,7 +334,7 @@ export default function AdminPlansPage() {
                   <tr className="border-y border-line text-left">
                     <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-500">Plan</th>
                     <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-500" title="Daily practice sets (each set = one ~10-question quiz). -1 = unlimited.">Practice sets/day</th>
-                    <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-500">Mocks</th>
+                    <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-500" title="Mock tests per day. -1 = unlimited, 0 = blocked.">Mocks/day</th>
                     <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-500">Chapters/day</th>
                     <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-500">AI Tutor/day</th>
                     <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-500">Essays/day</th>
@@ -361,7 +361,8 @@ export default function AdminPlansPage() {
                       <td className="px-4 py-2">
                         <input type="number" value={p.features.mockTests}
                           onChange={(e) => patchDraft(p.id, { features: { ...p.features, mockTests: Number(e.target.value) } })}
-                          className="input w-16 text-xs" />
+                          className="input w-16 text-xs"
+                          title="Mock tests per day. -1 = unlimited, 0 = blocked." />
                       </td>
                       <td className="px-4 py-2">
                         <input type="number" value={p.features.chaptersPerDay}

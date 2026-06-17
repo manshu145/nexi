@@ -79,8 +79,6 @@ const fC = featOf('achiever');
 // -1 = unlimited, 0 = not included, undefined = API unavailable (use fallback).
 const perDay = (n?: number): string | null =>
   typeof n !== 'number' ? null : n < 0 ? 'Unlimited' : n === 0 ? '—' : `${n} / day`;
-const perMonth = (n?: number): string | null =>
-  typeof n !== 'number' ? null : n < 0 ? 'Unlimited' : `${n} / mo`;
 const count = (n?: number): string | null =>
   typeof n !== 'number' ? null : n < 0 ? 'Unlimited' : `${n}`;
 const yesNo = (b?: boolean): string | null =>
@@ -107,9 +105,9 @@ const featureRows: FeatureRow[] = [
   {
     label: 'Mock tests',
     values: {
-      scholar: perMonth(fS?.mockTests) ?? '5 / mo',
-      aspirant: perMonth(fA?.mockTests) ?? '15 / mo',
-      achiever: perMonth(fC?.mockTests) ?? '40 / mo',
+      scholar: perDay(fS?.mockTests) ?? '5 / day',
+      aspirant: perDay(fA?.mockTests) ?? '15 / day',
+      achiever: perDay(fC?.mockTests) ?? 'Unlimited',
     },
   },
   {

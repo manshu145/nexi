@@ -15,7 +15,7 @@ type BillingPeriod = 'monthly' | 'yearly';
 
 const SCHOLAR_FEATURES = [
   '30 Daily Practice Sets (10 Q each)',
-  '5 Mock Tests / month',
+  '5 Mock Tests / day',
   '8 Chapters / day (no credits)',
   'AI Tutor — 30 messages / day',
   'Essay Grading — 3 / day',
@@ -27,7 +27,7 @@ const SCHOLAR_FEATURES = [
 const ASPIRANT_FEATURES = [
   'Everything in Starter',
   '100 Daily Practice Sets · 25 Chapters/day',
-  '15 Mock Tests / month',
+  '15 Mock Tests / day',
   'AI Tutor — 100 messages / day',
   'Essay Grading — 10 / day',
   'Priority AI (GPT-4o)',
@@ -36,7 +36,7 @@ const ASPIRANT_FEATURES = [
 const ACHIEVER_FEATURES = [
   'Everything in Pro',
   'Unlimited Practice Sets & Chapters',
-  '40 Mock Tests / month',
+  '40 Mock Tests / day',
   'Unlimited Essay Grading',
   'AI Images — 50 / day',
   'Dedicated mentor support',
