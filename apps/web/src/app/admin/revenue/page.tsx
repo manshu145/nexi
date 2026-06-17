@@ -28,6 +28,8 @@ export default function AdminRevenuePage() {
   const [apiTotal, setApiTotal] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [fetching, setFetching] = useState(true);
+  const [reconciling, setReconciling] = useState(false);
+  const [reconcileMsg, setReconcileMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading && !user) router.replace('/admin/login');
@@ -53,6 +55,43 @@ export default function AdminRevenuePage() {
     })();
     return () => { cancelled = true; };
   }, [user]);
+
+  // Re-fetch the revenue list (used after a manual reconcile).
+  const loadRevenue = async () => {
+    setFetching(true);
+    try {
+      const auth = getFirebaseAuthClient();
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch(`${API}/v1/admin/revenue`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error(`Failed: ${res.status}`);
+      const data = await res.json() as { payments: Payment[]; total: number };
+      setPayments(data.payments); setApiTotal(data.total); setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load revenue data');
+    } finally {
+      setFetching(false);
+    }
+  };
+
+  // Rescue stuck payments: asks Razorpay for the real status of pending orders
+  // and activates any that actually went through (UPI/webhook-missed case).
+  const handleReconcile = async () => {
+    setReconciling(true);
+    setReconcileMsg(null);
+    try {
+      const auth = getFirebaseAuthClient();
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch(`${API}/v1/admin/billing/reconcile`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error(`Failed: ${res.status}`);
+      const r = await res.json() as { scanned: number; granted: number; failed: number; stillPending: number };
+      setReconcileMsg(`Checked ${r.scanned} pending · activated ${r.granted} · marked failed ${r.failed} · still pending ${r.stillPending}.`);
+      await loadRevenue();
+    } catch (e) {
+      setReconcileMsg(e instanceof Error ? e.message : 'Reconcile failed');
+    } finally {
+      setReconciling(false);
+    }
+  };
 
   if (loading || !user) return <div className="flex items-center justify-center py-20"><AILoader context="general" /></div>;
 
@@ -82,6 +121,19 @@ export default function AdminRevenuePage() {
     <div>
       <h1 className="font-serif text-2xl font-bold text-ink-900">Revenue</h1>
       <p className="mt-1 text-sm text-muted-500">Payment history and revenue overview</p>
+
+      {/* Rescue stuck payments — for UPI/webhook-missed orders where the
+          student paid but the plan never activated (order stuck 'pending'). */}
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <button
+          onClick={handleReconcile}
+          disabled={reconciling}
+          className="btn-primary text-sm px-3 py-1.5 disabled:opacity-50"
+        >
+          {reconciling ? 'Checking with Razorpay…' : 'Reconcile pending payments'}
+        </button>
+        {reconcileMsg && <span className="text-xs text-muted-500">{reconcileMsg}</span>}
+      </div>
 
       {error && <div className="banner banner-error mt-4">{error}</div>}
 

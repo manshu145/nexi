@@ -39,7 +39,7 @@ export interface GrantPlanInput {
   /** Coupon code if one was applied; the store will increment its usage counter. */
   couponCode?: string | null;
   /** Source of the activation (for logging only). */
-  source: 'verify' | 'webhook';
+  source: 'verify' | 'webhook' | 'reconcile';
 }
 
 export interface GrantPlanResult {
