@@ -195,8 +195,11 @@ export const api = {
   async submitMultiStageAssessment(stage1: {questions:GeneratedMCQ[]; answers:{questionId:string;chosen:string|null}[]}, stage2: {questions:GeneratedMCQ[]; answers:{questionId:string;chosen:string|null}[]}, stage3: {questions:GeneratedMCQ[]; answers:{questionId:string;chosen:string|null}[]}) { return (await authedFetch('/v1/assessment/submit', { method: 'POST', body: JSON.stringify({ multiStage: true, stage1, stage2, stage3 }) })).json() as Promise<AssessmentResult>; },
 
   // ─── Admin analytics ────────────────────────────────────────────────────
-  async getAnalyticsOverview(days = 30) {
-    return (await authedFetch(`/v1/analytics/overview?days=${days}`)).json() as Promise<AnalyticsOverview>;
+  async getAnalyticsOverview(days = 30, range?: { from?: string; to?: string }) {
+    const p = new URLSearchParams();
+    if (range?.from && range?.to) { p.set('from', range.from); p.set('to', range.to); }
+    else p.set('days', String(days));
+    return (await authedFetch(`/v1/analytics/overview?${p.toString()}`)).json() as Promise<AnalyticsOverview>;
   },
   // ─── Admin mailbox (two-way email conversations) ────────────────────────
   async getMailboxThreads(status?: 'open'|'closed') {
