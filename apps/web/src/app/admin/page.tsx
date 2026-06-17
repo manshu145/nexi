@@ -26,6 +26,12 @@ import { EXAM_BY_SLUG } from '@nexigrate/shared';
 const API = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com';
 const EMBER = '#B3461F';
 const GOLD = '#B8862F';
+// AI call costs are tracked in USD (provider rate × tokens). Convert to INR
+// for the ₹-labelled KPI so the number isn't mislabelled. Approximate spot
+// rate — this is an internal infra-cost indicator, not a billed amount.
+const USD_TO_INR = 84;
+/** Truncate long category labels so horizontal bar charts stay readable on phones. */
+const truncLabel = (v: string) => (v && v.length > 16 ? `${v.slice(0, 15)}…` : v);
 
 interface AdminStats {
   totalUsers: number; dau: number; activeNow: number; newToday: number;
@@ -86,6 +92,10 @@ export default function AdminDashboardPage() {
   const [sessionCount, setSessionCount] = useState(0);
   const [analytics, setAnalytics] = useState<AnalyticsOverview | null>(null);
   const [days, setDays] = useState(30);
+  // Custom date range (YouTube-Studio style). When set, it overrides `days`.
+  const [customRange, setCustomRange] = useState<{ from: string; to: string } | null>(null);
+  const [fromInput, setFromInput] = useState('');
+  const [toInput, setToInput] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [resetting, setResetting] = useState(false);
   const [resetConfirm, setResetConfirm] = useState(false);
@@ -149,11 +159,11 @@ export default function AdminDashboardPage() {
     return () => clearInterval(i);
   }, [user, fetchSessions]);
 
-  // Analytics overview (range-dependent).
+  // Analytics overview (range-dependent: preset days OR custom from/to).
   useEffect(() => {
     if (!user || !isAdmin(user.email)) return;
-    api.getAnalyticsOverview(days).then(setAnalytics).catch(() => { /* charts optional */ });
-  }, [user, days]);
+    api.getAnalyticsOverview(days, customRange ?? undefined).then(setAnalytics).catch(() => { /* charts optional */ });
+  }, [user, days, customRange]);
 
   const handleReset = async () => {
     setResetting(true); setResetMsg(null);
@@ -271,17 +281,51 @@ export default function AdminDashboardPage() {
         <KpiCard label="Stickiness" value={`${analytics?.overview.stickiness ?? 0}%`} sub="DAU / MAU" />
         <KpiCard label="New Today" value={(stats?.newToday ?? 0).toLocaleString()} />
         <KpiCard label="Revenue 30d" value={`₹${(stats?.revenue30d ?? 0).toLocaleString('en-IN')}`} />
-        <KpiCard label="AI Cost Today" value={`₹${(stats?.aiCostToday ?? 0).toLocaleString('en-IN')}`} />
+        <KpiCard label="AI Cost Today" value={`₹${((stats?.aiCostToday ?? 0) * USD_TO_INR).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`} sub={`≈ $${(stats?.aiCostToday ?? 0).toFixed(2)} infra · 0 = no paid AI calls`} />
         <KpiCard label="PWA Installs" value={(stats?.pwaInstalls ?? 0).toLocaleString()} />
       </div>
 
-      {/* Range selector */}
-      <div className="flex items-center justify-between">
+      {/* Range selector — presets + custom date range (YouTube-style) */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-sm font-semibold text-ink-900">Trends</h2>
-        <div className="flex gap-1">
-          {[7, 30, 90].map(d => (
-            <button key={d} onClick={() => setDays(d)} className={`pill text-xs ${days === d ? 'bg-ink-900 text-paper-50 border-ink-900' : ''}`}>{d}d</button>
-          ))}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex gap-1">
+            {[7, 28, 90, 365].map(d => (
+              <button
+                key={d}
+                onClick={() => { setCustomRange(null); setDays(d); }}
+                className={`pill text-xs ${!customRange && days === d ? 'bg-ink-900 text-paper-50 border-ink-900' : ''}`}
+              >
+                {d}d
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1">
+            <input
+              type="date"
+              value={fromInput}
+              max={toInput || undefined}
+              onChange={(e) => setFromInput(e.target.value)}
+              className="input h-8 px-2 text-xs"
+              aria-label="From date"
+            />
+            <span className="text-xs text-muted-400">→</span>
+            <input
+              type="date"
+              value={toInput}
+              min={fromInput || undefined}
+              onChange={(e) => setToInput(e.target.value)}
+              className="input h-8 px-2 text-xs"
+              aria-label="To date"
+            />
+            <button
+              onClick={() => { if (fromInput && toInput) setCustomRange({ from: fromInput, to: toInput }); }}
+              disabled={!fromInput || !toInput}
+              className={`pill text-xs disabled:opacity-40 ${customRange ? 'bg-ink-900 text-paper-50 border-ink-900' : ''}`}
+            >
+              Apply
+            </button>
+          </div>
         </div>
       </div>
 
@@ -312,10 +356,10 @@ export default function AdminDashboardPage() {
           <div className="paper-card p-4">
             <h3 className="mb-3 text-sm font-semibold text-ink-900">Daily activity</h3>
             <ResponsiveContainer width="100%" height={260}>
-              <LineChart data={seriesData} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
+              <LineChart data={seriesData} margin={{ top: 5, right: 12, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E7E0CE" />
-                <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#7A6F5C' }} />
-                <YAxis tick={{ fontSize: 11, fill: '#7A6F5C' }} allowDecimals={false} />
+                <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#7A6F5C' }} interval="preserveStartEnd" minTickGap={28} tickMargin={6} />
+                <YAxis tick={{ fontSize: 11, fill: '#7A6F5C' }} allowDecimals={false} width={32} />
                 <Tooltip contentStyle={{ background: '#FBF6E8', border: '1px solid #E7E0CE', borderRadius: 8, fontSize: 12 }} />
                 <Line type="monotone" dataKey="activity" name="Total events" stroke={EMBER} strokeWidth={2} dot={false} />
                 <Line type="monotone" dataKey="chapters" name="Chapters opened" stroke={GOLD} strokeWidth={2} dot={false} />
@@ -340,10 +384,10 @@ export default function AdminDashboardPage() {
               <p className="py-8 text-center text-sm text-muted-500">No events recorded yet.</p>
             ) : (
               <ResponsiveContainer width="100%" height={Math.max(200, featureData.length * 34)}>
-                <BarChart data={featureData} layout="vertical" margin={{ top: 0, right: 16, left: 60, bottom: 0 }}>
+                <BarChart data={featureData} layout="vertical" margin={{ top: 0, right: 16, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#E7E0CE" horizontal={false} />
                   <XAxis type="number" tick={{ fontSize: 11, fill: '#7A6F5C' }} allowDecimals={false} />
-                  <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#7A6F5C' }} width={120} />
+                  <YAxis type="category" dataKey="name" tick={{ fontSize: 10, fill: '#7A6F5C' }} width={104} tickFormatter={truncLabel} />
                   <Tooltip contentStyle={{ background: '#FBF6E8', border: '1px solid #E7E0CE', borderRadius: 8, fontSize: 12 }} />
                   <Bar dataKey="value" fill={EMBER} radius={[0, 4, 4, 0]} />
                 </BarChart>
@@ -359,10 +403,10 @@ export default function AdminDashboardPage() {
                 <p className="py-8 text-center text-sm text-muted-500">No exam-tagged activity yet.</p>
               ) : (
                 <ResponsiveContainer width="100%" height={Math.max(200, examData.length * 32)}>
-                  <BarChart data={examData} layout="vertical" margin={{ top: 0, right: 16, left: 60, bottom: 0 }}>
+                  <BarChart data={examData} layout="vertical" margin={{ top: 0, right: 16, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#E7E0CE" horizontal={false} />
                     <XAxis type="number" tick={{ fontSize: 11, fill: '#7A6F5C' }} allowDecimals={false} />
-                    <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#7A6F5C' }} width={130} />
+                    <YAxis type="category" dataKey="name" tick={{ fontSize: 10, fill: '#7A6F5C' }} width={104} tickFormatter={truncLabel} />
                     <Tooltip contentStyle={{ background: '#FBF6E8', border: '1px solid #E7E0CE', borderRadius: 8, fontSize: 12 }} />
                     <Bar dataKey="value" fill={GOLD} radius={[0, 4, 4, 0]} />
                   </BarChart>
