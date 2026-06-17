@@ -51,7 +51,7 @@ export function planHasFeature(features: PlanFeatures, feature: PlanFeatureKey):
 }
 
 const FEATURE_LABELS: Record<PlanFeatureKey, string> = {
-  DAILY_MCQ: 'daily practice MCQs', MOCK_TEST: 'mock tests', AI_CHAT: 'the AI tutor',
+  DAILY_MCQ: 'daily practice sets', MOCK_TEST: 'mock tests', AI_CHAT: 'the AI tutor',
   AI_IMAGE: 'AI images', CURRENT_AFFAIRS: 'current affairs', CHAPTER_ACCESS: 'chapters',
   ESSAY_GRADING: 'essay grading', MULTI_EXAM: 'multiple exams', PYQ_ACCESS: 'previous-year papers',
   REVISION: 'revision', ADVANCED_ANALYTICS: 'advanced analytics', DOWNLOAD_NOTES: 'downloads',

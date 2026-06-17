@@ -14,7 +14,7 @@ declare global { interface Window { Razorpay: new (options: Record<string, unkno
 type BillingPeriod = 'monthly' | 'yearly';
 
 const SCHOLAR_FEATURES = [
-  '30 Daily MCQs',
+  '30 Daily Practice Sets (10 Q each)',
   '5 Mock Tests / month',
   '8 Chapters / day (no credits)',
   'AI Tutor — 30 messages / day',
@@ -26,7 +26,7 @@ const SCHOLAR_FEATURES = [
 
 const ASPIRANT_FEATURES = [
   'Everything in Starter',
-  '100 Daily MCQs · 25 Chapters/day',
+  '100 Daily Practice Sets · 25 Chapters/day',
   '15 Mock Tests / month',
   'AI Tutor — 100 messages / day',
   'Essay Grading — 10 / day',
@@ -35,7 +35,7 @@ const ASPIRANT_FEATURES = [
 
 const ACHIEVER_FEATURES = [
   'Everything in Pro',
-  'Unlimited MCQs & Chapters',
+  'Unlimited Practice Sets & Chapters',
   '40 Mock Tests / month',
   'Unlimited Essay Grading',
   'AI Images — 50 / day',
@@ -499,7 +499,7 @@ export default function UpgradePage() {
           <h3 className="font-serif text-lg font-bold text-ink-900">{nameOf('free', 'Free')}</h3>
           <p className="mt-2"><span className="font-serif text-3xl font-bold text-ink-900">₹0</span></p>
           <ul className="mt-4 flex-1 space-y-2 text-sm text-muted-600 dark:text-muted-400">
-            {featuresOf('free', ['10 Daily MCQs', '2 free chapters/day', 'Credits deducted per feature', 'Basic access']).map(f => (
+            {featuresOf('free', ['10 Daily Practice Sets', '2 free chapters/day', 'Credits deducted per feature', 'Basic access']).map(f => (
               <li key={f} className="flex items-start gap-2"><span className="text-muted-400">•</span>{f}</li>
             ))}
           </ul>

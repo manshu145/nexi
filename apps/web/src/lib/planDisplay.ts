@@ -21,11 +21,12 @@ export function planFeatureBullets(plan: Plan | undefined, lang: 'en' | 'hi'): s
   const unlimited = (n: number) => !Number.isFinite(n) || n < 0;
   const bullets: string[] = [];
 
-  // Daily MCQs
+  // Daily practice sets (each set = a 10-question quiz; cap counts sets, not
+  // individual questions).
   bullets.push(
     unlimited(f.dailyMCQ)
-      ? (hi ? 'असीमित डेली MCQ' : 'Unlimited Daily MCQs')
-      : (hi ? `${f.dailyMCQ} डेली MCQ` : `${f.dailyMCQ} Daily MCQs`),
+      ? (hi ? 'असीमित डेली प्रैक्टिस सेट' : 'Unlimited Daily Practice Sets')
+      : (hi ? `${f.dailyMCQ} डेली प्रैक्टिस सेट (10 प्रश्न/सेट)` : `${f.dailyMCQ} Daily Practice Sets (10 Q each)`),
   );
 
   // Chapters per day (+ whether credits are deducted)

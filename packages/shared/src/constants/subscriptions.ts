@@ -9,7 +9,7 @@
  */
 
 export interface PlanFeatures {
-  dailyMCQ: number;          // -1 = unlimited
+  dailyMCQ: number;          // daily PRACTICE SETS (each set = one ~10-question quiz). -1 = unlimited
   mockTests: number;         // mock tests per MONTH; -1 = unlimited
   aiTutor: boolean;
   currentAffairs: boolean;

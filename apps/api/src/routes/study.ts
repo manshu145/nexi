@@ -275,13 +275,17 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
       const user = await deps.users.get(principal.userId);
       const userLevel = effectiveLevel(user);
 
-      // Daily-MCQ cap (admin-editable dailyMCQ; -1 = unlimited). A quiz serves
-      // up to 10 MCQs, so it consumes 10 against the daily allowance. Free
-      // users hit the cap → structured upgrade prompt. Fail-open if the gate
-      // isn't wired.
+      // Daily practice-set cap (admin-editable `dailyMCQ`; -1 = unlimited).
+      // The cap counts PRACTICE SETS (quizzes), NOT individual questions: one
+      // quiz serves up to 10 MCQs and consumes exactly ONE unit against the
+      // daily allowance. (Previously each quiz charged 10, so a Starter plan
+      // configured for "10" was exhausted by a SINGLE quiz — the founder bug
+      // where paid users hit "Daily practice limit (10)" after one set.)
+      // Free users hit the cap → structured upgrade prompt. Fail-open if the
+      // gate isn't wired.
       let mcqCommit: () => Promise<void> = async () => {};
       if (planGate) {
-        const gate = await planGate.enforce(user, FeatureKey.DAILY_MCQ, language, { cost: 10 });
+        const gate = await planGate.enforce(user, FeatureKey.DAILY_MCQ, language, { cost: 1 });
         if (!gate.ok) return c.json(gate.body, gate.status);
         mcqCommit = gate.commit;
       }
@@ -293,7 +297,7 @@ export function makeStudyRoutes(deps: StudyRoutesDeps): Hono {
       const questions = await mcqPool.getChapterQuiz(
         exam, subject, chapter, principal.userId, language, 10, deps.aiEngine, deps.logger, chapterText, userLevel,
       );
-      // Count the served MCQs against the daily cap (only on success).
+      // Count this practice set (one unit) against the daily cap (only on success).
       await mcqCommit();
       return c.json({ questions, userLevel });
     } catch (err) {
