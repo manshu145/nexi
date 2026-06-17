@@ -78,9 +78,9 @@ const FEATURE_META: Record<FeatureKey, FeatureMeta> = {
   [FeatureKey.DAILY_MCQ]: { limitField: 'dailyMCQ', usage: 'mcq', window: 'day', labelEn: 'daily practice sets', labelHi: 'डेली प्रैक्टिस सेट' },
   [FeatureKey.CHAPTER_ACCESS]: { limitField: 'chaptersPerDay', usage: 'chapter', window: 'day', creditReason: 'read_chapter', labelEn: 'chapter reads', labelHi: 'चैप्टर' },
   [FeatureKey.MOCK_TEST]: { limitField: 'mockTests', usage: 'mockTest', window: 'day', creditReason: 'mock_test', labelEn: 'mock tests', labelHi: 'मॉक टेस्ट' },
-  [FeatureKey.AI_CHAT]: { limitField: 'aiTutorPerDay', usage: 'aiTutor', window: 'day', creditReason: 'ai_tutor_question', labelEn: 'AI tutor messages', labelHi: 'AI ट्यूटर संदेश' },
+  [FeatureKey.AI_CHAT]: { boolField: 'aiTutor', limitField: 'aiTutorPerDay', usage: 'aiTutor', window: 'day', creditReason: 'ai_tutor_question', labelEn: 'AI tutor messages', labelHi: 'AI ट्यूटर संदेश' },
   [FeatureKey.AI_IMAGE]: { limitField: 'imagesPerDay', usage: 'image', window: 'day', labelEn: 'AI images', labelHi: 'AI इमेज' },
-  [FeatureKey.ESSAY_GRADING]: { limitField: 'essaysPerDay', usage: 'essay', window: 'day', labelEn: 'essay gradings', labelHi: 'निबंध जाँच' },
+  [FeatureKey.ESSAY_GRADING]: { boolField: 'essayGrading', limitField: 'essaysPerDay', usage: 'essay', window: 'day', labelEn: 'essay gradings', labelHi: 'निबंध जाँच' },
   [FeatureKey.MULTI_EXAM]: { limitField: 'maxExams', labelEn: 'exams', labelHi: 'परीक्षाएँ' },
   [FeatureKey.PYQ_ACCESS]: { boolField: 'pyqAccess', labelEn: 'previous-year question papers', labelHi: 'पिछले वर्ष के प्रश्नपत्र' },
   [FeatureKey.REVISION]: { boolField: 'revisionAccess', labelEn: 'revision', labelHi: 'रिवीज़न' },
@@ -171,6 +171,8 @@ export class PlanGate {
     const meta = FEATURE_META[feature];
     if (meta.alwaysAllowed) return 'unlimited';
     const { features } = await this.resolve(user);
+    // Master on/off switch off → the feature is not included at all.
+    if (meta.boolField && !boolField(features, meta.boolField)) return 0;
     if (meta.boolField && !meta.limitField) return boolField(features, meta.boolField) ? 'unlimited' : 0;
     if (meta.limitField) {
       const v = numField(features, meta.limitField, 0);
@@ -184,6 +186,8 @@ export class PlanGate {
     const meta = FEATURE_META[feature];
     if (meta.alwaysAllowed) return true;
     const { features } = await this.resolve(user);
+    // Master on/off switch off → no access regardless of any numeric cap.
+    if (meta.boolField && !boolField(features, meta.boolField)) return false;
     if (meta.boolField && !meta.limitField) return boolField(features, meta.boolField);
     if (meta.limitField) return numField(features, meta.limitField, 0) !== 0;
     return true;
@@ -202,9 +206,17 @@ export class PlanGate {
     if (meta.alwaysAllowed) return ALLOW_NOOP;
     const { planId, features, deduct } = await this.resolve(user);
 
-    // Pure boolean access (PYQ, revision, current affairs).
+    // Master on/off switch: if the feature carries a boolean access flag and
+    // it's turned OFF for this plan, block it regardless of any numeric
+    // allowance. This makes the admin matrix checkboxes (AI Tutor, Essay
+    // Grade, Current Affairs, PYQ, Revision) actually take effect.
+    if (meta.boolField && !boolField(features, meta.boolField)) {
+      return this.blockBoolean(feature, planId, lang);
+    }
+
+    // Pure boolean access (PYQ, revision, current affairs) — validated above.
     if (meta.boolField && !meta.limitField) {
-      return boolField(features, meta.boolField) ? ALLOW_NOOP : this.blockBoolean(feature, planId, lang);
+      return ALLOW_NOOP;
     }
 
     if (!meta.limitField) return ALLOW_NOOP;
