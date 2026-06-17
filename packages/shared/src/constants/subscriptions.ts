@@ -72,7 +72,7 @@ export const PLANS: Readonly<Record<PlanId, PlanConfig>> = {
     features: {
       dailyMCQ: 10,
       mockTests: 1,            // per day
-      aiTutor: false,          // gated by credits, not a flat allowance
+      aiTutor: true,           // included; Free pays per message via credits (aiTutorPerDay = 0 = no flat allowance)
       currentAffairs: true,
       essayGrading: true,      // 1/day (see essaysPerDay)
       chaptersPerDay: 2,
