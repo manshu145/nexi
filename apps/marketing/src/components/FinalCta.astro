@@ -1,4 +1,7 @@
 ---
+import { EXAMS } from '~/data/exams';
+
+const examCount = EXAMS.length;
 ---
 
 <section class="border-t border-line bg-paper-50/70">
@@ -8,7 +11,7 @@
       Start studying today.
     </h2>
     <p class="mx-auto mt-4 max-w-xl text-lg leading-relaxed text-ink-800">
-      63+ exams. AI-powered personalized learning. Hindi + English.
+      {examCount}+ exams. AI-powered personalized learning. Hindi + English.
       Completely free to start. No credit card needed.
     </p>
 
