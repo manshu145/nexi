@@ -26,8 +26,12 @@ import type { Logger } from '../logger.js';
 
 export interface ReelAd {
   id: string;
-  /** Banner/cover image shown on the ad card. */
+  /** 'image' (default) or 'video' creative. */
+  mediaType: 'image' | 'video';
+  /** Image creative source, OR the poster/thumbnail for a video creative. */
   imageUrl: string;
+  /** Hosted (http/https) video URL — required when mediaType === 'video'. */
+  videoUrl?: string;
   /** Headline / main line of the ad. */
   headline: string;
   /** Optional supporting line under the headline. */
@@ -55,7 +59,9 @@ export const DEFAULT_ADS_CONFIG: AdsConfig = { enabled: false, everyNReels: 5 };
 
 /** Fields accepted from the admin when creating/updating a creative. */
 export interface ReelAdInput {
+  mediaType?: 'image' | 'video';
   imageUrl?: string;
+  videoUrl?: string;
   headline?: string;
   subtext?: string;
   ctaText?: string;
@@ -128,7 +134,10 @@ function normalizeConfig(raw: Partial<AdsConfig> | null | undefined): AdsConfig 
 /** Build a sanitised patch of editable creative fields from raw admin input. */
 function sanitizeAdPatch(input: ReelAdInput): Partial<Omit<ReelAd, 'id' | 'createdAt'>> {
   const out: Partial<Omit<ReelAd, 'id' | 'createdAt'>> = {};
+  if (input.mediaType === 'image' || input.mediaType === 'video') out.mediaType = input.mediaType;
   if (typeof input.imageUrl === 'string' && isValidImageSrc(input.imageUrl)) out.imageUrl = input.imageUrl.trim();
+  // Video must be a hosted URL (data-URLs would blow past Firestore's 1MB cap).
+  if (typeof input.videoUrl === 'string' && isHttpUrl(input.videoUrl)) out.videoUrl = input.videoUrl.trim();
   if (typeof input.headline === 'string' && input.headline.trim()) out.headline = input.headline.trim().slice(0, 140);
   if (typeof input.subtext === 'string') out.subtext = input.subtext.trim().slice(0, 200);
   if (typeof input.ctaText === 'string' && input.ctaText.trim()) out.ctaText = input.ctaText.trim().slice(0, 40);
@@ -140,14 +149,21 @@ function sanitizeAdPatch(input: ReelAdInput): Partial<Omit<ReelAd, 'id' | 'creat
 /** Validate a fully-specified creative for creation. Throws on missing fields. */
 function buildNewAd(id: string, input: ReelAdInput): ReelAd {
   const patch = sanitizeAdPatch(input);
-  if (!patch.imageUrl) throw new Error('imageUrl must be a valid http(s) URL or uploaded image');
+  const mediaType: 'image' | 'video' = patch.mediaType === 'video' ? 'video' : 'image';
+  if (mediaType === 'video') {
+    if (!patch.videoUrl) throw new Error('videoUrl must be a valid http(s) URL for a video creative');
+  } else if (!patch.imageUrl) {
+    throw new Error('imageUrl must be a valid http(s) URL or uploaded image');
+  }
   if (!patch.headline) throw new Error('headline is required');
   if (!patch.ctaText) throw new Error('ctaText is required');
   if (!patch.targetUrl) throw new Error('targetUrl must be a valid http(s) URL');
   const now = new Date().toISOString();
   return {
     id,
-    imageUrl: patch.imageUrl,
+    mediaType,
+    imageUrl: patch.imageUrl ?? '',
+    ...(patch.videoUrl ? { videoUrl: patch.videoUrl } : {}),
     headline: patch.headline,
     ...(patch.subtext ? { subtext: patch.subtext } : {}),
     ctaText: patch.ctaText,
