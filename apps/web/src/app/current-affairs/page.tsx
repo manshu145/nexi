@@ -1,9 +1,9 @@
 'use client';
-import { useEffect, useState, useRef, useCallback, type ReactNode } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useAuth } from '~/lib/auth-context';
-import { api, type CurrentAffairsItem, type CAStateOption } from '~/lib/api';
+import { api, type CurrentAffairsItem, type CAStateOption, type ReelAd, type ReelAdsFeedPayload } from '~/lib/api';
 import { Logo } from '~/components/Logo';
 import { Skeleton } from '~/components/Skeleton';
 import { AILoader } from '~/components/ui/AILoader';
@@ -36,6 +36,7 @@ interface FeedCache {
   userBookmarks: string[];
   likeCounts: Record<string, number>;
   isFromYesterday: boolean;
+  ads?: ReelAdsFeedPayload | null;
   ts: number;
 }
 const FEED_CACHE_TTL_MS = 15 * 60 * 1000;
@@ -99,6 +100,7 @@ export default function CurrentAffairsShortsPage() {
   const [userBookmarks, setUserBookmarks] = useState<Set<string>>(new Set());
   const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
   const [isFromYesterday, setIsFromYesterday] = useState(false);
+  const [ads, setAds] = useState<ReelAdsFeedPayload | null>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
@@ -134,6 +136,7 @@ export default function CurrentAffairsShortsPage() {
       setUserBookmarks(new Set(cached.userBookmarks));
       setLikeCounts(cached.likeCounts);
       setIsFromYesterday(cached.isFromYesterday);
+      setAds(cached.ads ?? null);
       setPageLoading(false);
     } else {
       setPageLoading(true);
@@ -155,7 +158,9 @@ export default function CurrentAffairsShortsPage() {
         // PR-34b (audit #36): drop the `as any` cast — the field is now
         // typed on CurrentAffairsResponse so the optional read is safe.
         setIsFromYesterday(fromYesterday);
-        writeFeedCache(cacheKey, { items: res.items, userLikes: likes, userBookmarks: bookmarks, likeCounts: counts, isFromYesterday: fromYesterday });
+        const adsPayload = res.ads ?? null;
+        setAds(adsPayload);
+        writeFeedCache(cacheKey, { items: res.items, userLikes: likes, userBookmarks: bookmarks, likeCounts: counts, isFromYesterday: fromYesterday, ads: adsPayload });
       } catch (e) {
         // Keep showing cached content on a refresh failure; only surface the
         // error when we had nothing to show.
@@ -166,7 +171,31 @@ export default function CurrentAffairsShortsPage() {
     return () => { cancelled = true; };
   }, [user, activeState]);
 
-  const filtered = activeTab === 'all' ? items : items.filter(i => i.category === activeTab);
+  // Build the rendered feed: news cards with sponsored ad cards injected
+  // after every N news reels (admin-configurable 3..8). Ads cycle through the
+  // active creatives. When ads are disabled / none active, this is just the
+  // category-filtered news list.
+  type FeedEntry = { kind: 'news'; item: CurrentAffairsItem } | { kind: 'ad'; ad: ReelAd };
+  const feedEntries = useMemo<FeedEntry[]>(() => {
+    const news = activeTab === 'all' ? items : items.filter(i => i.category === activeTab);
+    const entries: FeedEntry[] = news.map(item => ({ kind: 'news', item }));
+    if (!ads || !ads.enabled || ads.items.length === 0) return entries;
+    const n = Math.min(8, Math.max(3, ads.everyNReels || 5));
+    const out: FeedEntry[] = [];
+    let adIdx = 0;
+    for (let i = 0; i < entries.length; i++) {
+      out.push(entries[i]!);
+      // Insert an ad after every N news cards, but never as the trailing card.
+      if ((i + 1) % n === 0 && i + 1 < entries.length) {
+        out.push({ kind: 'ad', ad: ads.items[adIdx % ads.items.length]! });
+        adIdx++;
+      }
+    }
+    return out;
+  }, [items, activeTab, ads]);
+
+  const activeEntry = feedEntries[currentIdx];
+  const activeNews = activeEntry?.kind === 'news' ? activeEntry.item : null;
 
   /**
    * Derive currentIdx from the scroll container's scrollTop. Native
@@ -186,18 +215,18 @@ export default function CurrentAffairsShortsPage() {
       const el = scrollerRef.current;
       if (!el) return;
       const idx = Math.round(el.scrollTop / Math.max(1, el.clientHeight));
-      setCurrentIdx(prev => (idx !== prev && idx >= 0 && idx < filtered.length) ? idx : prev);
+      setCurrentIdx(prev => (idx !== prev && idx >= 0 && idx < feedEntries.length) ? idx : prev);
     });
-  }, [filtered.length]);
+  }, [feedEntries.length]);
 
   // Programmatic navigation (keyboard, dot click, etc) — uses native
   // smooth scroll so it feels identical to a swipe.
   const scrollToIndex = useCallback((idx: number) => {
     const el = scrollerRef.current;
     if (!el) return;
-    const clamped = Math.max(0, Math.min(filtered.length - 1, idx));
+    const clamped = Math.max(0, Math.min(feedEntries.length - 1, idx));
     el.scrollTo({ top: clamped * el.clientHeight, behavior: 'smooth' });
-  }, [filtered.length]);
+  }, [feedEntries.length]);
 
   // Keyboard nav (desktop). Mobile users swipe — handled natively.
   useEffect(() => {
@@ -358,7 +387,7 @@ export default function CurrentAffairsShortsPage() {
       </div>
 
       {/* Reels container */}
-      {filtered.length === 0 ? (
+      {feedEntries.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center text-center px-6 animate-fadeIn">
           <div className="w-16 h-16 rounded-2xl bg-paper-300 flex items-center justify-center">
             <svg width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" className="text-muted-500"><path d="M19 20H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1m2 13a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2z"/></svg>
@@ -366,8 +395,8 @@ export default function CurrentAffairsShortsPage() {
           <p className="mt-4 font-serif text-xl font-semibold text-ink-900">{getLang() === 'hi' ? 'अभी कोई खबर नहीं' : 'No news yet'}</p>
           <p className="mt-2 text-sm text-muted-500 max-w-xs">
             {getLang() === 'hi'
-              ? 'हिंदी अनुवाद तैयार हो रहा है — खबरें हर 30 मिनट में अपडेट होती हैं। थोड़ी देर में फिर देखें, या ऊपर अंग्रेज़ी पर स्विच करें।'
-              : 'Refreshes every 30 minutes. Check back soon!'}
+              ? 'हिंदी अनुवाद तैयार हो रहा है — खबरें हर 15 मिनट में अपडेट होती हैं। थोड़ी देर में फिर देखें, या ऊपर अंग्रेज़ी पर स्विच करें।'
+              : 'Refreshes every 15 minutes. Check back soon!'}
           </p>
         </div>
       ) : (
@@ -386,32 +415,35 @@ export default function CurrentAffairsShortsPage() {
               style={{ scrollSnapType: 'y mandatory', WebkitOverflowScrolling: 'touch' }}
               aria-label="News reel"
             >
-              {filtered.map((item, idx) => {
+              {feedEntries.map((entry, idx) => {
                 // Render-window: keep current ±2 neighbours mounted for
                 // buttery-smooth fast swiping. Items further away render
                 // as transparent placeholders that hold the snap height.
                 const inWindow = Math.abs(idx - currentIdx) <= 2;
+                const key = entry.kind === 'ad' ? `ad-${entry.ad.id}-${idx}` : entry.item.id;
                 return (
                   <div
-                    key={item.id}
+                    key={key}
                     className="h-full w-full"
                     style={{ scrollSnapAlign: 'start', scrollSnapStop: 'always' }}
                   >
-                    {inWindow ? (
-                      <ShortCard
-                        item={item}
-                        isActive={idx === currentIdx}
-                        liked={userLikes.has(item.id)}
-                        bookmarked={userBookmarks.has(item.id)}
-                        likeCount={likeCounts[item.id] ?? 0}
-                        onLike={() => handleLike(item.id)}
-                        onBookmark={() => handleBookmark(item.id)}
-                        onShare={() => handleShare(item)}
-                        onTap={() => router.push(`/current-affairs/${item.id}`)}
-                        onAskNexi={() => router.push(`/chat?topic=${encodeURIComponent(item.headline)}`)}
-                      />
-                    ) : (
+                    {!inWindow ? (
                       <div className="h-full w-full" aria-hidden />
+                    ) : entry.kind === 'ad' ? (
+                      <AdCard ad={entry.ad} isActive={idx === currentIdx} />
+                    ) : (
+                      <ShortCard
+                        item={entry.item}
+                        isActive={idx === currentIdx}
+                        liked={userLikes.has(entry.item.id)}
+                        bookmarked={userBookmarks.has(entry.item.id)}
+                        likeCount={likeCounts[entry.item.id] ?? 0}
+                        onLike={() => handleLike(entry.item.id)}
+                        onBookmark={() => handleBookmark(entry.item.id)}
+                        onShare={() => handleShare(entry.item)}
+                        onTap={() => router.push(`/current-affairs/${entry.item.id}`)}
+                        onAskNexi={() => router.push(`/chat?topic=${encodeURIComponent(entry.item.headline)}`)}
+                      />
                     )}
                   </div>
                 );
@@ -420,12 +452,12 @@ export default function CurrentAffairsShortsPage() {
 
             {/* Desktop sidebar: action buttons */}
             <div className="hidden lg:flex flex-col items-center justify-center gap-6 pl-6 pr-4">
-              {filtered[currentIdx] && (
+              {activeNews && (
                 <>
-                  <ActionBtn icon={<IconHeart filled={userLikes.has(filtered[currentIdx]!.id)} />} label={String(likeCounts[filtered[currentIdx]!.id] || '')} active={userLikes.has(filtered[currentIdx]!.id)} onClick={() => handleLike(filtered[currentIdx]!.id)} />
-                  <ActionBtn icon={<IconBookmark filled={userBookmarks.has(filtered[currentIdx]!.id)} />} label={t('save')} active={userBookmarks.has(filtered[currentIdx]!.id)} onClick={() => handleBookmark(filtered[currentIdx]!.id)} />
-                  <ActionBtn icon={<IconShare />} label={t('share')} onClick={() => handleShare(filtered[currentIdx]!)} />
-                  <ActionBtn icon={<IconChat />} label={t('askAI')} onClick={() => router.push(`/chat?topic=${encodeURIComponent(filtered[currentIdx]!.headline)}`)} />
+                  <ActionBtn icon={<IconHeart filled={userLikes.has(activeNews.id)} />} label={String(likeCounts[activeNews.id] || '')} active={userLikes.has(activeNews.id)} onClick={() => handleLike(activeNews.id)} />
+                  <ActionBtn icon={<IconBookmark filled={userBookmarks.has(activeNews.id)} />} label={t('save')} active={userBookmarks.has(activeNews.id)} onClick={() => handleBookmark(activeNews.id)} />
+                  <ActionBtn icon={<IconShare />} label={t('share')} onClick={() => handleShare(activeNews)} />
+                  <ActionBtn icon={<IconChat />} label={t('askAI')} onClick={() => router.push(`/chat?topic=${encodeURIComponent(activeNews.headline)}`)} />
                 </>
               )}
             </div>
@@ -434,19 +466,19 @@ export default function CurrentAffairsShortsPage() {
           {/* Mobile progress indicator: vertical line on the right edge,
               like Instagram's reel position bar. Cleaner than the dot
               cluster pre-PR-39 and doesn't overlap action buttons. */}
-          {filtered.length > 1 && (
+          {feedEntries.length > 1 && (
             <div className="absolute left-1.5 top-1/2 -translate-y-1/2 z-10 lg:hidden">
               <div className="h-32 w-1 rounded-full bg-muted-400/30 overflow-hidden">
                 <div
                   className="w-full bg-ember-500 rounded-full transition-all duration-300 ease-out"
                   style={{
-                    height: `${Math.max(10, 100 / filtered.length)}%`,
-                    transform: `translateY(${currentIdx * (100 / Math.max(1, filtered.length - 1)) * ((filtered.length - 1) / Math.max(1, filtered.length))}%)`,
+                    height: `${Math.max(10, 100 / feedEntries.length)}%`,
+                    transform: `translateY(${currentIdx * (100 / Math.max(1, feedEntries.length - 1)) * ((feedEntries.length - 1) / Math.max(1, feedEntries.length))}%)`,
                   }}
                 />
               </div>
               <p className="mt-1.5 text-center text-[9px] font-mono text-muted-500">
-                {currentIdx + 1}/{filtered.length}
+                {currentIdx + 1}/{feedEntries.length}
               </p>
             </div>
           )}
@@ -460,7 +492,7 @@ export default function CurrentAffairsShortsPage() {
       )}
 
       {/* Sticky mobile bottom quiz bar — positioned above BottomNav (h-14 + safe-area) */}
-      {filtered.length > 0 && (
+      {feedEntries.length > 0 && (
         <div className="fixed bottom-[calc(3.5rem+env(safe-area-inset-bottom))] left-0 right-0 z-30 px-4 pb-2 pt-3 bg-gradient-to-t from-paper-50 via-paper-50/95 to-transparent lg:hidden animate-slideUp">
           <button
             onClick={() => router.push('/current-affairs/quiz')}
@@ -482,6 +514,55 @@ function ActionBtn({ icon, label, active, onClick }: { icon: ReactNode; label: s
       <span className={`flex h-11 w-11 items-center justify-center rounded-full border transition-all duration-200 ${active ? 'bg-ember-500/10 border-ember-500/40 text-ember-600 scale-105' : 'bg-paper-50 border-line text-ink-700 group-hover:bg-paper-200 group-hover:scale-105'}`}>{icon}</span>
       <span className="text-[11px] text-muted-500 group-hover:text-ink-900 font-medium transition-colors">{label}</span>
     </button>
+  );
+}
+
+/* ─── Sponsored Ad Card (injected every N reels, admin-configurable) ─── */
+function AdCard({ ad, isActive }: { ad: ReelAd; isActive: boolean }) {
+  const lang = getLang();
+  const [imgError, setImgError] = useState(false);
+  const open = () => {
+    try { track('reel_ad_click', { id: ad.id }); } catch { /* analytics best-effort */ }
+    if (typeof window !== 'undefined') window.open(ad.targetUrl, '_blank', 'noopener,noreferrer');
+  };
+  return (
+    <div className="h-full w-full flex items-center justify-center px-3 py-2 lg:px-0 lg:py-3">
+      <div
+        className={`relative w-full h-full rounded-2xl lg:rounded-3xl overflow-hidden shadow-xl border cursor-pointer bg-paper-50 transition-all duration-300 ease-out ${
+          isActive ? 'scale-100 opacity-100 border-ember-500/40 shadow-xl' : 'scale-[0.94] opacity-20 border-transparent shadow-none'
+        }`}
+        onClick={open}
+        role="link"
+        aria-label={ad.headline}
+      >
+        {/* Image */}
+        <div className="relative h-[45%] min-h-[160px] max-h-[260px] overflow-hidden bg-paper-200">
+          {!imgError ? (
+            <img src={ad.imageUrl} alt={ad.headline} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 ease-out" style={{ transform: isActive ? 'scale(1)' : 'scale(1.1)' }} loading="lazy" onError={() => setImgError(true)} />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-paper-200 to-paper-300"><span className="text-3xl">📣</span></div>
+          )}
+          <span className="absolute top-3 left-3 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-ink-900/80 text-paper-50 backdrop-blur-sm shadow-sm">
+            {lang === 'hi' ? 'विज्ञापन' : 'Sponsored'}
+          </span>
+        </div>
+        {/* Body */}
+        <div className="flex flex-col px-5 pt-4 pb-5 h-[55%] overflow-hidden">
+          <h2 className="font-serif text-lg lg:text-xl font-bold leading-snug text-ink-900 line-clamp-3">{ad.headline}</h2>
+          {ad.subtext && <p className="mt-2.5 text-sm text-ink-700 leading-relaxed line-clamp-4">{ad.subtext}</p>}
+          <div className="mt-auto pt-4">
+            <button
+              onClick={(e) => { e.stopPropagation(); open(); }}
+              className="w-full rounded-xl bg-ember-500 px-4 py-3 text-sm font-bold text-paper-50 shadow-lg hover:bg-ember-600 transition-all duration-150 active:scale-[0.97] flex items-center justify-center gap-2"
+            >
+              {ad.ctaText}
+              <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </button>
+            <p className="mt-2 text-center text-[10px] text-muted-400">{lang === 'hi' ? 'विज्ञापन · Nexigrate' : 'Advertisement · Nexigrate'}</p>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

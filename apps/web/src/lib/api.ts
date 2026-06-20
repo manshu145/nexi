@@ -663,6 +663,32 @@ export const api = {
     }>;
   },
 
+  // ─── Admin: Reel Ads (Current Affairs sponsored cards) ───────────────
+  async adminGetReelAds() {
+    return (await authedFetch('/v1/admin/reel-ads')).json() as Promise<{ config: ReelAdsConfig; ads: ReelAd[] }>;
+  },
+  async adminUpdateReelAdsConfig(patch: Partial<ReelAdsConfig>) {
+    return (await authedFetch('/v1/admin/reel-ads/config', {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    })).json() as Promise<{ success: boolean; config: ReelAdsConfig }>;
+  },
+  async adminCreateReelAd(input: Partial<ReelAd>) {
+    return (await authedFetch('/v1/admin/reel-ads', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })).json() as Promise<{ success: boolean; ad: ReelAd }>;
+  },
+  async adminUpdateReelAd(id: string, patch: Partial<ReelAd>) {
+    return (await authedFetch(`/v1/admin/reel-ads/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    })).json() as Promise<{ success: boolean; ad: ReelAd }>;
+  },
+  async adminDeleteReelAd(id: string) {
+    return (await authedFetch(`/v1/admin/reel-ads/${id}`, { method: 'DELETE' })).json() as Promise<{ success: boolean }>;
+  },
+
   // ─── Admin: AI Providers (PR-29) ─────────────────────────────────────
   // Replaces the old fake "API Config" page. Each provider in the
   // registry has its own per-doc Firestore config; the admin can save
@@ -747,7 +773,10 @@ export const api = {
 
 export interface CurrentAffairsItem { id: string; headline: string; body: string; bullets?: string[]; category: string; sources: string[]; summary: string; factChecked: boolean; date: string; publishedAt: string; imageUrl?: string; state?: string; }
 export interface LeaderboardEntry { userId: string; userName: string; score: number; timeTaken: number; date: string; }
-export interface CurrentAffairsResponse { date: string; items: CurrentAffairsItem[]; yesterdayWinner: LeaderboardEntry | null; userLikes?: string[]; userBookmarks?: string[]; likeCounts?: Record<string, number>; isFromYesterday?: boolean; }
+export interface CurrentAffairsResponse { date: string; items: CurrentAffairsItem[]; yesterdayWinner: LeaderboardEntry | null; userLikes?: string[]; userBookmarks?: string[]; likeCounts?: Record<string, number>; isFromYesterday?: boolean; ads?: ReelAdsFeedPayload; }
+export interface ReelAd { id: string; imageUrl: string; headline: string; subtext?: string; ctaText: string; targetUrl: string; active: boolean; createdAt: string; updatedAt: string; }
+export interface ReelAdsConfig { enabled: boolean; everyNReels: number; }
+export interface ReelAdsFeedPayload { enabled: boolean; everyNReels: number; items: ReelAd[]; }
 export interface CAStateOption { slug: string; name: string; nameHi: string; isUT: boolean; }
 export interface QuizSubmitResult { score: number; correct: number; total: number; timeTaken: number; rank: number; }
 export interface LeaderboardResponse { date: string; leaderboard: LeaderboardEntry[]; yesterdayWinner: LeaderboardEntry | null; }

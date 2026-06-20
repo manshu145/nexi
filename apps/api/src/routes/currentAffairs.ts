@@ -6,6 +6,7 @@ import type { Logger } from '../logger.js';
 import type { UserStore } from '../lib/userStore.js';
 import type { AIEngine } from '../lib/aiEngine.js';
 import type { CurrentAffairsStore } from '../lib/currentAffairsStore.js';
+import type { AdsStore, ReelAd } from '../lib/adsStore.js';
 import type { Env } from '../env.js';
 import { ingestCurrentAffairs } from '../lib/rssIngestion.js';
 import { INDIAN_STATES } from '@nexigrate/shared';
@@ -76,6 +77,8 @@ export interface CurrentAffairsRoutesDeps {
   users: UserStore;
   aiEngine: AIEngine;
   currentAffairs: CurrentAffairsStore;
+  /** Reel ads store — optional so older wiring/tests still construct routes. */
+  ads?: AdsStore;
   env: Env;
   logger: Logger;
 }
@@ -189,7 +192,18 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
         ]);
       } catch (e) { deps.logger.warn('ca.social_fetch_error', { error: String(e) }); }
 
-      return c.json({ date: today, items, yesterdayWinner: winner, isFromYesterday: items.some((it: any) => it._isFromYesterday), userLikes, userBookmarks, likeCounts });
+      // Reel ads: active creatives + placement frequency, served to the feed
+      // so it can inject an ad card after every N news reels. Disabled
+      // unless the admin turned ads on AND there's at least one active ad.
+      let ads: { enabled: boolean; everyNReels: number; items: ReelAd[] } = { enabled: false, everyNReels: 5, items: [] };
+      if (deps.ads) {
+        try {
+          const [cfg, activeAds] = await Promise.all([deps.ads.getConfig(), deps.ads.listActiveAds()]);
+          ads = { enabled: cfg.enabled && activeAds.length > 0, everyNReels: cfg.everyNReels, items: activeAds };
+        } catch (e) { deps.logger.warn('ca.ads_fetch_error', { error: String(e) }); }
+      }
+
+      return c.json({ date: today, items, yesterdayWinner: winner, isFromYesterday: items.some((it: any) => it._isFromYesterday), userLikes, userBookmarks, likeCounts, ads });
     } catch (e) {
       if (e instanceof HTTPException) throw e;
       deps.logger.error('ca.route_error', { error: e instanceof Error ? e.message : String(e), stack: e instanceof Error ? e.stack : '' });
