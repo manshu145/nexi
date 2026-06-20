@@ -74,6 +74,28 @@ function quizFingerprint(items: any[]): string {
   return createHash('sha1').update(ids.join('|')).digest('hex').slice(0, 12);
 }
 
+/** IST calendar-day key (YYYY-MM-DD). */
+function istDateKey(d: Date = new Date()): string {
+  return new Date(d.getTime() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0]!;
+}
+
+/**
+ * The date key of the quiz that is currently "live" for EVERYONE.
+ *
+ * The daily quiz is generated once per day at ~12:00 IST. So from 12:00 IST
+ * it's today's quiz; before noon it's yesterday's (still the active quiz until
+ * today's noon generation). Because this returns the same key for every user
+ * at any given moment, the quiz is IDENTICAL for all of them → the leaderboard
+ * is a single fair competition (not a per-user/per-fingerprint quiz).
+ */
+function activeQuizDateKey(d: Date = new Date()): string {
+  const ist = new Date(d.getTime() + 5.5 * 60 * 60 * 1000);
+  if (ist.getUTCHours() < 12) {
+    return new Date(ist.getTime() - 24 * 60 * 60 * 1000).toISOString().split('T')[0]!;
+  }
+  return ist.toISOString().split('T')[0]!;
+}
+
 export interface CurrentAffairsRoutesDeps {
   users: UserStore;
   aiEngine: AIEngine;
@@ -221,39 +243,40 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
     }
   });
 
-  // GET /v1/current-affairs/quiz — daily quiz (up to 30 MCQs), always built
-  // from the LATEST ingested content via a content-fingerprint cache key.
+  // GET /v1/current-affairs/quiz — the ONE shared daily quiz (30 MCQs).
+  // Generated once a day (~12:00 IST) by the daily-quiz cron and identical for
+  // every user, so the leaderboard is a single fair competition. This route
+  // only generates on-demand as a fallback if the cron hasn't run yet.
   app.get('/quiz', async (c) => {
     try {
       requireAuth(c);
-      const today = new Date().toISOString().split('T')[0]!;
       const language = (c.req.query('lang') as 'en' | 'hi') || 'en';
-
-      // Build the quiz from ALL of today's deduplicated items so it reflects
-      // every headline currently available — not a stale morning snapshot.
-      const items = deduplicateItems(await deps.currentAffairs.getTodayItems(today));
-      if (items.length === 0) {
-        throw new HTTPException(404, { message: 'No current affairs available for today. Try again later.' });
-      }
-
-      // Fingerprint the current content set. When new content is ingested the
-      // fingerprint changes -> a fresh quiz is generated. While the content is
-      // unchanged the cached quiz is reused (no duplicate AI cost).
-      const fp = quizFingerprint(items);
-      const quizKey = `${today}${language === 'hi' ? '-hi' : ''}-${fp}`;
+      const quizDate = activeQuizDateKey();
+      const quizKey = language === 'hi' ? `${quizDate}-hi` : quizDate;
 
       let questions = await deps.currentAffairs.getDailyQuiz(quizKey);
       if (!questions) {
-        // Target 25-30 questions; scale down gracefully on sparse days so the
-        // AI isn't forced to pad from too few headlines.
+        // Fallback: cron hasn't generated yet (fresh deploy / first request of
+        // the cycle). Generate ONCE for this date so every later user gets the
+        // SAME stored quiz — never a per-user quiz.
+        const items = deduplicateItems(await deps.currentAffairs.getTodayItems(quizDate));
+        if (items.length === 0) {
+          throw new HTTPException(404, { message: "Today's quiz is being prepared. Please check back shortly." });
+        }
         const count = items.length >= 10 ? 30 : Math.min(30, Math.max(10, items.length * 3));
         const headlines = items.map(item => `[${item.category}] ${item.headline}: ${item.summary}`).join('\n');
         questions = await deps.aiEngine.generateCurrentAffairsQuiz(headlines, count, language);
         await deps.currentAffairs.saveDailyQuiz(quizKey, questions);
-        deps.logger.info('ca.quiz_generated', { date: today, language, fp, requested: count, count: questions.length });
+        // Mirror into the permanent, isolated archive (survives 24h content
+        // cleanup). Keyed by the plain quiz date; language slotted by `lang`.
+        deps.currentAffairs.archiveQuiz(quizDate, {
+          [language]: questions,
+          headlines: items.slice(0, 40).map((it: any) => it.headline).filter(Boolean),
+        } as { en?: typeof questions; hi?: typeof questions; headlines?: string[] }).catch(() => {});
+        deps.logger.info('ca.quiz_generated_ondemand', { quizDate, language, count: questions.length });
       }
 
-      return c.json({ date: today, questions, quizId: quizKey });
+      return c.json({ date: quizDate, questions, quizId: quizKey });
     } catch (e) {
       if (e instanceof HTTPException) throw e;
       deps.logger.error('ca.quiz_error', { error: e instanceof Error ? e.message : String(e), stack: e instanceof Error ? e.stack : '' });
@@ -267,30 +290,15 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
     const body = await c.req.json().catch(() => null) as { answers: number[]; timeTaken: number; lang?: string; quizId?: string } | null;
     if (!body?.answers || body.timeTaken == null) throw new HTTPException(400, { message: 'answers and timeTaken required' });
 
-    const today = new Date().toISOString().split('T')[0]!;
-    // PR-44: Also check yesterday in case user started quiz before midnight
-    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]!;
+    const quizDate = activeQuizDateKey();
     const lang = body.lang || 'en';
 
-    // Prefer the EXACT quiz version the user saw (quizId returned by GET /quiz).
-    // This keeps scoring correct even if newer content regenerated the quiz
-    // while the user was still answering.
+    // Prefer the EXACT quiz the user saw (quizId from GET /quiz). Else fall
+    // back to the active daily quiz for this date (then the other language).
     let questions = body.quizId ? await deps.currentAffairs.getDailyQuiz(body.quizId) : null;
-    // Backward-compat fallbacks for older clients / pre-fingerprint quizzes.
-    if (!questions) {
-      const quizKey = lang === 'hi' ? `${today}-hi` : today;
-      questions = await deps.currentAffairs.getDailyQuiz(quizKey);
-    }
-    if (!questions) {
-      // Fallback: try the other language variant
-      questions = await deps.currentAffairs.getDailyQuiz(lang === 'hi' ? today : `${today}-hi`);
-    }
-    if (!questions) {
-      // PR-44: try yesterday's quiz (midnight rollover edge case)
-      const yesterdayKey = lang === 'hi' ? `${yesterday}-hi` : yesterday;
-      questions = await deps.currentAffairs.getDailyQuiz(yesterdayKey);
-    }
-    if (!questions) throw new HTTPException(404, { message: 'No quiz available. The daily quiz may not have been generated yet — try again after news ingestion runs.' });
+    if (!questions) questions = await deps.currentAffairs.getDailyQuiz(lang === 'hi' ? `${quizDate}-hi` : quizDate);
+    if (!questions) questions = await deps.currentAffairs.getDailyQuiz(lang === 'hi' ? quizDate : `${quizDate}-hi`);
+    if (!questions) throw new HTTPException(404, { message: "No quiz available yet — today's quiz is still being prepared. Try again shortly." });
 
     // Score the answers
     let correct = 0;
@@ -304,7 +312,7 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
     const score = Math.round((correct / questions.length) * 100);
     const result = await deps.currentAffairs.submitQuizResult({
       userId: principal.userId,
-      date: today,
+      date: quizDate,
       score,
       total: questions.length,
       timeTaken: body.timeTaken,
@@ -318,10 +326,40 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
   // GET /v1/current-affairs/leaderboard — today's leaderboard
   app.get('/leaderboard', async (c) => {
     requireAuth(c);
-    const today = new Date().toISOString().split('T')[0]!;
-    const leaderboard = await deps.currentAffairs.getLeaderboard(today);
+    const quizDate = activeQuizDateKey();
+    const leaderboard = await deps.currentAffairs.getLeaderboard(quizDate);
     const winner = await deps.currentAffairs.getYesterdayWinner();
-    return c.json({ date: today, leaderboard, yesterdayWinner: winner });
+    return c.json({ date: quizDate, leaderboard, yesterdayWinner: winner });
+  });
+
+  // GET /v1/current-affairs/quiz/archive — list of past daily quizzes.
+  // Reads the ISOLATED `quizArchive` collection, which survives the 24h
+  // current-affairs content cleanup, so users can revisit old quizzes even
+  // after the source news/reels are gone. Registered before '/:id' so the
+  // 'quiz' segment is never captured as an article id.
+  app.get('/quiz/archive', async (c) => {
+    requireAuth(c);
+    const limit = Math.min(60, Math.max(1, Number(c.req.query('limit')) || 30));
+    const activeDate = activeQuizDateKey();
+    const all = await deps.currentAffairs.listQuizArchive(limit + 1);
+    // Hide the currently-live quiz from the archive — it's still playable on
+    // the leaderboard; the archive is for finished, review-only quizzes.
+    const quizzes = all.filter(q => q.date < activeDate).slice(0, limit);
+    return c.json({ quizzes });
+  });
+
+  // GET /v1/current-affairs/quiz/archive/:date — review a past quiz (full
+  // Q&A: questions, correct answers, explanations) + that day's winner.
+  // Read-only: attempting an archived quiz never affects the live leaderboard.
+  app.get('/quiz/archive/:date', async (c) => {
+    requireAuth(c);
+    const date = c.req.param('date');
+    const language = (c.req.query('lang') as 'en' | 'hi') || 'en';
+    const entry = await deps.currentAffairs.getArchivedQuiz(date);
+    if (!entry) throw new HTTPException(404, { message: 'Archived quiz not found' });
+    const questions = (language === 'hi' && entry.hi?.length) ? entry.hi : entry.en;
+    const winner = await deps.currentAffairs.getLeaderboard(date).then(lb => lb[0] ?? null).catch(() => null);
+    return c.json({ date: entry.date, generatedAt: entry.generatedAt, questions, headlines: entry.headlines, winner });
   });
 
   // GET /v1/current-affairs/bookmarks — user's bookmarked items

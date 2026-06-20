@@ -97,6 +97,7 @@ export default function CurrentAffairsQuizPage() {
       </div>
       {error && <div className="banner banner-error mt-4 w-full">{error}</div>}
       <button onClick={startQuiz} className="btn-primary mt-6 w-full">{t('startQuiz')}</button>
+      <button onClick={() => router.push('/current-affairs/quiz/archive')} className="btn-ghost mt-3 w-full">{t('viewArchive')}</button>
       <button onClick={() => router.back()} className="btn-ghost mt-3 w-full">{t('back')}</button>
     </main>
   );

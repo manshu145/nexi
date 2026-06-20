@@ -224,6 +224,115 @@ export async function runCurrentAffairsIngest(deps: CronJobDeps): Promise<Record
   return { ...result };
 }
 
+// ─── Daily Current-Affairs quiz (daily ~12:00 IST) ──────────────────────────
+
+/**
+ * Generate the ONE shared Current Affairs quiz for the day (30 MCQs, fact-
+ * checked) in English + Hindi, store it keyed by the IST date, and push a
+ * notification to ALL users that the quiz is live.
+ *
+ * Why once-a-day (founder plan): a single fixed daily quiz makes the
+ * leaderboard a fair competition (everyone answers the same questions), and
+ * generating once — instead of on every content change — means fewer AI calls,
+ * lower cost, and one well-verified set instead of many shaky ones.
+ */
+export async function runDailyQuizGenerate(deps: CronJobDeps): Promise<Record<string, unknown>> {
+  const { currentAffairs, aiEngine, users, push, logger } = deps;
+  logger.info('cron.daily_quiz_start');
+
+  const istKey = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0]!;
+
+  // Build headlines from today's current affairs (light dedup by headline).
+  const raw = await currentAffairs.getTodayItems(istKey).catch(() => [] as Awaited<ReturnType<typeof currentAffairs.getTodayItems>>);
+  const seen = new Set<string>();
+  const items = raw.filter((it) => {
+    const key = (it.headline || '').toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(w => w.length > 2).slice(0, 8).join(' ');
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  if (items.length === 0) {
+    logger.warn('cron.daily_quiz_no_content', { date: istKey });
+    return { generated: 0, reason: 'no content' };
+  }
+
+  const count = items.length >= 10 ? 30 : Math.min(30, Math.max(10, items.length * 3));
+  const headlines = items.map(it => `[${it.category}] ${it.headline}: ${it.summary}`).join('\n');
+
+  let generated = 0;
+  let enQuestions: Awaited<ReturnType<typeof aiEngine.generateCurrentAffairsQuiz>> | null = null;
+  let hiQuestions: Awaited<ReturnType<typeof aiEngine.generateCurrentAffairsQuiz>> | null = null;
+  try {
+    const en = await aiEngine.generateCurrentAffairsQuiz(headlines, count, 'en');
+    if (en?.length) { await currentAffairs.saveDailyQuiz(istKey, en); generated = en.length; enQuestions = en; }
+  } catch (err) {
+    logger.error('cron.daily_quiz_en_failed', { error: err instanceof Error ? err.message : String(err) });
+  }
+  try {
+    const hi = await aiEngine.generateCurrentAffairsQuiz(headlines, count, 'hi');
+    if (hi?.length) { await currentAffairs.saveDailyQuiz(`${istKey}-hi`, hi); hiQuestions = hi; }
+  } catch (err) {
+    logger.warn('cron.daily_quiz_hi_failed', { error: err instanceof Error ? err.message : String(err) });
+  }
+
+  if (generated === 0) {
+    logger.error('cron.daily_quiz_failed', { date: istKey });
+    return { generated: 0, reason: 'generation failed' };
+  }
+
+  // Persist a permanent, ISOLATED archive of the full Q&A (en+hi) + a
+  // headline snapshot. Lives in `quizArchive/{date}`, untouched by the 24h
+  // current-affairs content cleanup, so past quizzes stay reviewable forever.
+  try {
+    await currentAffairs.archiveQuiz(istKey, {
+      ...(enQuestions ? { en: enQuestions } : {}),
+      ...(hiQuestions ? { hi: hiQuestions } : {}),
+      headlines: items.slice(0, 40).map(it => it.headline).filter(Boolean),
+    });
+  } catch (err) {
+    logger.warn('cron.daily_quiz_archive_failed', { error: err instanceof Error ? err.message : String(err) });
+  }
+
+  // Push to ALL users that the quiz is live (en/hi split by token language).
+  let pushed = 0;
+  if (push) {
+    try {
+      const all = (await users.listAll?.()) ?? [];
+      const enTokens: string[] = [];
+      const hiTokens: string[] = [];
+      for (const u of all) {
+        const toks = (u as { fcmTokens?: Array<{ token: string; lang?: string }> }).fcmTokens;
+        if (!Array.isArray(toks)) continue;
+        for (const t of toks) {
+          if (!t?.token) continue;
+          if (t.lang === 'hi') hiTokens.push(t.token); else enTokens.push(t.token);
+        }
+      }
+      if (enTokens.length) {
+        const r = await push.sendToTokens(enTokens, {
+          title: "📰 Today's Current Affairs Quiz is live!",
+          body: 'Fresh 30-question quiz + leaderboard. Test yourself now!',
+          link: 'https://app.nexigrate.com/current-affairs/quiz',
+        });
+        pushed += r.successCount;
+      }
+      if (hiTokens.length) {
+        const r = await push.sendToTokens(hiTokens, {
+          title: '📰 आज का करंट अफेयर्स क्विज़ आ गया!',
+          body: '30 नए सवाल + लीडरबोर्ड। अभी खेलकर टॉप करें!',
+          link: 'https://app.nexigrate.com/current-affairs/quiz',
+        });
+        pushed += r.successCount;
+      }
+    } catch (err) {
+      logger.warn('cron.daily_quiz_push_failed', { error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  logger.info('cron.daily_quiz_done', { date: istKey, generated, pushed });
+  return { date: istKey, questions: generated, pushed };
+}
+
 // ─── Weekly stale-content refresh (Sun ~04:00 IST) ──────────────────────────
 
 /**
