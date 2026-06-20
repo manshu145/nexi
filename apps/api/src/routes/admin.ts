@@ -915,9 +915,9 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
   // ━━━ REEL ADS (Current Affairs sponsored cards) ━━━
   // GET /v1/admin/reel-ads — placement config + all creatives.
   app.get('/reel-ads', async (c) => {
-    if (!deps.ads) return c.json({ config: { enabled: false, everyNReels: 5 }, ads: [] });
-    const [config, ads] = await Promise.all([deps.ads.getConfig(), deps.ads.listAds()]);
-    return c.json({ config, ads });
+    if (!deps.ads) return c.json({ config: { enabled: false, everyNReels: 5 }, ads: [], stats: {} });
+    const [config, ads, stats] = await Promise.all([deps.ads.getConfig(), deps.ads.listAds(), deps.ads.getStats()]);
+    return c.json({ config, ads, stats });
   });
 
   // PATCH /v1/admin/reel-ads/config — { enabled?, everyNReels? }. The store

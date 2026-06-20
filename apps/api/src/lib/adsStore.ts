@@ -21,6 +21,7 @@
  */
 
 import type { Firestore } from 'firebase-admin/firestore';
+import { FieldValue } from 'firebase-admin/firestore';
 import type { Logger } from '../logger.js';
 
 export interface ReelAd {
@@ -62,6 +63,10 @@ export interface ReelAdInput {
   active?: boolean;
 }
 
+/** Per-ad performance counters. */
+export interface AdStats { impressions: number; clicks: number }
+export type AdEventType = 'impression' | 'click';
+
 export interface AdsStore {
   /** Master config (enabled + frequency). */
   getConfig(): Promise<AdsConfig>;
@@ -74,12 +79,19 @@ export interface AdsStore {
   createAd(input: ReelAdInput): Promise<ReelAd>;
   updateAd(id: string, patch: ReelAdInput): Promise<ReelAd>;
   deleteAd(id: string): Promise<void>;
+  /** Record an impression or click for an ad (fire-and-forget metrics). */
+  recordEvent(id: string, type: AdEventType): Promise<void>;
+  /** Per-ad impression/click counts, keyed by ad id (admin dashboard). */
+  getStats(): Promise<Record<string, AdStats>>;
 }
 
 const COL_ADS = 'reelAds';
+const COL_STATS = 'reelAdStats';
 const COL_CONFIG = 'platformConfig';
 const DOC_CONFIG = 'reelAdsConfig';
 const CACHE_TTL_MS = 60_000;
+/** Cap inline (data-URL) images so an ad doc stays well under Firestore's 1MB limit. */
+const MAX_DATA_URL_LEN = 900_000;
 
 // ---------- shared sanitisers ----------
 
@@ -92,6 +104,20 @@ function isHttpUrl(s: unknown): s is string {
   return typeof s === 'string' && /^https?:\/\/\S+$/i.test(s.trim());
 }
 
+/**
+ * Valid ad image source: either a hosted http(s) URL, or an inline base64
+ * data-URL (admin "upload" path — the client compresses the file to a small
+ * data-URL so we don't need a storage bucket). Data-URLs are size-capped to
+ * keep the ad doc under Firestore's 1MB limit.
+ */
+function isValidImageSrc(s: unknown): s is string {
+  if (typeof s !== 'string') return false;
+  const t = s.trim();
+  if (/^https?:\/\/\S+$/i.test(t)) return true;
+  if (/^data:image\/(png|jpe?g|webp|gif);base64,/i.test(t) && t.length <= MAX_DATA_URL_LEN) return true;
+  return false;
+}
+
 function normalizeConfig(raw: Partial<AdsConfig> | null | undefined): AdsConfig {
   return {
     enabled: typeof raw?.enabled === 'boolean' ? raw.enabled : DEFAULT_ADS_CONFIG.enabled,
@@ -102,7 +128,7 @@ function normalizeConfig(raw: Partial<AdsConfig> | null | undefined): AdsConfig 
 /** Build a sanitised patch of editable creative fields from raw admin input. */
 function sanitizeAdPatch(input: ReelAdInput): Partial<Omit<ReelAd, 'id' | 'createdAt'>> {
   const out: Partial<Omit<ReelAd, 'id' | 'createdAt'>> = {};
-  if (typeof input.imageUrl === 'string' && isHttpUrl(input.imageUrl)) out.imageUrl = input.imageUrl.trim();
+  if (typeof input.imageUrl === 'string' && isValidImageSrc(input.imageUrl)) out.imageUrl = input.imageUrl.trim();
   if (typeof input.headline === 'string' && input.headline.trim()) out.headline = input.headline.trim().slice(0, 140);
   if (typeof input.subtext === 'string') out.subtext = input.subtext.trim().slice(0, 200);
   if (typeof input.ctaText === 'string' && input.ctaText.trim()) out.ctaText = input.ctaText.trim().slice(0, 40);
@@ -114,7 +140,7 @@ function sanitizeAdPatch(input: ReelAdInput): Partial<Omit<ReelAd, 'id' | 'creat
 /** Validate a fully-specified creative for creation. Throws on missing fields. */
 function buildNewAd(id: string, input: ReelAdInput): ReelAd {
   const patch = sanitizeAdPatch(input);
-  if (!patch.imageUrl) throw new Error('imageUrl must be a valid http(s) URL');
+  if (!patch.imageUrl) throw new Error('imageUrl must be a valid http(s) URL or uploaded image');
   if (!patch.headline) throw new Error('headline is required');
   if (!patch.ctaText) throw new Error('ctaText is required');
   if (!patch.targetUrl) throw new Error('targetUrl must be a valid http(s) URL');
@@ -202,7 +228,31 @@ export class FirestoreAdsStore implements AdsStore {
 
   async deleteAd(id: string): Promise<void> {
     await this.db.collection(COL_ADS).doc(id).delete();
+    await this.db.collection(COL_STATS).doc(id).delete().catch(() => {});
     this.logger.info('ads.deleted', { id });
+  }
+
+  async recordEvent(id: string, type: AdEventType): Promise<void> {
+    const field = type === 'click' ? 'clicks' : 'impressions';
+    try {
+      await this.db.collection(COL_STATS).doc(id).set({ [field]: FieldValue.increment(1) }, { merge: true });
+    } catch (e) {
+      this.logger.warn('ads.event_failed', { id, type, error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
+  async getStats(): Promise<Record<string, AdStats>> {
+    const out: Record<string, AdStats> = {};
+    try {
+      const snap = await this.db.collection(COL_STATS).get();
+      for (const d of snap.docs) {
+        const data = d.data() as Partial<AdStats>;
+        out[d.id] = { impressions: Number(data.impressions) || 0, clicks: Number(data.clicks) || 0 };
+      }
+    } catch (e) {
+      this.logger.warn('ads.stats_read_failed', { error: e instanceof Error ? e.message : String(e) });
+    }
+    return out;
   }
 }
 
@@ -240,5 +290,17 @@ export class InMemoryAdsStore implements AdsStore {
     return next;
   }
 
-  async deleteAd(id: string) { this.ads.delete(id); }
+  async deleteAd(id: string) { this.ads.delete(id); this.stats.delete(id); }
+
+  private stats = new Map<string, AdStats>();
+  async recordEvent(id: string, type: AdEventType) {
+    const s = this.stats.get(id) ?? { impressions: 0, clicks: 0 };
+    if (type === 'click') s.clicks += 1; else s.impressions += 1;
+    this.stats.set(id, s);
+  }
+  async getStats() {
+    const out: Record<string, AdStats> = {};
+    for (const [id, s] of this.stats) out[id] = { ...s };
+    return out;
+  }
 }

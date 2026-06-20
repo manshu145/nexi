@@ -7,6 +7,7 @@ import type { UserStore } from '../lib/userStore.js';
 import type { AIEngine } from '../lib/aiEngine.js';
 import type { CurrentAffairsStore } from '../lib/currentAffairsStore.js';
 import type { AdsStore, ReelAd } from '../lib/adsStore.js';
+import { effectivePlanId } from '../lib/planGate.js';
 import type { Env } from '../env.js';
 import { ingestCurrentAffairs } from '../lib/rssIngestion.js';
 import { INDIAN_STATES } from '@nexigrate/shared';
@@ -199,7 +200,16 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
       if (deps.ads) {
         try {
           const [cfg, activeAds] = await Promise.all([deps.ads.getConfig(), deps.ads.listActiveAds()]);
-          ads = { enabled: cfg.enabled && activeAds.length > 0, everyNReels: cfg.everyNReels, items: activeAds };
+          let enabled = cfg.enabled && activeAds.length > 0;
+          if (enabled) {
+            // Ad-free for paid plans (matches the "ad-free study" pricing
+            // promise): only free / expired users see reel ads.
+            try {
+              const u = await deps.users.get(principal.userId);
+              if (effectivePlanId(u) !== 'free') enabled = false;
+            } catch { /* lookup error → fall back to config (show ads) */ }
+          }
+          ads = { enabled, everyNReels: cfg.everyNReels, items: enabled ? activeAds : [] };
         } catch (e) { deps.logger.warn('ca.ads_fetch_error', { error: String(e) }); }
       }
 
@@ -338,6 +348,19 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
       .filter((s) => live.has(s.slug))
       .map((s) => ({ slug: s.slug, name: s.name, nameHi: s.nameHi, isUT: s.isUT }));
     return c.json({ states });
+  });
+
+  // POST /v1/current-affairs/ads/:id/:event — record an ad impression/click.
+  // Fire-and-forget metrics; never blocks the client. Defined before '/:id'
+  // so the 'ads' segment isn't captured as an article id.
+  app.post('/ads/:id/:event', async (c) => {
+    requireAuth(c);
+    const id = c.req.param('id');
+    const event = c.req.param('event');
+    if (deps.ads && (event === 'impression' || event === 'click')) {
+      deps.ads.recordEvent(id, event).catch(() => {});
+    }
+    return c.json({ ok: true });
   });
 
   // GET /v1/current-affairs/:id — single item detail

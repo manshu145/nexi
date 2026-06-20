@@ -521,8 +521,17 @@ function ActionBtn({ icon, label, active, onClick }: { icon: ReactNode; label: s
 function AdCard({ ad, isActive }: { ad: ReelAd; isActive: boolean }) {
   const lang = getLang();
   const [imgError, setImgError] = useState(false);
+  const impressedRef = useRef(false);
+  // Count one impression the first time this ad becomes the active card.
+  useEffect(() => {
+    if (isActive && !impressedRef.current) {
+      impressedRef.current = true;
+      void api.trackReelAdEvent(ad.id, 'impression');
+    }
+  }, [isActive, ad.id]);
   const open = () => {
     try { track('reel_ad_click', { id: ad.id }); } catch { /* analytics best-effort */ }
+    void api.trackReelAdEvent(ad.id, 'click');
     if (typeof window !== 'undefined') window.open(ad.targetUrl, '_blank', 'noopener,noreferrer');
   };
   return (

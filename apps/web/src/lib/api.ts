@@ -294,6 +294,7 @@ export const api = {
   async getCurrentAffairsQuiz(lang: 'en' | 'hi' = 'en') { return (await authedFetch(`/v1/current-affairs/quiz?lang=${lang}`)).json() as Promise<{date:string; questions:GeneratedMCQ[]; quizId?:string}>; },
   async submitCurrentAffairsQuiz(answers: number[], timeTaken: number, quizId?: string) { const lang = getClientLocale(); return (await authedFetch('/v1/current-affairs/quiz/submit', { method: 'POST', body: JSON.stringify({ answers, timeTaken, lang, quizId }) })).json() as Promise<QuizSubmitResult>; },
   async getCurrentAffairsLeaderboard() { return (await authedFetch('/v1/current-affairs/leaderboard')).json() as Promise<LeaderboardResponse>; },
+  async trackReelAdEvent(id: string, event: 'impression' | 'click') { try { await authedFetch(`/v1/current-affairs/ads/${id}/${event}`, { method: 'POST' }); } catch { /* metrics best-effort */ } },
 
   // Chat
   async sendChat(message: string, sessionId?: string, attachments?: { type: 'image' | 'file'; name: string; data: string; mimeType?: string }[], model?: 'gpt4o' | 'groq' | 'gemini', supportMode?: boolean) { return (await authedFetch('/v1/chat', { method: 'POST', body: JSON.stringify({ message, sessionId, attachments, model, supportMode }) })).json() as Promise<{sessionId:string; response:string; title:string; limitReached?:boolean; upgrade?:boolean}>; },
@@ -665,7 +666,7 @@ export const api = {
 
   // ─── Admin: Reel Ads (Current Affairs sponsored cards) ───────────────
   async adminGetReelAds() {
-    return (await authedFetch('/v1/admin/reel-ads')).json() as Promise<{ config: ReelAdsConfig; ads: ReelAd[] }>;
+    return (await authedFetch('/v1/admin/reel-ads')).json() as Promise<{ config: ReelAdsConfig; ads: ReelAd[]; stats: Record<string, { impressions: number; clicks: number }> }>;
   },
   async adminUpdateReelAdsConfig(patch: Partial<ReelAdsConfig>) {
     return (await authedFetch('/v1/admin/reel-ads/config', {

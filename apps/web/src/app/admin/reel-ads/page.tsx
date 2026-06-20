@@ -26,6 +26,7 @@ export default function AdminReelAdsPage() {
   const [config, setConfig] = useState<ReelAdsConfig>({ enabled: false, everyNReels: 5 });
   const [original, setOriginal] = useState<ReelAdsConfig>({ enabled: false, everyNReels: 5 });
   const [adsList, setAdsList] = useState<ReelAd[]>([]);
+  const [stats, setStats] = useState<Record<string, { impressions: number; clicks: number }>>({});
   const [fetching, setFetching] = useState(true);
   const [savingCfg, setSavingCfg] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +40,7 @@ export default function AdminReelAdsPage() {
       setConfig({ ...res.config });
       setOriginal({ ...res.config });
       setAdsList(res.ads);
+      setStats(res.stats ?? {});
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load');
     } finally {
@@ -161,7 +163,7 @@ export default function AdminReelAdsPage() {
             ) : (
               <div className="mt-3 grid gap-4 sm:grid-cols-2">
                 {adsList.map((ad) => (
-                  <AdEditor key={ad.id} ad={ad} onChanged={() => void load()} onError={setError} />
+                  <AdEditor key={ad.id} ad={ad} stats={stats[ad.id]} onChanged={() => void load()} onError={setError} />
                 ))}
               </div>
             )}
@@ -181,7 +183,7 @@ function NewAdForm({ onCreated, onError }: { onCreated: () => void; onError: (m:
   const [targetUrl, setTargetUrl] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const valid = /^https?:\/\/\S+$/i.test(imageUrl) && headline.trim() && ctaText.trim() && /^https?:\/\/\S+$/i.test(targetUrl);
+  const valid = (/^https?:\/\/\S+$/i.test(imageUrl) || imageUrl.startsWith('data:image/')) && headline.trim() && ctaText.trim() && /^https?:\/\/\S+$/i.test(targetUrl);
 
   async function create() {
     if (!valid) return;
@@ -199,8 +201,8 @@ function NewAdForm({ onCreated, onError }: { onCreated: () => void; onError: (m:
     <section className="paper-card mt-6 p-5">
       <h2 className="text-sm font-semibold text-ink-900">Add a creative</h2>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <Field label="Image URL *">
-          <input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://…" className="input w-full text-sm" />
+        <Field label="Image * (upload or paste URL)">
+          <ImagePicker value={imageUrl} onChange={setImageUrl} onError={onError} showPreview />
         </Field>
         <Field label="Target URL * (where the CTA goes)">
           <input value={targetUrl} onChange={(e) => setTargetUrl(e.target.value)} placeholder="https://…" className="input w-full text-sm" />
@@ -225,7 +227,7 @@ function NewAdForm({ onCreated, onError }: { onCreated: () => void; onError: (m:
 }
 
 /* ─── Edit one creative ─── */
-function AdEditor({ ad, onChanged, onError }: { ad: ReelAd; onChanged: () => void; onError: (m: string) => void }) {
+function AdEditor({ ad, stats, onChanged, onError }: { ad: ReelAd; stats?: { impressions: number; clicks: number }; onChanged: () => void; onError: (m: string) => void }) {
   const [imageUrl, setImageUrl] = useState(ad.imageUrl);
   const [headline, setHeadline] = useState(ad.headline);
   const [subtext, setSubtext] = useState(ad.subtext ?? '');
@@ -273,11 +275,14 @@ function AdEditor({ ad, onChanged, onError }: { ad: ReelAd; onChanged: () => voi
             <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} className="h-4 w-4 rounded border-line text-ember-500 focus:ring-ember-500" />
             {active ? 'Active' : 'Inactive'}
           </label>
+          <p className="mt-1 text-[11px] text-muted-500">
+            {(stats?.impressions ?? 0).toLocaleString()} views · {(stats?.clicks ?? 0).toLocaleString()} clicks · {stats && stats.impressions > 0 ? Math.round((stats.clicks / stats.impressions) * 100) : 0}% CTR
+          </p>
         </div>
       </div>
 
       <div className="mt-3 grid gap-2">
-        <Field label="Image URL"><input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} className="input w-full text-xs" /></Field>
+        <Field label="Image"><ImagePicker value={imageUrl} onChange={setImageUrl} onError={onError} /></Field>
         <Field label="Headline"><input value={headline} onChange={(e) => setHeadline(e.target.value)} maxLength={140} className="input w-full text-xs" /></Field>
         <Field label="Subtext"><input value={subtext} onChange={(e) => setSubtext(e.target.value)} maxLength={200} className="input w-full text-xs" /></Field>
         <Field label="CTA text"><input value={ctaText} onChange={(e) => setCtaText(e.target.value)} maxLength={40} className="input w-full text-xs" /></Field>
@@ -303,4 +308,82 @@ function Field({ label, children, full }: { label: string; children: React.React
       <div className="mt-1">{children}</div>
     </div>
   );
+}
+
+/* ─── Image picker: upload (compressed to a small data-URL) OR paste a URL ─── */
+function ImagePicker({ value, onChange, onError, showPreview }: { value: string; onChange: (v: string) => void; onError: (m: string) => void; showPreview?: boolean }) {
+  const [busy, setBusy] = useState(false);
+  const isData = value.startsWith('data:');
+  return (
+    <div>
+      <div className="flex items-center gap-2">
+        <input
+          value={isData ? '' : value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={isData ? 'Uploaded image ✓ — paste a URL to replace' : 'https://… or upload →'}
+          className="input w-full text-xs"
+        />
+        <label className="btn-ghost text-xs cursor-pointer whitespace-nowrap">
+          {busy ? 'Compressing…' : 'Upload'}
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={async (e) => {
+              const f = e.target.files?.[0];
+              if (!f) return;
+              setBusy(true);
+              try {
+                const url = await fileToCompressedDataUrl(f);
+                if (url.length > 900000) onError('Image is too large even after compression — please use a smaller/simpler image.');
+                else onChange(url);
+              } catch {
+                onError('Could not read that image file.');
+              } finally {
+                setBusy(false);
+                e.target.value = '';
+              }
+            }}
+          />
+        </label>
+      </div>
+      {showPreview && value && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={value} alt="" className="mt-2 h-20 w-auto rounded-lg border border-line object-cover" onError={(ev) => { (ev.target as HTMLImageElement).style.display = 'none'; }} />
+      )}
+    </div>
+  );
+}
+
+/** Read an image File, downscale via canvas, and return a compressed JPEG
+ *  data-URL kept comfortably under the server's inline-image size cap. */
+async function fileToCompressedDataUrl(file: File): Promise<string> {
+  const dataUrl: string = await new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result as string);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+  const img: HTMLImageElement = await new Promise((resolve, reject) => {
+    const i = new Image();
+    i.onload = () => resolve(i);
+    i.onerror = reject;
+    i.src = dataUrl;
+  });
+  const draw = (maxW: number, quality: number): string => {
+    const scale = Math.min(1, maxW / (img.width || maxW));
+    const w = Math.max(1, Math.round((img.width || maxW) * scale));
+    const h = Math.max(1, Math.round((img.height || maxW) * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return dataUrl;
+    ctx.drawImage(img, 0, 0, w, h);
+    return canvas.toDataURL('image/jpeg', quality);
+  };
+  for (const [maxW, q] of [[1000, 0.82], [800, 0.75], [640, 0.7], [480, 0.6]] as const) {
+    const out = draw(maxW, q);
+    if (out.length <= 880000) return out;
+  }
+  return draw(400, 0.5);
 }
