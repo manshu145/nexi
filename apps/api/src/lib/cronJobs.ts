@@ -260,15 +260,17 @@ export async function runDailyQuizGenerate(deps: CronJobDeps): Promise<Record<st
   const headlines = items.map(it => `[${it.category}] ${it.headline}: ${it.summary}`).join('\n');
 
   let generated = 0;
+  let enQuestions: Awaited<ReturnType<typeof aiEngine.generateCurrentAffairsQuiz>> | null = null;
+  let hiQuestions: Awaited<ReturnType<typeof aiEngine.generateCurrentAffairsQuiz>> | null = null;
   try {
     const en = await aiEngine.generateCurrentAffairsQuiz(headlines, count, 'en');
-    if (en?.length) { await currentAffairs.saveDailyQuiz(istKey, en); generated = en.length; }
+    if (en?.length) { await currentAffairs.saveDailyQuiz(istKey, en); generated = en.length; enQuestions = en; }
   } catch (err) {
     logger.error('cron.daily_quiz_en_failed', { error: err instanceof Error ? err.message : String(err) });
   }
   try {
     const hi = await aiEngine.generateCurrentAffairsQuiz(headlines, count, 'hi');
-    if (hi?.length) { await currentAffairs.saveDailyQuiz(`${istKey}-hi`, hi); }
+    if (hi?.length) { await currentAffairs.saveDailyQuiz(`${istKey}-hi`, hi); hiQuestions = hi; }
   } catch (err) {
     logger.warn('cron.daily_quiz_hi_failed', { error: err instanceof Error ? err.message : String(err) });
   }
@@ -276,6 +278,19 @@ export async function runDailyQuizGenerate(deps: CronJobDeps): Promise<Record<st
   if (generated === 0) {
     logger.error('cron.daily_quiz_failed', { date: istKey });
     return { generated: 0, reason: 'generation failed' };
+  }
+
+  // Persist a permanent, ISOLATED archive of the full Q&A (en+hi) + a
+  // headline snapshot. Lives in `quizArchive/{date}`, untouched by the 24h
+  // current-affairs content cleanup, so past quizzes stay reviewable forever.
+  try {
+    await currentAffairs.archiveQuiz(istKey, {
+      ...(enQuestions ? { en: enQuestions } : {}),
+      ...(hiQuestions ? { hi: hiQuestions } : {}),
+      headlines: items.slice(0, 40).map(it => it.headline).filter(Boolean),
+    });
+  } catch (err) {
+    logger.warn('cron.daily_quiz_archive_failed', { error: err instanceof Error ? err.message : String(err) });
   }
 
   // Push to ALL users that the quiz is live (en/hi split by token language).

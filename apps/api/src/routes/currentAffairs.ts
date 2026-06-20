@@ -267,6 +267,12 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
         const headlines = items.map(item => `[${item.category}] ${item.headline}: ${item.summary}`).join('\n');
         questions = await deps.aiEngine.generateCurrentAffairsQuiz(headlines, count, language);
         await deps.currentAffairs.saveDailyQuiz(quizKey, questions);
+        // Mirror into the permanent, isolated archive (survives 24h content
+        // cleanup). Keyed by the plain quiz date; language slotted by `lang`.
+        deps.currentAffairs.archiveQuiz(quizDate, {
+          [language]: questions,
+          headlines: items.slice(0, 40).map((it: any) => it.headline).filter(Boolean),
+        } as { en?: typeof questions; hi?: typeof questions; headlines?: string[] }).catch(() => {});
         deps.logger.info('ca.quiz_generated_ondemand', { quizDate, language, count: questions.length });
       }
 
@@ -324,6 +330,36 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
     const leaderboard = await deps.currentAffairs.getLeaderboard(quizDate);
     const winner = await deps.currentAffairs.getYesterdayWinner();
     return c.json({ date: quizDate, leaderboard, yesterdayWinner: winner });
+  });
+
+  // GET /v1/current-affairs/quiz/archive — list of past daily quizzes.
+  // Reads the ISOLATED `quizArchive` collection, which survives the 24h
+  // current-affairs content cleanup, so users can revisit old quizzes even
+  // after the source news/reels are gone. Registered before '/:id' so the
+  // 'quiz' segment is never captured as an article id.
+  app.get('/quiz/archive', async (c) => {
+    requireAuth(c);
+    const limit = Math.min(60, Math.max(1, Number(c.req.query('limit')) || 30));
+    const activeDate = activeQuizDateKey();
+    const all = await deps.currentAffairs.listQuizArchive(limit + 1);
+    // Hide the currently-live quiz from the archive — it's still playable on
+    // the leaderboard; the archive is for finished, review-only quizzes.
+    const quizzes = all.filter(q => q.date < activeDate).slice(0, limit);
+    return c.json({ quizzes });
+  });
+
+  // GET /v1/current-affairs/quiz/archive/:date — review a past quiz (full
+  // Q&A: questions, correct answers, explanations) + that day's winner.
+  // Read-only: attempting an archived quiz never affects the live leaderboard.
+  app.get('/quiz/archive/:date', async (c) => {
+    requireAuth(c);
+    const date = c.req.param('date');
+    const language = (c.req.query('lang') as 'en' | 'hi') || 'en';
+    const entry = await deps.currentAffairs.getArchivedQuiz(date);
+    if (!entry) throw new HTTPException(404, { message: 'Archived quiz not found' });
+    const questions = (language === 'hi' && entry.hi?.length) ? entry.hi : entry.en;
+    const winner = await deps.currentAffairs.getLeaderboard(date).then(lb => lb[0] ?? null).catch(() => null);
+    return c.json({ date: entry.date, generatedAt: entry.generatedAt, questions, headlines: entry.headlines, winner });
   });
 
   // GET /v1/current-affairs/bookmarks — user's bookmarked items
