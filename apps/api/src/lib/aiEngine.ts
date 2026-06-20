@@ -2066,12 +2066,44 @@ Respond ONLY with valid JSON (no markdown fences):
       } catch (err) { logger.error('ai.selection_diagram_error', { error: err instanceof Error ? err.message : String(err) }); throw new Error('Failed to generate diagram'); }
     },
 
-    async generateCurrentAffairsQuiz(headlines: string, count = 20, language: 'en' | 'hi' = 'en') {
+    async generateCurrentAffairsQuiz(headlines: string, count = 30, language: 'en' | 'hi' = 'en') {
       const langInstr = language === 'hi' ? 'Generate ALL questions, options, and explanations in Hindi (Devanagari script).' : 'Generate in English.';
       const prompt = `You are a current affairs quiz generator for Indian competitive exams (UPSC, SSC, Banking).\n\nBased on today's news headlines below, generate exactly ${count} MCQs.\n${langInstr}\n\nHeadlines:\n${headlines.slice(0, 3000)}\n\nRequirements:\n- Questions should test factual recall from these headlines\n- 4 options (A-D), one correct answer\n- Mix difficulty: 7 easy, 8 medium, 5 hard\n- Include brief explanation for correct answer\n- Cover different categories (national, international, economy, science, sports)\n\nRespond ONLY with JSON:\n{"questions":[{"id":"ca-q1","question":"...","options":[{"key":"A","text":"..."},{"key":"B","text":"..."},{"key":"C","text":"..."},{"key":"D","text":"..."}],"correctOption":"A","explanation":"...","difficulty":"easy","subject":"current-affairs","topic":"national"}]}`;
 
       // Try Groq first (fast), then OpenAI fallback, then Gemini fallback
       const errors: string[] = [];
+
+      // Second-pass fact-check: re-validate the generated MCQs against the
+      // source headlines with a different (Gemini) model at low temperature.
+      // Current affairs MUST be accurate, so we drop/fix questions whose
+      // marked answer can't be verified. Best-effort: if verification is
+      // unavailable or over-drops, we keep the original set (never block).
+      const verifyAndCleanQuiz = async (questions: GeneratedMCQ[]): Promise<GeneratedMCQ[]> => {
+        if (!Array.isArray(questions) || questions.length === 0) return questions;
+        if (!env.GEMINI_API_KEY) return questions;
+        const vPrompt = `You are a STRICT fact-checker for an Indian current-affairs quiz. Below are MCQs and the source headlines they were built from. For EACH question: confirm the marked "correctOption" is actually correct, the options are sensible, and the question is unambiguous and supported by the headlines/well-known facts.\n- Fix "correctOption" if a different option is clearly the right answer.\n- DROP any question that is factually wrong, ambiguous, a trick, or not supported.\nKeep the EXACT same JSON schema and ids.\n\nHeadlines:\n${headlines.slice(0, 3000)}\n\nQuestions JSON:\n${JSON.stringify({ questions }).slice(0, 12000)}\n\nRespond ONLY with JSON: {"questions":[ ... validated questions ... ]}`;
+        try {
+          const r = await callGemini({ prompt: vPrompt, generationConfig: { temperature: 0.1, maxOutputTokens: 8000 }, tier: 'flash' });
+          if (r.ok) {
+            const m = r.text.match(/\{[\s\S]*\}/);
+            if (m) {
+              const parsed = JSON.parse(m[0]) as { questions?: GeneratedMCQ[] };
+              const cleaned = (parsed.questions ?? []).filter(q =>
+                q && typeof q.question === 'string' && Array.isArray(q.options) && q.options.length === 4 && typeof q.correctOption === 'string');
+              // Only trust the verifier if it kept a healthy majority; otherwise
+              // it likely misfired — fall back to the original set.
+              if (cleaned.length >= Math.ceil(questions.length * 0.6)) {
+                logger.info('ai.ca_quiz_verified', { before: questions.length, after: cleaned.length });
+                return cleaned.slice(0, count);
+              }
+              logger.warn('ai.ca_quiz_verify_overdrop', { before: questions.length, after: cleaned.length });
+            }
+          }
+        } catch (err) {
+          logger.warn('ai.ca_quiz_verify_failed', { error: err instanceof Error ? err.message : String(err) });
+        }
+        return questions;
+      };
 
       // Attempt 1: Groq (auto-switch model via resolver — no hardcode)
       const caGroq = await getGroqClient();
@@ -2082,7 +2114,7 @@ Respond ONLY with valid JSON (no markdown fences):
           if (parsed.questions?.length) {
             if (resolver) void resolver.reportModelSuccess('groq', caGroq.model);
             logger.info('ai.ca_quiz_generated', { provider: 'groq', model: caGroq.model, count: parsed.questions.length });
-            return parsed.questions;
+            return await verifyAndCleanQuiz(parsed.questions);
           }
           errors.push('Groq returned empty questions');
         } catch (err) {
@@ -2099,7 +2131,7 @@ Respond ONLY with valid JSON (no markdown fences):
           const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
           if (parsed.questions?.length) {
             logger.info('ai.ca_quiz_generated', { provider: 'openai', count: parsed.questions.length });
-            return parsed.questions;
+            return await verifyAndCleanQuiz(parsed.questions);
           }
           errors.push('OpenAI returned empty questions');
         } catch (err) {
@@ -2119,7 +2151,7 @@ Respond ONLY with valid JSON (no markdown fences):
               const parsed = JSON.parse(jsonMatch[0]) as { questions: GeneratedMCQ[] };
               if (parsed.questions?.length) {
                 logger.info('ai.ca_quiz_generated', { provider: 'gemini', count: parsed.questions.length, model: r.model });
-                return parsed.questions;
+                return await verifyAndCleanQuiz(parsed.questions);
               }
             }
             errors.push('Gemini returned no parseable questions');
