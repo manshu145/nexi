@@ -21,6 +21,7 @@ import type { BlogStore, BlogPostInput, BlogPostStatus, BlogPostUpdate } from '.
 import { validateSlug } from '../lib/blogStore.js';
 import type { AIEngine } from '../lib/aiEngine.js';
 import type { CurrentAffairsStore } from '../lib/currentAffairsStore.js';
+import type { AdsStore, ReelAdInput } from '../lib/adsStore.js';
 import { isHardcodedSuperAdmin } from '../lib/adminEmails.js';
 import { SERVICE_DEFINITIONS, getServiceDefinition, maskSecret, type ServiceId, type ServiceKeyStore } from '../lib/serviceKeyStore.js';
 import type { PushService, PushNotificationPayload } from '../lib/pushService.js';
@@ -74,6 +75,9 @@ export interface AdminRoutesDeps {
    * abhi tak nhi hua".
    */
   currentAffairs?: CurrentAffairsStore;
+  /** Reel ads store (Current Affairs sponsored cards). Optional so older
+   *  fixtures that predate the ads feature still construct admin routes. */
+  ads?: AdsStore;
   /**
    * PR-37: Razorpay / Resend / WhatsApp / FCM key store. Admin can
    * rotate these keys from /admin/service-keys without touching env
@@ -906,6 +910,63 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
       spend: Object.keys(body.spend ?? {}),
     });
     return c.json({ success: true, ...result });
+  });
+
+  // ━━━ REEL ADS (Current Affairs sponsored cards) ━━━
+  // GET /v1/admin/reel-ads — placement config + all creatives.
+  app.get('/reel-ads', async (c) => {
+    if (!deps.ads) return c.json({ config: { enabled: false, everyNReels: 5 }, ads: [], stats: {} });
+    const [config, ads, stats] = await Promise.all([deps.ads.getConfig(), deps.ads.listAds(), deps.ads.getStats()]);
+    return c.json({ config, ads, stats });
+  });
+
+  // PATCH /v1/admin/reel-ads/config — { enabled?, everyNReels? }. The store
+  // clamps everyNReels to 3..8. Registered BEFORE '/:id' so "config" is never
+  // captured as an ad id.
+  app.patch('/reel-ads/config', async (c) => {
+    if (!deps.ads) throw new HTTPException(503, { message: 'Ads store unavailable' });
+    const body = (await c.req.json().catch(() => null)) as { enabled?: boolean; everyNReels?: number } | null;
+    if (!body || typeof body !== 'object') throw new HTTPException(400, { message: 'Body required' });
+    const config = await deps.ads.updateConfig(body);
+    deps.logger.info('admin.reel_ads_config_updated', { ...config });
+    return c.json({ success: true, config });
+  });
+
+  // POST /v1/admin/reel-ads — create a creative.
+  app.post('/reel-ads', async (c) => {
+    if (!deps.ads) throw new HTTPException(503, { message: 'Ads store unavailable' });
+    const body = (await c.req.json().catch(() => null)) as ReelAdInput | null;
+    if (!body || typeof body !== 'object') throw new HTTPException(400, { message: 'Body required' });
+    try {
+      const ad = await deps.ads.createAd(body);
+      deps.logger.info('admin.reel_ad_created', { id: ad.id });
+      return c.json({ success: true, ad });
+    } catch (err) {
+      throw new HTTPException(400, { message: err instanceof Error ? err.message : 'Create failed' });
+    }
+  });
+
+  // PATCH /v1/admin/reel-ads/:id — update a creative.
+  app.patch('/reel-ads/:id', async (c) => {
+    if (!deps.ads) throw new HTTPException(503, { message: 'Ads store unavailable' });
+    const id = c.req.param('id');
+    const body = (await c.req.json().catch(() => null)) as ReelAdInput | null;
+    if (!body || typeof body !== 'object') throw new HTTPException(400, { message: 'Body required' });
+    try {
+      const ad = await deps.ads.updateAd(id, body);
+      deps.logger.info('admin.reel_ad_updated', { id });
+      return c.json({ success: true, ad });
+    } catch (err) {
+      throw new HTTPException(404, { message: err instanceof Error ? err.message : 'Update failed' });
+    }
+  });
+
+  // DELETE /v1/admin/reel-ads/:id — remove a creative.
+  app.delete('/reel-ads/:id', async (c) => {
+    if (!deps.ads) throw new HTTPException(503, { message: 'Ads store unavailable' });
+    await deps.ads.deleteAd(c.req.param('id'));
+    deps.logger.info('admin.reel_ad_deleted', { id: c.req.param('id') });
+    return c.json({ success: true });
   });
 
   // GET /v1/admin/coupons — list all coupons

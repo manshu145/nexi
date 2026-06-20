@@ -6,6 +6,8 @@ import type { Logger } from '../logger.js';
 import type { UserStore } from '../lib/userStore.js';
 import type { AIEngine } from '../lib/aiEngine.js';
 import type { CurrentAffairsStore } from '../lib/currentAffairsStore.js';
+import type { AdsStore, ReelAd } from '../lib/adsStore.js';
+import { effectivePlanId } from '../lib/planGate.js';
 import type { Env } from '../env.js';
 import { ingestCurrentAffairs } from '../lib/rssIngestion.js';
 import { INDIAN_STATES } from '@nexigrate/shared';
@@ -76,6 +78,8 @@ export interface CurrentAffairsRoutesDeps {
   users: UserStore;
   aiEngine: AIEngine;
   currentAffairs: CurrentAffairsStore;
+  /** Reel ads store — optional so older wiring/tests still construct routes. */
+  ads?: AdsStore;
   env: Env;
   logger: Logger;
 }
@@ -189,7 +193,27 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
         ]);
       } catch (e) { deps.logger.warn('ca.social_fetch_error', { error: String(e) }); }
 
-      return c.json({ date: today, items, yesterdayWinner: winner, isFromYesterday: items.some((it: any) => it._isFromYesterday), userLikes, userBookmarks, likeCounts });
+      // Reel ads: active creatives + placement frequency, served to the feed
+      // so it can inject an ad card after every N news reels. Disabled
+      // unless the admin turned ads on AND there's at least one active ad.
+      let ads: { enabled: boolean; everyNReels: number; items: ReelAd[] } = { enabled: false, everyNReels: 5, items: [] };
+      if (deps.ads) {
+        try {
+          const [cfg, activeAds] = await Promise.all([deps.ads.getConfig(), deps.ads.listActiveAds()]);
+          let enabled = cfg.enabled && activeAds.length > 0;
+          if (enabled) {
+            // Ad-free for paid plans (matches the "ad-free study" pricing
+            // promise): only free / expired users see reel ads.
+            try {
+              const u = await deps.users.get(principal.userId);
+              if (effectivePlanId(u) !== 'free') enabled = false;
+            } catch { /* lookup error → fall back to config (show ads) */ }
+          }
+          ads = { enabled, everyNReels: cfg.everyNReels, items: enabled ? activeAds : [] };
+        } catch (e) { deps.logger.warn('ca.ads_fetch_error', { error: String(e) }); }
+      }
+
+      return c.json({ date: today, items, yesterdayWinner: winner, isFromYesterday: items.some((it: any) => it._isFromYesterday), userLikes, userBookmarks, likeCounts, ads });
     } catch (e) {
       if (e instanceof HTTPException) throw e;
       deps.logger.error('ca.route_error', { error: e instanceof Error ? e.message : String(e), stack: e instanceof Error ? e.stack : '' });
@@ -324,6 +348,19 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
       .filter((s) => live.has(s.slug))
       .map((s) => ({ slug: s.slug, name: s.name, nameHi: s.nameHi, isUT: s.isUT }));
     return c.json({ states });
+  });
+
+  // POST /v1/current-affairs/ads/:id/:event — record an ad impression/click.
+  // Fire-and-forget metrics; never blocks the client. Defined before '/:id'
+  // so the 'ads' segment isn't captured as an article id.
+  app.post('/ads/:id/:event', async (c) => {
+    requireAuth(c);
+    const id = c.req.param('id');
+    const event = c.req.param('event');
+    if (deps.ads && (event === 'impression' || event === 'click')) {
+      deps.ads.recordEvent(id, event).catch(() => {});
+    }
+    return c.json({ ok: true });
   });
 
   // GET /v1/current-affairs/:id — single item detail
