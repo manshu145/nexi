@@ -124,8 +124,8 @@ const JOBS: JobDef[] = [
     id: 'ingest',
     label: 'Current-affairs ingest',
     description: 'Pull RSS sources → AI summary → Hindi and store fresh current affairs.',
-    schedule: 'Every 30 minutes',
-    isDue: everyInterval(30 * 60_000),
+    schedule: 'Every 15 minutes',
+    isDue: everyInterval(15 * 60_000),
     run: (d) => runCurrentAffairsIngest(d),
   },
   {

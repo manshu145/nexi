@@ -2346,7 +2346,7 @@ Respond ONLY with valid JSON (summary may contain \\n newlines):
 
         if (env.GEMINI_API_KEY) {
           try {
-            const r = await callGemini({ prompt, generationConfig: { temperature: 0.2, maxOutputTokens: 8000 }, tier: 'flash' });
+            const r = await callGemini({ prompt, generationConfig: { temperature: 0.5, maxOutputTokens: 8000 }, tier: 'flash' });
             if (r.ok) {
               const jsonMatch = r.text.match(/\{[\s\S]*\}/);
               if (jsonMatch) {
@@ -2363,7 +2363,7 @@ Respond ONLY with valid JSON (summary may contain \\n newlines):
         if (groq) {
           try {
             const trGroq = await getGroqClient();
-            const c = await (trGroq?.client ?? groq!).chat.completions.create({ model: trGroq?.model ?? 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.2, max_tokens: 8000, response_format: { type: 'json_object' } });
+            const c = await (trGroq?.client ?? groq!).chat.completions.create({ model: trGroq?.model ?? 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 8000, response_format: { type: 'json_object' } });
             const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { items?: TItem[] };
             if (parsed.items?.length) {
               logger.info('ai.translate_hindi', { provider: 'groq', count: parsed.items.length });
@@ -2374,7 +2374,7 @@ Respond ONLY with valid JSON (summary may contain \\n newlines):
 
         if (openai) {
           try {
-            const c = await oaCreate({ messages: [{ role: 'user', content: prompt }], temperature: 0.2, max_tokens: 8000, response_format: { type: 'json_object' } });
+            const c = await oaCreate({ messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 8000, response_format: { type: 'json_object' } });
             const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { items?: TItem[] };
             if (parsed.items?.length) {
               logger.info('ai.translate_hindi', { provider: 'openai', count: parsed.items.length });

@@ -1,4 +1,5 @@
 import type { Firestore } from 'firebase-admin/firestore';
+import { FieldValue } from 'firebase-admin/firestore';
 import type { CurrentAffairsItem, CurrentAffairsCategory } from '@nexigrate/shared';
 import type { GeneratedMCQ } from './aiEngine.js';
 
@@ -59,6 +60,15 @@ export interface CurrentAffairsStore {
   getLastIngestedAt(): Promise<string | null>;
   /** Set last ingestion timestamp */
   setLastIngestedAt(timestamp: string): Promise<void>;
+  /**
+   * Source-level dedup support. Returns the fingerprints of raw source
+   * articles already ingested for `date`, so a frequent ingest run can skip
+   * re-summarizing the same article it processed minutes ago (the core fix
+   * for duplicate topics once the refresh interval drops to ~15 min).
+   */
+  getSeenSourceKeys(date: string): Promise<string[]>;
+  /** Record raw-source fingerprints as ingested for `date` (idempotent union). */
+  addSeenSourceKeys(date: string, keys: string[]): Promise<void>;
   /** Like/unlike an item. Returns new like count */
   toggleLike(itemId: string, userId: string): Promise<{ liked: boolean; count: number }>;
   /** Bookmark/unbookmark an item */
@@ -146,6 +156,15 @@ export class InMemoryCurrentAffairsStore implements CurrentAffairsStore {
   private lastIngestedAt: string | null = null;
   async getLastIngestedAt() { return this.lastIngestedAt; }
   async setLastIngestedAt(timestamp: string) { this.lastIngestedAt = timestamp; }
+
+  private seenSourceKeys = new Map<string, Set<string>>(); // date -> Set<key>
+  async getSeenSourceKeys(date: string) { return Array.from(this.seenSourceKeys.get(date) ?? []); }
+  async addSeenSourceKeys(date: string, keys: string[]) {
+    if (keys.length === 0) return;
+    const set = this.seenSourceKeys.get(date) ?? new Set<string>();
+    for (const k of keys) set.add(k);
+    this.seenSourceKeys.set(date, set);
+  }
 
   async toggleLike(itemId: string, userId: string) {
     if (!this.likes.has(itemId)) this.likes.set(itemId, new Set());
@@ -298,6 +317,27 @@ export class FirestoreCurrentAffairsStore implements CurrentAffairsStore {
 
   async setLastIngestedAt(timestamp: string): Promise<void> {
     await this.db.collection('system').doc('ingestionStatus').set({ lastIngestedAt: timestamp }, { merge: true });
+  }
+
+  async getSeenSourceKeys(date: string): Promise<string[]> {
+    try {
+      const snap = await this.db.collection('currentAffairs').doc(date).get();
+      const raw = snap.exists ? (snap.data()?.seenSourceKeys as unknown) : null;
+      return Array.isArray(raw) ? raw.filter((s): s is string => typeof s === 'string') : [];
+    } catch { return []; }
+  }
+
+  async addSeenSourceKeys(date: string, keys: string[]): Promise<void> {
+    if (keys.length === 0) return;
+    try {
+      // arrayUnion keeps the set idempotent across concurrent instances and
+      // adds only the new keys (we pass just this run's items). The 48h
+      // bucket cleanup deletes the date doc, so the array can't grow forever.
+      await this.db.collection('currentAffairs').doc(date).set(
+        { seenSourceKeys: FieldValue.arrayUnion(...keys) },
+        { merge: true },
+      );
+    } catch { /* best-effort: a dedup-state write must never break ingestion */ }
   }
 
   async getItemById(date: string, itemId: string): Promise<CurrentAffairsStoreItem | null> {

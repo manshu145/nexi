@@ -115,10 +115,14 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
         items = items.filter((it: any) => !it.state || live.has(it.state));
       }
 
-      // 30-min refresh check: trigger background re-ingestion if stale
+      // 15-min refresh check: trigger background re-ingestion if stale.
+      // Matches the scheduler's 15-min ingest cadence so an active reader
+      // always pulls near-real-time content; the cross-run source dedup in
+      // ingestCurrentAffairs keeps this cheap (only genuinely new articles
+      // are summarized).
       try {
-        const thirtyMinMs = 30 * 60 * 1000;
-        if (!lastIngestedResult || (Date.now() - Date.parse(lastIngestedResult)) > thirtyMinMs) {
+        const staleMs = 15 * 60 * 1000;
+        if (!lastIngestedResult || (Date.now() - Date.parse(lastIngestedResult)) > staleMs) {
           deps.logger.info('ca.stale_triggering_reingest', { lastIngested: lastIngestedResult });
           // Fire-and-forget background re-ingestion
           import('../lib/rssIngestion.js').then(({ ingestCurrentAffairs }) => {
