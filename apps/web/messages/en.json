@@ -179,6 +179,8 @@
     "shareMessage": "Join me on Nexigrate! Use my code {code} to get 100 bonus credits. {url}",
     "settingsAccount": "Settings & Account",
     "mySupportTickets": "My support tickets",
+    "privacyPolicy": "Privacy Policy",
+    "termsOfService": "Terms of Service",
     "privacyData": "Privacy & My Data",
     "privacyBlurb": "Download a JSON file containing every record we hold for you — profile, study progress, chat history, billing, referrals, support tickets and more.",
     "downloadData": "Download my data (JSON)",

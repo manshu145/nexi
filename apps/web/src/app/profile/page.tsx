@@ -498,6 +498,13 @@ export default function ProfilePage() {
               {t('mySupportTickets')}
             </button>
 
+            {/* Legal — required to be reachable in-app for the Play Store. */}
+            <div className="mt-3 flex items-center justify-center gap-4 text-[11px] text-muted-400">
+              <button onClick={() => router.push('/privacy')} className="hover:text-ink-900 hover:underline">{t('privacyPolicy')}</button>
+              <span>·</span>
+              <button onClick={() => router.push('/terms')} className="hover:text-ink-900 hover:underline">{t('termsOfService')}</button>
+            </div>
+
             {/* Privacy — DPDP §3.4 right-to-access (download all my data) */}
             <details className="mt-4">
               <summary className="text-[11px] text-muted-400 cursor-pointer hover:text-ink-900 text-center">{t('privacyData')}</summary>
