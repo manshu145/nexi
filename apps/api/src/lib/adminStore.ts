@@ -113,7 +113,10 @@ export class InMemoryAdminStore implements AdminStore {
   private announcements: Record<string, any>[] = [];
 
   async getFullStats(): Promise<AdminStats> {
-    return { totalUsers: 0, dau: 0, mau: 0, newUsersToday: 0, newUsersThisWeek: 0, revenueToday: 0, revenue7d: 0, revenue30d: 0, revenueTotal: 0, aiCallsToday: this.aiCallLogs.filter(l => l.timestamp.startsWith(new Date().toISOString().split('T')[0]!)).length, aiCallsThisWeek: this.aiCallLogs.length, aiCostToday: 0, activeSessions: this.sessions.size, pwaInstalls: 0, apiHealth: { openai: 'unconfigured', groq: 'unconfigured', gemini: 'unconfigured', razorpay: 'unconfigured' } };
+    const todayKey = new Date().toISOString().split('T')[0]!;
+    const todaysLogs = this.aiCallLogs.filter(l => l.timestamp.startsWith(todayKey));
+    const aiCostToday = todaysLogs.reduce((sum, l) => sum + (l.cost || 0), 0);
+    return { totalUsers: 0, dau: 0, mau: 0, newUsersToday: 0, newUsersThisWeek: 0, revenueToday: 0, revenue7d: 0, revenue30d: 0, revenueTotal: 0, aiCallsToday: todaysLogs.length, aiCallsThisWeek: this.aiCallLogs.length, aiCostToday, activeSessions: this.sessions.size, pwaInstalls: 0, apiHealth: { openai: 'unconfigured', groq: 'unconfigured', gemini: 'unconfigured', razorpay: 'unconfigured' } };
   }
   async getUserActivity(_uid: string): Promise<UserActivity> { return { userId: _uid, chapterOpens: [], mockTests: [], chatSessions: [], totalTimeOnPlatform: 0, creditHistory: [] }; }
   async getErrorLogs(page = 1, limit = 20) { const start = (page - 1) * limit; return { logs: this.errorLogs.slice(start, start + limit), total: this.errorLogs.length }; }
