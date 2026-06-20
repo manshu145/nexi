@@ -3,6 +3,33 @@ import type { Logger } from '../logger.js';
 import type { CurrentAffairsStoreItem, CurrentAffairsStore } from './currentAffairsStore.js';
 import type { CurrentAffairsCategory } from '@nexigrate/shared';
 import type { AIEngine } from './aiEngine.js';
+import { createHash } from 'node:crypto';
+
+/**
+ * Stable fingerprint for a raw source article. Prefers the canonical link
+ * (most reliable across feeds), falls back to a normalized-title hash. Used
+ * for cross-run source dedup so the same story is never re-summarized — and
+ * re-stored as a fresh duplicate — when the refresh interval is short (15 min).
+ */
+function sourceKey(item: RawNewsItem): string {
+  const link = (item.link || '').trim();
+  if (link) return 'l:' + createHash('sha1').update(link).digest('hex').slice(0, 16);
+  const title = (item.title || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  return 't:' + createHash('sha1').update(title).digest('hex').slice(0, 16);
+}
+
+/**
+ * Clip text to ~max chars but END ON A SENTENCE boundary (or at least a word),
+ * so the no-AI raw fallback never shows an abruptly chopped mid-word blurb.
+ */
+function clipToSentence(text: string, max: number): string {
+  const t = (text || '').trim();
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max);
+  const lastStop = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('! '), cut.lastIndexOf('? '), cut.lastIndexOf('।'));
+  if (lastStop > max * 0.5) return cut.slice(0, lastStop + 1).trim();
+  return cut.replace(/\s+\S*$/, '').trim() + '…';
+}
 
 /**
  * RSS News Sources for Current Affairs ingestion.
@@ -204,6 +231,7 @@ async function summarizeItems(
   env: Env,
   logger: Logger,
   resolver?: import('./aiModelResolver.js').AIModelResolver | null,
+  existingByScope?: Map<string, string[]>,
 ): Promise<CurrentAffairsStoreItem[]> {
   if (!env.GEMINI_API_KEY) {
     logger.warn('rss.no_gemini_key', { message: 'GEMINI_API_KEY not set, skipping summarization' });
@@ -295,41 +323,53 @@ async function summarizeItems(
 
   for (const batch of batches.slice(0, MAX_BATCHES)) { // state batches first, then national
     try {
-      const prompt = `You are a current-affairs editor for Indian competitive-exam students (UPSC, SSC, Banking, State PCS, NEET, JEE). Your job is to turn raw news into GENUINELY USEFUL, exam-relevant notes — never filler.
+      // Topic-level cross-feed dedup: tell the model which stories are ALREADY
+      // covered today in this scope (a state edition, or national) so it omits
+      // re-runs of the same event instead of emitting a reworded duplicate.
+      // Batches are homogeneous (built per-state), so a single scope applies.
+      const batchStateSet = new Set(batch.map(b => b.state).filter((s): s is string => !!s));
+      const scope = batchStateSet.size === 1 ? [...batchStateSet][0]! : 'national';
+      const alreadyCovered = (existingByScope?.get(scope) ?? []).slice(-50);
+      const alreadyCoveredBlock = alreadyCovered.length > 0
+        ? `\n\nLAYER 0b — ALREADY COVERED TODAY (cross-feed dedup, IMPORTANT):
+The headlines below are stories already published in today's feed. Do NOT output any item that covers the SAME event — even from a different source or a different angle, it is still a duplicate and must be OMITTED. Only include an already-covered story if it has a GENUINELY NEW development (new decision, number, or outcome that the existing headline doesn't have).
+${alreadyCovered.map(h => `- ${h}`).join('\n')}`
+        : '';
+
+      const prompt = `You are writing the daily current-affairs feed for Indian competitive-exam students (UPSC, SSC, Banking, State PCS, NEET, JEE). Write the way a favourite teacher explains the news — clear, warm and genuinely easy to read — while staying 100% factual and exam-relevant. Never filler, never robotic.
 
 Process the items below in layers:
 
 LAYER 0 — RELEVANCE FILTER (be strict, this matters most):
 - KEEP items with real exam value: policy, government schemes & bills, economy & RBI, international relations & agreements, science / tech / space / defence, environment, reports & indices & rankings, key appointments, awards, important Supreme Court / constitutional matters, and significant sports achievements.
 - DROP pure noise: celebrity / film gossip, crime briefs, routine local accidents, paywalled teasers, opinion / op-eds, ad or sponsored content, daily market ticks, horoscopes. If an item has NO exam relevance, simply OMIT it from the output.
-- Merge duplicate stories about the same event into ONE item.
+- Merge duplicate stories about the same event into ONE item.${alreadyCoveredBlock}
 
 LAYER 1 — CATEGORIZE:
 - Assign a category from: national, international, economy, science-tech, environment, sports, awards, agreements, reports, other.
 
-LAYER 2 — CONCISE SUMMARY (140-200 WORDS, IN PARAGRAPHS):
-- A tight, factual summary in 2-3 SHORT paragraphs separated by a blank line.
-- Cover what happened (names, dates, places, numbers), the essential background, and one line on why it matters for exams.
-- Plain prose only. NO bullet points, NO markdown headings inside the summary.
-- Every sentence must add a NEW fact. Do NOT repeat or pad. A crisp 150-word summary beats a long repetitive one.
+LAYER 2 — SUMMARY (120-180 WORDS, EASY TO READ):
+- Write 2-3 short paragraphs separated by a blank line, in a natural, flowing, conversational-but-precise style — like explaining it to a smart friend, not reading a government notice.
+- Open with the human point: what happened and why it matters, in plain words. Then give the key facts (names, dates, places, numbers) and a one-line "why this matters for your exam".
+- Use simple, everyday words and short active sentences. AVOID stiff, "machine"/translationese phrasing, jargon dumps, and passive bureaucratic constructions.
+- Plain prose only. NO bullet points, NO markdown headings inside the summary. Keep every fact accurate; do not invent or pad.
 
 LAYER 3 — KEY POINTS (EXACTLY 4-5 BULLETS):
-- Each bullet is a SHARP, self-contained, exam-ready fact.
+- Each bullet is a SHARP, self-contained, exam-ready fact a student can revise in one glance.
 - Every bullet MUST carry a concrete detail: a name, number, date, place, rank, amount, scheme or agency. A bullet with no specific fact is useless — rewrite it.
 - FORBIDDEN (will be rejected): meta-filler like "Category: ...", "Source: ...", "the news said", "according to the article", or simply repeating the headline.
-- Keep each bullet under 120 characters and revision-friendly.
+- Keep each bullet under 120 characters.
 
 HEADLINE:
-- A PUNCHY, SPECIFIC headline (max 100 chars) leading with the single most important fact, name or number. Make a student want to read on. NO vague/generic labels, NO clickbait.
+- A PUNCHY, SPECIFIC headline (max 100 chars) that leads with the single most important fact, name or number and makes a student want to tap. Natural and scroll-stopping — NOT vague labels, NOT clickbait.
 
 Also:
-- Write in simple, clear language suitable for students.
 - "srcIndex": the NUMBER (from the list) of the primary news item this is based on (for image attribution).
 
 News items:
 ${batch.map((item, i) => `${i + 1}. [${item.source}] ${item.title} — ${item.description.slice(0, 150)}`).join('\n')}
 
-Respond ONLY with valid JSON (omit any item that fails the LAYER 0 relevance filter):
+Respond ONLY with valid JSON (omit any item that fails the LAYER 0 relevance filter or is already covered):
 {"items":[{"id":"ca-1","headline":"...","summary":"...","bullets":["fact 1","fact 2","fact 3","fact 4"],"category":"national","sources":["Source Name"],"factChecked":true,"srcIndex":1}]}`;
 
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiKey}`, {
@@ -337,7 +377,7 @@ Respond ONLY with valid JSON (omit any item that fails the LAYER 0 relevance fil
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: 8000 },
+          generationConfig: { temperature: 0.5, maxOutputTokens: 8000 },
         }),
       });
 
@@ -365,7 +405,7 @@ Respond ONLY with valid JSON (omit any item that fails the LAYER 0 relevance fil
             body: JSON.stringify({
               model: groqModel,
               messages: [{ role: 'user', content: prompt }],
-              temperature: 0.3,
+              temperature: 0.5,
               max_tokens: 8000,
               response_format: { type: 'json_object' },
             }),
@@ -521,21 +561,59 @@ export async function ingestCurrentAffairs(
     return sa.localeCompare(sb); // cluster same states together
   });
 
+  // Single date key for this run (matches the saveItems bucket key).
+  const today = new Date().toISOString().split('T')[0]!;
+
+  // 2b. Cross-run SOURCE dedup — skip articles already ingested today so a
+  // short (15-min) refresh interval never re-summarizes and re-stores the
+  // same story. We also dedup within this run. ALL attempted items are
+  // marked "seen" afterwards (even ones the AI later drops as irrelevant) so
+  // they aren't reconsidered every cycle.
+  const seenKeys = new Set<string>(await store.getSeenSourceKeys(today).catch(() => [] as string[]));
+  const newItems: RawNewsItem[] = [];
+  const newKeys: string[] = [];
+  for (const it of recentItems) {
+    const key = sourceKey(it);
+    if (seenKeys.has(key)) continue;
+    seenKeys.add(key);
+    newItems.push(it);
+    newKeys.push(key);
+  }
+  if (newItems.length === 0) {
+    logger.info('rss.no_new_items', { fetched: rawItems.length, message: 'all fetched articles already ingested today' });
+    return { fetched: rawItems.length, saved: 0 };
+  }
+  logger.info('rss.new_items', { fetched: rawItems.length, recent: recentItems.length, fresh: newItems.length });
+
+  // 2c. Topic-level dedup input — today's already-stored headlines grouped by
+  // scope (state slug or 'national'), passed to the summarizer so it omits
+  // events already covered across feeds rather than re-emitting a reworded
+  // duplicate.
+  const existingByScope = new Map<string, string[]>();
+  try {
+    const existing = await store.getTodayItems(today);
+    for (const it of existing) {
+      const scope = (it as { state?: string }).state || 'national';
+      const arr = existingByScope.get(scope) ?? [];
+      if (it.headline) arr.push(it.headline);
+      existingByScope.set(scope, arr);
+    }
+  } catch (e) { logger.warn('rss.existing_headlines_failed', { error: e instanceof Error ? e.message : String(e) }); }
+
   // 3. AI summarize (or fallback to raw items if AI fails)
   let itemsToSave: CurrentAffairsStoreItem[];
-  const summarized = await summarizeItems(recentItems, env, logger, resolver);
+  const summarized = await summarizeItems(newItems, env, logger, resolver, existingByScope);
   
   if (summarized.length > 0) {
     itemsToSave = summarized;
   } else {
     // Fallback: save raw items without AI summarization — deduplicate by title
     logger.info('rss.fallback_raw', { message: 'AI summarization returned 0 items, saving raw with deduplication' });
-    const today = new Date().toISOString().split('T')[0]!;
 
     // Deduplicate raw items by normalized title
     const seen = new Set<string>();
-    const dedupedItems: typeof recentItems = [];
-    for (const item of recentItems) {
+    const dedupedItems: typeof newItems = [];
+    for (const item of newItems) {
       const key = item.title.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(w => w.length > 2).slice(0, 6).join(' ');
       if (!key || seen.has(key)) continue;
       seen.add(key);
@@ -557,7 +635,7 @@ export async function ingestCurrentAffairs(
     itemsToSave = dedupedItems.slice(0, 30).map((item, i) => ({
       id: `${today}-raw-${i}-${Math.random().toString(36).slice(2, 6)}`,
       headline: item.title.slice(0, 100),
-      body: item.description.slice(0, 300) || item.title,
+      body: item.description ? clipToSentence(item.description, 320) : item.title,
       category: categorizeItem(item),
       sources: [item.source],
       relevantExams: [],
@@ -565,7 +643,7 @@ export async function ingestCurrentAffairs(
       ...(item.imageUrl ? { imageUrl: item.imageUrl } : {}),
       ...(item.state ? { state: item.state } : {}),
       date: today,
-      summary: item.description.slice(0, 200) || item.title,
+      summary: item.description ? clipToSentence(item.description, 220) : item.title,
       factChecked: false,
       publishedAt: item.pubDate || new Date().toISOString(),
     }));
@@ -573,9 +651,13 @@ export async function ingestCurrentAffairs(
 
   // 4. Save
   if (itemsToSave.length > 0) {
-    const today = new Date().toISOString().split('T')[0]!;
     await store.saveItems(today, itemsToSave);
   }
+
+  // 4b. Mark this run's source articles as ingested (cross-run dedup state),
+  // regardless of how many survived the relevance filter, so the next 15-min
+  // cycle doesn't reconsider them.
+  await store.addSeenSourceKeys(today, newKeys).catch(() => {});
 
   // 5. Translate to Hindi.
   // PR-39: founder report — "kai bar eng me news aa rha hai hindi user
@@ -606,7 +688,6 @@ export async function ingestCurrentAffairs(
       const toTranslate = itemsToSave.map(it => ({ headline: it.headline, summary: it.summary, bullets: it.bullets ?? [] }));
       const translated = await aiEngine.translateToHindi(toTranslate);
       if (translated.length > 0) {
-        const today = new Date().toISOString().split('T')[0]!;
         const updatedItems = itemsToSave.map((item, i) => {
           if (i >= translated.length) return item;
           return {

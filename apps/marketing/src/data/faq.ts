@@ -3,7 +3,7 @@ export type FaqItem = { q: string; a: string };
 export const FAQ: readonly FaqItem[] = [
   {
     q: 'Is Nexigrate really free?',
-    a: 'Yes. The credits engine lets you study free forever — take a daily 10-question MCQ, refer friends, or maintain a streak, and you accumulate enough credits to read chapters, run mock tests, and ask the AI tutor. We also offer optional paid plans (₹99 to ₹599/month) for students who want unlimited access without the daily MCQ habit.',
+    a: 'Yes. The credits engine lets you study free forever — take a daily 10-question MCQ, refer friends, or maintain a streak, and you accumulate enough credits to read chapters, run mock tests, and ask the AI tutor. We also offer optional paid plans (₹79 to ₹599/month) for students who want unlimited access without the daily MCQ habit.',
   },
   {
     q: 'How do credits work?',
@@ -11,7 +11,7 @@ export const FAQ: readonly FaqItem[] = [
   },
   {
     q: 'Which exams are covered now?',
-    a: 'We cover 63+ exams including UPSC CSE, SSC CGL/CHSL, JEE Main & Advanced, NEET UG, Class 8-12 CBSE, IBPS PO/Clerk, SBI PO, RRB NTPC, NDA, CDS, Agniveer, CAPF, and State PSCs. All with AI-generated, NCERT-grounded content.',
+    a: 'We cover 110+ exams including UPSC CSE & CAPF, SSC CGL/CHSL/MTS/GD, JEE Main & Advanced, NEET UG & PG, Class 5-12 (CBSE, ICSE/ISC and UP/MP/Bihar/Rajasthan state boards), IBPS PO/Clerk, SBI PO, RBI Grade B, RRB NTPC/Group D, NDA, CDS, Agniveer, AFCAT, State PSCs (UPPSC, MPPSC, BPSC, RPSC, CGPSC), teaching exams (CTET, TET), CLAT, CUET, CAT, and professional skills like Python and Data Science. All with AI-generated, NCERT-grounded content.',
   },
   {
     q: 'How do you make sure the content is correct?',
