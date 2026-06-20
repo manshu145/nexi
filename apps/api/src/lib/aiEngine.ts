@@ -118,6 +118,25 @@ function logAICallToStore(
   }).catch(() => {});
 }
 
+/**
+ * Log a chat-completion (OpenAI- or Groq-compatible response shape) to the
+ * admin AI-cost ledger. Prefers the provider-reported `usage.total_tokens`
+ * (prompt + completion) so "AI Cost Today" reflects REAL spend instead of a
+ * response-only estimate. Best-effort: never throws, no-op without a store.
+ */
+function logChatCompletion(
+  adminStore: AdminStore | null,
+  completion: { usage?: { total_tokens?: number | null } | null } | null | undefined,
+  model: string,
+  provider: 'openai' | 'groq',
+  endpoint?: string,
+) {
+  if (!adminStore) return;
+  const tokens = completion?.usage?.total_tokens ?? 0;
+  if (!tokens) return;
+  logAICallToStore(adminStore, model, tokens, estimateCost(model, tokens), 0, undefined, { status: 'success', provider, endpoint });
+}
+
 /** Estimate token count from text length */
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
@@ -223,8 +242,14 @@ export function createAIEngine(
       // (Returning false here would skip the auto-switch.)
       throw new Error(`Gemini HTTP ${res.status}: ${errText.slice(0, 200)}`);
     }
-    const raw = (await res.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+    const raw = (await res.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>; usageMetadata?: { totalTokenCount?: number } };
     const text = raw.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    // Cost ledger: log EVERY successful Gemini call centrally here (no Gemini
+    // call site logged before, so "AI Cost Today" never counted Gemini — the
+    // primary provider for translation, current-affairs + most fallbacks).
+    // Prefer the API-reported token count (prompt + completion); else estimate.
+    const gTokens = raw.usageMetadata?.totalTokenCount ?? (estimateTokens(opts.prompt ?? '') + estimateTokens(text));
+    logAICallToStore(store, resolved.model, gTokens, estimateCost(resolved.model, gTokens), latencyMs, undefined, { status: 'success', provider: 'gemini' });
     return { ok: true, text, model: resolved.model, raw, latencyMs };
   }
 
@@ -1279,6 +1304,7 @@ Write ONLY the Markdown content for the chapter \u2014 no preamble, no closing n
         if (groq) {
           try {
             const c = await groq.client.chat.completions.create({ model: groq.model, messages: [{ role: 'user', content: finalPrompt }], temperature: 0.6, max_tokens: 8000 });
+            logChatCompletion(store, c, groq.model, 'groq', 'generateChapterContent');
             const text = c.choices[0]?.message?.content ?? '';
             if (ok(text)) {
               if (resolver) void resolver.reportModelSuccess('groq', groq.model);
@@ -1489,6 +1515,7 @@ Write ONLY the Markdown content for the chapter \u2014 no preamble, no closing n
         try {
           const mcqGroq = await getGroqClient();
           const c = await (mcqGroq?.client ?? groq!).chat.completions.create({ model: mcqGroq?.model ?? 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 4096, response_format: { type: 'json_object' } });
+          logChatCompletion(store, c, mcqGroq?.model ?? 'llama-3.3-70b-versatile', 'groq', 'generateChapterMCQs');
           const parsed = safeParseMCQs(c.choices[0]?.message?.content ?? '');
           if (parsed.length) { logger.info('ai.chapter_mcqs', { provider: 'groq-env', chapter, count: parsed.length }); return parsed; }
           errors.push('Groq (env) returned empty/unparseable');
@@ -1577,6 +1604,7 @@ Respond ONLY with valid JSON (no markdown fences):
       if (groq) {
         try {
           const c = await groq.client.chat.completions.create({ model: groq.model, messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 3000, response_format: { type: 'json_object' } });
+          logChatCompletion(store, c, groq.model, 'groq', 'flashcards');
           const parsed = parse(c.choices[0]?.message?.content ?? '');
           if (parsed) { if (resolver) void resolver.reportModelSuccess('groq', groq.model); logger.info('ai.flashcards', { provider: 'groq', chapter, count: parsed.length }); return parsed; }
           errors.push('Groq returned unparseable flashcards');
@@ -1891,6 +1919,7 @@ Respond ONLY with valid JSON (no markdown fences):
       if (groq) {
         try {
           const c = await groq.client.chat.completions.create({ model: groq.model, messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 6000, response_format: { type: 'json_object' } });
+          logChatCompletion(store, c, groq.model, 'groq', 'syllabus');
           const parsed = parseSyllabus(c.choices[0]?.message?.content ?? '');
           if (parsed) {
             const out = normalize(parsed);
@@ -1996,6 +2025,7 @@ Respond ONLY with valid JSON (no markdown fences):
       if (groq) {
         try {
           const c = await groq.client.chat.completions.create({ model: groq.model, messages: [{ role: 'user', content: prompt }], temperature: 0.4, max_tokens: 1200, response_format: { type: 'json_object' } });
+          logChatCompletion(store, c, groq.model, 'groq', 'exam_dates');
           const parsed = parse(c.choices[0]?.message?.content ?? '');
           if (parsed) {
             if (resolver) void resolver.reportModelSuccess('groq', groq.model);
@@ -2110,6 +2140,7 @@ Respond ONLY with valid JSON (no markdown fences):
       if (caGroq) {
         try {
           const c = await caGroq.client.chat.completions.create({ model: caGroq.model, messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: 6000, response_format: { type: 'json_object' } });
+          logChatCompletion(store, c, caGroq.model, 'groq', 'currentAffairsQuiz');
           const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
           if (parsed.questions?.length) {
             if (resolver) void resolver.reportModelSuccess('groq', caGroq.model);
@@ -2233,6 +2264,7 @@ Respond ONLY with valid JSON, no prose:
       if (pyqGroq) {
         try {
           const c = await pyqGroq.client.chat.completions.create({ model: pyqGroq.model, messages: [{ role: 'user', content: prompt }], temperature: 0.4, max_tokens: 8000, response_format: { type: 'json_object' } });
+          logChatCompletion(store, c, pyqGroq.model, 'groq', 'pyq');
           const qs = parseQuestions(c.choices[0]?.message?.content ?? '');
           if (qs) {
             if (resolver) void resolver.reportModelSuccess('groq', pyqGroq.model);
@@ -2396,6 +2428,7 @@ Respond ONLY with valid JSON (summary may contain \\n newlines):
           try {
             const trGroq = await getGroqClient();
             const c = await (trGroq?.client ?? groq!).chat.completions.create({ model: trGroq?.model ?? 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 8000, response_format: { type: 'json_object' } });
+            logChatCompletion(store, c, trGroq?.model ?? 'llama-3.3-70b-versatile', 'groq', 'translateHindi');
             const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { items?: TItem[] };
             if (parsed.items?.length) {
               logger.info('ai.translate_hindi', { provider: 'groq', count: parsed.items.length });
