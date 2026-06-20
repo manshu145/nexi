@@ -491,8 +491,11 @@ export default function CurrentAffairsShortsPage() {
         </div>
       )}
 
-      {/* Sticky mobile bottom quiz bar — positioned above BottomNav (h-14 + safe-area) */}
-      {feedEntries.length > 0 && (
+      {/* Sticky mobile bottom quiz bar — positioned above BottomNav (h-14 + safe-area).
+          Hidden when the active card is a sponsored ad so it never overlaps the
+          ad's own CTA button (founder-reported overlap). The header "Quiz"
+          button still gives access to the quiz on ad cards. */}
+      {feedEntries.length > 0 && activeEntry?.kind !== 'ad' && (
         <div className="fixed bottom-[calc(3.5rem+env(safe-area-inset-bottom))] left-0 right-0 z-30 px-4 pb-2 pt-3 bg-gradient-to-t from-paper-50 via-paper-50/95 to-transparent lg:hidden animate-slideUp">
           <button
             onClick={() => router.push('/current-affairs/quiz')}

@@ -33,10 +33,11 @@ import {
   runReengage,
   runCurrentAffairsIngest,
   runContentRefresh,
+  runDailyQuizGenerate,
 } from './cronJobs.js';
 import { reconcilePendingOrders } from '../routes/billing.js';
 
-export type CronJobId = 'ingest' | 'daily-digest' | 'streak-check' | 'reengage' | 'content-refresh' | 'reconcile-payments';
+export type CronJobId = 'ingest' | 'daily-quiz' | 'daily-digest' | 'streak-check' | 'reengage' | 'content-refresh' | 'reconcile-payments';
 
 /** How often the scheduler wakes up to evaluate due jobs. */
 const TICK_INTERVAL_MS = 60_000;
@@ -127,6 +128,14 @@ const JOBS: JobDef[] = [
     schedule: 'Every 15 minutes',
     isDue: everyInterval(15 * 60_000),
     run: (d) => runCurrentAffairsIngest(d),
+  },
+  {
+    id: 'daily-quiz',
+    label: 'Daily CA quiz',
+    description: 'Generate the single shared Current Affairs quiz (30 Q, fact-checked, EN+HI) once a day and push it to all users — keeps the leaderboard fair and saves AI cost.',
+    schedule: 'Daily · 12:00 IST',
+    isDue: dailyAt(12),
+    run: (d) => runDailyQuizGenerate(d),
   },
   {
     id: 'daily-digest',

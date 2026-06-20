@@ -118,6 +118,25 @@ function logAICallToStore(
   }).catch(() => {});
 }
 
+/**
+ * Log a chat-completion (OpenAI- or Groq-compatible response shape) to the
+ * admin AI-cost ledger. Prefers the provider-reported `usage.total_tokens`
+ * (prompt + completion) so "AI Cost Today" reflects REAL spend instead of a
+ * response-only estimate. Best-effort: never throws, no-op without a store.
+ */
+function logChatCompletion(
+  adminStore: AdminStore | null,
+  completion: { usage?: { total_tokens?: number | null } | null } | null | undefined,
+  model: string,
+  provider: 'openai' | 'groq',
+  endpoint?: string,
+) {
+  if (!adminStore) return;
+  const tokens = completion?.usage?.total_tokens ?? 0;
+  if (!tokens) return;
+  logAICallToStore(adminStore, model, tokens, estimateCost(model, tokens), 0, undefined, { status: 'success', provider, endpoint });
+}
+
 /** Estimate token count from text length */
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
@@ -223,8 +242,14 @@ export function createAIEngine(
       // (Returning false here would skip the auto-switch.)
       throw new Error(`Gemini HTTP ${res.status}: ${errText.slice(0, 200)}`);
     }
-    const raw = (await res.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+    const raw = (await res.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>; usageMetadata?: { totalTokenCount?: number } };
     const text = raw.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    // Cost ledger: log EVERY successful Gemini call centrally here (no Gemini
+    // call site logged before, so "AI Cost Today" never counted Gemini — the
+    // primary provider for translation, current-affairs + most fallbacks).
+    // Prefer the API-reported token count (prompt + completion); else estimate.
+    const gTokens = raw.usageMetadata?.totalTokenCount ?? (estimateTokens(opts.prompt ?? '') + estimateTokens(text));
+    logAICallToStore(store, resolved.model, gTokens, estimateCost(resolved.model, gTokens), latencyMs, undefined, { status: 'success', provider: 'gemini' });
     return { ok: true, text, model: resolved.model, raw, latencyMs };
   }
 
@@ -1279,6 +1304,7 @@ Write ONLY the Markdown content for the chapter \u2014 no preamble, no closing n
         if (groq) {
           try {
             const c = await groq.client.chat.completions.create({ model: groq.model, messages: [{ role: 'user', content: finalPrompt }], temperature: 0.6, max_tokens: 8000 });
+            logChatCompletion(store, c, groq.model, 'groq', 'generateChapterContent');
             const text = c.choices[0]?.message?.content ?? '';
             if (ok(text)) {
               if (resolver) void resolver.reportModelSuccess('groq', groq.model);
@@ -1489,6 +1515,7 @@ Write ONLY the Markdown content for the chapter \u2014 no preamble, no closing n
         try {
           const mcqGroq = await getGroqClient();
           const c = await (mcqGroq?.client ?? groq!).chat.completions.create({ model: mcqGroq?.model ?? 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 4096, response_format: { type: 'json_object' } });
+          logChatCompletion(store, c, mcqGroq?.model ?? 'llama-3.3-70b-versatile', 'groq', 'generateChapterMCQs');
           const parsed = safeParseMCQs(c.choices[0]?.message?.content ?? '');
           if (parsed.length) { logger.info('ai.chapter_mcqs', { provider: 'groq-env', chapter, count: parsed.length }); return parsed; }
           errors.push('Groq (env) returned empty/unparseable');
@@ -1577,6 +1604,7 @@ Respond ONLY with valid JSON (no markdown fences):
       if (groq) {
         try {
           const c = await groq.client.chat.completions.create({ model: groq.model, messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 3000, response_format: { type: 'json_object' } });
+          logChatCompletion(store, c, groq.model, 'groq', 'flashcards');
           const parsed = parse(c.choices[0]?.message?.content ?? '');
           if (parsed) { if (resolver) void resolver.reportModelSuccess('groq', groq.model); logger.info('ai.flashcards', { provider: 'groq', chapter, count: parsed.length }); return parsed; }
           errors.push('Groq returned unparseable flashcards');
@@ -1891,6 +1919,7 @@ Respond ONLY with valid JSON (no markdown fences):
       if (groq) {
         try {
           const c = await groq.client.chat.completions.create({ model: groq.model, messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 6000, response_format: { type: 'json_object' } });
+          logChatCompletion(store, c, groq.model, 'groq', 'syllabus');
           const parsed = parseSyllabus(c.choices[0]?.message?.content ?? '');
           if (parsed) {
             const out = normalize(parsed);
@@ -1996,6 +2025,7 @@ Respond ONLY with valid JSON (no markdown fences):
       if (groq) {
         try {
           const c = await groq.client.chat.completions.create({ model: groq.model, messages: [{ role: 'user', content: prompt }], temperature: 0.4, max_tokens: 1200, response_format: { type: 'json_object' } });
+          logChatCompletion(store, c, groq.model, 'groq', 'exam_dates');
           const parsed = parse(c.choices[0]?.message?.content ?? '');
           if (parsed) {
             if (resolver) void resolver.reportModelSuccess('groq', groq.model);
@@ -2066,23 +2096,56 @@ Respond ONLY with valid JSON (no markdown fences):
       } catch (err) { logger.error('ai.selection_diagram_error', { error: err instanceof Error ? err.message : String(err) }); throw new Error('Failed to generate diagram'); }
     },
 
-    async generateCurrentAffairsQuiz(headlines: string, count = 20, language: 'en' | 'hi' = 'en') {
+    async generateCurrentAffairsQuiz(headlines: string, count = 30, language: 'en' | 'hi' = 'en') {
       const langInstr = language === 'hi' ? 'Generate ALL questions, options, and explanations in Hindi (Devanagari script).' : 'Generate in English.';
       const prompt = `You are a current affairs quiz generator for Indian competitive exams (UPSC, SSC, Banking).\n\nBased on today's news headlines below, generate exactly ${count} MCQs.\n${langInstr}\n\nHeadlines:\n${headlines.slice(0, 3000)}\n\nRequirements:\n- Questions should test factual recall from these headlines\n- 4 options (A-D), one correct answer\n- Mix difficulty: 7 easy, 8 medium, 5 hard\n- Include brief explanation for correct answer\n- Cover different categories (national, international, economy, science, sports)\n\nRespond ONLY with JSON:\n{"questions":[{"id":"ca-q1","question":"...","options":[{"key":"A","text":"..."},{"key":"B","text":"..."},{"key":"C","text":"..."},{"key":"D","text":"..."}],"correctOption":"A","explanation":"...","difficulty":"easy","subject":"current-affairs","topic":"national"}]}`;
 
       // Try Groq first (fast), then OpenAI fallback, then Gemini fallback
       const errors: string[] = [];
 
+      // Second-pass fact-check: re-validate the generated MCQs against the
+      // source headlines with a different (Gemini) model at low temperature.
+      // Current affairs MUST be accurate, so we drop/fix questions whose
+      // marked answer can't be verified. Best-effort: if verification is
+      // unavailable or over-drops, we keep the original set (never block).
+      const verifyAndCleanQuiz = async (questions: GeneratedMCQ[]): Promise<GeneratedMCQ[]> => {
+        if (!Array.isArray(questions) || questions.length === 0) return questions;
+        if (!env.GEMINI_API_KEY) return questions;
+        const vPrompt = `You are a STRICT fact-checker for an Indian current-affairs quiz. Below are MCQs and the source headlines they were built from. For EACH question: confirm the marked "correctOption" is actually correct, the options are sensible, and the question is unambiguous and supported by the headlines/well-known facts.\n- Fix "correctOption" if a different option is clearly the right answer.\n- DROP any question that is factually wrong, ambiguous, a trick, or not supported.\nKeep the EXACT same JSON schema and ids.\n\nHeadlines:\n${headlines.slice(0, 3000)}\n\nQuestions JSON:\n${JSON.stringify({ questions }).slice(0, 12000)}\n\nRespond ONLY with JSON: {"questions":[ ... validated questions ... ]}`;
+        try {
+          const r = await callGemini({ prompt: vPrompt, generationConfig: { temperature: 0.1, maxOutputTokens: 8000 }, tier: 'flash' });
+          if (r.ok) {
+            const m = r.text.match(/\{[\s\S]*\}/);
+            if (m) {
+              const parsed = JSON.parse(m[0]) as { questions?: GeneratedMCQ[] };
+              const cleaned = (parsed.questions ?? []).filter(q =>
+                q && typeof q.question === 'string' && Array.isArray(q.options) && q.options.length === 4 && typeof q.correctOption === 'string');
+              // Only trust the verifier if it kept a healthy majority; otherwise
+              // it likely misfired — fall back to the original set.
+              if (cleaned.length >= Math.ceil(questions.length * 0.6)) {
+                logger.info('ai.ca_quiz_verified', { before: questions.length, after: cleaned.length });
+                return cleaned.slice(0, count);
+              }
+              logger.warn('ai.ca_quiz_verify_overdrop', { before: questions.length, after: cleaned.length });
+            }
+          }
+        } catch (err) {
+          logger.warn('ai.ca_quiz_verify_failed', { error: err instanceof Error ? err.message : String(err) });
+        }
+        return questions;
+      };
+
       // Attempt 1: Groq (auto-switch model via resolver — no hardcode)
       const caGroq = await getGroqClient();
       if (caGroq) {
         try {
           const c = await caGroq.client.chat.completions.create({ model: caGroq.model, messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: 6000, response_format: { type: 'json_object' } });
+          logChatCompletion(store, c, caGroq.model, 'groq', 'currentAffairsQuiz');
           const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
           if (parsed.questions?.length) {
             if (resolver) void resolver.reportModelSuccess('groq', caGroq.model);
             logger.info('ai.ca_quiz_generated', { provider: 'groq', model: caGroq.model, count: parsed.questions.length });
-            return parsed.questions;
+            return await verifyAndCleanQuiz(parsed.questions);
           }
           errors.push('Groq returned empty questions');
         } catch (err) {
@@ -2099,7 +2162,7 @@ Respond ONLY with valid JSON (no markdown fences):
           const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
           if (parsed.questions?.length) {
             logger.info('ai.ca_quiz_generated', { provider: 'openai', count: parsed.questions.length });
-            return parsed.questions;
+            return await verifyAndCleanQuiz(parsed.questions);
           }
           errors.push('OpenAI returned empty questions');
         } catch (err) {
@@ -2119,7 +2182,7 @@ Respond ONLY with valid JSON (no markdown fences):
               const parsed = JSON.parse(jsonMatch[0]) as { questions: GeneratedMCQ[] };
               if (parsed.questions?.length) {
                 logger.info('ai.ca_quiz_generated', { provider: 'gemini', count: parsed.questions.length, model: r.model });
-                return parsed.questions;
+                return await verifyAndCleanQuiz(parsed.questions);
               }
             }
             errors.push('Gemini returned no parseable questions');
@@ -2201,6 +2264,7 @@ Respond ONLY with valid JSON, no prose:
       if (pyqGroq) {
         try {
           const c = await pyqGroq.client.chat.completions.create({ model: pyqGroq.model, messages: [{ role: 'user', content: prompt }], temperature: 0.4, max_tokens: 8000, response_format: { type: 'json_object' } });
+          logChatCompletion(store, c, pyqGroq.model, 'groq', 'pyq');
           const qs = parseQuestions(c.choices[0]?.message?.content ?? '');
           if (qs) {
             if (resolver) void resolver.reportModelSuccess('groq', pyqGroq.model);
@@ -2364,6 +2428,7 @@ Respond ONLY with valid JSON (summary may contain \\n newlines):
           try {
             const trGroq = await getGroqClient();
             const c = await (trGroq?.client ?? groq!).chat.completions.create({ model: trGroq?.model ?? 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 8000, response_format: { type: 'json_object' } });
+            logChatCompletion(store, c, trGroq?.model ?? 'llama-3.3-70b-versatile', 'groq', 'translateHindi');
             const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { items?: TItem[] };
             if (parsed.items?.length) {
               logger.info('ai.translate_hindi', { provider: 'groq', count: parsed.items.length });

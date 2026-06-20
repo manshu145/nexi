@@ -610,7 +610,8 @@
     "takeQuiz": "Take today's quiz →",
     "you": "you",
     "timeTaken": "{time} taken",
-    "loadFailed": "Failed to load leaderboard"
+    "loadFailed": "Failed to load leaderboard",
+    "viewArchive": "🗂️ Past quizzes →"
   },
   "caQuiz": {
     "title": "Daily Current Affairs Quiz",
@@ -619,6 +620,7 @@
     "ruleNoBack": "No going back once you move forward",
     "ruleCompete": "Compete on the daily leaderboard",
     "startQuiz": "Start Quiz →",
+    "viewArchive": "🗂️ View past quizzes",
     "back": "← Back",
     "loadingQuiz": "Loading today's quiz...",
     "calculating": "Calculating results...",
@@ -646,6 +648,25 @@
     "errNotRun": "No quiz available today — news ingestion may not have run yet.",
     "errLoad": "Failed to load quiz",
     "errSubmit": "Submit failed"
+  },
+  "caArchive": {
+    "title": "Quiz Archive",
+    "subtitle": "Revisit past daily quizzes — questions, answers & explanations.",
+    "back": "← Back",
+    "backToList": "← All quizzes",
+    "empty": "No past quizzes yet. They appear here a day after each daily quiz.",
+    "takeToday": "Take today's quiz →",
+    "questionsCount": "{count} questions",
+    "review": "Review →",
+    "reviewSubtitle": "{count} questions · self-check (not scored)",
+    "selfCheckHint": "Tap an option to check the answer. This is practice only — it does not affect the leaderboard.",
+    "questionN": "Q{n}",
+    "currentAffairs": "Current Affairs",
+    "correctLabel": "Correct answer: {answer}",
+    "topScorer": "Top scorer",
+    "student": "Student",
+    "scoreTime": "Score {score}% · {time}",
+    "loadFailed": "Failed to load archive"
   },
   "caFeed": {
     "catAll": "All",

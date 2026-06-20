@@ -87,6 +87,13 @@ export default function CurrentAffairsLeaderboardPage() {
       <section className="mt-6">
         <h1 className="font-serif text-2xl font-bold text-ink-900">{t('title')}</h1>
         <p className="mt-1 text-sm text-muted-500">{dateLabel ? t('todayWithDate', { date: dateLabel }) : t('todayTop')}</p>
+        <button
+          type="button"
+          onClick={() => router.push('/current-affairs/quiz/archive')}
+          className="mt-2 text-sm font-medium text-ember-600 hover:underline"
+        >
+          {t('viewArchive')}
+        </button>
       </section>
 
       {/* Yesterday's winner card */}
