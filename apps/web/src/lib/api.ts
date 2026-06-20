@@ -294,6 +294,7 @@ export const api = {
   async getCurrentAffairsQuiz(lang: 'en' | 'hi' = 'en') { return (await authedFetch(`/v1/current-affairs/quiz?lang=${lang}`)).json() as Promise<{date:string; questions:GeneratedMCQ[]; quizId?:string}>; },
   async submitCurrentAffairsQuiz(answers: number[], timeTaken: number, quizId?: string) { const lang = getClientLocale(); return (await authedFetch('/v1/current-affairs/quiz/submit', { method: 'POST', body: JSON.stringify({ answers, timeTaken, lang, quizId }) })).json() as Promise<QuizSubmitResult>; },
   async getCurrentAffairsLeaderboard() { return (await authedFetch('/v1/current-affairs/leaderboard')).json() as Promise<LeaderboardResponse>; },
+  async trackReelAdEvent(id: string, event: 'impression' | 'click') { try { await authedFetch(`/v1/current-affairs/ads/${id}/${event}`, { method: 'POST' }); } catch { /* metrics best-effort */ } },
 
   // Chat
   async sendChat(message: string, sessionId?: string, attachments?: { type: 'image' | 'file'; name: string; data: string; mimeType?: string }[], model?: 'gpt4o' | 'groq' | 'gemini', supportMode?: boolean) { return (await authedFetch('/v1/chat', { method: 'POST', body: JSON.stringify({ message, sessionId, attachments, model, supportMode }) })).json() as Promise<{sessionId:string; response:string; title:string; limitReached?:boolean; upgrade?:boolean}>; },
@@ -663,6 +664,32 @@ export const api = {
     }>;
   },
 
+  // ─── Admin: Reel Ads (Current Affairs sponsored cards) ───────────────
+  async adminGetReelAds() {
+    return (await authedFetch('/v1/admin/reel-ads')).json() as Promise<{ config: ReelAdsConfig; ads: ReelAd[]; stats: Record<string, { impressions: number; clicks: number }> }>;
+  },
+  async adminUpdateReelAdsConfig(patch: Partial<ReelAdsConfig>) {
+    return (await authedFetch('/v1/admin/reel-ads/config', {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    })).json() as Promise<{ success: boolean; config: ReelAdsConfig }>;
+  },
+  async adminCreateReelAd(input: Partial<ReelAd>) {
+    return (await authedFetch('/v1/admin/reel-ads', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })).json() as Promise<{ success: boolean; ad: ReelAd }>;
+  },
+  async adminUpdateReelAd(id: string, patch: Partial<ReelAd>) {
+    return (await authedFetch(`/v1/admin/reel-ads/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    })).json() as Promise<{ success: boolean; ad: ReelAd }>;
+  },
+  async adminDeleteReelAd(id: string) {
+    return (await authedFetch(`/v1/admin/reel-ads/${id}`, { method: 'DELETE' })).json() as Promise<{ success: boolean }>;
+  },
+
   // ─── Admin: AI Providers (PR-29) ─────────────────────────────────────
   // Replaces the old fake "API Config" page. Each provider in the
   // registry has its own per-doc Firestore config; the admin can save
@@ -747,7 +774,10 @@ export const api = {
 
 export interface CurrentAffairsItem { id: string; headline: string; body: string; bullets?: string[]; category: string; sources: string[]; summary: string; factChecked: boolean; date: string; publishedAt: string; imageUrl?: string; state?: string; }
 export interface LeaderboardEntry { userId: string; userName: string; score: number; timeTaken: number; date: string; }
-export interface CurrentAffairsResponse { date: string; items: CurrentAffairsItem[]; yesterdayWinner: LeaderboardEntry | null; userLikes?: string[]; userBookmarks?: string[]; likeCounts?: Record<string, number>; isFromYesterday?: boolean; }
+export interface CurrentAffairsResponse { date: string; items: CurrentAffairsItem[]; yesterdayWinner: LeaderboardEntry | null; userLikes?: string[]; userBookmarks?: string[]; likeCounts?: Record<string, number>; isFromYesterday?: boolean; ads?: ReelAdsFeedPayload; }
+export interface ReelAd { id: string; imageUrl: string; headline: string; subtext?: string; ctaText: string; targetUrl: string; active: boolean; createdAt: string; updatedAt: string; }
+export interface ReelAdsConfig { enabled: boolean; everyNReels: number; }
+export interface ReelAdsFeedPayload { enabled: boolean; everyNReels: number; items: ReelAd[]; }
 export interface CAStateOption { slug: string; name: string; nameHi: string; isUT: boolean; }
 export interface QuizSubmitResult { score: number; correct: number; total: number; timeTaken: number; rank: number; }
 export interface LeaderboardResponse { date: string; leaderboard: LeaderboardEntry[]; yesterdayWinner: LeaderboardEntry | null; }

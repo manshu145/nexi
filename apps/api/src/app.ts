@@ -34,6 +34,7 @@ import { FirestoreBlogStore, InMemoryBlogStore, type BlogStore } from './lib/blo
 import { FirestoreServiceKeyStore, InMemoryServiceKeyStore, type ServiceKeyStore } from './lib/serviceKeyStore.js';
 import { createPushService, type PushService } from './lib/pushService.js';
 import { FirestoreFeatureUsageStore, InMemoryFeatureUsageStore, type FeatureUsageStore } from './lib/featureUsageStore.js';
+import { FirestoreAdsStore, InMemoryAdsStore, type AdsStore } from './lib/adsStore.js';
 import { FirestoreTeamInviteStore, InMemoryTeamInviteStore, type TeamInviteStore } from './lib/teamInviteStore.js';
 import { makePublicRoutes } from './routes/public.js';
 import { makeMockTestRoutes } from './routes/mockTests.js';
@@ -53,7 +54,7 @@ import { FirestoreReviewStore, InMemoryReviewStore, type ReviewStore } from './l
 import { makeReviewRoutes } from './routes/review.js';
 import { makePYQRoutes } from './routes/pyq.js';
 
-export interface AppDeps { env: Env; logger: Logger; users?: UserStore; aiEngine?: AIEngine; chapters?: ChapterStore; currentAffairs?: CurrentAffairsStore; chatStore?: ChatStore; adminStore?: AdminStore; couponStore?: CouponStore; idempotency?: IdempotencyStore; ledger?: CreditLedger; config?: PlatformConfigStore; mockTests?: MockTestStore; pyq?: PYQStore; blog?: BlogStore; aiProviderStore?: AIProviderStore; modelResolver?: AIModelResolver; serviceKeys?: ServiceKeyStore; push?: PushService; teamInvites?: TeamInviteStore; }
+export interface AppDeps { env: Env; logger: Logger; users?: UserStore; aiEngine?: AIEngine; chapters?: ChapterStore; currentAffairs?: CurrentAffairsStore; ads?: AdsStore; chatStore?: ChatStore; adminStore?: AdminStore; couponStore?: CouponStore; idempotency?: IdempotencyStore; ledger?: CreditLedger; config?: PlatformConfigStore; mockTests?: MockTestStore; pyq?: PYQStore; blog?: BlogStore; aiProviderStore?: AIProviderStore; modelResolver?: AIModelResolver; serviceKeys?: ServiceKeyStore; push?: PushService; teamInvites?: TeamInviteStore; }
 
 export function buildApp(deps: AppDeps): Hono {
   const { env, logger } = deps;
@@ -71,6 +72,7 @@ export function buildApp(deps: AppDeps): Hono {
   const aiEngine = deps.aiEngine ?? createAIEngine(env, logger, adminStore, aiSpend, modelResolver);
   const chapters = deps.chapters ?? (fs ? new FirestoreChapterStore(fs) : new InMemoryChapterStore());
   const currentAffairs = deps.currentAffairs ?? (fs ? new FirestoreCurrentAffairsStore(fs) : new InMemoryCurrentAffairsStore());
+  const ads = deps.ads ?? (fs ? new FirestoreAdsStore(fs, logger) : new InMemoryAdsStore());
   const chatStore = deps.chatStore ?? (fs ? new FirestoreChatStore(fs) : new InMemoryChatStore());
   const couponStore = deps.couponStore ?? (fs ? new FirestoreCouponStore(fs) : new InMemoryCouponStore());
   const idempotency = deps.idempotency ?? (fs ? new FirestoreIdempotencyStore(fs) : new InMemoryIdempotencyStore());
@@ -224,7 +226,7 @@ export function buildApp(deps: AppDeps): Hono {
   app.route('/v1', makePublicRoutes({ adminStore, config, logger, blog, firebaseAuth, serviceKeys, env, db: fs }));
 
   // Cron endpoint — NO auth required (uses x-cron-secret header instead)
-  const cronRoutes = makeCurrentAffairsRoutes({ users, aiEngine, currentAffairs, env, logger });
+  const cronRoutes = makeCurrentAffairsRoutes({ users, aiEngine, currentAffairs, ads, env, logger });
   app.post('/v1/current-affairs/ingest', async (c) => {
     const cronSecret = c.req.header('x-cron-secret');
     if (cronSecret !== env.CRON_SECRET) {
@@ -488,7 +490,7 @@ export function buildApp(deps: AppDeps): Hono {
   v1.route('/chat', makeChatRoutes({ users, aiEngine, chat: chatStore, logger, env, config, usage: featureUsage }));
   v1.route('/credits', makeCreditsRoutes({ users, logger, db: fs, ledger, config }));
   v1.route('/billing', makeBillingRoutes({ users, env, logger, db: fs, coupons: couponStore, idempotency, config, serviceKeys }));
-  v1.route('/admin', makeAdminRoutes({ users, adminStore, env, logger, coupons: couponStore, db: fs, config, aiSpend, firebaseAuth, blog, aiEngine, aiProviderStore, modelResolver, currentAffairs, serviceKeys, push, notifications, notificationLogs, teamInvites, scheduler }));
+  v1.route('/admin', makeAdminRoutes({ users, adminStore, env, logger, coupons: couponStore, db: fs, config, aiSpend, firebaseAuth, blog, aiEngine, aiProviderStore, modelResolver, currentAffairs, ads, serviceKeys, push, notifications, notificationLogs, teamInvites, scheduler }));
   v1.route('/support', makeSupportRoutes({ users, db: fs, logger }));
   v1.route('/essay', makeEssayRoutes({ users, aiEngine, logger, db: fs, config, usage: featureUsage }));
   v1.route('/mock-tests', makeMockTestRoutes({ users, aiEngine, mockTests, ledger, config, usage: featureUsage, logger }));
