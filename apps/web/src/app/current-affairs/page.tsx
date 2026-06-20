@@ -522,6 +522,8 @@ function AdCard({ ad, isActive }: { ad: ReelAd; isActive: boolean }) {
   const lang = getLang();
   const [imgError, setImgError] = useState(false);
   const impressedRef = useRef(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const isVideo = ad.mediaType === 'video' && !!ad.videoUrl;
   // Count one impression the first time this ad becomes the active card.
   useEffect(() => {
     if (isActive && !impressedRef.current) {
@@ -529,6 +531,14 @@ function AdCard({ ad, isActive }: { ad: ReelAd; isActive: boolean }) {
       void api.trackReelAdEvent(ad.id, 'impression');
     }
   }, [isActive, ad.id]);
+  // Play the video only while its card is active (muted autoplay is Play Store
+  // / mobile-policy safe); pause + rewind when it scrolls off.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (isActive) { v.play().catch(() => { /* autoplay blocked — poster stays */ }); }
+    else { try { v.pause(); v.currentTime = 0; } catch { /* ignore */ } }
+  }, [isActive]);
   const open = () => {
     try { track('reel_ad_click', { id: ad.id }); } catch { /* analytics best-effort */ }
     void api.trackReelAdEvent(ad.id, 'click');
@@ -544,25 +554,38 @@ function AdCard({ ad, isActive }: { ad: ReelAd; isActive: boolean }) {
         role="link"
         aria-label={ad.headline}
       >
-        {/* Image */}
-        <div className="relative h-[45%] min-h-[160px] max-h-[260px] overflow-hidden bg-paper-200">
-          {!imgError ? (
+        {/* Media (image or video). Height is a % of the card so it scales with
+            the viewport on every device; object-cover handles any aspect ratio. */}
+        <div className="relative h-[44%] min-h-[150px] max-h-[280px] overflow-hidden bg-paper-200">
+          {isVideo ? (
+            <video
+              ref={videoRef}
+              src={ad.videoUrl}
+              poster={ad.imageUrl || undefined}
+              muted
+              loop
+              playsInline
+              preload="metadata"
+              className="absolute inset-0 h-full w-full object-cover"
+            />
+          ) : !imgError ? (
             <img src={ad.imageUrl} alt={ad.headline} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 ease-out" style={{ transform: isActive ? 'scale(1)' : 'scale(1.1)' }} loading="lazy" onError={() => setImgError(true)} />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-paper-200 to-paper-300"><span className="text-3xl">📣</span></div>
           )}
+          {/* "Sponsored" label — required ad disclosure (Play Store / ad-policy compliant). */}
           <span className="absolute top-3 left-3 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-ink-900/80 text-paper-50 backdrop-blur-sm shadow-sm">
             {lang === 'hi' ? 'विज्ञापन' : 'Sponsored'}
           </span>
         </div>
         {/* Body */}
-        <div className="flex flex-col px-5 pt-4 pb-5 h-[55%] overflow-hidden">
-          <h2 className="font-serif text-lg lg:text-xl font-bold leading-snug text-ink-900 line-clamp-3">{ad.headline}</h2>
-          {ad.subtext && <p className="mt-2.5 text-sm text-ink-700 leading-relaxed line-clamp-4">{ad.subtext}</p>}
-          <div className="mt-auto pt-4">
+        <div className="flex flex-col px-4 sm:px-5 pt-3.5 sm:pt-4 pb-4 sm:pb-5 h-[56%] overflow-hidden">
+          <h2 className="font-serif text-base sm:text-lg lg:text-xl font-bold leading-snug text-ink-900 line-clamp-3">{ad.headline}</h2>
+          {ad.subtext && <p className="mt-2 sm:mt-2.5 text-[13px] sm:text-sm text-ink-700 leading-relaxed line-clamp-4">{ad.subtext}</p>}
+          <div className="mt-auto pt-3 sm:pt-4">
             <button
               onClick={(e) => { e.stopPropagation(); open(); }}
-              className="w-full rounded-xl bg-ember-500 px-4 py-3 text-sm font-bold text-paper-50 shadow-lg hover:bg-ember-600 transition-all duration-150 active:scale-[0.97] flex items-center justify-center gap-2"
+              className="w-full rounded-xl bg-ember-500 px-4 py-2.5 sm:py-3 text-sm font-bold text-paper-50 shadow-lg hover:bg-ember-600 transition-all duration-150 active:scale-[0.97] flex items-center justify-center gap-2"
             >
               {ad.ctaText}
               <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>

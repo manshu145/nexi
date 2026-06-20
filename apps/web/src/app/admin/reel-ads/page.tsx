@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '~/lib/auth-context';
 import { api, type ReelAd, type ReelAdsConfig } from '~/lib/api';
@@ -7,17 +7,25 @@ import { api, type ReelAd, type ReelAdsConfig } from '~/lib/api';
 /**
  * Admin: Reel Ads — sponsored cards for the Current Affairs reel.
  *
- * Founder ask: "mujhe har 3 se 8 reels ke bich me ads place karne ka option
- * de admin panel me." This page controls:
+ * Controls:
  *   - master on/off + how often an ad shows (every N reels, 3..8)
- *   - the list of ad creatives (image, headline, CTA, target link, active)
+ *   - the list of ad creatives (image OR video, headline, CTA, target link)
+ *   - a live preview of exactly how each creative renders in the reel
  *
- * Mirrors the credit-rewards admin page pattern (auth guard → load → edit →
- * save with ~60s config-cache propagation note).
+ * Compliance note: every ad card carries a "Sponsored" disclosure and video
+ * autoplays muted + inline (Play Store / mobile ad-policy friendly).
  */
 
 const MIN_EVERY = 3;
 const MAX_EVERY = 8;
+
+type MediaType = 'image' | 'video';
+
+/** Creative spec guidance surfaced to the admin. */
+const SIZE_GUIDE = {
+  image: 'Recommended: 1080×1080 (1:1) or 1080×1350 (4:5). JPG / PNG / WebP. Uploads are auto-compressed to keep the feed fast.',
+  video: 'Hosted MP4 (H.264) URL. 1:1 or 9:16, ≤ ~30s, ≤ ~10 MB. Plays muted & inline. Add a poster image as the fallback thumbnail.',
+};
 
 export default function AdminReelAdsPage() {
   const { user, loading } = useAuth();
@@ -76,17 +84,15 @@ export default function AdminReelAdsPage() {
   const activeCount = adsList.filter(a => a.active).length;
 
   return (
-    <div>
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="font-serif text-2xl font-bold text-ink-900">Reel Ads</h1>
-          <p className="mt-1 text-sm text-muted-500 max-w-2xl">
-            Sponsored cards shown inside the Current Affairs reel. Set how often an ad appears
-            (after every N reels) and manage the creatives below. An ad only shows when ads are
-            <strong> ON</strong> and at least one creative is <strong>active</strong>.
-            Changes propagate within ~60 seconds (config cache).
-          </p>
-        </div>
+    <div className="max-w-5xl">
+      <div>
+        <h1 className="font-serif text-2xl font-bold text-ink-900">Reel Ads</h1>
+        <p className="mt-1 text-sm text-muted-500 max-w-2xl">
+          Sponsored cards shown inside the Current Affairs reel. Set how often an ad appears
+          (after every N reels) and manage the creatives below. An ad only shows when ads are
+          <strong> ON</strong> and at least one creative is <strong>active</strong>.
+          Paid-plan users always see an ad-free feed. Changes propagate within ~60s.
+        </p>
       </div>
 
       {error && <div className="banner banner-error mt-4">{error}</div>}
@@ -101,7 +107,7 @@ export default function AdminReelAdsPage() {
       ) : (
         <>
           {/* ── Placement config ── */}
-          <section className="paper-card mt-6 p-5">
+          <section className="paper-card mt-6 p-4 sm:p-5">
             <h2 className="text-sm font-semibold text-ink-900">Placement</h2>
             <div className="mt-4 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
               <label className="flex items-center gap-3 cursor-pointer select-none">
@@ -111,16 +117,12 @@ export default function AdminReelAdsPage() {
                   onChange={(e) => setConfig((p) => ({ ...p, enabled: e.target.checked }))}
                   className="h-5 w-5 rounded border-line text-ember-500 focus:ring-ember-500"
                 />
-                <span className="text-sm font-medium text-ink-900">
-                  Ads {config.enabled ? 'enabled' : 'disabled'}
-                </span>
+                <span className="text-sm font-medium text-ink-900">Ads {config.enabled ? 'enabled' : 'disabled'}</span>
               </label>
 
-              <div className="flex items-end gap-3">
+              <div className="flex flex-wrap items-end gap-3">
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-muted-500">
-                    Show an ad after every
-                  </label>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-muted-500">Show an ad after every</label>
                   <div className="mt-1 flex items-center gap-2">
                     <input
                       type="number"
@@ -131,9 +133,9 @@ export default function AdminReelAdsPage() {
                         const n = Math.floor(Number(e.target.value) || 0);
                         setConfig((p) => ({ ...p, everyNReels: Math.min(MAX_EVERY, Math.max(MIN_EVERY, n)) }));
                       }}
-                      className="input w-24 text-sm"
+                      className="input w-20 text-sm"
                     />
-                    <span className="text-sm text-ink-700">reels (range {MIN_EVERY}–{MAX_EVERY})</span>
+                    <span className="text-sm text-ink-700">reels ({MIN_EVERY}–{MAX_EVERY})</span>
                   </div>
                 </div>
                 <button onClick={saveConfig} disabled={!dirty || savingCfg} className="btn-primary text-sm disabled:opacity-50">
@@ -144,8 +146,8 @@ export default function AdminReelAdsPage() {
             <p className="mt-4 text-xs text-muted-500">
               {config.enabled
                 ? activeCount > 0
-                  ? `Live: an ad will appear after every ${config.everyNReels} news reels, cycling through ${activeCount} active creative${activeCount === 1 ? '' : 's'}.`
-                  : 'Ads are ON but no creative is active — nothing will show until you add/activate one below.'
+                  ? `Live: an ad appears after every ${config.everyNReels} news reels, cycling through ${activeCount} active creative${activeCount === 1 ? '' : 's'}.`
+                  : 'Ads are ON but no creative is active — nothing shows until you add/activate one below.'
                 : 'Ads are OFF — the reel shows news only.'}
             </p>
           </section>
@@ -161,7 +163,7 @@ export default function AdminReelAdsPage() {
             {adsList.length === 0 ? (
               <p className="mt-3 text-sm text-muted-500">No ad creatives yet. Add one above.</p>
             ) : (
-              <div className="mt-3 grid gap-4 sm:grid-cols-2">
+              <div className="mt-3 grid gap-4 lg:grid-cols-2">
                 {adsList.map((ad) => (
                   <AdEditor key={ad.id} ad={ad} stats={stats[ad.id]} onChanged={() => void load()} onError={setError} />
                 ))}
@@ -174,23 +176,55 @@ export default function AdminReelAdsPage() {
   );
 }
 
-/* ─── Create form ─── */
+/* ─── Media-type tabs ─── */
+function MediaTypeTabs({ value, onChange }: { value: MediaType; onChange: (v: MediaType) => void }) {
+  return (
+    <div className="inline-flex rounded-lg border border-line bg-paper-200 p-0.5 text-xs">
+      {(['image', 'video'] as MediaType[]).map((t) => (
+        <button
+          key={t}
+          type="button"
+          onClick={() => onChange(t)}
+          className={`rounded-md px-3 py-1.5 font-medium capitalize transition-colors ${value === t ? 'bg-paper-50 text-ink-900 shadow-sm' : 'text-muted-500 hover:text-ink-800'}`}
+        >
+          {t}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ─── Create form (fields + live preview, responsive) ─── */
 function NewAdForm({ onCreated, onError }: { onCreated: () => void; onError: (m: string) => void }) {
+  const [mediaType, setMediaType] = useState<MediaType>('image');
   const [imageUrl, setImageUrl] = useState('');
+  const [videoUrl, setVideoUrl] = useState('');
   const [headline, setHeadline] = useState('');
   const [subtext, setSubtext] = useState('');
   const [ctaText, setCtaText] = useState('Learn more');
   const [targetUrl, setTargetUrl] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const valid = (/^https?:\/\/\S+$/i.test(imageUrl) || imageUrl.startsWith('data:image/')) && headline.trim() && ctaText.trim() && /^https?:\/\/\S+$/i.test(targetUrl);
+  const mediaOk = mediaType === 'video'
+    ? /^https?:\/\/\S+$/i.test(videoUrl)
+    : (/^https?:\/\/\S+$/i.test(imageUrl) || imageUrl.startsWith('data:image/'));
+  const valid = mediaOk && headline.trim() && ctaText.trim() && /^https?:\/\/\S+$/i.test(targetUrl);
 
   async function create() {
     if (!valid) return;
     setSaving(true);
     try {
-      await api.adminCreateReelAd({ imageUrl: imageUrl.trim(), headline: headline.trim(), subtext: subtext.trim(), ctaText: ctaText.trim(), targetUrl: targetUrl.trim(), active: true });
-      setImageUrl(''); setHeadline(''); setSubtext(''); setCtaText('Learn more'); setTargetUrl('');
+      await api.adminCreateReelAd({
+        mediaType,
+        imageUrl: imageUrl.trim(),
+        videoUrl: videoUrl.trim(),
+        headline: headline.trim(),
+        subtext: subtext.trim(),
+        ctaText: ctaText.trim(),
+        targetUrl: targetUrl.trim(),
+        active: true,
+      });
+      setMediaType('image'); setImageUrl(''); setVideoUrl(''); setHeadline(''); setSubtext(''); setCtaText('Learn more'); setTargetUrl('');
       onCreated();
     } catch (e) {
       onError(e instanceof Error ? e.message : 'Create failed');
@@ -198,25 +232,51 @@ function NewAdForm({ onCreated, onError }: { onCreated: () => void; onError: (m:
   }
 
   return (
-    <section className="paper-card mt-6 p-5">
-      <h2 className="text-sm font-semibold text-ink-900">Add a creative</h2>
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <Field label="Image * (upload or paste URL)">
-          <ImagePicker value={imageUrl} onChange={setImageUrl} onError={onError} showPreview />
-        </Field>
-        <Field label="Target URL * (where the CTA goes)">
-          <input value={targetUrl} onChange={(e) => setTargetUrl(e.target.value)} placeholder="https://…" className="input w-full text-sm" />
-        </Field>
-        <Field label="Headline *">
-          <input value={headline} onChange={(e) => setHeadline(e.target.value)} maxLength={140} placeholder="Crack UPSC with…" className="input w-full text-sm" />
-        </Field>
-        <Field label="CTA button text *">
-          <input value={ctaText} onChange={(e) => setCtaText(e.target.value)} maxLength={40} placeholder="Learn more" className="input w-full text-sm" />
-        </Field>
-        <Field label="Subtext (optional)" full>
-          <input value={subtext} onChange={(e) => setSubtext(e.target.value)} maxLength={200} placeholder="One supporting line…" className="input w-full text-sm" />
-        </Field>
+    <section className="paper-card mt-6 p-4 sm:p-5">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-sm font-semibold text-ink-900">Add a creative</h2>
+        <MediaTypeTabs value={mediaType} onChange={setMediaType} />
       </div>
+
+      <div className="mt-4 grid gap-6 lg:grid-cols-[minmax(0,1fr)_240px]">
+        {/* Fields */}
+        <div className="grid gap-3 sm:grid-cols-2">
+          {mediaType === 'image' ? (
+            <Field label="Image * (upload or paste URL)" full>
+              <ImagePicker value={imageUrl} onChange={setImageUrl} onError={onError} />
+            </Field>
+          ) : (
+            <>
+              <Field label="Video URL * (hosted MP4)">
+                <input value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} placeholder="https://….mp4" className="input w-full text-sm" />
+              </Field>
+              <Field label="Poster image (upload or URL)">
+                <ImagePicker value={imageUrl} onChange={setImageUrl} onError={onError} />
+              </Field>
+            </>
+          )}
+          <Field label="Target URL * (where the CTA goes)">
+            <input value={targetUrl} onChange={(e) => setTargetUrl(e.target.value)} placeholder="https://…" className="input w-full text-sm" />
+          </Field>
+          <Field label="Headline *">
+            <input value={headline} onChange={(e) => setHeadline(e.target.value)} maxLength={140} placeholder="Crack UPSC with…" className="input w-full text-sm" />
+          </Field>
+          <Field label="CTA button text *">
+            <input value={ctaText} onChange={(e) => setCtaText(e.target.value)} maxLength={40} placeholder="Learn more" className="input w-full text-sm" />
+          </Field>
+          <Field label="Subtext (optional)" full>
+            <input value={subtext} onChange={(e) => setSubtext(e.target.value)} maxLength={200} placeholder="One supporting line…" className="input w-full text-sm" />
+          </Field>
+          <p className="sm:col-span-2 text-[11px] leading-relaxed text-muted-500">{SIZE_GUIDE[mediaType]}</p>
+        </div>
+
+        {/* Live preview */}
+        <div className="lg:sticky lg:top-4">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-500">Live preview</p>
+          <ReelAdPreview mediaType={mediaType} imageUrl={imageUrl} videoUrl={videoUrl} headline={headline} subtext={subtext} ctaText={ctaText} />
+        </div>
+      </div>
+
       <div className="mt-4 flex justify-end">
         <button onClick={create} disabled={!valid || saving} className="btn-primary text-sm disabled:opacity-50">
           {saving ? 'Adding…' : 'Add ad'}
@@ -228,7 +288,9 @@ function NewAdForm({ onCreated, onError }: { onCreated: () => void; onError: (m:
 
 /* ─── Edit one creative ─── */
 function AdEditor({ ad, stats, onChanged, onError }: { ad: ReelAd; stats?: { impressions: number; clicks: number }; onChanged: () => void; onError: (m: string) => void }) {
+  const [mediaType, setMediaType] = useState<MediaType>(ad.mediaType === 'video' ? 'video' : 'image');
   const [imageUrl, setImageUrl] = useState(ad.imageUrl);
+  const [videoUrl, setVideoUrl] = useState(ad.videoUrl ?? '');
   const [headline, setHeadline] = useState(ad.headline);
   const [subtext, setSubtext] = useState(ad.subtext ?? '');
   const [ctaText, setCtaText] = useState(ad.ctaText);
@@ -238,14 +300,16 @@ function AdEditor({ ad, stats, onChanged, onError }: { ad: ReelAd; stats?: { imp
   const [deleting, setDeleting] = useState(false);
 
   const dirty =
-    imageUrl !== ad.imageUrl || headline !== ad.headline || (subtext || '') !== (ad.subtext ?? '') ||
+    mediaType !== (ad.mediaType === 'video' ? 'video' : 'image') ||
+    imageUrl !== ad.imageUrl || (videoUrl || '') !== (ad.videoUrl ?? '') ||
+    headline !== ad.headline || (subtext || '') !== (ad.subtext ?? '') ||
     ctaText !== ad.ctaText || targetUrl !== ad.targetUrl || active !== ad.active;
 
   async function save() {
     if (!dirty) return;
     setSaving(true);
     try {
-      await api.adminUpdateReelAd(ad.id, { imageUrl: imageUrl.trim(), headline: headline.trim(), subtext: subtext.trim(), ctaText: ctaText.trim(), targetUrl: targetUrl.trim(), active });
+      await api.adminUpdateReelAd(ad.id, { mediaType, imageUrl: imageUrl.trim(), videoUrl: videoUrl.trim(), headline: headline.trim(), subtext: subtext.trim(), ctaText: ctaText.trim(), targetUrl: targetUrl.trim(), active });
       onChanged();
     } catch (e) {
       onError(e instanceof Error ? e.message : 'Save failed');
@@ -266,27 +330,36 @@ function AdEditor({ ad, stats, onChanged, onError }: { ad: ReelAd; stats?: { imp
 
   return (
     <div className={`paper-card p-4 ${active ? '' : 'opacity-70'}`}>
-      <div className="flex items-start gap-3">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={imageUrl} alt="" className="h-16 w-16 flex-shrink-0 rounded-lg object-cover bg-paper-300" onError={(e) => { (e.target as HTMLImageElement).style.visibility = 'hidden'; }} />
+      <div className="flex flex-col gap-4 sm:flex-row">
+        {/* Live preview (scaled) */}
+        <div className="mx-auto w-[150px] flex-shrink-0 sm:mx-0">
+          <ReelAdPreview mediaType={mediaType} imageUrl={imageUrl} videoUrl={videoUrl} headline={headline} subtext={subtext} ctaText={ctaText} compact />
+        </div>
+
+        {/* Fields */}
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-ink-900">{headline || '(no headline)'}</p>
-          <label className="mt-1 inline-flex items-center gap-2 text-xs text-ink-700 cursor-pointer">
-            <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} className="h-4 w-4 rounded border-line text-ember-500 focus:ring-ember-500" />
-            {active ? 'Active' : 'Inactive'}
-          </label>
+          <div className="flex items-center justify-between gap-2">
+            <label className="inline-flex items-center gap-2 text-xs text-ink-700 cursor-pointer">
+              <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} className="h-4 w-4 rounded border-line text-ember-500 focus:ring-ember-500" />
+              {active ? 'Active' : 'Inactive'}
+            </label>
+            <MediaTypeTabs value={mediaType} onChange={setMediaType} />
+          </div>
           <p className="mt-1 text-[11px] text-muted-500">
             {(stats?.impressions ?? 0).toLocaleString()} views · {(stats?.clicks ?? 0).toLocaleString()} clicks · {stats && stats.impressions > 0 ? Math.round((stats.clicks / stats.impressions) * 100) : 0}% CTR
           </p>
-        </div>
-      </div>
 
-      <div className="mt-3 grid gap-2">
-        <Field label="Image"><ImagePicker value={imageUrl} onChange={setImageUrl} onError={onError} /></Field>
-        <Field label="Headline"><input value={headline} onChange={(e) => setHeadline(e.target.value)} maxLength={140} className="input w-full text-xs" /></Field>
-        <Field label="Subtext"><input value={subtext} onChange={(e) => setSubtext(e.target.value)} maxLength={200} className="input w-full text-xs" /></Field>
-        <Field label="CTA text"><input value={ctaText} onChange={(e) => setCtaText(e.target.value)} maxLength={40} className="input w-full text-xs" /></Field>
-        <Field label="Target URL"><input value={targetUrl} onChange={(e) => setTargetUrl(e.target.value)} className="input w-full text-xs" /></Field>
+          <div className="mt-3 grid gap-2">
+            {mediaType === 'video' && (
+              <Field label="Video URL"><input value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} placeholder="https://….mp4" className="input w-full text-xs" /></Field>
+            )}
+            <Field label={mediaType === 'video' ? 'Poster image' : 'Image'}><ImagePicker value={imageUrl} onChange={setImageUrl} onError={onError} /></Field>
+            <Field label="Headline"><input value={headline} onChange={(e) => setHeadline(e.target.value)} maxLength={140} className="input w-full text-xs" /></Field>
+            <Field label="Subtext"><input value={subtext} onChange={(e) => setSubtext(e.target.value)} maxLength={200} className="input w-full text-xs" /></Field>
+            <Field label="CTA text"><input value={ctaText} onChange={(e) => setCtaText(e.target.value)} maxLength={40} className="input w-full text-xs" /></Field>
+            <Field label="Target URL"><input value={targetUrl} onChange={(e) => setTargetUrl(e.target.value)} className="input w-full text-xs" /></Field>
+          </div>
+        </div>
       </div>
 
       <div className="mt-3 flex items-center justify-between">
@@ -301,6 +374,47 @@ function AdEditor({ ad, stats, onChanged, onError }: { ad: ReelAd; stats?: { imp
   );
 }
 
+/* ─── Live preview that mirrors the real reel AdCard (non-interactive) ─── */
+function ReelAdPreview({ mediaType, imageUrl, videoUrl, headline, subtext, ctaText, compact }: {
+  mediaType: MediaType; imageUrl: string; videoUrl: string; headline: string; subtext: string; ctaText: string; compact?: boolean;
+}) {
+  const isVideo = mediaType === 'video' && /^https?:\/\/\S+$/i.test(videoUrl);
+  const hasMedia = isVideo || !!imageUrl;
+  return (
+    <div className={`relative mx-auto w-full overflow-hidden rounded-2xl border border-line bg-paper-50 shadow-md ${compact ? 'aspect-[9/16] max-w-[150px]' : 'aspect-[9/16] max-w-[240px]'}`}>
+      {/* media */}
+      <div className="relative h-[44%] w-full overflow-hidden bg-paper-200">
+        {isVideo ? (
+          <video src={videoUrl} poster={imageUrl || undefined} muted loop autoPlay playsInline className="absolute inset-0 h-full w-full object-cover" />
+        ) : imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center text-2xl text-muted-400">📣</div>
+        )}
+        <span className="absolute left-2 top-2 rounded-full bg-ink-900/80 px-2 py-0.5 text-[8px] font-bold uppercase tracking-wider text-paper-50">Sponsored</span>
+      </div>
+      {/* body */}
+      <div className="flex h-[56%] flex-col px-3 pb-3 pt-2">
+        <h3 className={`font-serif font-bold leading-snug text-ink-900 line-clamp-3 ${compact ? 'text-[11px]' : 'text-sm'}`}>
+          {headline || 'Your headline appears here'}
+        </h3>
+        {subtext && <p className={`mt-1 text-ink-700 line-clamp-3 ${compact ? 'text-[9px]' : 'text-[11px]'}`}>{subtext}</p>}
+        <div className="mt-auto">
+          <div className={`flex items-center justify-center gap-1 rounded-lg bg-ember-500 font-bold text-paper-50 ${compact ? 'px-2 py-1.5 text-[10px]' : 'px-3 py-2 text-xs'}`}>
+            {ctaText || 'Learn more'}
+            <svg width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+          </div>
+          <p className={`mt-1 text-center text-muted-400 ${compact ? 'text-[7px]' : 'text-[9px]'}`}>Advertisement · Nexigrate</p>
+        </div>
+      </div>
+      {!hasMedia && (
+        <div className="pointer-events-none absolute inset-x-0 top-1 text-center text-[8px] text-muted-400">add media to preview</div>
+      )}
+    </div>
+  );
+}
+
 function Field({ label, children, full }: { label: string; children: React.ReactNode; full?: boolean }) {
   return (
     <div className={full ? 'sm:col-span-2' : ''}>
@@ -311,46 +425,42 @@ function Field({ label, children, full }: { label: string; children: React.React
 }
 
 /* ─── Image picker: upload (compressed to a small data-URL) OR paste a URL ─── */
-function ImagePicker({ value, onChange, onError, showPreview }: { value: string; onChange: (v: string) => void; onError: (m: string) => void; showPreview?: boolean }) {
+function ImagePicker({ value, onChange, onError }: { value: string; onChange: (v: string) => void; onError: (m: string) => void }) {
   const [busy, setBusy] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
   const isData = value.startsWith('data:');
   return (
-    <div>
-      <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2">
+      <input
+        value={isData ? '' : value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={isData ? 'Uploaded ✓ — paste a URL to replace' : 'https://… or upload →'}
+        className="input w-full text-xs"
+      />
+      <label className="btn-ghost text-xs cursor-pointer whitespace-nowrap">
+        {busy ? '…' : 'Upload'}
         <input
-          value={isData ? '' : value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={isData ? 'Uploaded image ✓ — paste a URL to replace' : 'https://… or upload →'}
-          className="input w-full text-xs"
+          ref={inputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={async (e) => {
+            const f = e.target.files?.[0];
+            if (!f) return;
+            setBusy(true);
+            try {
+              const url = await fileToCompressedDataUrl(f);
+              if (url.length > 900000) onError('Image is too large even after compression — use a smaller/simpler image.');
+              else onChange(url);
+            } catch {
+              onError('Could not read that image file.');
+            } finally {
+              setBusy(false);
+              e.target.value = '';
+            }
+          }}
         />
-        <label className="btn-ghost text-xs cursor-pointer whitespace-nowrap">
-          {busy ? 'Compressing…' : 'Upload'}
-          <input
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={async (e) => {
-              const f = e.target.files?.[0];
-              if (!f) return;
-              setBusy(true);
-              try {
-                const url = await fileToCompressedDataUrl(f);
-                if (url.length > 900000) onError('Image is too large even after compression — please use a smaller/simpler image.');
-                else onChange(url);
-              } catch {
-                onError('Could not read that image file.');
-              } finally {
-                setBusy(false);
-                e.target.value = '';
-              }
-            }}
-          />
-        </label>
-      </div>
-      {showPreview && value && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={value} alt="" className="mt-2 h-20 w-auto rounded-lg border border-line object-cover" onError={(ev) => { (ev.target as HTMLImageElement).style.display = 'none'; }} />
-      )}
+      </label>
     </div>
   );
 }
