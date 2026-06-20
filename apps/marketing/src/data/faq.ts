@@ -11,7 +11,7 @@ export const FAQ: readonly FaqItem[] = [
   },
   {
     q: 'Which exams are covered now?',
-    a: 'We cover 40+ exams including UPSC CSE, SSC CGL/CHSL/MTS/GD, JEE Main & Advanced, BITSAT, NEET UG, NEET PG, Class 5-12 (CBSE, ICSE & ISC), IBPS PO/Clerk, SBI PO/Clerk, RBI Grade B, NDA, CDS, Agniveer, AFCAT, and State PSCs (UPPSC, MPPSC, BPSC, RPSC) — plus professional skills like Python, Data Science, and Digital Marketing. All with AI-generated, NCERT-grounded content.',
+    a: 'We cover 110+ exams including UPSC CSE & CAPF, SSC CGL/CHSL/MTS/GD, JEE Main & Advanced, NEET UG & PG, Class 5-12 (CBSE, ICSE/ISC and UP/MP/Bihar/Rajasthan state boards), IBPS PO/Clerk, SBI PO, RBI Grade B, RRB NTPC/Group D, NDA, CDS, Agniveer, AFCAT, State PSCs (UPPSC, MPPSC, BPSC, RPSC, CGPSC), teaching exams (CTET, TET), CLAT, CUET, CAT, and professional skills like Python and Data Science. All with AI-generated, NCERT-grounded content.',
   },
   {
     q: 'How do you make sure the content is correct?',
