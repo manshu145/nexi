@@ -294,6 +294,8 @@ export const api = {
   async getCurrentAffairsQuiz(lang: 'en' | 'hi' = 'en') { return (await authedFetch(`/v1/current-affairs/quiz?lang=${lang}`)).json() as Promise<{date:string; questions:GeneratedMCQ[]; quizId?:string}>; },
   async submitCurrentAffairsQuiz(answers: number[], timeTaken: number, quizId?: string) { const lang = getClientLocale(); return (await authedFetch('/v1/current-affairs/quiz/submit', { method: 'POST', body: JSON.stringify({ answers, timeTaken, lang, quizId }) })).json() as Promise<QuizSubmitResult>; },
   async getCurrentAffairsLeaderboard() { return (await authedFetch('/v1/current-affairs/leaderboard')).json() as Promise<LeaderboardResponse>; },
+  async getCurrentAffairsQuizArchive(limit = 30) { return (await authedFetch(`/v1/current-affairs/quiz/archive?limit=${limit}`)).json() as Promise<{ quizzes: QuizArchiveSummary[] }>; },
+  async getArchivedCurrentAffairsQuiz(date: string, lang: 'en' | 'hi' = 'en') { return (await authedFetch(`/v1/current-affairs/quiz/archive/${date}?lang=${lang}`)).json() as Promise<ArchivedQuizResponse>; },
   async trackReelAdEvent(id: string, event: 'impression' | 'click') { try { await authedFetch(`/v1/current-affairs/ads/${id}/${event}`, { method: 'POST' }); } catch { /* metrics best-effort */ } },
 
   // Chat
@@ -781,6 +783,8 @@ export interface ReelAdsFeedPayload { enabled: boolean; everyNReels: number; ite
 export interface CAStateOption { slug: string; name: string; nameHi: string; isUT: boolean; }
 export interface QuizSubmitResult { score: number; correct: number; total: number; timeTaken: number; rank: number; }
 export interface LeaderboardResponse { date: string; leaderboard: LeaderboardEntry[]; yesterdayWinner: LeaderboardEntry | null; }
+export interface QuizArchiveSummary { date: string; generatedAt: string; questionCount: number; }
+export interface ArchivedQuizResponse { date: string; generatedAt: string; questions: GeneratedMCQ[]; headlines: string[]; winner: LeaderboardEntry | null; }
 
 export interface ChatMessage { role: 'user' | 'assistant'; content: string; timestamp: string; }
 export interface ChatSession { id: string; userId: string; title: string; messages: ChatMessage[]; createdAt: string; updatedAt: string; }

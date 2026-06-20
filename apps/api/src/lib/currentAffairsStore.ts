@@ -31,6 +31,33 @@ export interface LeaderboardEntry {
 }
 
 /**
+ * A permanently archived daily quiz.
+ *
+ * Founder requirement: reels / current-affairs content are deleted within
+ * ~24h (the `currentAffairs/{date}` bucket is cleaned up), so the quiz can
+ * NOT live inside that ephemeral bucket. This archive is an ISOLATED,
+ * top-level `quizArchive/{date}` doc that stores the full Q&A (questions +
+ * correct option + explanation, in both languages) plus a small snapshot of
+ * the headlines it was built from — so past quizzes survive content cleanup
+ * and can be reviewed even after the source news is gone.
+ */
+export interface QuizArchiveEntry {
+  date: string;            // YYYY-MM-DD (IST)
+  generatedAt: string;     // ISO timestamp
+  questionCount: number;   // count of the EN set (canonical)
+  en: GeneratedMCQ[];
+  hi: GeneratedMCQ[];
+  headlines: string[];     // short snapshot of source headlines for context
+}
+
+/** Lightweight archive list row (no questions payload — for the index page). */
+export interface QuizArchiveSummary {
+  date: string;
+  generatedAt: string;
+  questionCount: number;
+}
+
+/**
  * Async ingestion job status. Persisted on the `system/ingestionStatus`
  * doc alongside `lastIngestedAt`, so the admin "Ingest now" button can
  * kick the job off in the background and poll for progress instead of
@@ -53,6 +80,17 @@ export interface CurrentAffairsStore {
   saveItems(date: string, items: CurrentAffairsStoreItem[]): Promise<void>;
   getDailyQuiz(date: string): Promise<GeneratedMCQ[] | null>;
   saveDailyQuiz(date: string, questions: GeneratedMCQ[]): Promise<void>;
+  /**
+   * Persist a permanent, isolated archive of the day's quiz (full Q&A in
+   * en+hi). Stored OUTSIDE the ephemeral `currentAffairs/{date}` bucket so it
+   * survives the 24h content cleanup. Idempotent: a later run for the same
+   * date merges (e.g. en first, hi shortly after).
+   */
+  archiveQuiz(date: string, payload: { en?: GeneratedMCQ[]; hi?: GeneratedMCQ[]; headlines?: string[] }): Promise<void>;
+  /** List archived quizzes, newest first (index page; no questions payload). */
+  listQuizArchive(limit: number): Promise<QuizArchiveSummary[]>;
+  /** Read a single archived quiz for review (answers + explanations included). */
+  getArchivedQuiz(date: string): Promise<QuizArchiveEntry | null>;
   submitQuizResult(result: DailyQuizResult): Promise<{ rank: number }>;
   getLeaderboard(date: string): Promise<LeaderboardEntry[]>;
   getYesterdayWinner(): Promise<LeaderboardEntry | null>;
@@ -123,6 +161,32 @@ export class InMemoryCurrentAffairsStore implements CurrentAffairsStore {
 
   async saveDailyQuiz(date: string, questions: GeneratedMCQ[]) {
     this.quizzes.set(date, questions);
+  }
+
+  private archive = new Map<string, QuizArchiveEntry>();
+  async archiveQuiz(date: string, payload: { en?: GeneratedMCQ[]; hi?: GeneratedMCQ[]; headlines?: string[] }) {
+    const existing = this.archive.get(date);
+    const en = payload.en ?? existing?.en ?? [];
+    const hi = payload.hi ?? existing?.hi ?? [];
+    this.archive.set(date, {
+      date,
+      generatedAt: existing?.generatedAt ?? new Date().toISOString(),
+      questionCount: en.length || existing?.questionCount || hi.length,
+      en,
+      hi,
+      headlines: payload.headlines ?? existing?.headlines ?? [],
+    });
+  }
+
+  async listQuizArchive(limit: number) {
+    return Array.from(this.archive.values())
+      .sort((a, b) => (a.date < b.date ? 1 : -1))
+      .slice(0, limit)
+      .map(({ date, generatedAt, questionCount }) => ({ date, generatedAt, questionCount }));
+  }
+
+  async getArchivedQuiz(date: string) {
+    return this.archive.get(date) ?? null;
   }
 
   async submitQuizResult(result: DailyQuizResult) {
@@ -266,6 +330,55 @@ export class FirestoreCurrentAffairsStore implements CurrentAffairsStore {
 
   async saveDailyQuiz(date: string, questions: GeneratedMCQ[]) {
     await this.db.collection('dailyQuizzes').doc(date).set({ date, questions, createdAt: new Date().toISOString() });
+  }
+
+  async archiveQuiz(date: string, payload: { en?: GeneratedMCQ[]; hi?: GeneratedMCQ[]; headlines?: string[] }) {
+    try {
+      // Isolated, permanent archive — a top-level `quizArchive/{date}` doc that
+      // is NEVER touched by the 24h `currentAffairs/{date}` content cleanup.
+      const ref = this.db.collection('quizArchive').doc(date);
+      const snap = await ref.get();
+      const prev = snap.exists ? (snap.data() as Partial<QuizArchiveEntry>) : null;
+      const en = payload.en ?? prev?.en ?? [];
+      const hi = payload.hi ?? prev?.hi ?? [];
+      await ref.set(
+        {
+          date,
+          generatedAt: prev?.generatedAt ?? new Date().toISOString(),
+          questionCount: en.length || prev?.questionCount || hi.length || 0,
+          en,
+          hi,
+          headlines: payload.headlines ?? prev?.headlines ?? [],
+        },
+        { merge: true },
+      );
+    } catch { /* archiving is best-effort; never block quiz generation */ }
+  }
+
+  async listQuizArchive(limit: number) {
+    try {
+      const snap = await this.db.collection('quizArchive').orderBy('date', 'desc').limit(limit).get();
+      return snap.docs.map(d => {
+        const data = d.data() as QuizArchiveEntry;
+        return { date: data.date, generatedAt: data.generatedAt, questionCount: data.questionCount ?? (data.en?.length ?? 0) };
+      });
+    } catch { return []; }
+  }
+
+  async getArchivedQuiz(date: string) {
+    try {
+      const snap = await this.db.collection('quizArchive').doc(date).get();
+      if (!snap.exists) return null;
+      const data = snap.data() as QuizArchiveEntry;
+      return {
+        date: data.date ?? date,
+        generatedAt: data.generatedAt ?? '',
+        questionCount: data.questionCount ?? (data.en?.length ?? 0),
+        en: data.en ?? [],
+        hi: data.hi ?? [],
+        headlines: data.headlines ?? [],
+      };
+    } catch { return null; }
   }
 
   async submitQuizResult(result: DailyQuizResult) {
