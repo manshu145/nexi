@@ -15,7 +15,7 @@
  */
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { GoogleGenAI, Modality } from '@google/genai';
+import { GoogleGenAI } from '@google/genai';
 import { requireAuth } from '../auth.js';
 import { effectivePlanId } from '../lib/planGate.js';
 import { asUserId } from '@nexigrate/shared';
@@ -131,25 +131,25 @@ export function makeInterviewRoutes(deps: InterviewRoutesDeps): Hono {
       const model = pickLiveModel(deps.env.GEMINI_LIVE_MODEL, available);
 
       const now = Date.now();
+      // IMPORTANT: mint WITHOUT liveConnectConstraints. A constrained token
+      // bakes the model in at mint time (which the server then resolves against
+      // the wrong catalog -> "not found for API version v1main"), and it also
+      // makes the server ignore the systemInstruction. By leaving it
+      // unconstrained, the browser sends the model + system instruction at
+      // connect time on v1alpha, which is the supported path. The token is
+      // still single-use and short-lived, and the real API key never leaves
+      // the server.
       const token = await ai.authTokens.create({
         config: {
           uses: 1, // single session
           expireTime: new Date(now + 30 * 60 * 1000).toISOString(),       // 30 min to talk
           newSessionExpireTime: new Date(now + 2 * 60 * 1000).toISOString(), // 2 min to start
-          liveConnectConstraints: {
-            model,
-            config: {
-              responseModalities: [Modality.AUDIO],
-              systemInstruction: { parts: [{ text: systemInstruction }] },
-              temperature: 0.8,
-            },
-          },
           httpOptions: { apiVersion: 'v1alpha' },
         },
       });
 
       deps.logger.info('interview.token_minted', { userId: principal.userId, model, lang, availableCount: available.length });
-      return c.json({ token: token.name, model, lang, availableModels: available });
+      return c.json({ token: token.name, model, lang, systemInstruction, availableModels: available });
     } catch (err) {
       deps.logger.error('interview.token_failed', { error: err instanceof Error ? err.message : String(err) });
       throw new HTTPException(503, { message: 'Could not start the interview right now. Please try again.' });
