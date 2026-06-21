@@ -23,6 +23,7 @@ import { makeCreditsRoutes } from './routes/credits.js';
 import { makeBillingRoutes, makeBillingWebhookRoute, reconcilePendingOrders } from './routes/billing.js';
 import { makeAdminRoutes } from './routes/admin.js';
 import { makeSupportRoutes } from './routes/support.js';
+import { makeInterviewRoutes } from './routes/interview.js';
 import { makeEssayRoutes } from './routes/essay.js';
 import { InMemoryCouponStore, FirestoreCouponStore, type CouponStore } from './lib/couponStore.js';
 import { FirestoreIdempotencyStore, InMemoryIdempotencyStore, type IdempotencyStore } from './lib/idempotency.js';
@@ -507,6 +508,7 @@ export function buildApp(deps: AppDeps): Hono {
   v1.route('/admin', makeAdminRoutes({ users, adminStore, env, logger, coupons: couponStore, db: fs, config, aiSpend, firebaseAuth, blog, aiEngine, aiProviderStore, modelResolver, currentAffairs, ads, serviceKeys, push, notifications, notificationLogs, teamInvites, scheduler }));
   v1.route('/support', makeSupportRoutes({ users, db: fs, logger }));
   v1.route('/essay', makeEssayRoutes({ users, aiEngine, logger, db: fs, config, usage: featureUsage }));
+  v1.route('/interview', makeInterviewRoutes({ users, aiEngine, env, logger }));
   v1.route('/mock-tests', makeMockTestRoutes({ users, aiEngine, mockTests, ledger, config, usage: featureUsage, logger }));
   v1.route('/pyq', makePYQRoutes({ users, aiEngine, pyq, logger, config }));
   v1.route('/analytics', makeAnalyticsRoutes({ analytics, adminStore, users, env, logger, db: fs }));

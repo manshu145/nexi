@@ -24,6 +24,17 @@ export interface GeneratedSyllabus {
 export type VisualizationType = 'diagram' | 'mindmap' | 'flowchart' | 'timeline' | 'image';
 export interface VisualizationResult { type: 'mermaid' | 'image'; content: string; /* mermaid code or image URL */ }
 
+/** Structured scorecard for the Elite "Live Interview" feature. */
+export interface InterviewReport {
+  overall: number;        // 0-100
+  communication: number;  // 0-10
+  confidence: number;     // 0-10
+  content: number;        // 0-10
+  strengths: string[];
+  improvements: string[];
+  summary: string;
+}
+
 export interface StageResults {
   questions: GeneratedMCQ[];
   answers: { questionId: string; chosen: string | null }[];
@@ -62,6 +73,12 @@ export interface AIEngine {
   generateExamDates(examSlug: string, examName: string): Promise<Array<{ name: string; estimatedMonth: string; sourceUrl: string }>>;
   generateSelectionDiagram(selectedText: string, subject: string, language: 'en' | 'hi'): Promise<string>;
   generateCurrentAffairsQuiz(headlines: string, count?: number, language?: 'en' | 'hi'): Promise<GeneratedMCQ[]>;
+  /**
+   * Score a completed mock-interview transcript into a structured scorecard
+   * (overall + per-dimension marks, strengths, improvements). Used by the
+   * Elite "Live Interview" feature after the real-time session ends.
+   */
+  generateInterviewReport(transcript: string, opts?: { role?: string; exam?: string; language?: 'en' | 'hi' }): Promise<InterviewReport>;
   /**
    * Reconstruct a "previous year pattern" question paper for an exam's
    * given session year. Grounded (web search when available) on the real
@@ -2195,6 +2212,55 @@ Respond ONLY with valid JSON (no markdown fences):
 
       logger.error('ai.ca_quiz_all_failed', { errors });
       throw new Error(`All AI providers failed for quiz generation: ${errors.join('; ')}`);
+    },
+
+    async generateInterviewReport(transcript: string, opts?: { role?: string; exam?: string; language?: 'en' | 'hi' }): Promise<InterviewReport> {
+      const lang = opts?.language ?? 'en';
+      const role = opts?.role || 'general';
+      const exam = opts?.exam || '';
+      const langInstr = lang === 'hi'
+        ? 'Write the strengths, improvements and summary text in Hindi (Devanagari script).'
+        : 'Write in English.';
+      const prompt = `You are a senior interview panelist evaluating a candidate's MOCK interview${exam ? ` for ${exam}` : ''} (focus: ${role}). Below is the full transcript with interviewer and candidate turns. Assess the CANDIDATE only — communication clarity, confidence/composure, and content depth.\n${langInstr}\n\nTranscript:\n${transcript.slice(0, 12000)}\n\nRespond ONLY with JSON:\n{"overall":<0-100>,"communication":<0-10>,"confidence":<0-10>,"content":<0-10>,"strengths":["..."],"improvements":["..."],"summary":"2-3 sentence verdict with the biggest next step"}`;
+
+      const parse = (raw: string): InterviewReport | null => {
+        const m = raw.match(/\{[\s\S]*\}/);
+        if (!m) return null;
+        try {
+          const p = JSON.parse(m[0]) as Record<string, unknown>;
+          const clamp = (n: unknown, max: number) => Math.max(0, Math.min(max, Math.round(Number(n) || 0)));
+          const arr = (v: unknown) => Array.isArray(v) ? v.slice(0, 6).map(String) : [];
+          return {
+            overall: clamp(p.overall, 100),
+            communication: clamp(p.communication, 10),
+            confidence: clamp(p.confidence, 10),
+            content: clamp(p.content, 10),
+            strengths: arr(p.strengths),
+            improvements: arr(p.improvements),
+            summary: typeof p.summary === 'string' ? p.summary : '',
+          };
+        } catch { return null; }
+      };
+
+      // Attempt 1: Gemini (cheap, accurate enough for grading).
+      if (env.GEMINI_API_KEY) {
+        try {
+          const r = await callGemini({ prompt, generationConfig: { temperature: 0.3, maxOutputTokens: 1500 }, tier: 'flash' });
+          if (r.ok) { const rep = parse(r.text); if (rep) { logger.info('ai.interview_report', { provider: 'gemini', model: r.model }); return rep; } }
+        } catch (err) { logger.warn('ai.interview_report_gemini_failed', { error: err instanceof Error ? err.message : String(err) }); }
+      }
+      // Attempt 2: Groq fallback.
+      const groq = await getGroqClient();
+      if (groq) {
+        try {
+          const c = await groq.client.chat.completions.create({ model: groq.model, messages: [{ role: 'user', content: prompt }], temperature: 0.3, max_tokens: 1500, response_format: { type: 'json_object' } });
+          logChatCompletion(store, c, groq.model, 'groq', 'interviewReport');
+          const rep = parse(c.choices[0]?.message?.content ?? '');
+          if (rep) { logger.info('ai.interview_report', { provider: 'groq' }); return rep; }
+        } catch (err) { logger.warn('ai.interview_report_groq_failed', { error: err instanceof Error ? err.message : String(err) }); }
+      }
+      // Safe default so the UI always renders something.
+      return { overall: 0, communication: 0, confidence: 0, content: 0, strengths: [], improvements: [], summary: lang === 'hi' ? 'रिपोर्ट तैयार नहीं हो पाई। कृपया दोबारा प्रयास करें।' : 'Could not generate a report. Please try again.' };
     },
 
     async generatePYQPaper(examSlug: string, examName: string, year: number, language: 'en' | 'hi', count = 25): Promise<GeneratedMCQ[]> {
