@@ -79,6 +79,10 @@ const TOKEN_BATCH_SIZE = 500;
  *  appeared to "send". Mirrors the constant used in emailService. */
 const APP_BASE_URL = 'https://app.nexigrate.com';
 
+/** Public API origin — where the service worker reports notification taps
+ *  (POST /v1/push/click). Mirrors the web client's default API base. */
+const API_BASE_URL = 'https://api.nexigrate.com';
+
 function toAbsoluteLink(link?: string): string | undefined {
   if (!link) return undefined;
   if (/^https?:\/\//i.test(link)) return link;
@@ -106,10 +110,18 @@ function toAbsoluteLink(link?: string): string | undefined {
 function buildMessage(payload: PushNotificationPayload, target: { token: string } | { topic: string }): Record<string, unknown> {
   const link = toAbsoluteLink(payload.link);
   const ICON = `${APP_BASE_URL}/icon-192.png`;
+  // Click-tracking ping: the service worker POSTs here when the user taps the
+  // notification, so the admin dashboard can show how many pushes were
+  // actually clicked. campaignId/pushType (if set by the sender) let us
+  // attribute the tap to a specific broadcast or notification type.
+  const campaignId = payload.data?.['campaignId'] ?? '';
+  const pushType = payload.data?.['pushType'] ?? '';
+  const clickPing = `${API_BASE_URL}/v1/push/click?c=${encodeURIComponent(campaignId)}&t=${encodeURIComponent(pushType)}`;
   const data: Record<string, string> = {
     ...(payload.data ?? {}),
     title: payload.title,
     body: payload.body,
+    click_ping: clickPing,
     ...(link ? { click_action: link, url: link } : {}),
     ...(payload.imageUrl ? { image: payload.imageUrl } : {}),
   };

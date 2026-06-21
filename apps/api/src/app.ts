@@ -345,6 +345,20 @@ export function buildApp(deps: AppDeps): Hono {
     }
   });
 
+  // Public push-notification CLICK tracker. The service worker POSTs here
+  // (no-cors, no auth — it has no user token in that context) when a user
+  // taps a push. Query: ?c=<campaignId>&t=<pushType>. Increments the daily
+  // tap counter (and the per-campaign counter) so the admin dashboard can
+  // show "Push Clicks". Always returns 204 — tracking is best-effort and
+  // must never error the SW navigation.
+  app.post('/v1/push/click', async (c) => {
+    try {
+      const campaignId = c.req.query('c') || undefined;
+      await adminStore.recordPushClick(campaignId);
+    } catch { /* best-effort */ }
+    return c.body(null, 204);
+  });
+
   // Cron endpoint — weekly content refresh (Cloud Scheduler: weekly).
   // Regenerates the stalest cached chapter content so study material stays
   // current with the latest syllabus instead of being frozen forever.

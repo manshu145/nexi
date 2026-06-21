@@ -50,6 +50,12 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const data = event.notification.data || {};
   const url = data.click_action || data.url || data.link || '/';
+  // Fire-and-forget click tracking so the admin dashboard can count taps.
+  // no-cors keeps it a "simple" cross-origin POST (no preflight); keepalive
+  // lets it complete even though we immediately navigate away.
+  if (data.click_ping) {
+    try { fetch(data.click_ping, { method: 'POST', mode: 'no-cors', keepalive: true }).catch(() => {}); } catch (e) { /* ignore */ }
+  }
   event.waitUntil(
     self.clients.matchAll({ type: 'window' }).then((clients) => {
       for (const client of clients) {
