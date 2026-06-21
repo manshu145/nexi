@@ -312,10 +312,13 @@ export function buildQuizReviewPdf(input: QuizReviewInput): Blob {
   drawFooter(c, page);
   canvases.push(cv);
 
-  const doc = new jsPDF({ unit: 'px', format: [W, H], orientation: 'portrait' });
+  // True A4 pages (210×297mm). The canvases are rendered at A4 aspect
+  // (1240×1754 ≈ 1:1.414) so the image fills each page without distortion.
+  const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+  const A4W = 210, A4H = 297;
   canvases.forEach((canvasEl, i) => {
-    if (i > 0) doc.addPage([W, H], 'portrait');
-    doc.addImage(canvasEl.toDataURL('image/jpeg', 0.85), 'JPEG', 0, 0, W, H);
+    if (i > 0) doc.addPage('a4', 'portrait');
+    doc.addImage(canvasEl.toDataURL('image/jpeg', 0.9), 'JPEG', 0, 0, A4W, A4H);
   });
   return doc.output('blob');
 }
