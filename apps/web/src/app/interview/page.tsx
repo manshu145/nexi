@@ -53,6 +53,9 @@ export default function LiveInterviewPage() {
   const playerRef = useRef<PcmPlayer | null>(null);
   const frameTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const turnsRef = useRef<Turn[]>([]);
+  const kickedOffRef = useRef(false);
+  const gotReplyRef = useRef(false);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => { if (!authLoading && !user) router.replace('/signin'); }, [authLoading, user, router]);
 
@@ -67,6 +70,7 @@ export default function LiveInterviewPage() {
 
   const cleanup = useCallback(() => {
     if (frameTimerRef.current) { clearInterval(frameTimerRef.current); frameTimerRef.current = null; }
+    if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
     try { micRef.current?.stop(); } catch { /* ignore */ }
     try { playerRef.current?.close(); } catch { /* ignore */ }
     try { sessionRef.current?.close(); } catch { /* ignore */ }
@@ -77,9 +81,25 @@ export default function LiveInterviewPage() {
   // Always clean up media on unmount.
   useEffect(() => cleanup, [cleanup]);
 
+  // The opening trigger. Gemini Live never speaks first on its own — it waits
+  // for input — so we send a user turn to make the interviewer greet + ask Q1.
+  const sendKickoff = useCallback(() => {
+    const text = hi
+      ? 'नमस्ते, मैं तैयार हूँ। कृपया इंटरव्यू शुरू करें — पहले मेरा अभिवादन करें और फिर पहला सवाल पूछें।'
+      : "Hello, I'm ready. Please begin the interview now — greet me, then ask your first question.";
+    try {
+      sessionRef.current?.sendClientContent({
+        turns: [{ role: 'user', parts: [{ text }] }],
+        turnComplete: true,
+      });
+    } catch { /* ignore */ }
+  }, [hi]);
+
   const start = useCallback(async () => {
     setError(null);
     setPhase('connecting');
+    kickedOffRef.current = false;
+    gotReplyRef.current = false;
     setStatus(hi ? 'कैमरा और माइक चालू हो रहा है…' : 'Starting camera & mic…');
     try {
       // 1. Camera + mic.
@@ -101,8 +121,16 @@ export default function LiveInterviewPage() {
         callbacks: {
           onopen: () => { setPhase('live'); setStatus(''); },
           onmessage: (msg: LiveServerMessage) => {
+            // Send the opening trigger only AFTER the server's setup handshake,
+            // otherwise Gemini Live silently drops the early client content and
+            // the interviewer never starts talking.
+            if (msg.setupComplete && !kickedOffRef.current) {
+              kickedOffRef.current = true;
+              sendKickoff();
+            }
             const sc = msg.serverContent;
             if (!sc) return;
+            gotReplyRef.current = true;
             if (sc.interrupted) playerRef.current?.interrupt();
             if (sc.outputTranscription?.text) pushTurn('interviewer', sc.outputTranscription.text);
             if (sc.inputTranscription?.text) pushTurn('you', sc.inputTranscription.text);
@@ -118,21 +146,15 @@ export default function LiveInterviewPage() {
       });
       sessionRef.current = session;
 
-      // 3b. Kick-off — Gemini Live does NOT speak first on its own; it waits
-      // for input. Without this the candidate stares at the camera and the
-      // interviewer stays silent (deadlock). Send an opening user turn so the
-      // interviewer greets and asks the first question right away.
-      try {
-        session.sendClientContent({
-          turns: [{
-            role: 'user',
-            parts: [{ text: hi
-              ? 'नमस्ते, मैं तैयार हूँ। कृपया इंटरव्यू शुरू करें — पहले मेरा अभिवादन करें और पहला सवाल पूछें।'
-              : "Hello, I'm ready. Please begin the interview now — greet me and ask your first question." }],
-          }],
-          turnComplete: true,
-        });
-      } catch { /* ignore */ }
+      // Safety net: if the setupComplete handshake never triggers the kick-off
+      // (or the first reply never arrives), fire it directly after a short
+      // delay so the interviewer still starts talking instead of going silent.
+      retryTimerRef.current = setTimeout(() => {
+        if (!gotReplyRef.current) {
+          if (!kickedOffRef.current) kickedOffRef.current = true;
+          sendKickoff();
+        }
+      }, 1500);
 
       // 4. Stream mic → Gemini.
       const mic = new MicCapture((b64) => {
@@ -162,7 +184,7 @@ export default function LiveInterviewPage() {
       setPhase('error');
       cleanup();
     }
-  }, [hi, exam, lang, focus, pushTurn, cleanup]);
+  }, [hi, exam, lang, focus, pushTurn, cleanup, sendKickoff]);
 
   const end = useCallback(async () => {
     setPhase('scoring');
