@@ -8,6 +8,8 @@ import { Logo } from '~/components/Logo';
 import { AILoader } from '~/components/ui/AILoader';
 import { getClientLocale } from '~/lib/locale';
 import { track } from '~/lib/analytics';
+import { toast } from 'sonner';
+import { buildQuizResultImage, buildQuizReviewPdf, buildReviewText, downloadBlob, shareViaWhatsApp, shareViaTelegram } from '~/lib/quizShare';
 
 type Phase = 'rules' | 'loading' | 'quiz' | 'submitting' | 'result';
 
@@ -54,6 +56,46 @@ export default function CurrentAffairsQuizPage() {
   // Use ref to always have latest answers (avoids stale closure bug)
   const answersRef = useRef<number[]>([]);
   answersRef.current = answers;
+
+  // ── Share / save helpers (result + review "samiksha") ─────────────────────
+  const lang = getClientLocale() as 'en' | 'hi';
+  const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}/current-affairs/quiz` : 'https://app.nexigrate.com/current-affairs/quiz';
+  const resultText = useCallback(() => {
+    if (!result) return '';
+    return lang === 'hi'
+      ? `मैंने आज का करेंट अफेयर्स क्विज़ दिया — ${result.correct}/${result.total} सही (${result.score}%)! तुम भी आज़माओ 👉 ${shareUrl}`
+      : `I scored ${result.correct}/${result.total} (${result.score}%) on today's Current Affairs quiz on Nexigrate! Beat me 👉 ${shareUrl}`;
+  }, [result, lang, shareUrl]);
+
+  const shareResult = useCallback(async () => {
+    if (!result) return;
+    const text = resultText();
+    try {
+      const file = await buildQuizResultImage({ score: result.score, correct: result.correct, total: result.total, rank: result.rank, url: shareUrl, lang });
+      if (file && typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], text, title: 'Quiz result' });
+        return;
+      }
+    } catch { /* image/share unsupported or cancelled → fall through */ }
+    if (navigator.share) { try { await navigator.share({ text, url: shareUrl }); return; } catch { /* cancelled */ } }
+    try { await navigator.clipboard.writeText(text); toast.success(lang === 'hi' ? 'कॉपी हो गया' : 'Copied to clipboard'); } catch { /* ignore */ }
+  }, [result, resultText, shareUrl, lang]);
+
+  const saveReviewPdf = useCallback(() => {
+    if (!questions.length) return;
+    try {
+      const blob = buildQuizReviewPdf({ questions, answers: answersRef.current, score: result?.score ?? 0, correct: result?.correct ?? 0, total: result?.total ?? questions.length, url: shareUrl, lang });
+      downloadBlob(blob, 'nexigrate-quiz-review.pdf');
+      toast.success(lang === 'hi' ? 'PDF डाउनलोड हो गया' : 'Review PDF downloaded');
+    } catch { toast.error(lang === 'hi' ? 'PDF नहीं बन पाया' : 'Could not build the PDF'); }
+  }, [questions, result, shareUrl, lang]);
+
+  const shareReview = useCallback(async () => {
+    if (!questions.length) return;
+    const text = buildReviewText({ questions, answers: answersRef.current, score: result?.score ?? 0, correct: result?.correct ?? 0, total: result?.total ?? questions.length, url: shareUrl, lang });
+    if (navigator.share) { try { await navigator.share({ text, title: lang === 'hi' ? 'क्विज़ समीक्षा' : 'Quiz review' }); return; } catch { /* cancelled → fall through */ } }
+    try { await navigator.clipboard.writeText(text); toast.success(lang === 'hi' ? 'समीक्षा कॉपी हो गई' : 'Review copied to clipboard'); } catch { /* ignore */ }
+  }, [questions, result, shareUrl, lang]);
 
   const submitQuiz = useCallback(async () => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -131,7 +173,18 @@ export default function CurrentAffairsQuizPage() {
       <p className="mt-1 text-sm text-muted-500">
         {t('timeRank', { time: `${Math.floor(result.timeTaken / 60)}:${String(result.timeTaken % 60).padStart(2, '0')}`, rank: result.rank })}
       </p>
-      <div className="mt-8 flex w-full flex-col gap-3">
+
+      {/* Share result */}
+      <div className="mt-6 w-full">
+        <p className="mb-2 text-center text-xs font-medium text-muted-500">{lang === 'hi' ? 'अपना रिज़ल्ट शेयर करें' : 'Share your result'}</p>
+        <div className="flex items-center justify-center gap-2">
+          <button onClick={shareResult} className="flex-1 rounded-xl bg-ink-900 px-3 py-2.5 text-sm font-semibold text-paper-50 transition active:scale-95">{lang === 'hi' ? 'शेयर (इमेज)' : 'Share (image)'}</button>
+          <button onClick={() => shareViaWhatsApp(resultText())} aria-label="WhatsApp" className="rounded-xl bg-[#25D366] px-3.5 py-2.5 text-sm font-bold text-white transition active:scale-95">WA</button>
+          <button onClick={() => shareViaTelegram(resultText(), shareUrl)} aria-label="Telegram" className="rounded-xl bg-[#229ED9] px-3.5 py-2.5 text-sm font-bold text-white transition active:scale-95">TG</button>
+        </div>
+      </div>
+
+      <div className="mt-4 flex w-full flex-col gap-3">
         <button onClick={() => router.push('/current-affairs/quiz/leaderboard')} className="btn-primary w-full">{t('viewLeaderboard')}</button>
         <button onClick={() => router.push('/current-affairs')} className="btn-ghost w-full">{t('backToCA')}</button>
         <button onClick={() => router.push('/dashboard')} className="btn-ghost w-full">{t('dashboard')}</button>
@@ -139,7 +192,13 @@ export default function CurrentAffairsQuizPage() {
 
       {/* Answer review */}
       <section className="mt-10 w-full">
-        <h2 className="font-serif text-lg font-semibold text-ink-900">{t('review')}</h2>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="font-serif text-lg font-semibold text-ink-900">{t('review')}</h2>
+          <div className="flex items-center gap-2">
+            <button onClick={saveReviewPdf} className="rounded-lg border border-line bg-paper-50 px-3 py-1.5 text-xs font-medium text-ink-800 transition active:scale-95">{lang === 'hi' ? 'PDF सेव करें' : 'Save PDF'}</button>
+            <button onClick={shareReview} className="rounded-lg border border-line bg-paper-50 px-3 py-1.5 text-xs font-medium text-ink-800 transition active:scale-95">{lang === 'hi' ? 'शेयर' : 'Share'}</button>
+          </div>
+        </div>
         <div className="mt-4 space-y-3">
           {questions.map((q, i) => {
             const userAns = answers[i];
