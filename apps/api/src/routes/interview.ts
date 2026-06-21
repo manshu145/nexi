@@ -33,6 +33,46 @@ export interface InterviewRoutesDeps {
 
 const ELITE_PLAN = 'achiever';
 
+/**
+ * List the model names that actually support the Live API (bidiGenerateContent)
+ * for THIS key, on a given API version. Uses the raw REST ListModels endpoint
+ * (the v1beta/v1alpha response exposes `supportedGenerationMethods`). Returns
+ * bare model ids (without the leading `models/`). Never throws — returns [].
+ */
+async function listLiveModels(apiKey: string, apiVersion: string): Promise<string[]> {
+  try {
+    const url = `https://generativelanguage.googleapis.com/${apiVersion}/models?key=${apiKey}&pageSize=1000`;
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    const data = (await res.json()) as { models?: Array<{ name?: string; supportedGenerationMethods?: string[] }> };
+    return (data.models ?? [])
+      .filter((m) => (m.supportedGenerationMethods ?? []).includes('bidiGenerateContent'))
+      .map((m) => (m.name ?? '').replace(/^models\//, ''))
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Pick the best Live model from those available to this key on v1alpha (the
+ * version the browser connects with). Preference: the configured model if it's
+ * actually available → a half-cascade `*-live-*` model (most reliable for the
+ * text kick-off) → a native-audio model → anything else. Falls back to the
+ * configured model name if discovery fails, so the feature still attempts.
+ */
+function pickLiveModel(configured: string, available: string[]): string {
+  if (available.length === 0) return configured;
+  if (available.includes(configured)) return configured;
+  return (
+    available.find((m) => /-live-/.test(m) && !/native-audio/.test(m)) ||
+    available.find((m) => /live/.test(m)) ||
+    available.find((m) => /native-audio/.test(m)) ||
+    available[0] ||
+    configured
+  );
+}
+
 function buildSystemInstruction(role: string, exam: string, lang: 'en' | 'hi'): string {
   const langLine = lang === 'hi'
     ? 'Conduct the interview primarily in Hindi (you may use common English terms). Keep a warm but professional tone.'
@@ -79,11 +119,17 @@ export function makeInterviewRoutes(deps: InterviewRoutesDeps): Hono {
 
     const body = await c.req.json().catch(() => ({})) as { role?: string; exam?: string; lang?: 'en' | 'hi' };
     const lang: 'en' | 'hi' = body.lang === 'hi' ? 'hi' : 'en';
-    const model = deps.env.GEMINI_LIVE_MODEL;
     const systemInstruction = buildSystemInstruction(body.role || '', body.exam || '', lang);
 
     try {
       const ai = new GoogleGenAI({ apiKey: deps.env.GEMINI_API_KEY, httpOptions: { apiVersion: 'v1alpha' } });
+
+      // Resolve a model that this key can actually use for the Live API on
+      // v1alpha — model names/availability change over time, so we discover
+      // instead of trusting a hard-coded name that may have been retired.
+      const available = await listLiveModels(deps.env.GEMINI_API_KEY, 'v1alpha');
+      const model = pickLiveModel(deps.env.GEMINI_LIVE_MODEL, available);
+
       const now = Date.now();
       const token = await ai.authTokens.create({
         config: {
@@ -102,12 +148,31 @@ export function makeInterviewRoutes(deps: InterviewRoutesDeps): Hono {
         },
       });
 
-      deps.logger.info('interview.token_minted', { userId: principal.userId, model, lang });
-      return c.json({ token: token.name, model, lang });
+      deps.logger.info('interview.token_minted', { userId: principal.userId, model, lang, availableCount: available.length });
+      return c.json({ token: token.name, model, lang, availableModels: available });
     } catch (err) {
       deps.logger.error('interview.token_failed', { error: err instanceof Error ? err.message : String(err) });
       throw new HTTPException(503, { message: 'Could not start the interview right now. Please try again.' });
     }
+  });
+
+  // GET /v1/interview/models — diagnostic: which Live models this key can use.
+  app.get('/models', async (c) => {
+    const principal = requireAuth(c);
+    await requireElite(principal.userId);
+    if (!deps.env.GEMINI_API_KEY) {
+      throw new HTTPException(503, { message: 'Live Interview is temporarily unavailable.' });
+    }
+    const [v1alpha, v1beta] = await Promise.all([
+      listLiveModels(deps.env.GEMINI_API_KEY, 'v1alpha'),
+      listLiveModels(deps.env.GEMINI_API_KEY, 'v1beta'),
+    ]);
+    return c.json({
+      configured: deps.env.GEMINI_LIVE_MODEL,
+      resolved: pickLiveModel(deps.env.GEMINI_LIVE_MODEL, v1alpha),
+      v1alpha,
+      v1beta,
+    });
   });
 
   // POST /v1/interview/report — turn the finished transcript into a scorecard.
