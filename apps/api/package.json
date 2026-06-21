@@ -17,9 +17,10 @@
     "bootstrap-admin": "node scripts/bootstrap-admin.mjs"
   },
   "dependencies": {
+    "@google/genai": "^2.9.0",
     "@hono/node-server": "^1.13.7",
-    "@nexigrate/credits": "workspace:*",
     "@nexigrate/ai-pipeline": "workspace:*",
+    "@nexigrate/credits": "workspace:*",
     "@nexigrate/shared": "workspace:*",
     "firebase-admin": "^13.0.2",
     "groq-sdk": "^1.2.0",
