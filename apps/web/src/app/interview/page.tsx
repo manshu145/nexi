@@ -118,6 +118,22 @@ export default function LiveInterviewPage() {
       });
       sessionRef.current = session;
 
+      // 3b. Kick-off — Gemini Live does NOT speak first on its own; it waits
+      // for input. Without this the candidate stares at the camera and the
+      // interviewer stays silent (deadlock). Send an opening user turn so the
+      // interviewer greets and asks the first question right away.
+      try {
+        session.sendClientContent({
+          turns: [{
+            role: 'user',
+            parts: [{ text: hi
+              ? 'नमस्ते, मैं तैयार हूँ। कृपया इंटरव्यू शुरू करें — पहले मेरा अभिवादन करें और पहला सवाल पूछें।'
+              : "Hello, I'm ready. Please begin the interview now — greet me and ask your first question." }],
+          }],
+          turnComplete: true,
+        });
+      } catch { /* ignore */ }
+
       // 4. Stream mic → Gemini.
       const mic = new MicCapture((b64) => {
         try { session.sendRealtimeInput({ audio: { data: b64, mimeType: 'audio/pcm;rate=16000' } }); } catch { /* ignore */ }
@@ -299,13 +315,11 @@ export default function LiveInterviewPage() {
 
       {/* Live: caption + end button */}
       {phase === 'live' && (
-        <div className="relative z-10 mt-auto px-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
-          {caption && (
-            <div className="mx-auto mb-4 max-w-md rounded-2xl bg-ink-900/65 px-4 py-3 text-center text-sm text-paper-50 backdrop-blur">
-              {caption}
-            </div>
-          )}
-          <button onClick={end} className="mx-auto block rounded-full bg-red-500 px-8 py-3.5 text-sm font-bold text-paper-50 shadow-lg transition-all active:scale-95 hover:bg-red-600">
+        <div className="relative z-10 mt-auto flex flex-col items-center px-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
+          <div className="mx-auto mb-4 min-h-[3.5rem] w-full max-w-md rounded-2xl bg-ink-900/65 px-4 py-3 text-center text-sm text-paper-50 backdrop-blur">
+            {caption || (hi ? 'इंटरव्यूअर बात शुरू कर रहा है… सुनिए और जवाब दीजिए।' : 'The interviewer is starting… listen, then answer.')}
+          </div>
+          <button onClick={end} className="rounded-full bg-red-500 px-8 py-3.5 text-sm font-bold text-paper-50 shadow-lg transition-all active:scale-95 hover:bg-red-600">
             {hi ? 'इंटरव्यू ख़त्म करें' : 'End Interview'}
           </button>
         </div>
