@@ -2152,7 +2152,24 @@ Respond ONLY with valid JSON (no markdown fences):
         return questions;
       };
 
-      // Attempt 1: Groq (auto-switch model via resolver — no hardcode)
+      // Drop duplicate / near-duplicate questions (the "duplicacy" bug). The
+      // generator + fact-checker can emit two MCQs with the same (or trivially
+      // reworded) stem. Normalize the question text (case/punct/space, keep
+      // Devanagari) and keep the first of each; re-id sequentially so the
+      // client never sees colliding ids either.
+      const dedupeQuestions = (qs: GeneratedMCQ[]): GeneratedMCQ[] => {
+        if (!Array.isArray(qs)) return [];
+        const seen = new Set<string>();
+        const out: GeneratedMCQ[] = [];
+        for (const q of qs) {
+          if (!q || typeof q.question !== 'string') continue;
+          const norm = q.question.toLowerCase().replace(/[^a-z0-9\u0900-\u097f]+/g, ' ').trim();
+          if (!norm || seen.has(norm)) continue;
+          seen.add(norm);
+          out.push({ ...q, id: `ca-q${out.length + 1}` });
+        }
+        return out;
+      };
       const caGroq = await getGroqClient();
       if (caGroq) {
         try {
@@ -2162,7 +2179,7 @@ Respond ONLY with valid JSON (no markdown fences):
           if (parsed.questions?.length) {
             if (resolver) void resolver.reportModelSuccess('groq', caGroq.model);
             logger.info('ai.ca_quiz_generated', { provider: 'groq', model: caGroq.model, count: parsed.questions.length });
-            return await verifyAndCleanQuiz(parsed.questions);
+            return dedupeQuestions(await verifyAndCleanQuiz(parsed.questions));
           }
           errors.push('Groq returned empty questions');
         } catch (err) {
@@ -2179,7 +2196,7 @@ Respond ONLY with valid JSON (no markdown fences):
           const parsed = JSON.parse(c.choices[0]?.message?.content ?? '{}') as { questions: GeneratedMCQ[] };
           if (parsed.questions?.length) {
             logger.info('ai.ca_quiz_generated', { provider: 'openai', count: parsed.questions.length });
-            return await verifyAndCleanQuiz(parsed.questions);
+            return dedupeQuestions(await verifyAndCleanQuiz(parsed.questions));
           }
           errors.push('OpenAI returned empty questions');
         } catch (err) {
@@ -2199,7 +2216,7 @@ Respond ONLY with valid JSON (no markdown fences):
               const parsed = JSON.parse(jsonMatch[0]) as { questions: GeneratedMCQ[] };
               if (parsed.questions?.length) {
                 logger.info('ai.ca_quiz_generated', { provider: 'gemini', count: parsed.questions.length, model: r.model });
-                return await verifyAndCleanQuiz(parsed.questions);
+                return dedupeQuestions(await verifyAndCleanQuiz(parsed.questions));
               }
             }
             errors.push('Gemini returned no parseable questions');
