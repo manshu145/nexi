@@ -39,6 +39,7 @@ export default function LiveInterviewPage() {
   const [status, setStatus] = useState('');
   const [caption, setCaption] = useState('');
   const [diag, setDiag] = useState('');
+  const [modelInfo, setModelInfo] = useState('');
   const [report, setReport] = useState<InterviewReport | null>(null);
   const [focus, setFocus] = useState('');
 
@@ -99,6 +100,7 @@ export default function LiveInterviewPage() {
   const start = useCallback(async () => {
     setError(null);
     setDiag('');
+    setModelInfo('');
     setPhase('connecting');
     kickedOffRef.current = false;
     gotReplyRef.current = false;
@@ -111,8 +113,8 @@ export default function LiveInterviewPage() {
 
       // 2. Ephemeral token (Elite-gated server side).
       setStatus(hi ? 'इंटरव्यू तैयार हो रहा है…' : 'Preparing interview…');
-      const { token, model, availableModels } = await api.getInterviewToken({ exam, lang, ...(focus ? { role: focus } : {}) });
-      setDiag(`model: ${model}${availableModels && availableModels.length ? ` | avail: ${availableModels.join(', ')}` : ' | avail: none'}`);
+      const { token, model, systemInstruction, availableModels } = await api.getInterviewToken({ exam, lang, ...(focus ? { role: focus } : {}) });
+      setModelInfo(`model: ${model}${availableModels && availableModels.length ? ` | avail: ${availableModels.join(', ')}` : ' | avail: none'}`);
 
       // 3. Connect to Gemini Live with the token.
       const player = new PcmPlayer(24000);
@@ -133,7 +135,7 @@ export default function LiveInterviewPage() {
             }
             const sc = msg.serverContent;
             if (!sc) return;
-            if (!gotReplyRef.current) { gotReplyRef.current = true; setDiag(''); }
+            if (!gotReplyRef.current) { gotReplyRef.current = true; setDiag(''); setModelInfo(''); }
             if (sc.interrupted) playerRef.current?.interrupt();
             if (sc.outputTranscription?.text) pushTurn('interviewer', sc.outputTranscription.text);
             if (sc.inputTranscription?.text) pushTurn('you', sc.inputTranscription.text);
@@ -155,7 +157,13 @@ export default function LiveInterviewPage() {
             if (e && e.code !== 1000 && e.reason) setDiag(`closed (${e.code}): ${e.reason}`);
           },
         },
-        config: { responseModalities: [Modality.AUDIO], inputAudioTranscription: {}, outputAudioTranscription: {} },
+        config: {
+          responseModalities: [Modality.AUDIO],
+          inputAudioTranscription: {},
+          outputAudioTranscription: {},
+          temperature: 0.8,
+          ...(systemInstruction ? { systemInstruction: { parts: [{ text: systemInstruction }] } } : {}),
+        },
       });
       sessionRef.current = session;
 
@@ -266,6 +274,7 @@ export default function LiveInterviewPage() {
         </div>
 
         {error && <div className="banner banner-error mt-4 w-full text-sm">{error}</div>}
+        {modelInfo && <p className="mt-2 w-full break-words text-center text-[11px] text-muted-400">{modelInfo}</p>}
         {diag && <p className="mt-2 w-full break-words text-center text-[11px] text-muted-400">{diag}</p>}
 
         <button onClick={start} className="btn-primary mt-6 w-full">{hi ? 'इंटरव्यू शुरू करें' : 'Start Interview'}</button>
@@ -335,12 +344,13 @@ export default function LiveInterviewPage() {
       <div className="absolute inset-0 bg-gradient-to-b from-ink-900/40 via-transparent to-ink-900/80" />
 
       {/* Top status */}
-      <div className="relative z-10 flex items-center justify-between px-4 pt-[calc(0.75rem+env(safe-area-inset-top))]">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-ink-900/60 px-3 py-1 text-xs font-medium text-paper-50 backdrop-blur">
+      <div className="relative z-10 flex flex-col gap-1 px-4 pt-[calc(0.75rem+env(safe-area-inset-top))]">
+        <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-ink-900/60 px-3 py-1 text-xs font-medium text-paper-50 backdrop-blur">
           <span className={`h-2 w-2 rounded-full ${phase === 'live' ? 'bg-red-500 animate-pulse' : 'bg-amber-400'}`} />
           {phase === 'live' ? (hi ? 'लाइव' : 'LIVE') : (hi ? 'जुड़ रहे हैं…' : 'Connecting…')}
         </span>
-        {diag && <span className="ml-2 max-w-[60%] truncate rounded-full bg-red-500/80 px-2 py-1 text-[10px] text-paper-50">{diag}</span>}
+        {modelInfo && <span className="max-w-full break-words rounded-lg bg-ink-900/60 px-2 py-1 text-[10px] text-paper-50/90 backdrop-blur">{modelInfo}</span>}
+        {diag && <span className="max-w-full break-words rounded-lg bg-red-500/80 px-2 py-1 text-[10px] text-paper-50 backdrop-blur">{diag}</span>}
       </div>
 
       {/* Connecting overlay */}
