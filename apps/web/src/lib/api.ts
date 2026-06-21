@@ -298,7 +298,7 @@ export const api = {
   async getArchivedCurrentAffairsQuiz(date: string, lang: 'en' | 'hi' = 'en') { return (await authedFetch(`/v1/current-affairs/quiz/archive/${date}?lang=${lang}`)).json() as Promise<ArchivedQuizResponse>; },
 
   // ─── Live Interview (Elite) ──────────────────────────────────────────
-  async getInterviewToken(opts: { role?: string; exam?: string; lang?: 'en' | 'hi' }) { return (await authedFetch('/v1/interview/token', { method: 'POST', body: JSON.stringify(opts) })).json() as Promise<{ token: string; model: string; lang: 'en' | 'hi' }>; },
+  async getInterviewToken(opts: { role?: string; exam?: string; lang?: 'en' | 'hi' }) { return (await authedFetch('/v1/interview/token', { method: 'POST', body: JSON.stringify(opts) })).json() as Promise<{ token: string; model: string; lang: 'en' | 'hi'; availableModels?: string[] }>; },
   async getInterviewReport(opts: { transcript: string; role?: string; exam?: string; lang?: 'en' | 'hi' }) { return (await authedFetch('/v1/interview/report', { method: 'POST', body: JSON.stringify(opts) })).json() as Promise<{ report: InterviewReport }>; },
   async trackReelAdEvent(id: string, event: 'impression' | 'click') { try { await authedFetch(`/v1/current-affairs/ads/${id}/${event}`, { method: 'POST' }); } catch { /* metrics best-effort */ } },
 

@@ -111,7 +111,8 @@ export default function LiveInterviewPage() {
 
       // 2. Ephemeral token (Elite-gated server side).
       setStatus(hi ? 'इंटरव्यू तैयार हो रहा है…' : 'Preparing interview…');
-      const { token, model } = await api.getInterviewToken({ exam, lang, ...(focus ? { role: focus } : {}) });
+      const { token, model, availableModels } = await api.getInterviewToken({ exam, lang, ...(focus ? { role: focus } : {}) });
+      setDiag(`model: ${model}${availableModels && availableModels.length ? ` | avail: ${availableModels.join(', ')}` : ' | avail: none'}`);
 
       // 3. Connect to Gemini Live with the token.
       const player = new PcmPlayer(24000);
@@ -132,7 +133,7 @@ export default function LiveInterviewPage() {
             }
             const sc = msg.serverContent;
             if (!sc) return;
-            gotReplyRef.current = true;
+            if (!gotReplyRef.current) { gotReplyRef.current = true; setDiag(''); }
             if (sc.interrupted) playerRef.current?.interrupt();
             if (sc.outputTranscription?.text) pushTurn('interviewer', sc.outputTranscription.text);
             if (sc.inputTranscription?.text) pushTurn('you', sc.inputTranscription.text);
