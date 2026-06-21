@@ -19,7 +19,7 @@ const envSchema = z.object({
   GEMINI_API_KEY: z.string().optional().default(''),
   /** Gemini Live API model for the real-time AI interviewer (Elite feature).
    *  Override to a native-audio model later for richer voice. */
-  GEMINI_LIVE_MODEL: z.string().optional().default('gemini-2.0-flash-live-001'),
+  GEMINI_LIVE_MODEL: z.string().optional().default('gemini-live-2.5-flash-preview'),
   GEMINI_PRO_API_KEY: z.string().optional().default(''),
   GROQ_API_KEY: z.string().optional().default(''),
   GOOGLE_TTS_API_KEY: z.string().optional().default(''),

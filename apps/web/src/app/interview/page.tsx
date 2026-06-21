@@ -38,6 +38,7 @@ export default function LiveInterviewPage() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState('');
   const [caption, setCaption] = useState('');
+  const [diag, setDiag] = useState('');
   const [report, setReport] = useState<InterviewReport | null>(null);
   const [focus, setFocus] = useState('');
 
@@ -97,6 +98,7 @@ export default function LiveInterviewPage() {
 
   const start = useCallback(async () => {
     setError(null);
+    setDiag('');
     setPhase('connecting');
     kickedOffRef.current = false;
     gotReplyRef.current = false;
@@ -139,8 +141,18 @@ export default function LiveInterviewPage() {
               if (inline?.data && (inline.mimeType ?? '').startsWith('audio/')) playerRef.current?.play(inline.data);
             }
           },
-          onerror: () => { setError(hi ? 'कनेक्शन में दिक्कत आई।' : 'Connection error.'); setPhase('error'); cleanup(); },
-          onclose: () => { /* normal close handled by End button */ },
+          onerror: (e: ErrorEvent) => {
+            setDiag(`connection error: ${e?.message || 'unknown'}`);
+            setError(hi ? 'कनेक्शन में दिक्कत आई।' : 'Connection error.');
+            setPhase('error');
+            cleanup();
+          },
+          onclose: (e: CloseEvent) => {
+            // A clean end (End button) sets phase to scoring/report first; if we
+            // are still "live" when the socket closes, the server rejected the
+            // session (e.g. bad model / quota) — surface the real reason.
+            if (e && e.code !== 1000 && e.reason) setDiag(`closed (${e.code}): ${e.reason}`);
+          },
         },
         config: { responseModalities: [Modality.AUDIO], inputAudioTranscription: {}, outputAudioTranscription: {} },
       });
@@ -177,6 +189,7 @@ export default function LiveInterviewPage() {
       }, 1500);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
+      setDiag(`start failed: ${msg}`);
       const denied = /denied|permission|notallowed/i.test(msg);
       setError(denied
         ? (hi ? 'कैमरा/माइक की अनुमति दें और दोबारा कोशिश करें।' : 'Please allow camera & mic access and try again.')
@@ -252,6 +265,7 @@ export default function LiveInterviewPage() {
         </div>
 
         {error && <div className="banner banner-error mt-4 w-full text-sm">{error}</div>}
+        {diag && <p className="mt-2 w-full break-words text-center text-[11px] text-muted-400">{diag}</p>}
 
         <button onClick={start} className="btn-primary mt-6 w-full">{hi ? 'इंटरव्यू शुरू करें' : 'Start Interview'}</button>
         <button onClick={() => router.push('/dashboard')} className="btn-ghost mt-3 w-full">{hi ? 'वापस' : 'Back'}</button>
@@ -325,6 +339,7 @@ export default function LiveInterviewPage() {
           <span className={`h-2 w-2 rounded-full ${phase === 'live' ? 'bg-red-500 animate-pulse' : 'bg-amber-400'}`} />
           {phase === 'live' ? (hi ? 'लाइव' : 'LIVE') : (hi ? 'जुड़ रहे हैं…' : 'Connecting…')}
         </span>
+        {diag && <span className="ml-2 max-w-[60%] truncate rounded-full bg-red-500/80 px-2 py-1 text-[10px] text-paper-50">{diag}</span>}
       </div>
 
       {/* Connecting overlay */}
