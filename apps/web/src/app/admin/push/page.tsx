@@ -60,7 +60,7 @@ export default function AdminPushPage() {
   const [testing, setTesting] = useState(false);
 
   // Push send history + prompt-timing config
-  interface PushLog { id: string; title?: string; body?: string; audience?: string; mode?: string; sent?: number; failed?: number; devices?: number; inboxCreated?: number; sentBy?: string; sentAt?: string; }
+  interface PushLog { id: string; title?: string; body?: string; audience?: string; mode?: string; sent?: number; failed?: number; devices?: number; inboxCreated?: number; clicks?: number; sentBy?: string; sentAt?: string; }
   interface PromptCfg { enabled: boolean; promptDelaySeconds: number; cooldownDays: number; maxDismissals: number; }
   const [logs, setLogs] = useState<PushLog[]>([]);
   const [promptCfg, setPromptCfg] = useState<PromptCfg>({ enabled: true, promptDelaySeconds: 6, cooldownDays: 3, maxDismissals: 3 });
@@ -530,6 +530,7 @@ export default function AdminPushPage() {
                   <th className="py-2 pr-3 text-[11px] font-semibold uppercase tracking-wider text-muted-500">Title</th>
                   <th className="py-2 pr-3 text-[11px] font-semibold uppercase tracking-wider text-muted-500">Audience</th>
                   <th className="py-2 pr-3 text-[11px] font-semibold uppercase tracking-wider text-muted-500">Delivered</th>
+                  <th className="py-2 pr-3 text-[11px] font-semibold uppercase tracking-wider text-muted-500">Clicks</th>
                   <th className="py-2 pr-3 text-[11px] font-semibold uppercase tracking-wider text-muted-500">When</th>
                 </tr>
               </thead>
@@ -544,6 +545,12 @@ export default function AdminPushPage() {
                     <td className="py-2 pr-3 text-xs text-muted-600">
                       {l.sent ?? 0}/{l.devices ?? 0} devices{typeof l.failed === 'number' && l.failed > 0 ? ` · ${l.failed} failed` : ''}
                       {typeof l.inboxCreated === 'number' && l.inboxCreated > 0 ? ` · ${l.inboxCreated} inbox` : ''}
+                    </td>
+                    <td className="py-2 pr-3 text-xs">
+                      <span className="font-semibold text-ink-900">{l.clicks ?? 0}</span>
+                      {(l.sent ?? 0) > 0 && (l.clicks ?? 0) > 0 && (
+                        <span className="ml-1 text-[11px] text-muted-400">({Math.round(((l.clicks ?? 0) / (l.sent || 1)) * 100)}% CTR)</span>
+                      )}
                     </td>
                     <td className="py-2 pr-3 text-[11px] text-muted-400">{l.sentAt ? new Date(l.sentAt).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : '—'}</td>
                   </tr>
