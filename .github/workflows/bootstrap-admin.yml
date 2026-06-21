@@ -1,0 +1,132 @@
+name: Bootstrap Admin (one-click password setup)
+
+# One-click founder bootstrap.
+#
+# Why this workflow exists:
+#   PR-30 added scripts/bootstrap-admin.mjs which idempotently creates /
+#   updates the founder's Firebase Auth account + sets their Firestore
+#   role to 'admin'. The script needs FIREBASE_SERVICE_ACCOUNT_JSON to
+#   authenticate as an admin SDK service account.
+#
+#   The founder doesn't want to download the service account JSON,
+#   set GOOGLE_APPLICATION_CREDENTIALS, run a CLI, etc. They just want
+#   to click a button.
+#
+#   This workflow IS that button. The repo already has
+#   FIREBASE_SERVICE_ACCOUNT_JSON in GitHub Secrets (used by the
+#   deploy-api workflow). We re-use it here so the founder never
+#   touches a service account file.
+#
+# Usage:
+#   1. Go to https://github.com/manshu145/nexi/actions/workflows/bootstrap-admin.yml
+#   2. Click "Run workflow" (right side)
+#   3. Leave "password" blank to use the default strong password baked
+#      into bootstrap-admin.mjs, OR type a custom password (will be
+#      masked in logs).
+#   4. Click "Run workflow"
+#   5. Watch the run -- on success the password and email appear in
+#      the summary. Sign in at app.nexigrate.com/signin.
+#
+# Safety:
+#   - Manual trigger only (workflow_dispatch). Never runs automatically.
+#   - Custom passwords are masked in logs via ::add-mask::.
+#   - The default password is committed to bootstrap-admin.mjs and is
+#     intended for first-login bootstrap only -- the founder is
+#     reminded to change it via Forgot-password / Firebase Console.
+#   - The script itself is idempotent: re-running it just resets the
+#     password to the supplied value. Safe to click multiple times.
+
+on:
+  workflow_dispatch:
+    inputs:
+      password:
+        description: 'Optional custom password (8+ chars). Leave blank to use the default in bootstrap-admin.mjs.'
+        required: false
+        type: string
+
+concurrency:
+  group: bootstrap-admin
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    name: bootstrap admin
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4.1.0
+        with: { version: '9.15.0', run_install: false }
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with: { node-version: '22', cache: 'pnpm' }
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile=false
+
+      # Mask the custom password (if any) so it never appears in logs.
+      # Default-password branch is fine -- the default value is in the
+      # script source already, so it isn't really a "secret".
+      - name: Mask custom password
+        if: ${{ inputs.password != '' }}
+        run: |
+          echo "::add-mask::${{ inputs.password }}"
+
+      # Materialise the service-account credential into a temp file
+      # so firebase-admin's applicationDefault() picks it up via
+      # GOOGLE_APPLICATION_CREDENTIALS.
+      - name: Write service-account JSON
+        env:
+          SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -z "$SA_JSON" ]; then
+            echo "::error::FIREBASE_SERVICE_ACCOUNT_JSON secret is missing." \
+                 "Add it under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/sa"
+          printf '%s' "$SA_JSON" > "$RUNNER_TEMP/sa/firebase-admin.json"
+          chmod 600 "$RUNNER_TEMP/sa/firebase-admin.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/sa/firebase-admin.json" >> "$GITHUB_ENV"
+
+      # Bootstrap. apps/api is the workspace where firebase-admin is
+      # installed; running the script via the workspace's `bootstrap-admin`
+      # npm script ensures the import resolution finds firebase-admin
+      # in apps/api/node_modules.
+      - name: Run bootstrap-admin
+        env:
+          FIREBASE_PROJECT_ID: nexigrate-prod
+          PWD_INPUT: ${{ inputs.password }}
+        run: |
+          if [ -n "$PWD_INPUT" ]; then
+            pnpm --filter @nexigrate/api run bootstrap-admin -- "$PWD_INPUT"
+          else
+            pnpm --filter @nexigrate/api run bootstrap-admin
+          fi
+
+      - name: Cleanup credentials
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/sa"
+
+      - name: Summary
+        if: success()
+        run: |
+          {
+            echo "## ✓ Admin bootstrap complete"
+            echo ""
+            echo "**Email:** \`manshu.ibc24@gmail.com\`"
+            echo ""
+            if [ -n "${{ inputs.password }}" ]; then
+              echo "**Password:** _the custom password you supplied at run start (masked in logs)_"
+            else
+              echo "**Password:** \`JwR!RmM7ebhgsC%RUU\` (default from \`scripts/bootstrap-admin.mjs\`)"
+            fi
+            echo ""
+            echo "Sign in at https://app.nexigrate.com/signin"
+            echo ""
+            echo "After first login, change the password via Forgot-password flow or Firebase Console."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -9,14 +9,14 @@ const sources = [
 ] as const;
 
 const verifiers = [
-  { name: 'OpenAI',  note: 'GPT-4o-mini — generation' },
-  { name: 'Google',  note: 'Gemini 2.5 Flash — verifier 1' },
-  { name: 'Groq',    note: 'Llama 3.3 70B — verifier 2' },
-  { name: 'Human SME', note: 'final review on flagged content' },
+  { name: 'OpenAI',          note: 'GPT-4o — primary generation' },
+  { name: 'Google',          note: 'Gemini 2.5 Flash — verifier 1' },
+  { name: 'Groq',            note: 'Llama 3.3 70B — verifier 2' },
+  { name: 'Cross-validation', note: 'low-confidence outputs are auto-regenerated, not shipped' },
 ] as const;
 ---
 
-<section id="trust" class="section border-y border-line bg-paper-50/60">
+<section id="trust" class="section border-y border-line bg-paper-50/60 reveal-on-scroll">
   <div class="mx-auto max-w-6xl px-5 py-20 sm:py-24">
     <div class="grid gap-12 lg:grid-cols-12">
       <div class="lg:col-span-5">

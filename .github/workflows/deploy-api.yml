@@ -128,6 +128,51 @@ jobs:
           echo "enabled=true" >> "$GITHUB_OUTPUT"
           echo "Razorpay secrets present in Secret Manager."
 
+      - name: Bootstrap AI provider secrets in Secret Manager (Phase 4 M5)
+        id: ai
+        env:
+          OAI: ${{ secrets.OPENAI_API_KEY }}
+          GEM: ${{ secrets.GEMINI_API_KEY }}
+          GRQ: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          # Helper: create-or-update a secret if the value is non-empty.
+          # Skip silently when the GitHub Secret is unset, so the deploy
+          # works on first contact even before all three providers have keys.
+          upsert_secret () {
+            local NAME="$1"
+            local VALUE="$2"
+            if [ -z "$VALUE" ]; then
+              echo "  $NAME: GitHub secret empty, skipping"
+              return
+            fi
+            if ! gcloud secrets describe "$NAME" --project=${{ env.GCP_PROJECT }} >/dev/null 2>&1; then
+              gcloud secrets create "$NAME" \
+                --replication-policy=automatic \
+                --project=${{ env.GCP_PROJECT }} >/dev/null
+            fi
+            printf '%s' "$VALUE" | gcloud secrets versions add "$NAME" \
+              --data-file=- --project=${{ env.GCP_PROJECT }} >/dev/null
+            echo "  $NAME: upserted"
+          }
+
+          upsert_secret openai-api-key "$OAI"
+          upsert_secret gemini-api-key "$GEM"
+          upsert_secret groq-api-key   "$GRQ"
+
+          # Build the comma-separated --set-secrets fragment using only the
+          # keys that are present, so missing ones don't break the deploy.
+          AI_SECRETS=""
+          [ -n "$OAI" ] && AI_SECRETS="${AI_SECRETS}OPENAI_API_KEY=openai-api-key:latest,"
+          [ -n "$GEM" ] && AI_SECRETS="${AI_SECRETS}GEMINI_API_KEY=gemini-api-key:latest,"
+          [ -n "$GRQ" ] && AI_SECRETS="${AI_SECRETS}GROQ_API_KEY=groq-api-key:latest,"
+          AI_SECRETS="${AI_SECRETS%,}"
+          echo "secrets=${AI_SECRETS}" >> "$GITHUB_OUTPUT"
+          if [ -n "$AI_SECRETS" ]; then
+            echo "AI providers wired: ${AI_SECRETS}"
+          else
+            echo "::warning::No AI provider keys present; admin /v1/admin/mcq-drafts/generate will return 503"
+          fi
+
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
 
@@ -148,7 +193,16 @@ jobs:
         run: |
           # Use the ^|^ delimiter override so commas inside values
           # (notably CORS_ALLOWED_ORIGINS) don't get parsed as separators.
-          BASE_ENV="^|^NODE_ENV=production|AUTH_MODE=firebase|PERSISTENCE=firestore|LOG_JSON=true|GCP_PROJECT_ID=nexigrate-prod|GCP_PROJECT_NUMBER=505978726927|GCP_REGION=asia-south1|GCP_SERVICE_ACCOUNT=${{ env.SA_EMAIL }}|CORS_ALLOWED_ORIGINS=https://app.nexigrate.com,https://nexigrate.com"
+          # Phase 6 RBAC: SUPER_ADMIN_EMAIL is the founder identity that the
+          # API will resolve to role 'super_admin' on every request. Cannot
+          # be locked out. To rotate, change the value here and re-deploy.
+          BASE_ENV="^|^NODE_ENV=production|AUTH_MODE=firebase|PERSISTENCE=firestore|LOG_JSON=true|GCP_PROJECT_ID=nexigrate-prod|GCP_PROJECT_NUMBER=505978726927|GCP_REGION=asia-south1|GCP_SERVICE_ACCOUNT=${{ env.SA_EMAIL }}|CORS_ALLOWED_ORIGINS=https://app.nexigrate.com,https://nexigrate.com|SUPER_ADMIN_EMAIL=manshu.ibc24@gmail.com"
+          # --no-cpu-throttling + --min-instances=1: the API runs its OWN
+          # in-process cron scheduler (apps/api/src/lib/scheduler.ts) for the
+          # automatic notifications + current-affairs ingest. Cloud Run
+          # throttles CPU between requests by default, which would stall the
+          # background timer — so CPU must stay allocated and one instance must
+          # always be warm. This replaces the external GitHub Actions cron.
           DEPLOY_ARGS=(
             run deploy ${{ env.SERVICE }}
             --image=${{ steps.tag.outputs.image }}
@@ -160,15 +214,40 @@ jobs:
             --max-instances=3
             --min-instances=1
             --cpu=1 --memory=512Mi
+            --no-cpu-throttling
             --quiet
           )
+          # Compose the --set-secrets value: Razorpay (when present) joined
+          # with AI providers (only the keys that have GitHub Secrets).
+          # We always pass --set-secrets if either group has values, so a
+          # missing key NEVER blocks the deploy; the admin endpoint will
+          # report 503 with a clear message until the operator adds the
+          # corresponding GH Secret and re-runs the workflow.
+          SECRETS_LIST=""
           if [ "${{ steps.razorpay.outputs.enabled }}" = "true" ]; then
+            SECRETS_LIST="RAZORPAY_KEY_SECRET=razorpay-key-secret:latest,RAZORPAY_WEBHOOK_SECRET=razorpay-webhook-secret:latest"
+          fi
+          if [ -n "${{ steps.ai.outputs.secrets }}" ]; then
+            if [ -n "$SECRETS_LIST" ]; then
+              SECRETS_LIST="${SECRETS_LIST},${{ steps.ai.outputs.secrets }}"
+            else
+              SECRETS_LIST="${{ steps.ai.outputs.secrets }}"
+            fi
+          fi
+
+          if [ "${{ steps.razorpay.outputs.enabled }}" = "true" ]; then
+            ENV_VARS="${BASE_ENV}|RAZORPAY_KEY_ID=rzp_test_SsPfzbJUMaK7Ow"
+          else
+            ENV_VARS="${BASE_ENV}"
+          fi
+
+          if [ -n "$SECRETS_LIST" ]; then
             gcloud "${DEPLOY_ARGS[@]}" \
-              --set-env-vars="${BASE_ENV}|RAZORPAY_KEY_ID=rzp_test_SsPfzbJUMaK7Ow" \
-              --set-secrets="RAZORPAY_KEY_SECRET=razorpay-key-secret:latest,RAZORPAY_WEBHOOK_SECRET=razorpay-webhook-secret:latest"
+              --set-env-vars="${ENV_VARS}" \
+              --set-secrets="${SECRETS_LIST}"
           else
             gcloud "${DEPLOY_ARGS[@]}" \
-              --set-env-vars="${BASE_ENV}"
+              --set-env-vars="${ENV_VARS}"
           fi
           URL=$(gcloud run services describe ${{ env.SERVICE }} --region=${{ env.GCP_REGION }} --project=${{ env.GCP_PROJECT }} --format='value(status.url)')
           echo "url=${URL}" >> "$GITHUB_OUTPUT"

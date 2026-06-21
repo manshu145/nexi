@@ -9,6 +9,14 @@
 @import '@fontsource/inter/600.css';
 
 /*
+ * CRITICAL (Tailwind v4): bind the `dark:` variant to the `.dark` CLASS the
+ * marketing theme script sets on <html>, not the OS prefers-color-scheme
+ * default. Without this the logo (dark:hidden / dark:block) followed the OS
+ * while the background followed the toggle → "logo white-on-white" bug.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
  * Nexigrate brand tokens \u2014 Kindle-inspired warm-paper palette.
  *
  *   paper   : main background, evokes parchment / e-ink page
@@ -51,6 +59,32 @@
 
 /* ---------- base ---------- */
 
+/* ----- Dark mode overrides ----- */
+html.dark {
+  --color-paper-50: #1C1A17;
+  --color-paper-100: #23201B;
+  --color-paper-200: #2C2822;
+  --color-paper-300: #38332A;
+  --color-paper-400: #4A4336;
+
+  --color-ink-700: #C4B89E;
+  --color-ink-800: #D8CCAD;
+  --color-ink-900: #EDDFBF;
+  --color-ink-950: #F8F1DD;
+
+  --color-ember-500: #E06030;
+  --color-ember-600: #C04A20;
+  --color-ember-700: #A03A18;
+
+  --color-gold-500: #D4A040;
+  --color-gold-600: #B88630;
+
+  --color-muted-500: #9A8E78;
+  --color-muted-400: #7A6F5C;
+
+  --color-line: #3D372D;
+}
+
 html {
   background-color: var(--color-paper-100);
   color: var(--color-ink-900);
@@ -68,6 +102,11 @@ body {
     radial-gradient(circle at 1px 1px, rgba(42, 36, 26, 0.04) 1px, transparent 0);
   background-size: 24px 24px;
   min-height: 100vh;
+}
+
+html.dark body {
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(237, 223, 191, 0.03) 1px, transparent 0);
 }
 
 ::selection {
@@ -199,4 +238,16 @@ p {
     transition: none !important;
     scroll-behavior: auto !important;
   }
+}
+
+
+/* ---------- scroll-reveal animations ---------- */
+.reveal-on-scroll {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+.reveal-on-scroll.revealed {
+  opacity: 1;
+  transform: translateY(0);
 }

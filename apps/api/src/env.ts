@@ -1,110 +1,70 @@
 import { z } from 'zod';
 
-/**
- * Environment-variable schema for the API.
- *
- * Parsed once at startup and re-exported as a frozen object. Code reads
- * `env.FOO` instead of `process.env.FOO` so every config value is typed and
- * validated up front -- a missing or malformed env var fails fast with a
- * helpful error instead of an obscure NPE three layers deep.
- */
+// Cloud Run always sets K_SERVICE and K_REVISION. Use this to auto-detect
+// production environment even when NODE_ENV isn't explicitly set.
+const isCloudRun = !!(process.env['K_SERVICE'] || process.env['K_REVISION']);
+const defaultPersistence = (process.env['NODE_ENV'] === 'production' || isCloudRun) ? 'firestore' : 'memory';
 
-const stringBool = z
-  .union([z.literal('true'), z.literal('false'), z.literal('1'), z.literal('0')])
-  .transform((v) => v === 'true' || v === '1');
-
-const schema = z.object({
-  /** 'development' | 'production' | 'test'. Sets logging verbosity, CORS, etc. */
+const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-
-  /** TCP port the HTTP server listens on. Cloud Run sets this to 8080. */
-  PORT: z.coerce.number().int().positive().default(8080),
-
-  /**
-   * GCP project id. Unused locally when AUTH_MODE=stub. Required in production
-   * to initialise the Firebase Admin SDK.
-   */
-  GCP_PROJECT_ID: z.string().min(1).optional(),
-
-  /** GCP project number (numeric). Used in WIF principal strings; optional at runtime. */
-  GCP_PROJECT_NUMBER: z.string().optional(),
-
-  /** Region for regional resources, mostly informational on the api side. */
-  GCP_REGION: z.string().default('asia-south1'),
-
-  /** Service account email the api runs as. Informational; identity comes from the runtime. */
-  GCP_SERVICE_ACCOUNT: z.string().optional(),
-
-  /**
-   * Persistence backend.
-   *   'memory'    -- in-memory ledger, suitable for local dev/tests
-   *   'firestore' -- Firestore-backed ledger via firebase-admin
-   * Production refuses to start with 'memory'; loadEnv() throws below.
-   */
-  PERSISTENCE: z.enum(['memory', 'firestore']).default('memory'),
-
-  /**
-   * Auth mode. 'firebase' verifies real Firebase ID tokens; 'stub' accepts
-   * any bearer token of the form `stub:<userId>:<role>` for local development
-   * and tests. Defaults to 'stub' in non-production so first-run developers
-   * don't need to set up Firebase to start the server.
-   */
-  AUTH_MODE: z.enum(['firebase', 'stub']).default('stub'),
-
-  /** Origin allow-list for browser CORS, comma-separated. */
-  CORS_ALLOWED_ORIGINS: z
-    .string()
-    .default('http://localhost:3000,http://localhost:4321')
-    .transform((v) =>
-      v
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean),
-    ),
-
-  /** Toggle structured JSON logging vs human-readable lines. JSON in production. */
-  LOG_JSON: stringBool.default('false'),
-
-  /**
-   * Razorpay credentials (test or live mode).
-   * KEY_ID is publishable and may be exposed via NEXT_PUBLIC_*.
-   * KEY_SECRET and WEBHOOK_SECRET are server-only.
-   *
-   * In Phase 3 these default to empty so dev environments can run without
-   * billing wired; the billing routes refuse to handle requests when missing.
-   */
-  RAZORPAY_KEY_ID: z.string().default(''),
-  RAZORPAY_KEY_SECRET: z.string().default(''),
-  RAZORPAY_WEBHOOK_SECRET: z.string().default(''),
+  PORT: z.coerce.number().default(8080),
+  PERSISTENCE: z.enum(['firestore', 'memory']).default(defaultPersistence as 'firestore' | 'memory'),
+  // Firebase — Cloud Run uses GCP_PROJECT_ID, local uses FIREBASE_PROJECT_ID
+  FIREBASE_PROJECT_ID: z.string().optional().default(''),
+  GCP_PROJECT_ID: z.string().optional().default(''),
+  FIREBASE_CLIENT_EMAIL: z.string().optional().default(''),
+  FIREBASE_PRIVATE_KEY: z.string().optional().default(''),
+  // AI — optional so server starts even without keys (returns 503 on AI endpoints)
+  OPENAI_API_KEY: z.string().optional().default(''),
+  GEMINI_API_KEY: z.string().optional().default(''),
+  /** Gemini Live API model for the real-time AI interviewer (Elite feature).
+   *  Override to a native-audio model later for richer voice. */
+  GEMINI_LIVE_MODEL: z.string().optional().default('gemini-live-2.5-flash-preview'),
+  GEMINI_PRO_API_KEY: z.string().optional().default(''),
+  GROQ_API_KEY: z.string().optional().default(''),
+  GOOGLE_TTS_API_KEY: z.string().optional().default(''),
+  // Payments — optional
+  RAZORPAY_KEY_ID: z.string().optional().default(''),
+  RAZORPAY_KEY_SECRET: z.string().optional().default(''),
+  RAZORPAY_WEBHOOK_SECRET: z.string().optional().default(''),
+  RESEND_API_KEY: z.string().optional().default(''),
+  // WhatsApp Business API
+  WHATSAPP_TOKEN: z.string().optional().default(''),
+  WHATSAPP_PHONE_NUMBER_ID: z.string().optional().default(''),
+  SUPER_ADMIN_EMAIL: z.string().default('manshu.ibc24@gmail.com'),
+  // IMPORTANT: Override this in production with a strong random secret (32+ chars).
+  // The default is intentionally weak so local dev works out-of-the-box, but
+  // Cloud Run deployments MUST set CRON_SECRET via env var or Secret Manager.
+  CRON_SECRET: z.string().optional().default('nexigrate-cron-2026-dev-only'),
+  // Mailbox: base inbound address users reply to. Per-thread replies use
+  // plus-addressing (support+<threadId>@domain) routed via Resend Inbound.
+  MAILBOX_INBOUND_ADDRESS: z.string().optional().default('support@nexigrate.com'),
+  // Shared secret for verifying Resend webhooks (delivery + inbound). Passed
+  // as ?token=... on the webhook URL. Falls back to CRON_SECRET if unset.
+  RESEND_WEBHOOK_SECRET: z.string().optional().default(''),
+  // Weekly content freshness: cached AI chapter content older than this many
+  // days is considered stale. It is served instantly (no user wait) but
+  // regenerated in the background, and the weekly cron proactively refreshes
+  // the stalest batch. Keeps study content current with the latest syllabus.
+  CONTENT_REFRESH_DAYS: z.coerce.number().min(1).default(7),
+  // Max chapters the weekly refresh cron regenerates per run (cost + Cloud
+  // Run request-timeout guard; regeneration is sequential). Override per-run
+  // with ?limit= for manual admin sweeps.
+  CONTENT_REFRESH_BATCH: z.coerce.number().min(1).default(25),
+  CORS_ALLOWED_ORIGINS: z.string().default('http://localhost:3000,https://app.nexigrate.com,https://nexigrate.com').transform((s) => s.split(',')),
 });
 
-export type Env = z.output<typeof schema>;
+export type Env = z.infer<typeof envSchema> & { resolvedProjectId: string };
 
-let cached: Env | null = null;
-
-/** Parse `process.env` and freeze the result. */
-export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
-  if (cached) return cached;
-  const parsed = schema.safeParse(source);
-  if (!parsed.success) {
-    const issues = parsed.error.issues
-      .map((i) => `  - ${i.path.join('.')}: ${i.message}`)
-      .join('\n');
-    throw new Error(`Invalid environment configuration:\n${issues}`);
+export function loadEnv(): Env {
+  const result = envSchema.safeParse(process.env);
+  if (!result.success) {
+    const formatted = result.error.issues.map((i) => `  ${i.path.join('.')}: ${i.message}`).join('\n');
+    throw new Error(`Environment validation failed:\n${formatted}`);
   }
-  if (parsed.data.NODE_ENV === 'production' && parsed.data.AUTH_MODE === 'stub') {
-    throw new Error("AUTH_MODE='stub' is not allowed in production. Set AUTH_MODE='firebase'.");
-  }
-  // NOTE: removed the PERSISTENCE=memory guard for early testing.
-  // Re-enable once Firestore is fully wired with workload identity on Cloud Run.
-  if (parsed.data.PERSISTENCE === 'firestore' && !parsed.data.GCP_PROJECT_ID) {
-    throw new Error("PERSISTENCE='firestore' requires GCP_PROJECT_ID to be set.");
-  }
-  cached = Object.freeze(parsed.data);
-  return cached;
-}
-
-/** Reset cached env -- exported for tests only. */
-export function resetEnvForTests(): void {
-  cached = null;
+  // Resolve project ID from either FIREBASE_PROJECT_ID or GCP_PROJECT_ID.
+  // On Cloud Run, GCP_PROJECT_ID is set via --set-env-vars in deploy,
+  // and GOOGLE_CLOUD_PROJECT is always set by the platform itself.
+  const resolvedProjectId = result.data.FIREBASE_PROJECT_ID || result.data.GCP_PROJECT_ID || process.env['GOOGLE_CLOUD_PROJECT'] || 'nexigrate-prod';
+  return { ...result.data, resolvedProjectId, FIREBASE_PROJECT_ID: resolvedProjectId };
 }
