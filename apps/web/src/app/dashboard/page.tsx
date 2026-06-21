@@ -358,15 +358,15 @@ export default function DashboardPage() {
             <div className="mt-auto pt-2.5 flex items-center gap-1 text-xs font-medium text-ember-500">{t('read')} <span className="transition-transform group-hover:translate-x-0.5">→</span></div>
           </button>
 
-          {/* Live Interview (Elite) */}
+          {/* Live Interview (Elite) — Coming Soon */}
           <button type="button" onClick={() => { track('feature_click', { feature: 'interview' }); router.push('/interview'); }} className="paper-card card-selectable group flex h-full flex-col p-4 text-left transition-all hover:shadow-md">
             <div className="flex items-center gap-2">
               <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ember-500/10 text-ember-600"><IconMic className="h-5 w-5" /></span>
-              <span className="inline-flex items-center gap-1 rounded-full bg-gold-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gold-600">Elite</span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-gold-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gold-600">{me?.language === 'hi' ? 'जल्द आ रहा है' : 'Coming Soon'}</span>
             </div>
             <h3 className="mt-3 font-serif text-base font-bold text-ink-900">{me?.language === 'hi' ? 'लाइव इंटरव्यू' : 'Live Interview'}</h3>
             <p className="mt-1 text-xs text-muted-500 line-clamp-2">{me?.language === 'hi' ? 'AI के साथ रियल-टाइम मॉक इंटरव्यू' : 'Real-time mock interview with AI'}</p>
-            <div className="mt-auto pt-2.5 flex items-center gap-1 text-xs font-medium text-ember-500">{me?.language === 'hi' ? 'शुरू करें' : 'Start'} <span className="transition-transform group-hover:translate-x-0.5">→</span></div>
+            <div className="mt-auto pt-2.5 flex items-center gap-1 text-xs font-medium text-muted-400">{me?.language === 'hi' ? 'जल्द आ रहा है' : 'Coming soon'}</div>
           </button>
 
           {/* Secondary shortcuts — same card system, equal height */}

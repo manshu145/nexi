@@ -29,6 +29,11 @@ type Turn = { role: 'interviewer' | 'you'; text: string };
 
 const ELITE = 'achiever';
 
+// Temporarily parked: the Live Interview depends on Gemini Live API access
+// (billing/Live-model availability) that isn't ready yet. Flip to false to
+// re-enable the full real-time flow once the Gemini project is sorted.
+const COMING_SOON = true;
+
 export default function LiveInterviewPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
@@ -232,6 +237,23 @@ export default function LiveInterviewPage() {
 
   if (authLoading || !user || meLoading || !me) {
     return <main className="flex min-h-dvh items-center justify-center"><AILoader context="general" /></main>;
+  }
+
+  // ── Coming soon ───────────────────────────────────────────────────────────
+  if (COMING_SOON) {
+    return (
+      <main className="mx-auto flex min-h-dvh max-w-lg flex-col items-center justify-center px-6 text-center">
+        <span className="text-5xl">🎤</span>
+        <h1 className="font-serif mt-5 text-2xl font-bold text-ink-900">{hi ? 'लाइव इंटरव्यू' : 'Live Interview'}</h1>
+        <span className="mt-3 inline-flex items-center gap-1 rounded-full bg-gold-500/15 px-3 py-1 text-xs font-bold uppercase tracking-wide text-gold-600">{hi ? 'जल्द आ रहा है' : 'Coming Soon'}</span>
+        <p className="mt-4 text-sm text-muted-500">
+          {hi
+            ? 'AI इंटरव्यूअर के साथ रियल-टाइम मॉक इंटरव्यू — कैमरा ऑन, आवाज़ में सवाल-जवाब और स्कोरकार्ड। हम इसे तैयार कर रहे हैं, बहुत जल्द लाइव होगा!'
+            : 'A real-time mock interview with an AI interviewer — camera on, spoken Q&A, and a scorecard. We are putting the finishing touches on it — live very soon!'}
+        </p>
+        <button onClick={() => router.push('/dashboard')} className="btn-primary mt-7 w-full">{hi ? 'डैशबोर्ड पर वापस' : 'Back to Dashboard'}</button>
+      </main>
+    );
   }
 
   // ── Elite gate ────────────────────────────────────────────────────────────
