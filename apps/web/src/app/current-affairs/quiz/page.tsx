@@ -212,10 +212,23 @@ export default function CurrentAffairsQuizPage() {
                   </span>
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-ink-900">{q.question}</p>
-                    <p className="mt-1 text-xs text-muted-500">
-                      {t('yourAnswer', { answer: userAns != null && userAns >= 0 ? ansKeys[userAns]! : t('skipped') })} · {t('correctAnswer', { answer: q.correctOption })}
-                    </p>
-                    <p className="mt-1 text-xs text-ink-700">{q.explanation}</p>
+                    <ul className="mt-2 space-y-1">
+                      {q.options.map((opt) => {
+                        const isRight = opt.key === q.correctOption;
+                        const isYourWrong = ansKeys[userAns ?? -1] === opt.key && !isRight;
+                        return (
+                          <li key={opt.key} className={`rounded-md px-2 py-1 text-xs ${isRight ? 'bg-gold-500/15 font-medium text-ink-900' : isYourWrong ? 'bg-ember-500/10 text-ember-700' : 'text-ink-700'}`}>
+                            <span className="font-bold">{opt.key}.</span> {opt.text}
+                            {isRight && <span className="ml-1 font-semibold text-gold-600">✓ {lang === 'hi' ? 'सही' : 'correct'}</span>}
+                            {isYourWrong && <span className="ml-1 font-semibold text-ember-600">✗ {lang === 'hi' ? 'तुम्हारा' : 'your answer'}</span>}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    {(userAns == null || userAns < 0) && (
+                      <p className="mt-1 text-xs text-muted-500">{t('yourAnswer', { answer: t('skipped') })}</p>
+                    )}
+                    <p className="mt-2 text-xs text-ink-700">{q.explanation}</p>
                   </div>
                 </div>
               </div>
