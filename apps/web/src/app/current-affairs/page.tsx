@@ -177,7 +177,9 @@ export default function CurrentAffairsShortsPage() {
   // category-filtered news list.
   type FeedEntry = { kind: 'news'; item: CurrentAffairsItem } | { kind: 'ad'; ad: ReelAd };
   const feedEntries = useMemo<FeedEntry[]>(() => {
-    const news = activeTab === 'all' ? items : items.filter(i => i.category === activeTab);
+    const filtered = activeTab === 'all' ? items : items.filter(i => i.category === activeTab);
+    // Latest first — newest publishedAt (fallback date) at the top.
+    const news = filtered.slice().sort((a, b) => String(b?.publishedAt || b?.date || '').localeCompare(String(a?.publishedAt || a?.date || '')));
     const entries: FeedEntry[] = news.map(item => ({ kind: 'news', item }));
     if (!ads || !ads.enabled || ads.items.length === 0) return entries;
     const n = Math.min(8, Math.max(3, ads.everyNReels || 5));
@@ -626,15 +628,15 @@ function ShortCard({ item, isActive, liked, bookmarked, likeCount, onLike, onBoo
   const imageUrl = (item.imageUrl && !usedFallback) ? item.imageUrl : categoryImage;
 
   return (
-    <div className="h-full w-full flex items-center justify-center px-3 py-2 lg:px-0 lg:py-3">
+    <div className="h-full w-full flex items-center justify-center px-3 pt-2 pb-32 lg:px-0 lg:py-3">
       <div
-        className={`relative w-full h-full rounded-2xl lg:rounded-3xl overflow-hidden shadow-xl border cursor-pointer bg-paper-50 dark:bg-paper-100 transition-all duration-300 ease-out ${
+        className={`relative w-full h-full flex flex-col rounded-2xl lg:rounded-3xl overflow-hidden shadow-xl border cursor-pointer bg-paper-50 dark:bg-paper-100 transition-all duration-300 ease-out ${
           isActive ? 'scale-100 opacity-100 border-line shadow-xl' : 'scale-[0.94] opacity-20 border-transparent shadow-none'
         }`}
         onClick={onTap}
       >
         {/* Image header */}
-        <div className="relative h-[35%] min-h-[140px] max-h-[200px] overflow-hidden">
+        <div className="relative shrink-0 h-44 overflow-hidden">
           {!imgError ? (
             <img src={imageUrl} alt={item.category} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 ease-out" style={{ transform: isActive ? 'scale(1)' : 'scale(1.1)' }} loading="lazy" onError={() => { if (!usedFallback && item.imageUrl) { setUsedFallback(true); } else { setImgError(true); } }} />
           ) : (
@@ -655,7 +657,7 @@ function ShortCard({ item, isActive, liked, bookmarked, likeCount, onLike, onBoo
 
         {/* Content area (reserve a right gutter on mobile so text never sits
             under the floating action rail) */}
-        <div className="flex flex-col px-4 pr-14 lg:pr-4 pt-3.5 pb-4 h-[65%] overflow-hidden">
+        <div className="flex flex-col px-4 pr-14 lg:pr-4 pt-3.5 pb-4 flex-1 min-h-0 overflow-hidden">
           <h2 className="font-serif text-[15px] lg:text-base font-bold leading-snug text-ink-900 line-clamp-3">
             {item.headline}
           </h2>
@@ -680,16 +682,10 @@ function ShortCard({ item, isActive, liked, bookmarked, likeCount, onLike, onBoo
           </div>
         </div>
 
-        {/* Mobile action buttons.
-            PR-33: moved from `bottom-20` (80px) to `bottom-28` (112px)
-            because the fixed quiz bar (`fixed bottom-16` + ~52px tall)
-            occupies the 64-116px band of the viewport. Pre-PR-33 the
-            action buttons sat at 80-230px, overlapping the quiz bar's
-            top 36px and disappearing into its gradient fade.
-            PR-49: BottomNav now stays visible on /current-affairs.
-            Quiz bar sits above BottomNav (~56px + safe-area from bottom).
-            Action buttons at bottom-32 to clear quiz bar + BottomNav. */}
-        <div className="absolute right-2.5 bottom-32 flex flex-col items-center gap-2.5 z-20 lg:hidden">
+        {/* Mobile action buttons. The card wrapper now reserves bottom space
+            (pb-32) so the whole card sits above the fixed quiz bar + BottomNav,
+            so the rail just needs to clear the card's own footer row. */}
+        <div className="absolute right-2.5 bottom-20 flex flex-col items-center gap-2.5 z-20 lg:hidden">
           <button onClick={(e) => { e.stopPropagation(); onLike(); }} className={`flex flex-col items-center gap-0.5 rounded-full p-2.5 border transition-all duration-150 active:scale-90 ${liked ? 'bg-paper-50/90 border-ember-500/30 shadow-md' : 'bg-paper-50/70 backdrop-blur-sm border-line/50'}`}>
             <IconHeart filled={liked} className={`h-[18px] w-[18px] ${liked ? 'text-ember-600' : 'text-ink-700'}`} />
             {likeCount > 0 && <span className="text-[9px] text-ink-800 font-semibold">{likeCount}</span>}
