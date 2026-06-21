@@ -235,6 +235,9 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
         } catch (e) { deps.logger.warn('ca.ads_fetch_error', { error: String(e) }); }
       }
 
+      // Latest first: newest publishedAt (fallback date) at the top of the reel.
+      items.sort((a: any, b: any) => String(b?.publishedAt || b?.date || '').localeCompare(String(a?.publishedAt || a?.date || '')));
+
       return c.json({ date: today, items, yesterdayWinner: winner, isFromYesterday: items.some((it: any) => it._isFromYesterday), userLikes, userBookmarks, likeCounts, ads });
     } catch (e) {
       if (e instanceof HTTPException) throw e;

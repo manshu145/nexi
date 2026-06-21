@@ -124,6 +124,7 @@ export interface AdminRoutesDeps {
 async function logPushSend(
   deps: AdminRoutesDeps,
   entry: {
+    id?: string;
     title: string; body: string; link: string | null;
     mode: 'audience' | 'topic'; audience: string;
     devices: number; sent: number; failed: number;
@@ -132,11 +133,14 @@ async function logPushSend(
 ): Promise<void> {
   if (!deps.db) return;
   try {
-    await deps.db.collection('pushLogs').add({
-      ...entry,
-      inboxCreated: entry.inboxCreated ?? 0,
-      sentAt: new Date().toISOString(),
-    });
+    const { id, ...rest } = entry;
+    const doc = { ...rest, inboxCreated: rest.inboxCreated ?? 0, sentAt: new Date().toISOString() };
+    // When an id is given (the campaignId attached to the push payload), write
+    // to that exact doc so the service worker's click ping — which carries the
+    // same campaignId — can increment `clicks` on it (merge avoids clobbering
+    // a click that lands first). Otherwise fall back to an auto-id.
+    if (id) await deps.db.collection('pushLogs').doc(id).set(doc, { merge: true });
+    else await deps.db.collection('pushLogs').add(doc);
   } catch (err) {
     deps.logger.warn('admin.push_log_failed', { error: err instanceof Error ? err.message : String(err) });
   }
@@ -2004,6 +2008,12 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
     }
     const principal = requireAuth(c);
 
+    // One id per broadcast. Attached to the push payload as `campaignId` so the
+    // service worker's tap ping (POST /v1/push/click?c=<campaignId>) attributes
+    // the click to THIS notification, and used as the pushLogs doc id so the
+    // history table can show per-notification sent vs clicked.
+    const campaignId = `pl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
     // Topic broadcast — single FCM call, no token enumeration needed.
     if (typeof body.audience === 'object' && body.audience !== null && 'topic' in body.audience) {
       const topic = String(body.audience.topic).replace(/[^a-zA-Z0-9-_.~%]/g, '').slice(0, 100);
@@ -2013,10 +2023,12 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
       // a topic's known audience.
       const payload: PushNotificationPayload = {
         title: body.title, body: body.body, link: body.link, imageUrl: body.imageUrl,
+        data: { campaignId },
       };
       const result = await deps.push.sendToTopic(topic, payload);
       deps.logger.info('admin.push_topic_send', { adminId: principal.userId, topic, result });
       await logPushSend(deps, {
+        id: campaignId,
         title: body.title, body: body.body, link: body.link ?? null,
         mode: 'topic', audience: `topic:${topic}`,
         devices: 0, sent: result.successCount, failed: result.failureCount,
@@ -2050,10 +2062,12 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
 
     const payloadEn: PushNotificationPayload = {
       title: body.title, body: body.body, link: body.link, imageUrl: body.imageUrl,
+      data: { campaignId },
     };
     const payloadHi: PushNotificationPayload = {
       title: body.titleHi ?? body.title, body: body.bodyHi ?? body.body,
       link: body.link, imageUrl: body.imageUrl,
+      data: { campaignId },
     };
 
     const enResult = await deps.push.sendToTokens(enTokens, payloadEn);
@@ -2122,6 +2136,7 @@ export function makeAdminRoutes(deps: AdminRoutesDeps): Hono {
     }
 
     await logPushSend(deps, {
+      id: campaignId,
       title: body.title, body: body.body, link: body.link ?? null,
       mode: 'audience', audience,
       devices: tokens.length,
