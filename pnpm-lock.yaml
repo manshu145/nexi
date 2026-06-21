@@ -118,6 +118,9 @@ importers:
       '@ducanh2912/next-pwa':
         specifier: ^10.2.9
         version: 10.2.9(next@15.5.18(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(webpack@5.107.2(lightningcss@1.32.0)(postcss@8.5.15))
+      '@google/genai':
+        specifier: ^2.9.0
+        version: 2.9.0
       '@nexigrate/shared':
         specifier: workspace:*
         version: link:../../packages/shared
