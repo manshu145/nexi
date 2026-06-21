@@ -347,6 +347,17 @@ export default function DashboardPage() {
             <div className="mt-auto pt-2.5 flex items-center gap-1 text-xs font-medium text-ember-500">{me?.language === 'hi' ? 'शुरू करें' : 'Start'} <span className="transition-transform group-hover:translate-x-0.5">→</span></div>
           </button>
 
+          {/* Weak-Topic Drill */}
+          <button type="button" onClick={() => { track('feature_click', { feature: 'drill' }); router.push('/drill'); }} className="paper-card card-selectable group flex h-full flex-col p-4 text-left transition-all hover:shadow-md">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ember-500/10 text-ember-600"><IconTarget className="h-5 w-5" /></span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-ember-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ember-600">{me?.language === 'hi' ? 'स्मार्ट' : 'Smart'}</span>
+            </div>
+            <h3 className="mt-3 font-serif text-base font-bold text-ink-900">{me?.language === 'hi' ? 'कमज़ोर टॉपिक ड्रिल' : 'Weak-Topic Drill'}</h3>
+            <p className="mt-1 text-xs text-muted-500 line-clamp-2">{me?.language === 'hi' ? 'अपने कमज़ोर टॉपिक पर फोकस्ड अभ्यास' : 'Focused practice on your weak topics'}</p>
+            <div className="mt-auto pt-2.5 flex items-center gap-1 text-xs font-medium text-ember-500">{me?.language === 'hi' ? 'शुरू करें' : 'Start'} <span className="transition-transform group-hover:translate-x-0.5">→</span></div>
+          </button>
+
           {/* PYQ */}
           <button type="button" onClick={() => { track('feature_click', { feature: 'pyq' }); router.push('/pyq'); }} className="paper-card card-selectable group flex h-full flex-col p-4 text-left transition-all hover:shadow-md">
             <div className="flex items-center gap-2">
@@ -649,6 +660,9 @@ function IconMic({ className }: IconProps) {
 }
 function IconFlask({ className }: IconProps) {
   return <Svg className={className}><path d="M9 3h6M10 3v6L5 18a2 2 0 001.8 3h10.4A2 2 0 0019 18l-5-9V3" /><path d="M7.5 14h9" /></Svg>;
+}
+function IconTarget({ className }: IconProps) {
+  return <Svg className={className}><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1.5" /></Svg>;
 }
 function IconFileText({ className }: IconProps) {
   return <Svg className={className}><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5z" /><path d="M14 3v5h5M9 13h6M9 17h6" /></Svg>;

@@ -39,6 +39,7 @@ import { FirestoreAdsStore, InMemoryAdsStore, type AdsStore } from './lib/adsSto
 import { FirestoreTeamInviteStore, InMemoryTeamInviteStore, type TeamInviteStore } from './lib/teamInviteStore.js';
 import { makePublicRoutes } from './routes/public.js';
 import { makeMockTestRoutes } from './routes/mockTests.js';
+import { makeDrillRoutes } from './routes/drill.js';
 import { FirestorePYQStore, InMemoryPYQStore, type PYQStore } from './lib/pyqStore.js';
 import { FirestoreAnalyticsStore, InMemoryAnalyticsStore, type AnalyticsStore } from './lib/analyticsStore.js';
 import { makeAnalyticsRoutes } from './routes/analytics.js';
@@ -510,6 +511,7 @@ export function buildApp(deps: AppDeps): Hono {
   v1.route('/essay', makeEssayRoutes({ users, aiEngine, logger, db: fs, config, usage: featureUsage }));
   v1.route('/interview', makeInterviewRoutes({ users, aiEngine, env, logger }));
   v1.route('/mock-tests', makeMockTestRoutes({ users, aiEngine, mockTests, ledger, config, usage: featureUsage, logger }));
+  v1.route('/drill', makeDrillRoutes({ users, aiEngine, mockTests, logger }));
   v1.route('/pyq', makePYQRoutes({ users, aiEngine, pyq, logger, config }));
   v1.route('/analytics', makeAnalyticsRoutes({ analytics, adminStore, users, env, logger, db: fs }));
   v1.route('/mailbox', makeMailboxRoutes({ threads: emailThreads, users, env, logger, serviceKeys }));

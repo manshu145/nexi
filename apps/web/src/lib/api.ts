@@ -501,6 +501,20 @@ export const api = {
     }>;
   },
 
+  // ─── Auto Weak-Topic Drilling ───────────────────────────────────────────
+  async getDrillWeakAreas() {
+    return (await authedFetch('/v1/drill/weak')).json() as Promise<{
+      hasData: boolean; analyzed: number; exam: string | null;
+      weakTopics: Array<{ name: string; accuracy: number; total: number }>;
+      weakSubjects: Array<{ name: string; accuracy: number; total: number }>;
+    }>;
+  },
+  async startDrill(count?: number) {
+    return (await authedFetch('/v1/drill/start', { method: 'POST', body: JSON.stringify({ ...(count ? { count } : {}) }) })).json() as Promise<{
+      attemptId: string; focus: string[]; count: number;
+    }>;
+  },
+
   // ─── Previous Year Questions (PYQ) ──────────────────────────────────────
   /** Available year-papers for an exam (auto-seeds the latest year server-side). */
   async getPYQYears(examSlug: string, lang: 'en' | 'hi' = 'en') {
