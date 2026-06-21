@@ -34,23 +34,27 @@ export interface InterviewRoutesDeps {
 const ELITE_PLAN = 'achiever';
 
 /**
- * List the model names that actually support the Live API (bidiGenerateContent)
- * for THIS key, on a given API version. Uses the raw REST ListModels endpoint
- * (the v1beta/v1alpha response exposes `supportedGenerationMethods`). Returns
- * bare model ids (without the leading `models/`). Never throws — returns [].
+ * List the model names that support the Live API (bidiGenerateContent) for
+ * THIS key on a given API version, along with a short human-readable note
+ * (HTTP status / counts) so failures are diagnosable. Never throws.
  */
-async function listLiveModels(apiKey: string, apiVersion: string): Promise<string[]> {
+async function listLiveModelsDetailed(apiKey: string, apiVersion: string): Promise<{ models: string[]; note: string }> {
   try {
     const url = `https://generativelanguage.googleapis.com/${apiVersion}/models?key=${apiKey}&pageSize=1000`;
     const res = await fetch(url);
-    if (!res.ok) return [];
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      return { models: [], note: `${apiVersion} HTTP ${res.status} ${txt.slice(0, 100)}` };
+    }
     const data = (await res.json()) as { models?: Array<{ name?: string; supportedGenerationMethods?: string[] }> };
-    return (data.models ?? [])
+    const all = data.models ?? [];
+    const models = all
       .filter((m) => (m.supportedGenerationMethods ?? []).includes('bidiGenerateContent'))
       .map((m) => (m.name ?? '').replace(/^models\//, ''))
       .filter(Boolean);
-  } catch {
-    return [];
+    return { models, note: `${apiVersion}: ${all.length} total / ${models.length} live` };
+  } catch (e) {
+    return { models: [], note: `${apiVersion} err ${e instanceof Error ? e.message : String(e)}` };
   }
 }
 
@@ -124,11 +128,16 @@ export function makeInterviewRoutes(deps: InterviewRoutesDeps): Hono {
     try {
       const ai = new GoogleGenAI({ apiKey: deps.env.GEMINI_API_KEY, httpOptions: { apiVersion: 'v1alpha' } });
 
-      // Resolve a model that this key can actually use for the Live API on
-      // v1alpha — model names/availability change over time, so we discover
-      // instead of trusting a hard-coded name that may have been retired.
-      const available = await listLiveModels(deps.env.GEMINI_API_KEY, 'v1alpha');
+      // Discover what THIS key can actually use for the Live API. Check both
+      // versions so we can tell a billing/access problem (none anywhere) from
+      // a version problem (present on one only).
+      const [a, b] = await Promise.all([
+        listLiveModelsDetailed(deps.env.GEMINI_API_KEY, 'v1alpha'),
+        listLiveModelsDetailed(deps.env.GEMINI_API_KEY, 'v1beta'),
+      ]);
+      const available = a.models.length ? a.models : b.models;
       const model = pickLiveModel(deps.env.GEMINI_LIVE_MODEL, available);
+      const note = `${a.note} | ${b.note}`;
 
       const now = Date.now();
       // IMPORTANT: mint WITHOUT liveConnectConstraints. A constrained token
@@ -148,8 +157,8 @@ export function makeInterviewRoutes(deps: InterviewRoutesDeps): Hono {
         },
       });
 
-      deps.logger.info('interview.token_minted', { userId: principal.userId, model, lang, availableCount: available.length });
-      return c.json({ token: token.name, model, lang, systemInstruction, availableModels: available });
+      deps.logger.info('interview.token_minted', { userId: principal.userId, model, lang, note });
+      return c.json({ token: token.name, model, lang, systemInstruction, availableModels: available, diag: note });
     } catch (err) {
       deps.logger.error('interview.token_failed', { error: err instanceof Error ? err.message : String(err) });
       throw new HTTPException(503, { message: 'Could not start the interview right now. Please try again.' });
@@ -163,15 +172,16 @@ export function makeInterviewRoutes(deps: InterviewRoutesDeps): Hono {
     if (!deps.env.GEMINI_API_KEY) {
       throw new HTTPException(503, { message: 'Live Interview is temporarily unavailable.' });
     }
-    const [v1alpha, v1beta] = await Promise.all([
-      listLiveModels(deps.env.GEMINI_API_KEY, 'v1alpha'),
-      listLiveModels(deps.env.GEMINI_API_KEY, 'v1beta'),
+    const [a, b] = await Promise.all([
+      listLiveModelsDetailed(deps.env.GEMINI_API_KEY, 'v1alpha'),
+      listLiveModelsDetailed(deps.env.GEMINI_API_KEY, 'v1beta'),
     ]);
     return c.json({
       configured: deps.env.GEMINI_LIVE_MODEL,
-      resolved: pickLiveModel(deps.env.GEMINI_LIVE_MODEL, v1alpha),
-      v1alpha,
-      v1beta,
+      resolved: pickLiveModel(deps.env.GEMINI_LIVE_MODEL, a.models.length ? a.models : b.models),
+      v1alpha: a.models,
+      v1beta: b.models,
+      notes: `${a.note} | ${b.note}`,
     });
   });
 
