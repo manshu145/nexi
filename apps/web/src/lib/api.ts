@@ -296,6 +296,10 @@ export const api = {
   async getCurrentAffairsLeaderboard() { return (await authedFetch('/v1/current-affairs/leaderboard')).json() as Promise<LeaderboardResponse>; },
   async getCurrentAffairsQuizArchive(limit = 30) { return (await authedFetch(`/v1/current-affairs/quiz/archive?limit=${limit}`)).json() as Promise<{ quizzes: QuizArchiveSummary[] }>; },
   async getArchivedCurrentAffairsQuiz(date: string, lang: 'en' | 'hi' = 'en') { return (await authedFetch(`/v1/current-affairs/quiz/archive/${date}?lang=${lang}`)).json() as Promise<ArchivedQuizResponse>; },
+
+  // ─── Live Interview (Elite) ──────────────────────────────────────────
+  async getInterviewToken(opts: { role?: string; exam?: string; lang?: 'en' | 'hi' }) { return (await authedFetch('/v1/interview/token', { method: 'POST', body: JSON.stringify(opts) })).json() as Promise<{ token: string; model: string; lang: 'en' | 'hi' }>; },
+  async getInterviewReport(opts: { transcript: string; role?: string; exam?: string; lang?: 'en' | 'hi' }) { return (await authedFetch('/v1/interview/report', { method: 'POST', body: JSON.stringify(opts) })).json() as Promise<{ report: InterviewReport }>; },
   async trackReelAdEvent(id: string, event: 'impression' | 'click') { try { await authedFetch(`/v1/current-affairs/ads/${id}/${event}`, { method: 'POST' }); } catch { /* metrics best-effort */ } },
 
   // Chat
@@ -785,6 +789,7 @@ export interface QuizSubmitResult { score: number; correct: number; total: numbe
 export interface LeaderboardResponse { date: string; leaderboard: LeaderboardEntry[]; yesterdayWinner: LeaderboardEntry | null; }
 export interface QuizArchiveSummary { date: string; generatedAt: string; questionCount: number; }
 export interface ArchivedQuizResponse { date: string; generatedAt: string; questions: GeneratedMCQ[]; headlines: string[]; winner: LeaderboardEntry | null; }
+export interface InterviewReport { overall: number; communication: number; confidence: number; content: number; strengths: string[]; improvements: string[]; summary: string; }
 
 export interface ChatMessage { role: 'user' | 'assistant'; content: string; timestamp: string; }
 export interface ChatSession { id: string; userId: string; title: string; messages: ChatMessage[]; createdAt: string; updatedAt: string; }
