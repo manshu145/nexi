@@ -37,6 +37,7 @@ interface AdminStats {
   totalUsers: number; dau: number; activeNow: number; newToday: number;
   revenue30d: number; aiCostToday: number;
   activeSessions?: number; newUsersToday?: number; pwaInstalls?: number;
+  pushClicksToday?: number; pushClicks7d?: number;
 }
 interface ApiHealthStatus {
   health: { openai: 'ok'|'error'|'unconfigured'; groq: 'ok'|'error'|'unconfigured'; gemini: 'ok'|'error'|'unconfigured'; razorpay: 'ok'|'error'|'unconfigured'; };
@@ -283,6 +284,7 @@ export default function AdminDashboardPage() {
         <KpiCard label="Revenue 30d" value={`₹${(stats?.revenue30d ?? 0).toLocaleString('en-IN')}`} />
         <KpiCard label="AI Cost Today" value={`₹${((stats?.aiCostToday ?? 0) * USD_TO_INR).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`} sub={`≈ $${(stats?.aiCostToday ?? 0).toFixed(2)} infra · 0 = no paid AI calls`} />
         <KpiCard label="PWA Installs" value={(stats?.pwaInstalls ?? 0).toLocaleString()} />
+        <KpiCard label="Push Clicks" value={(stats?.pushClicksToday ?? 0).toLocaleString()} sub={`${(stats?.pushClicks7d ?? 0).toLocaleString()} in last 7 days`} />
       </div>
 
       {/* Range selector — presets + custom date range (YouTube-style) */}

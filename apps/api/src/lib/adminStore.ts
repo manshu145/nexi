@@ -1,4 +1,5 @@
 import type { Firestore } from 'firebase-admin/firestore';
+import { FieldValue } from 'firebase-admin/firestore';
 import type { Logger } from '../logger.js';
 import type { Env } from '../env.js';
 
@@ -17,6 +18,9 @@ export interface AdminStats {
   aiCostToday: number;
   activeSessions: number;
   pwaInstalls: number;
+  /** Push-notification taps recorded today / in the last 7 days. */
+  pushClicksToday: number;
+  pushClicks7d: number;
   apiHealth: { openai: 'ok' | 'error' | 'unconfigured'; groq: 'ok' | 'error' | 'unconfigured'; gemini: 'ok' | 'error' | 'unconfigured'; razorpay: 'ok' | 'error' | 'unconfigured' };
 }
 
@@ -71,6 +75,9 @@ export interface AdminStore {
   getActiveSessions(): Promise<ActiveSession[]>;
   logError(error: ErrorLog): Promise<void>;
   logAICall(log: Omit<AICallLog, 'id'>): Promise<void>;
+  /** Record a push-notification tap (fired by the service worker on click).
+   *  Increments the daily total and, if given, the per-campaign counter. */
+  recordPushClick(campaignId?: string): Promise<void>;
   updateSessionPing(uid: string): Promise<void>;
   startSession(uid: string): Promise<string>;
   endSession(uid: string, sessionId: string): Promise<void>;
@@ -111,12 +118,19 @@ export class InMemoryAdminStore implements AdminStore {
   private seoSettings: Record<string, any> = {};
   private emailTemplates: EmailTemplate[] = [];
   private announcements: Record<string, any>[] = [];
+  private pushClicks = new Map<string, number>(); // YYYY-MM-DD -> count
 
   async getFullStats(): Promise<AdminStats> {
     const todayKey = new Date().toISOString().split('T')[0]!;
     const todaysLogs = this.aiCallLogs.filter(l => l.timestamp.startsWith(todayKey));
     const aiCostToday = todaysLogs.reduce((sum, l) => sum + (l.cost || 0), 0);
-    return { totalUsers: 0, dau: 0, mau: 0, newUsersToday: 0, newUsersThisWeek: 0, revenueToday: 0, revenue7d: 0, revenue30d: 0, revenueTotal: 0, aiCallsToday: todaysLogs.length, aiCallsThisWeek: this.aiCallLogs.length, aiCostToday, activeSessions: this.sessions.size, pwaInstalls: 0, apiHealth: { openai: 'unconfigured', groq: 'unconfigured', gemini: 'unconfigured', razorpay: 'unconfigured' } };
+    const pushClicksToday = this.pushClicks.get(todayKey) ?? 0;
+    let pushClicks7d = 0;
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(Date.now() - i * 86400000).toISOString().split('T')[0]!;
+      pushClicks7d += this.pushClicks.get(d) ?? 0;
+    }
+    return { totalUsers: 0, dau: 0, mau: 0, newUsersToday: 0, newUsersThisWeek: 0, revenueToday: 0, revenue7d: 0, revenue30d: 0, revenueTotal: 0, aiCallsToday: todaysLogs.length, aiCallsThisWeek: this.aiCallLogs.length, aiCostToday, activeSessions: this.sessions.size, pwaInstalls: 0, pushClicksToday, pushClicks7d, apiHealth: { openai: 'unconfigured', groq: 'unconfigured', gemini: 'unconfigured', razorpay: 'unconfigured' } };
   }
   async getUserActivity(_uid: string): Promise<UserActivity> { return { userId: _uid, chapterOpens: [], mockTests: [], chatSessions: [], totalTimeOnPlatform: 0, creditHistory: [] }; }
   async getErrorLogs(page = 1, limit = 20) { const start = (page - 1) * limit; return { logs: this.errorLogs.slice(start, start + limit), total: this.errorLogs.length }; }
@@ -124,6 +138,7 @@ export class InMemoryAdminStore implements AdminStore {
   async getActiveSessions(): Promise<ActiveSession[]> { return []; }
   async logError(error: ErrorLog) { this.errorLogs.unshift(error); if (this.errorLogs.length > 500) this.errorLogs.pop(); }
   async logAICall(log: Omit<AICallLog, 'id'>) { this.aiCallLogs.unshift({ ...log, id: crypto.randomUUID() }); if (this.aiCallLogs.length > 1000) this.aiCallLogs.pop(); }
+  async recordPushClick(_campaignId?: string) { const d = new Date().toISOString().split('T')[0]!; this.pushClicks.set(d, (this.pushClicks.get(d) ?? 0) + 1); }
   async updateSessionPing(uid: string) { const s = this.sessions.get(uid); if (s) s.lastPing = new Date().toISOString(); }
   async startSession(uid: string) { const id = crypto.randomUUID(); this.sessions.set(uid, { startedAt: new Date().toISOString(), lastPing: new Date().toISOString() }); return id; }
   async endSession(uid: string, _sessionId: string) { this.sessions.delete(uid); }
@@ -232,10 +247,27 @@ export class FirestoreAdminStore implements AdminStore {
       if (statsDoc.exists) pwaInstalls = statsDoc.data()?.pwaInstalls ?? 0;
     } catch { /* */ }
 
+    // Push-notification clicks (today + last 7 days). Counters live in
+    // `pushClickStats/{YYYY-MM-DD}`, incremented by the service worker via
+    // POST /v1/push/click when a user taps a notification.
+    let pushClicksToday = 0, pushClicks7d = 0;
+    try {
+      const dateKeys: string[] = [];
+      for (let i = 0; i < 7; i++) dateKeys.push(new Date(now.getTime() - i * 86400000).toISOString().split('T')[0]!);
+      const refs = dateKeys.map(d => this.db.collection('pushClickStats').doc(d));
+      const snaps = await this.db.getAll(...refs);
+      snaps.forEach((snap, idx) => {
+        const c = snap.exists ? ((snap.data()?.count as number) ?? 0) : 0;
+        pushClicks7d += c;
+        if (idx === 0) pushClicksToday = c;
+      });
+    } catch { /* collection may not exist yet */ }
+
     return {
       totalUsers, dau, mau, newUsersToday, newUsersThisWeek,
       revenueToday, revenue7d, revenue30d, revenueTotal,
       aiCallsToday, aiCallsThisWeek, aiCostToday, activeSessions, pwaInstalls,
+      pushClicksToday, pushClicks7d,
       apiHealth: { openai: 'ok', groq: 'ok', gemini: 'ok', razorpay: 'ok' },
     };
   }
@@ -331,6 +363,23 @@ export class FirestoreAdminStore implements AdminStore {
 
   async logAICall(log: Omit<AICallLog, 'id'>): Promise<void> {
     try { await this.db.collection('aiCallLogs').add({ ...log, id: crypto.randomUUID() }); } catch { /* non-critical */ }
+  }
+
+  async recordPushClick(campaignId?: string): Promise<void> {
+    try {
+      const date = new Date().toISOString().split('T')[0]!;
+      await this.db.collection('pushClickStats').doc(date).set(
+        { date, count: FieldValue.increment(1), updatedAt: new Date().toISOString() },
+        { merge: true },
+      );
+      // Per-campaign click counter on the admin-broadcast log doc, if known.
+      if (campaignId) {
+        await this.db.collection('pushLogs').doc(campaignId).set(
+          { clicks: FieldValue.increment(1) },
+          { merge: true },
+        ).catch(() => {});
+      }
+    } catch { /* click tracking is best-effort; never throw */ }
   }
 
   async updateSessionPing(uid: string): Promise<void> {
