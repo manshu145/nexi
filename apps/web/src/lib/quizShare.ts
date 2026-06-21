@@ -20,8 +20,6 @@
 import { jsPDF } from 'jspdf';
 import type { GeneratedMCQ } from './api';
 
-const BG_TOP = '#1C1917';
-const BG_BOT = '#2E2623';
 const PAPER = '#F8F5EF';
 const EMBER = '#C2410C';
 const AMBER = '#F59E0B';
@@ -80,59 +78,86 @@ export async function buildQuizResultImage(input: QuizResultInput): Promise<File
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
 
-  const grad = ctx.createLinearGradient(0, 0, S, S);
-  grad.addColorStop(0, BG_TOP); grad.addColorStop(1, BG_BOT);
+  // Background — premium dark with a warm glow behind the score ring
+  const grad = ctx.createLinearGradient(0, 0, 0, S);
+  grad.addColorStop(0, '#221C19'); grad.addColorStop(1, '#14100E');
   ctx.fillStyle = grad; ctx.fillRect(0, 0, S, S);
-  ctx.fillStyle = EMBER; ctx.fillRect(0, 0, 14, S);
+  const glow = ctx.createRadialGradient(S / 2, 430, 30, S / 2, 430, 430);
+  glow.addColorStop(0, 'rgba(245,158,11,0.20)');
+  glow.addColorStop(1, 'rgba(245,158,11,0)');
+  ctx.fillStyle = glow; ctx.fillRect(0, 0, S, S);
+  ctx.strokeStyle = 'rgba(245,158,11,0.22)'; ctx.lineWidth = 3;
+  roundRect(ctx, 28, 28, S - 56, S - 56, 38); ctx.stroke();
 
-  const padX = 90;
-  brandWordmark(ctx, padX, 130, 44);
+  const padX = 84;
 
+  // Header: brand + "DAILY QUIZ" pill
+  brandWordmark(ctx, padX, 116, 46);
+  const pillTxt = hi ? 'डेली क्विज़' : 'DAILY QUIZ';
+  ctx.font = '700 24px Inter, system-ui, sans-serif';
+  const pillW = ctx.measureText(pillTxt).width + 44;
+  ctx.fillStyle = 'rgba(245,158,11,0.16)';
+  roundRect(ctx, S - padX - pillW, 78, pillW, 48, 24); ctx.fill();
+  ctx.fillStyle = AMBER; ctx.fillText(pillTxt, S - padX - pillW + 22, 110);
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#D9CDB0';
   ctx.font = '800 28px Inter, system-ui, sans-serif';
-  ctx.fillStyle = AMBER;
-  ctx.fillText(hi ? 'करेंट अफेयर्स क्विज़' : 'CURRENT AFFAIRS QUIZ', padX, 215);
+  ctx.fillText(hi ? 'करेंट अफेयर्स क्विज़ — मेरा स्कोर' : 'CURRENT AFFAIRS QUIZ · MY SCORE', S / 2, 210);
 
-  // Big score ring
-  const cx = S / 2, cy = 470, r = 150;
-  ctx.lineWidth = 26;
-  ctx.strokeStyle = 'rgba(217,205,176,0.18)';
+  // Score ring
+  const cx = S / 2, cy = 430, r = 158;
+  ctx.lineWidth = 30; ctx.lineCap = 'round';
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
   ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
-  ctx.strokeStyle = input.score >= 70 ? AMBER : input.score >= 40 ? '#D97706' : EMBER;
-  ctx.lineCap = 'round';
+  const ringColor = input.score >= 70 ? '#22C55E' : input.score >= 40 ? AMBER : EMBER;
+  ctx.strokeStyle = ringColor;
   ctx.beginPath();
   ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * Math.max(0, Math.min(100, input.score))) / 100);
   ctx.stroke();
   ctx.fillStyle = PAPER;
-  ctx.textAlign = 'center';
-  ctx.font = '800 120px Inter, system-ui, sans-serif';
-  ctx.fillText(`${input.score}%`, cx, cy + 38);
-  ctx.textAlign = 'left';
+  ctx.font = '800 124px Inter, system-ui, sans-serif';
+  ctx.fillText(`${input.score}%`, cx, cy + 20);
+  ctx.fillStyle = ringColor;
+  ctx.font = '800 30px Inter, system-ui, sans-serif';
+  const label = input.score >= 70 ? (hi ? 'शानदार!' : 'EXCELLENT') : input.score >= 40 ? (hi ? 'अच्छा' : 'GOOD') : (hi ? 'और मेहनत' : 'KEEP GOING');
+  ctx.fillText(label, cx, cy + 76);
 
-  // Correct / rank line
+  // Stat cards: correct · accuracy · rank
+  const cards = [
+    { label: hi ? 'सही' : 'CORRECT', value: `${input.correct}/${input.total}` },
+    { label: hi ? 'सटीकता' : 'ACCURACY', value: `${input.score}%` },
+    { label: hi ? 'रैंक' : 'RANK', value: `#${input.rank}` },
+  ];
+  const gap = 22;
+  const cardW = (S - padX * 2 - gap * 2) / 3;
+  const cardH = 132, cardY = 678;
+  cards.forEach((cd, i) => {
+    const x = padX + i * (cardW + gap);
+    ctx.fillStyle = 'rgba(255,255,255,0.05)';
+    roundRect(ctx, x, cardY, cardW, cardH, 20); ctx.fill();
+    ctx.strokeStyle = 'rgba(245,158,11,0.18)'; ctx.lineWidth = 1.5;
+    roundRect(ctx, x, cardY, cardW, cardH, 20); ctx.stroke();
+    ctx.fillStyle = PAPER; ctx.font = '800 50px Inter, system-ui, sans-serif';
+    ctx.fillText(cd.value, x + cardW / 2, cardY + 72);
+    ctx.fillStyle = MUTED; ctx.font = '600 22px Inter, system-ui, sans-serif';
+    ctx.fillText(cd.label, x + cardW / 2, cardY + 106);
+  });
+
   ctx.fillStyle = '#E7E0D2';
-  ctx.font = '600 42px Inter, system-ui, sans-serif';
-  const line = hi
-    ? `${input.correct}/${input.total} सही · रैंक #${input.rank}`
-    : `${input.correct}/${input.total} correct · Rank #${input.rank}`;
-  ctx.textAlign = 'center';
-  ctx.fillText(line, cx, 720);
-
-  ctx.fillStyle = MUTED;
-  ctx.font = '400 34px Inter, system-ui, sans-serif';
-  ctx.fillText(hi ? 'तुम भी आज का क्विज़ आज़माओ 👇' : "Beat my score — take today's quiz 👇", cx, 800);
+  ctx.font = '500 33px Inter, system-ui, sans-serif';
+  ctx.fillText(hi ? 'मुझसे बेहतर करके दिखाओ 👇' : 'Think you can beat me? 👇', S / 2, 902);
   ctx.textAlign = 'left';
 
   // Footer
-  ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(0, S - 110, S, 110);
-  ctx.fillStyle = AMBER;
-  ctx.font = '700 32px Inter, system-ui, sans-serif';
-  ctx.fillText('nexigrate.com', padX, S - 45);
-  ctx.fillStyle = MUTED;
-  ctx.font = '400 26px Inter, system-ui, sans-serif';
-  const tip = hi ? 'रोज़ करेंट अफेयर्स क्विज़ →' : 'Daily current affairs quiz →';
+  ctx.fillStyle = 'rgba(0,0,0,0.30)'; ctx.fillRect(0, S - 96, S, 96);
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = AMBER; ctx.font = '700 32px Inter, system-ui, sans-serif';
+  ctx.fillText('nexigrate.com', padX, S - 48);
+  ctx.fillStyle = MUTED; ctx.font = '400 26px Inter, system-ui, sans-serif';
   ctx.textAlign = 'right';
-  ctx.fillText(tip, S - padX, S - 45);
-  ctx.textAlign = 'left';
+  ctx.fillText(hi ? 'रोज़ का करेंट अफेयर्स क्विज़' : 'Daily current affairs quiz', S - padX, S - 48);
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
 
   const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/png', 0.92));
   if (!blob) return null;
@@ -228,12 +253,23 @@ export function buildQuizReviewPdf(input: QuizReviewInput): Blob {
     const userAns = input.answers[i];
     const userKey = userAns != null && userAns >= 0 ? ANS_KEYS[userAns] : null;
     const isCorrect = userKey === q.correctOption;
+    const optX = padX + 48;
+    const optW = contentW - 60;
 
     c.font = '700 30px Inter, system-ui, sans-serif';
     const qLines = wrap(c, `${i + 1}. ${q.question}`, contentW - 50);
+    // Pre-wrap every option (with a ✓/✗ prefix) so we can colour-code + paginate.
+    c.font = '400 26px Inter, system-ui, sans-serif';
+    const optionBlocks = (q.options ?? []).map((o) => {
+      const isRight = o.key === q.correctOption;
+      const isYourWrong = o.key === userKey && !isRight;
+      const prefix = isRight ? '✓ ' : isYourWrong ? '✗ ' : '';
+      return { isRight, isYourWrong, lines: wrap(c, `${prefix}${o.key}) ${o.text}`, optW) };
+    });
     c.font = '400 27px Inter, system-ui, sans-serif';
     const expLines = wrap(c, `${hi ? 'व्याख्या' : 'Explanation'}: ${q.explanation || '—'}`, contentW - 30);
-    const blockH = 44 + qLines.length * 40 + 40 + expLines.length * 36 + 36;
+    const optsH = optionBlocks.reduce((s, b) => s + b.lines.length * 34 + 8, 0);
+    const blockH = 44 + qLines.length * 40 + 12 + optsH + 14 + expLines.length * 36 + 36;
     ensureSpace(blockH);
 
     // status chip
@@ -245,25 +281,26 @@ export function buildQuizReviewPdf(input: QuizReviewInput): Blob {
     c.fillText(isCorrect ? '✓' : '✗', padX + 16, y + 12);
     c.textAlign = 'left';
 
+    // question
     c.fillStyle = '#1C1917';
     c.font = '700 30px Inter, system-ui, sans-serif';
     let qy = y;
-    for (const ln of qLines) { c.fillText(ln, padX + 48, qy + 8); qy += 40; }
-    y = qy + 8;
+    for (const ln of qLines) { c.fillText(ln, optX, qy + 8); qy += 40; }
+    y = qy + 12;
 
-    c.font = '600 26px Inter, system-ui, sans-serif';
-    c.fillStyle = isCorrect ? '#16A34A' : EMBER;
-    const yourTxt = hi ? `तुम्हारा: ${userKey ?? '—'}` : `Your: ${userKey ?? '—'}`;
-    const corrTxt = hi ? `सही: ${q.correctOption}` : `Correct: ${q.correctOption}`;
-    c.fillText(`${yourTxt}    `, padX + 48, y);
-    const offset = c.measureText(`${yourTxt}    `).width;
-    c.fillStyle = '#16A34A';
-    c.fillText(corrTxt, padX + 48 + offset, y);
-    y += 40;
+    // all four options, colour-coded (green = correct, ember = your wrong pick)
+    c.font = '400 26px Inter, system-ui, sans-serif';
+    for (const b of optionBlocks) {
+      c.fillStyle = b.isRight ? '#16A34A' : b.isYourWrong ? EMBER : '#57534E';
+      for (const ln of b.lines) { c.fillText(ln, optX, y + 4); y += 34; }
+      y += 8;
+    }
+    y += 6;
 
+    // explanation
     c.fillStyle = '#44403C';
     c.font = '400 27px Inter, system-ui, sans-serif';
-    for (const ln of expLines) { c.fillText(ln, padX + 48, y); y += 36; }
+    for (const ln of expLines) { c.fillText(ln, optX, y); y += 36; }
 
     y += 18;
     c.strokeStyle = 'rgba(0,0,0,0.08)';
