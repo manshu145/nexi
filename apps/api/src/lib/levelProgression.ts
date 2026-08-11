@@ -68,3 +68,11 @@ export function isPromotion(user: LevelUser | null | undefined, next: Level): bo
   const current = user?.currentLevel ?? user?.onboardingLevel ?? 'beginner';
   return RANK[next] > RANK[current];
 }
+
+
+
+// ─── 4-Tier Integration (Phase 3) ────────────────────────────────────────────
+// Re-export tier utilities from shared so routes that need the 4-tier can
+// access them via this module without adding another import path.
+export { tierFromLevel, tierFromScore, computeEffectiveTier, tierDisplayName, TIER_CONFIG, TIERS_ORDERED } from '@nexigrate/shared';
+export type { StudentTier } from '@nexigrate/shared';

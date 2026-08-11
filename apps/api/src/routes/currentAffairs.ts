@@ -12,6 +12,26 @@ import type { Env } from '../env.js';
 import { ingestCurrentAffairs } from '../lib/rssIngestion.js';
 import { INDIAN_STATES } from '@nexigrate/shared';
 
+/** Loose shape for a current-affairs item as stored/returned from Firestore. */
+interface CAItem {
+  id: string;
+  headline: string;
+  headlineHi?: string;
+  summary?: string;
+  summaryHi?: string;
+  body?: string;
+  bullets?: string[];
+  bulletsHi?: string[];
+  category?: string;
+  state?: string | null;
+  sources?: string[];
+  factChecked?: boolean;
+  publishedAt?: string;
+  date?: string;
+  _isFromYesterday?: boolean;
+  [key: string]: unknown;
+}
+
 /**
  * Deduplicate current affairs items by normalized headline.
  *
@@ -24,9 +44,9 @@ import { INDIAN_STATES } from '@nexigrate/shared';
  * keeps each edition's items independent: a national duplicate can never
  * evict a state item, and two different states never collide.
  */
-function deduplicateItems(items: any[]): any[] {
+function deduplicateItems(items: CAItem[]): CAItem[] {
   if (items.length === 0) return [];
-  const seen = new Map<string, any>();
+  const seen = new Map<string, CAItem>();
   for (const item of items) {
     const headlineKey = normalizeHeadline(item.headline || '');
     if (!headlineKey) continue;
@@ -66,7 +86,7 @@ function normalizeHeadline(headline: string): string {
  * item set, a fresh quiz is generated whenever the content actually changes,
  * and the cached one is reused only while the content set is identical.
  */
-function quizFingerprint(items: any[]): string {
+function quizFingerprint(items: CAItem[]): string {
   const ids = items
     .map((it) => String(it.id || it.headline || ''))
     .filter(Boolean)
@@ -121,24 +141,24 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
       // (previously sequential = ~600ms, now parallel = ~200ms)
       const needLiveStates = !stateParam || stateParam === 'all';
       const [itemsResult, winnerResult, liveStatesResult, lastIngestedResult] = await Promise.all([
-        deps.currentAffairs.getTodayItems(today).catch((e) => { deps.logger.error('ca.getTodayItems_error', { error: String(e) }); return [] as any[]; }),
+        deps.currentAffairs.getTodayItems(today).catch((e) => { deps.logger.error('ca.getTodayItems_error', { error: String(e) }); return [] as CAItem[]; }),
         deps.currentAffairs.getYesterdayWinner().catch((e) => { deps.logger.error('ca.getWinner_error', { error: String(e) }); return null; }),
         needLiveStates ? deps.currentAffairs.getLiveStates().catch((e) => { deps.logger.warn('ca.live_states_filter_error', { error: String(e) }); return [] as string[]; }) : Promise.resolve([] as string[]),
         deps.currentAffairs.getLastIngestedAt().catch(() => null),
       ]);
 
-      let items: any[] = deduplicateItems(itemsResult);
+      let items: CAItem[] = deduplicateItems(itemsResult);
       const winner = winnerResult;
 
       // State edition filter
       if (stateParam === 'national') {
-        items = items.filter((it: any) => !it.state);
+        items = items.filter((it) => !it.state);
       } else if (stateParam && stateParam !== 'all') {
-        items = items.filter((it: any) => it.state === stateParam);
+        items = items.filter((it) => it.state === stateParam);
       } else {
         // 'all' or no param → national + live-state news only.
         const live = new Set<string>(liveStatesResult);
-        items = items.filter((it: any) => !it.state || live.has(it.state));
+        items = items.filter((it) => !it.state || live.has(it.state));
       }
 
       // 15-min refresh check: trigger background re-ingestion if stale.
@@ -177,7 +197,7 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
         // Strict filter: drop items without BOTH headline and summary
         // translated. Items missing only one field could be partial
         // Gemini failures and aren't safe to render as "Hindi".
-        items = items.filter((it: any) =>
+        items = items.filter((it) =>
           typeof it.headlineHi === 'string' && it.headlineHi.length > 0 &&
           (typeof it.summaryHi === 'string' ? it.summaryHi.length > 0 : false)
         );
@@ -189,7 +209,7 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
         // Now swap the rendered fields to the Hindi versions so the
         // client sees a clean { headline, summary, body } structure
         // without having to know about the *Hi shadow fields.
-        items = items.map((it: any) => ({
+        items = items.map((it) => ({
           ...it,
           headline: it.headlineHi,
           summary: it.summaryHi,
@@ -207,7 +227,7 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
       let userBookmarks: string[] = [];
       let likeCounts: Record<string, number> = {};
       try {
-        const itemIds = items.map((it: any) => it.id);
+        const itemIds = items.map((it) => it.id);
         [userLikes, userBookmarks, likeCounts] = await Promise.all([
           deps.currentAffairs.getUserLikes(principal.userId),
           deps.currentAffairs.getUserBookmarks(principal.userId),
@@ -236,9 +256,9 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
       }
 
       // Latest first: newest publishedAt (fallback date) at the top of the reel.
-      items.sort((a: any, b: any) => String(b?.publishedAt || b?.date || '').localeCompare(String(a?.publishedAt || a?.date || '')));
+      items.sort((a, b) => String(b?.publishedAt || b?.date || '').localeCompare(String(a?.publishedAt || a?.date || '')));
 
-      return c.json({ date: today, items, yesterdayWinner: winner, isFromYesterday: items.some((it: any) => it._isFromYesterday), userLikes, userBookmarks, likeCounts, ads });
+      return c.json({ date: today, items, yesterdayWinner: winner, isFromYesterday: items.some((it) => it._isFromYesterday), userLikes, userBookmarks, likeCounts, ads });
     } catch (e) {
       if (e instanceof HTTPException) throw e;
       deps.logger.error('ca.route_error', { error: e instanceof Error ? e.message : String(e), stack: e instanceof Error ? e.stack : '' });
@@ -274,7 +294,7 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
         // cleanup). Keyed by the plain quiz date; language slotted by `lang`.
         deps.currentAffairs.archiveQuiz(quizDate, {
           [language]: questions,
-          headlines: items.slice(0, 40).map((it: any) => it.headline).filter(Boolean),
+          headlines: items.slice(0, 40).map((it) => it.headline).filter(Boolean),
         } as { en?: typeof questions; hi?: typeof questions; headlines?: string[] }).catch(() => {});
         deps.logger.info('ca.quiz_generated_ondemand', { quizDate, language, count: questions.length });
       }
@@ -417,9 +437,9 @@ export function makeCurrentAffairsRoutes(deps: CurrentAffairsRoutesDeps): Hono {
 
       // If Hindi, swap fields
       if (language === 'hi') {
-        if (item.headlineHi) (item as any).headline = item.headlineHi;
-        if (item.summaryHi) { (item as any).summary = item.summaryHi; (item as any).body = item.summaryHi; }
-        if (Array.isArray(item.bulletsHi) && item.bulletsHi.length > 0) (item as any).bullets = item.bulletsHi;
+        if (item.headlineHi) item.headline = item.headlineHi;
+        if (item.summaryHi) { item.summary = item.summaryHi; item.body = item.summaryHi; }
+        if (Array.isArray(item.bulletsHi) && item.bulletsHi.length > 0) item.bullets = item.bulletsHi;
       }
 
       return c.json({ item });

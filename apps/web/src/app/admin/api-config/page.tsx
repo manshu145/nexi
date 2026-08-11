@@ -45,8 +45,7 @@ export default function AdminAIProvidersPage() {
         setProviders(data.providers ?? []);
       } catch (err) {
         toast.error('Failed to load providers');
-        // eslint-disable-next-line no-console
-        console.error(err);
+        // Error already surfaced via toast above
       } finally {
         setPageLoading(false);
       }

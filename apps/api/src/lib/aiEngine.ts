@@ -237,7 +237,7 @@ export function createAIEngine(
     contents?: unknown[];
   };
   type GeminiCallResult =
-    | { ok: true; text: string; model: string; raw: any; latencyMs: number }
+    | { ok: true; text: string; model: string; raw: unknown; latencyMs: number }
     | { ok: false; error: string; model?: string; latencyMs: number };
 
   async function callGeminiOnce(resolved: ResolvedModel, opts: GeminiCallOpts): Promise<GeminiCallResult> {
@@ -1180,27 +1180,32 @@ export function createAIEngine(
       // every tier so each chapter is genuinely exam-complete (no more
       // shallow "khana-purti" content).
       const level = userContext?.onboardingLevel ?? 'intermediate';
-      const tier =
-        level === 'beginner'
-          ? {
-              name: 'FOUNDATION',
-              desc: 'The student is NEW to this subject. Build basics from scratch, explain every term, use daily-life analogies. Assume NO prior knowledge — but still cover the full topic, do not skip the hard parts (introduce them gently).',
-              minWords: 1000,
-              maxWords: 1200,
-            }
-          : level === 'advanced'
-            ? {
-                name: 'MASTERY',
-                desc: 'The student has STRONG preparation. Go deep and analytical, assume solid basics, add inter-topic connections, the examiner\u2019s perspective, tricky/high-difficulty areas, and recent developments (last 5 years).',
-                minWords: 1500,
-                maxWords: 1800,
-              }
-            : {
-                name: 'STRENGTHENING',
-                desc: 'The student has a decent base. Give a clear, exam-focused explanation: define technical terms briefly, emphasise application, and connect concepts to how they are actually tested.',
-                minWords: 1200,
-                maxWords: 1500,
-              };
+
+      // 4-Tier content personalization (Phase 3 upgrade). Maps the legacy
+      // 3-level to a finer-grained 4-tier depth system. The chapter cache
+      // key still uses the legacy level for backward compat, but the prompt
+      // guidance is now 4-tiered.
+      const tierMap: Record<string, { name: string; desc: string; minWords: number; maxWords: number }> = {
+        beginner: {
+          name: 'FOUNDATION → BUILDING',
+          desc: 'The student is still building their base. Explain every term with daily-life analogies and simple language. Assume NO prior knowledge of this specific topic but DO cover the full content — introduce hard parts gently. Connect to NCERT textbook language where possible.',
+          minWords: 800,
+          maxWords: 1100,
+        },
+        intermediate: {
+          name: 'STRENGTHENING',
+          desc: 'The student has a decent base. Give a clear, exam-focused explanation: define technical terms briefly, emphasise application, connect concepts to how they are actually tested in PYQs. Include inter-topic links and important numbers/dates/formulae. End with exam strategy notes.',
+          minWords: 1100,
+          maxWords: 1400,
+        },
+        advanced: {
+          name: 'MASTERY',
+          desc: 'The student has STRONG preparation. Go deep and analytical: assume solid basics, add inter-topic connections, the examiner\u2019s perspective, tricky/high-difficulty areas, recent developments (last 5 years), comparative analysis with related topics, and advanced problem-solving approaches. End with scoring strategy and edge-case awareness.',
+          minWords: 1400,
+          maxWords: 1800,
+        },
+      };
+      const tier = tierMap[level] ?? tierMap['intermediate']!;
 
       // ── Subject-aware rules ──────────────────────────────────────────
       // Forces concrete, verifiable detail appropriate to the subject so

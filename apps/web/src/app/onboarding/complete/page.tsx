@@ -70,7 +70,7 @@ export default function CompletePage() {
         sessionStorage.removeItem('nexigrate-assessment-result');
       }
     } catch (e) {
-      console.error('Failed to parse assessment result:', e);
+      // Parse failure is non-critical; the page renders without the result data
     } finally {
       setPageLoading(false);
     }
