@@ -1,6 +1,18 @@
 ---
 import '~/styles/global.css';
 
+/** Fetch admin-managed head verification codes from the API. */
+async function fetchHeadCodes(): Promise<string> {
+  try {
+    const res = await fetch('https://api.nexigrate.com/head-codes.json', { signal: AbortSignal.timeout(3000) });
+    if (res.ok) {
+      const data = await res.json() as { codes?: string };
+      return data.codes || '';
+    }
+  } catch { /* API unreachable — no codes injected */ }
+  return '';
+}
+
 export interface Props {
   title?: string;
   description?: string;
@@ -86,6 +98,11 @@ const ogImage = new URL('/og-image.svg', Astro.site ?? 'https://nexigrate.com').
         availableLanguage: ['en', 'hi'],
       },
     })} />
+
+    {/* External verification codes (AdSense, Search Console, etc.)
+        Managed from Admin Panel → SEO & Branding → Ads & Verification.
+        Fetched at build time; updates require a redeploy or Cloudflare cache purge. */}
+    <Fragment set:html={await fetchHeadCodes()} />
   </head>
   <body>
     <a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded focus:bg-ink-900 focus:px-3 focus:py-2 focus:text-paper-100">
