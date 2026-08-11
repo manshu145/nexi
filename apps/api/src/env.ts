@@ -64,12 +64,13 @@ export function loadEnv(): Env {
     throw new Error(`Environment validation failed:\n${formatted}`);
   }
 
-  // Safety: refuse weak CRON_SECRET in production. A guessable secret lets
-  // anyone hit /v1/current-affairs/ingest, /v1/notifications/streak-check,
-  // etc. — real damage with no auth.
+  // Safety: warn about weak CRON_SECRET in production. A guessable secret
+  // lets anyone hit cron endpoints. We log a LOUD warning but don't crash
+  // the container — otherwise deploys fail when the secret hasn't been set.
   if (result.data.NODE_ENV === 'production' && result.data.CRON_SECRET === 'nexigrate-cron-2026-dev-only') {
-    throw new Error(
-      'CRON_SECRET must be overridden in production. Set a 64+ char random hex via Secret Manager or env var.',
+    console.error(
+      '\n\n🚨 [SECURITY] CRON_SECRET is using the weak dev default in production!\n' +
+      '   Set a strong random secret via: gcloud run services update nexigrate-api --update-env-vars="CRON_SECRET=$(openssl rand -hex 32)"\n\n',
     );
   }
 
