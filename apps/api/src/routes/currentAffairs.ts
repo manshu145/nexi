@@ -5,32 +5,19 @@ import { requireAuth } from '../auth.js';
 import type { Logger } from '../logger.js';
 import type { UserStore } from '../lib/userStore.js';
 import type { AIEngine } from '../lib/aiEngine.js';
-import type { CurrentAffairsStore } from '../lib/currentAffairsStore.js';
+import type { CurrentAffairsStore, CurrentAffairsStoreItem } from '../lib/currentAffairsStore.js';
 import type { AdsStore, ReelAd } from '../lib/adsStore.js';
 import { effectivePlanId } from '../lib/planGate.js';
 import type { Env } from '../env.js';
 import { ingestCurrentAffairs } from '../lib/rssIngestion.js';
 import { INDIAN_STATES } from '@nexigrate/shared';
 
-/** Loose shape for a current-affairs item as stored/returned from Firestore. */
-interface CAItem {
-  id: string;
-  headline: string;
-  headlineHi?: string;
-  summary?: string;
-  summaryHi?: string;
-  body?: string;
-  bullets?: string[];
-  bulletsHi?: string[];
-  category?: string;
-  state?: string | null;
-  sources?: string[];
-  factChecked?: boolean;
-  publishedAt?: string;
-  date?: string;
-  _isFromYesterday?: boolean;
-  [key: string]: unknown;
-}
+
+/** Route-local alias. The store returns CurrentAffairsStoreItem; within
+ *  this file we mutate items (add _isFromYesterday, swap hi/en fields) so
+ *  we use a permissive record type for the in-flight manipulation. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type CAItem = Record<string, any>;
 
 /**
  * Deduplicate current affairs items by normalized headline.

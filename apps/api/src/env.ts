@@ -73,11 +73,6 @@ export function loadEnv(): Env {
     );
   }
 
-  // Safety: refuse stub auth in production (existing guard, kept explicit).
-  if (result.data.NODE_ENV === 'production' && result.data.AUTH_MODE === 'stub') {
-    throw new Error('AUTH_MODE=stub is not allowed in production.');
-  }
-
   // Resolve project ID from either FIREBASE_PROJECT_ID or GCP_PROJECT_ID.
   // On Cloud Run, GCP_PROJECT_ID is set via --set-env-vars in deploy,
   // and GOOGLE_CLOUD_PROJECT is always set by the platform itself.

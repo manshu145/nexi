@@ -237,7 +237,7 @@ export function createAIEngine(
     contents?: unknown[];
   };
   type GeminiCallResult =
-    | { ok: true; text: string; model: string; raw: unknown; latencyMs: number }
+    | { ok: true; text: string; model: string; raw: any; latencyMs: number } // eslint-disable-line @typescript-eslint/no-explicit-any -- Gemini SDK response shape
     | { ok: false; error: string; model?: string; latencyMs: number };
 
   async function callGeminiOnce(resolved: ResolvedModel, opts: GeminiCallOpts): Promise<GeminiCallResult> {
