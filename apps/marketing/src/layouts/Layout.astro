@@ -1,7 +1,15 @@
 ---
 import '~/styles/global.css';
 
-/** Fetch admin-managed head verification codes from the API. */
+/**
+ * AdSense publisher ID — hardcoded here so verification works immediately
+ * without waiting for the API to be reachable. The admin panel's
+ * "Head Verification Codes" field is fetched as an ADDITIONAL injection
+ * (for future codes like Search Console, Facebook Pixel, etc.)
+ */
+const ADSENSE_PUB_ID = 'ca-pub-2330721857774535';
+
+/** Fetch admin-managed head verification codes from the API (best-effort). */
 async function fetchHeadCodes(): Promise<string> {
   try {
     const res = await fetch('https://api.nexigrate.com/head-codes.json', { signal: AbortSignal.timeout(3000) });
@@ -9,7 +17,7 @@ async function fetchHeadCodes(): Promise<string> {
       const data = await res.json() as { codes?: string };
       return data.codes || '';
     }
-  } catch { /* API unreachable — no codes injected */ }
+  } catch { /* API unreachable — AdSense hardcode below still works */ }
   return '';
 }
 
@@ -99,9 +107,11 @@ const ogImage = new URL('/og-image.svg', Astro.site ?? 'https://nexigrate.com').
       },
     })} />
 
-    {/* External verification codes (AdSense, Search Console, etc.)
-        Managed from Admin Panel → SEO & Branding → Ads & Verification.
-        Fetched at build time; updates require a redeploy or Cloudflare cache purge. */}
+    {/* Google AdSense — hardcoded for immediate verification */}
+    <script async src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ADSENSE_PUB_ID}`} crossorigin="anonymous"></script>
+    <meta name="google-adsense-account" content={ADSENSE_PUB_ID} />
+
+    {/* Additional verification codes from admin panel (best-effort) */}
     <Fragment set:html={await fetchHeadCodes()} />
   </head>
   <body>
