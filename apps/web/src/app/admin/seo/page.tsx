@@ -20,6 +20,11 @@ interface SeoSettings {
   canonicalUrl: string;
   twitterHandle: string;
   structuredData: string;
+  /** ads.txt file content — served at /ads.txt for AdSense verification. */
+  adsTxt: string;
+  /** Raw HTML to inject into <head> — AdSense verification meta tags,
+   *  Google Search Console, Facebook pixel, etc. One code per line. */
+  headVerificationCodes: string;
 }
 
 const DEFAULT_SEO: SeoSettings = {
@@ -36,6 +41,8 @@ const DEFAULT_SEO: SeoSettings = {
   canonicalUrl: 'https://nexigrate.com',
   twitterHandle: '@nexigrate',
   structuredData: '',
+  adsTxt: '',
+  headVerificationCodes: '',
 };
 
 export default function AdminSeoPage() {
@@ -219,6 +226,41 @@ export default function AdminSeoPage() {
             <label className="text-xs font-medium text-ink-700">Blocked Pages (one path per line)</label>
             <textarea value={settings.blockedPages} onChange={e => updateField('blockedPages', e.target.value)} className="input mt-1 font-mono text-xs" rows={4} placeholder="/admin&#10;/api&#10;/internal" />
             <p className="text-[10px] text-muted-400 mt-0.5">Pages listed here will have &lt;meta name=&quot;robots&quot; content=&quot;noindex&quot;&gt;</p>
+          </div>
+        </div>
+      </section>
+
+      {/* Ads.txt & Verification Codes Section */}
+      <section className="paper-card mt-4 p-5">
+        <h2 className="font-serif text-lg font-semibold text-ink-900">Ads & Verification</h2>
+        <p className="text-xs text-muted-500 mt-1">AdSense, Search Console, and other external platform verification</p>
+        <div className="mt-4 space-y-4">
+          <div>
+            <label className="text-xs font-medium text-ink-700">ads.txt Content</label>
+            <p className="text-[10px] text-muted-400 mt-0.5 mb-1">
+              Paste your AdSense ads.txt entry here. It will be served at <code className="rounded bg-paper-200 px-1">nexigrate.com/ads.txt</code> and <code className="rounded bg-paper-200 px-1">app.nexigrate.com/ads.txt</code>.
+            </p>
+            <textarea
+              value={settings.adsTxt}
+              onChange={e => updateField('adsTxt', e.target.value)}
+              className="input mt-1 font-mono text-xs"
+              rows={4}
+              placeholder="google.com, pub-XXXXXXXXXXXXXXXX, DIRECT, f08c47fec0942fa0"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-ink-700">Head Verification Codes</label>
+            <p className="text-[10px] text-muted-400 mt-0.5 mb-1">
+              Paste raw HTML meta tags or script tags to inject into the &lt;head&gt; of both sites. Common uses: AdSense auto-ads code, Google Search Console verification, Facebook Pixel, etc.
+            </p>
+            <textarea
+              value={settings.headVerificationCodes}
+              onChange={e => updateField('headVerificationCodes', e.target.value)}
+              className="input mt-1 font-mono text-xs"
+              rows={6}
+              placeholder={'<meta name="google-adsense-account" content="ca-pub-XXXXXXXXXXXXXXXX">\n<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX" crossorigin="anonymous"></script>\n<meta name="google-site-verification" content="XXXXX">'}
+            />
+            <p className="text-[10px] text-muted-400 mt-1">Each line should be a complete HTML tag. These are injected as-is into &lt;head&gt;.</p>
           </div>
         </div>
       </section>

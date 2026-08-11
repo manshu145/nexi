@@ -1,0 +1,8 @@
+# Managed via Admin Panel → SEO & Branding → Ads & Verification
+# This file is a placeholder. The actual ads.txt is served dynamically
+# from the API at /ads.txt. Configure your AdSense ads.txt entry in the
+# admin panel and it will be available at both:
+#   - nexigrate.com/ads.txt (marketing site)
+#   - app.nexigrate.com/ads.txt (web app - via API proxy)
+#
+# If you see this placeholder, the admin has not yet configured ads.txt.
