@@ -208,6 +208,33 @@ export function buildApp(deps: AppDeps): Hono {
   app.route('/', makeDiagRoutes(env, modelResolver));
   app.get('/', (c) => c.json({ service: 'nexigrate-api', version: '1.0.0' }));
 
+  // ─── Public ads.txt + head verification codes ───────────────────────
+  // AdSense requires /ads.txt at the domain root. Content is managed from
+  // Admin → SEO & Branding → Ads & Verification, stored in Firestore.
+  app.get('/ads.txt', async (c) => {
+    try {
+      const seo = (await adminStore.getSeoSettings()) as Record<string, string>;
+      const content = seo?.adsTxt || '';
+      c.header('Content-Type', 'text/plain; charset=utf-8');
+      c.header('Cache-Control', 'public, max-age=300');
+      return c.body(content);
+    } catch {
+      c.header('Content-Type', 'text/plain; charset=utf-8');
+      return c.body('');
+    }
+  });
+
+  // Returns the raw HTML codes to inject into <head> (for SSR / build-time fetch).
+  app.get('/head-codes.json', async (c) => {
+    try {
+      const seo = (await adminStore.getSeoSettings()) as Record<string, string>;
+      c.header('Cache-Control', 'public, max-age=300');
+      return c.json({ codes: seo?.headVerificationCodes || '' });
+    } catch {
+      return c.json({ codes: '' });
+    }
+  });
+
   // Razorpay webhook — MUST be mounted BEFORE the auth-gated /v1 router so
   // that Razorpay's POST (which carries no Bearer token, only an HMAC
   // signature) is not rejected by authMiddleware. Trust is established by
