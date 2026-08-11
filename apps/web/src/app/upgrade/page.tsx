@@ -286,7 +286,7 @@ export default function UpgradePage() {
           const interval = setInterval(() => {
             if (typeof window.Razorpay !== 'undefined') { clearInterval(interval); resolve(); }
             waited += 200;
-            if (waited > 3000) { clearInterval(interval); reject(new Error('Payment gateway is loading. Please try again in a moment.')); }
+            if (waited > 10000) { clearInterval(interval); reject(new Error('Payment gateway is taking too long to load. Please check your internet and try again.')); }
           }, 200);
         });
       }
