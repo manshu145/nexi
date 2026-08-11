@@ -106,7 +106,7 @@ export default function ImageGalleryPage() {
       {selected && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center px-4" onClick={() => setSelected(null)}>
           <div className="absolute inset-0 bg-ink-950/80 backdrop-blur-sm" />
-          <div className="relative w-full max-w-lg rounded-2xl bg-paper-50 dark:bg-paper-900 p-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+          <div className="relative w-full max-w-lg rounded-2xl bg-paper-50 dark:bg-ink-950 p-4 shadow-2xl" onClick={e => e.stopPropagation()}>
             <button onClick={() => setSelected(null)} className="absolute top-3 right-3 h-8 w-8 rounded-full bg-paper-200 flex items-center justify-center text-ink-700 hover:bg-paper-300">✕</button>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={selected.dataUrl} alt={selected.prompt} className="w-full rounded-xl" />

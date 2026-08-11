@@ -3,7 +3,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '~/lib/auth-context';
 import { useEffect, useState, type ReactNode } from 'react';
 import { AILoader } from '~/components/ui/AILoader';
-import { Toaster } from '~/components/toaster';
+// Toaster is mounted in root layout — removed duplicate import
 import { toast } from 'sonner';
 
 /**
@@ -204,9 +204,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         {children}
       </main>
 
-      {/* Sonner toaster — every admin action that used to call alert()
-          now calls toast.success/toast.error and shows up here. */}
-      <Toaster />
+      {/* Sonner toaster is already mounted in the root layout — no
+          duplicate needed here (was causing double-render of toasts). */}
     </div>
   );
 }

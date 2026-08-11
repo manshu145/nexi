@@ -437,7 +437,7 @@ export default function AdminAnnouncementsPage() {
       {preview && form.title.trim() && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center px-4" onClick={() => setPreview(false)}>
           <div className="absolute inset-0 bg-ink-950/60 backdrop-blur-sm" />
-          <div className="relative w-full max-w-[420px] rounded-2xl border border-ember-500/50 bg-paper-50 dark:bg-paper-900 p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+          <div className="relative w-full max-w-[420px] rounded-2xl border border-ember-500/50 bg-paper-50 dark:bg-ink-950 p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
             <button onClick={() => setPreview(false)} className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full text-muted-500 hover:bg-paper-200 hover:text-ink-900 transition-colors">✕</button>
             <p className="text-[10px] uppercase tracking-wider text-muted-400 mb-2">Preview — {form.type}</p>
             {form.type === 'banner' || form.type === 'all' ? (
