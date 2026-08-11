@@ -32,9 +32,10 @@ const envSchema = z.object({
   WHATSAPP_TOKEN: z.string().optional().default(''),
   WHATSAPP_PHONE_NUMBER_ID: z.string().optional().default(''),
   SUPER_ADMIN_EMAIL: z.string().default('manshu.ibc24@gmail.com'),
-  // IMPORTANT: Override this in production with a strong random secret (32+ chars).
+  // IMPORTANT: Override this in production with a strong random secret (64+ chars).
   // The default is intentionally weak so local dev works out-of-the-box, but
   // Cloud Run deployments MUST set CRON_SECRET via env var or Secret Manager.
+  // Production enforcement: loadEnv() refuses this default when NODE_ENV=production.
   CRON_SECRET: z.string().optional().default('nexigrate-cron-2026-dev-only'),
   // Mailbox: base inbound address users reply to. Per-thread replies use
   // plus-addressing (support+<threadId>@domain) routed via Resend Inbound.
@@ -62,6 +63,16 @@ export function loadEnv(): Env {
     const formatted = result.error.issues.map((i) => `  ${i.path.join('.')}: ${i.message}`).join('\n');
     throw new Error(`Environment validation failed:\n${formatted}`);
   }
+
+  // Safety: refuse weak CRON_SECRET in production. A guessable secret lets
+  // anyone hit /v1/current-affairs/ingest, /v1/notifications/streak-check,
+  // etc. — real damage with no auth.
+  if (result.data.NODE_ENV === 'production' && result.data.CRON_SECRET === 'nexigrate-cron-2026-dev-only') {
+    throw new Error(
+      'CRON_SECRET must be overridden in production. Set a 64+ char random hex via Secret Manager or env var.',
+    );
+  }
+
   // Resolve project ID from either FIREBASE_PROJECT_ID or GCP_PROJECT_ID.
   // On Cloud Run, GCP_PROJECT_ID is set via --set-env-vars in deploy,
   // and GOOGLE_CLOUD_PROJECT is always set by the platform itself.
