@@ -6,6 +6,8 @@ import { toast } from 'sonner';
 import { api } from '~/lib/api';
 import { useAuth } from '~/lib/auth-context';
 
+import { getClientLocale } from '~/lib/locale';
+
 type Gender = 'male' | 'female' | 'prefer-not-to-say';
 
 export default function ProfilePage() {
@@ -60,10 +62,11 @@ export default function ProfilePage() {
     catch (err) { toast.error(err instanceof Error ? err.message : 'Failed to save'); setSaving(false); }
   };
 
+  const lang = getClientLocale();
   const genderOptions: { value: Gender; label: string }[] = [
-    { value: 'male', label: 'Male' },
-    { value: 'female', label: 'Female' },
-    { value: 'prefer-not-to-say', label: 'Prefer not to say' },
+    { value: 'male', label: lang === 'hi' ? 'पुरुष' : 'Male' },
+    { value: 'female', label: lang === 'hi' ? 'महिला' : 'Female' },
+    { value: 'prefer-not-to-say', label: lang === 'hi' ? 'बताना नहीं चाहते' : 'Prefer not to say' },
   ];
 
   return (
@@ -84,7 +87,7 @@ export default function ProfilePage() {
         )}
         <div><label className="mb-1 block text-sm font-medium text-ink-800">{t('dob')} *</label><input type="date" value={dob} onChange={(e) => setDob(e.target.value)} className="input" required /></div>
         <div>
-          <label className="mb-2 block text-sm font-medium text-ink-800">Gender</label>
+          <label className="mb-2 block text-sm font-medium text-ink-800">{lang === 'hi' ? 'लिंग' : 'Gender'}</label>
           <div className="flex gap-2">
             {genderOptions.map((opt) => (
               <button
