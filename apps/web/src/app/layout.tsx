@@ -11,6 +11,9 @@ export const dynamic = 'force-dynamic';
 
 export const viewport: Viewport = {
   themeColor: '#F59E0B',
+  viewportFit: 'cover',
+  width: 'device-width',
+  initialScale: 1,
 };
 
 export const metadata: Metadata = {

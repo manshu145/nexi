@@ -113,7 +113,7 @@ export function OnboardingTour() {
     <div className="fixed inset-0 z-[120] flex items-center justify-center px-5" onClick={dismiss}>
       <div className="absolute inset-0 bg-ink-950/70 backdrop-blur-sm animate-fadeIn" />
       <div
-        className="relative w-full max-w-[360px] rounded-2xl border border-ember-500/30 bg-paper-50 dark:bg-paper-900 p-6 shadow-2xl animate-slideUp"
+        className="relative w-full max-w-[360px] rounded-2xl border border-ember-500/30 bg-paper-50 dark:bg-ink-950 p-6 shadow-2xl animate-slideUp"
         onClick={e => e.stopPropagation()}
       >
         {/* Skip button */}

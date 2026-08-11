@@ -63,25 +63,25 @@ export default function AdminTeamPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-ink-900 dark:text-ink-100">Team Access</h1>
-      <p className="text-muted-600 dark:text-muted-400">
+      <h1 className="text-2xl font-bold text-ink-900 dark:text-paper-50">Team Access</h1>
+      <p className="text-muted-600 ">
         Invite team members to access the admin panel. They&apos;ll need to sign in with the same email to gain access.
       </p>
 
       {/* Invite form */}
-      <form onSubmit={handleInvite} className="flex flex-col sm:flex-row gap-3 p-4 rounded-xl border border-line-200 dark:border-line-800 bg-paper-50 dark:bg-paper-900">
+      <form onSubmit={handleInvite} className="flex flex-col sm:flex-row gap-3 p-4 rounded-xl border border-line bg-paper-50 dark:bg-ink-950">
         <input
           type="email"
           placeholder="team@example.com"
           value={email}
           onChange={e => setEmail(e.target.value)}
-          className="flex-1 rounded-lg border border-line-200 dark:border-line-700 bg-paper-100 dark:bg-paper-800 px-3 py-2 text-sm text-ink-900 dark:text-ink-100 placeholder:text-muted-400"
+          className="flex-1 rounded-lg border border-line dark:border-line bg-paper-100 dark:bg-ink-950 px-3 py-2 text-sm text-ink-900 dark:text-paper-50 placeholder:text-muted-400"
           required
         />
         <select
           value={role}
           onChange={e => setRole(e.target.value as 'editor' | 'viewer')}
-          className="rounded-lg border border-line-200 dark:border-line-700 bg-paper-100 dark:bg-paper-800 px-3 py-2 text-sm text-ink-900 dark:text-ink-100"
+          className="rounded-lg border border-line dark:border-line bg-paper-100 dark:bg-ink-950 px-3 py-2 text-sm text-ink-900 dark:text-paper-50"
         >
           <option value="editor">Editor</option>
           <option value="viewer">Viewer</option>
@@ -104,21 +104,21 @@ export default function AdminTeamPage() {
           <p className="text-sm mt-1">Use the form above to invite your first team member</p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-line-200 dark:border-line-800">
+        <div className="overflow-x-auto rounded-xl border border-line">
           <table className="w-full text-sm">
-            <thead className="bg-paper-100 dark:bg-paper-800">
+            <thead className="bg-paper-100 dark:bg-ink-950">
               <tr>
-                <th className="px-4 py-3 text-left font-medium text-muted-600 dark:text-muted-400">Email</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-600 dark:text-muted-400">Role</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-600 dark:text-muted-400">Status</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-600 dark:text-muted-400">Invited</th>
-                <th className="px-4 py-3 text-right font-medium text-muted-600 dark:text-muted-400">Actions</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-600 ">Email</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-600 ">Role</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-600 ">Status</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-600 ">Invited</th>
+                <th className="px-4 py-3 text-right font-medium text-muted-600 ">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-line-100 dark:divide-line-800">
+            <tbody className="divide-y divide-line dark:divide-line">
               {invites.map(inv => (
                 <tr key={inv.id} className="hover:bg-paper-50 dark:hover:bg-paper-800/50">
-                  <td className="px-4 py-3 text-ink-900 dark:text-ink-100">{inv.email}</td>
+                  <td className="px-4 py-3 text-ink-900 dark:text-paper-50">{inv.email}</td>
                   <td className="px-4 py-3">
                     <span className="inline-flex items-center rounded-full bg-ember-500/10 px-2 py-0.5 text-xs font-medium text-ember-600 dark:text-ember-400">
                       {inv.role}
@@ -154,7 +154,7 @@ export default function AdminTeamPage() {
       )}
 
       {/* Info box */}
-      <div className="rounded-lg bg-paper-100 dark:bg-paper-800 border border-line-200 dark:border-line-700 p-4 text-sm text-muted-600 dark:text-muted-400">
+      <div className="rounded-lg bg-paper-100 dark:bg-ink-950 border border-line dark:border-line p-4 text-sm text-muted-600 ">
         <p className="font-medium text-ink-800 dark:text-ink-200 mb-1">How it works:</p>
         <ul className="list-disc list-inside space-y-1">
           <li><strong>Editor:</strong> Full admin access — can manage content, users, settings</li>
