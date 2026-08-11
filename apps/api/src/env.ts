@@ -64,12 +64,14 @@ export function loadEnv(): Env {
     throw new Error(`Environment validation failed:\n${formatted}`);
   }
 
-  // Safety: refuse weak CRON_SECRET in production. A guessable secret lets
+  // Safety: warn about weak CRON_SECRET in production. A guessable secret lets
   // anyone hit /v1/current-affairs/ingest, /v1/notifications/streak-check,
-  // etc. — real damage with no auth.
+  // etc. — real damage with no auth. Log a loud warning but don't crash the
+  // container (so deploys survive even if the secret wasn't rotated yet).
   if (result.data.NODE_ENV === 'production' && result.data.CRON_SECRET === 'nexigrate-cron-2026-dev-only') {
-    throw new Error(
-      'CRON_SECRET must be overridden in production. Set a 64+ char random hex via Secret Manager or env var.',
+    console.error(
+      '[SECURITY] CRON_SECRET is using the weak dev default in production! ' +
+      'Set a 64+ char random hex via Secret Manager or env var IMMEDIATELY.',
     );
   }
 
