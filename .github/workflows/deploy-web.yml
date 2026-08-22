@@ -99,7 +99,7 @@ jobs:
             --allow-unauthenticated \
             --service-account=${{ env.SA_EMAIL }} \
             --max-instances=3 \
-            --min-instances=1 \
+            --min-instances=0 \
             --cpu=1 --memory=512Mi \
             --set-env-vars="NODE_ENV=production" \
             --quiet

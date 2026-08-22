@@ -107,23 +107,34 @@ jobs:
             exit 0
           fi
 
-          # razorpay-key-secret
-          if ! gcloud secrets describe razorpay-key-secret --project=${{ env.GCP_PROJECT }} >/dev/null 2>&1; then
-            gcloud secrets create razorpay-key-secret \
-              --replication-policy=automatic \
-              --project=${{ env.GCP_PROJECT }}
-          fi
-          printf '%s' "$RZ_KEY_SECRET" | gcloud secrets versions add razorpay-key-secret \
-            --data-file=- --project=${{ env.GCP_PROJECT }} >/dev/null
+          # Helper: only add a new secret version if the value actually changed.
+          # This prevents unbounded version accumulation (which caused ₹2,308/mo
+          # in Secret Manager billing — each active version replica is billed).
+          upsert_if_changed () {
+            local NAME="$1"
+            local VALUE="$2"
+            if ! gcloud secrets describe "$NAME" --project=${{ env.GCP_PROJECT }} >/dev/null 2>&1; then
+              gcloud secrets create "$NAME" \
+                --replication-policy=automatic \
+                --project=${{ env.GCP_PROJECT }}
+              printf '%s' "$VALUE" | gcloud secrets versions add "$NAME" \
+                --data-file=- --project=${{ env.GCP_PROJECT }} >/dev/null
+              echo "  $NAME: created with initial version"
+              return
+            fi
+            # Compare current latest value with the new value.
+            CURRENT=$(gcloud secrets versions access latest --secret="$NAME" --project=${{ env.GCP_PROJECT }} 2>/dev/null || echo "")
+            if [ "$CURRENT" = "$VALUE" ]; then
+              echo "  $NAME: unchanged, skipping version creation"
+            else
+              printf '%s' "$VALUE" | gcloud secrets versions add "$NAME" \
+                --data-file=- --project=${{ env.GCP_PROJECT }} >/dev/null
+              echo "  $NAME: updated (value changed)"
+            fi
+          }
 
-          # razorpay-webhook-secret (optional; falls back to empty if not provided)
-          if ! gcloud secrets describe razorpay-webhook-secret --project=${{ env.GCP_PROJECT }} >/dev/null 2>&1; then
-            gcloud secrets create razorpay-webhook-secret \
-              --replication-policy=automatic \
-              --project=${{ env.GCP_PROJECT }}
-          fi
-          printf '%s' "${RZ_WEBHOOK_SECRET:-not_set}" | gcloud secrets versions add razorpay-webhook-secret \
-            --data-file=- --project=${{ env.GCP_PROJECT }} >/dev/null
+          upsert_if_changed razorpay-key-secret "$RZ_KEY_SECRET"
+          upsert_if_changed razorpay-webhook-secret "${RZ_WEBHOOK_SECRET:-not_set}"
 
           echo "enabled=true" >> "$GITHUB_OUTPUT"
           echo "Razorpay secrets present in Secret Manager."
@@ -135,9 +146,9 @@ jobs:
           GEM: ${{ secrets.GEMINI_API_KEY }}
           GRQ: ${{ secrets.GROQ_API_KEY }}
         run: |
-          # Helper: create-or-update a secret if the value is non-empty.
-          # Skip silently when the GitHub Secret is unset, so the deploy
-          # works on first contact even before all three providers have keys.
+          # Helper: create-or-update a secret ONLY if the value changed.
+          # Prevents unbounded version accumulation that inflates Secret
+          # Manager billing (₹2,308/mo was from hundreds of identical versions).
           upsert_secret () {
             local NAME="$1"
             local VALUE="$2"
@@ -149,10 +160,20 @@ jobs:
               gcloud secrets create "$NAME" \
                 --replication-policy=automatic \
                 --project=${{ env.GCP_PROJECT }} >/dev/null
+              printf '%s' "$VALUE" | gcloud secrets versions add "$NAME" \
+                --data-file=- --project=${{ env.GCP_PROJECT }} >/dev/null
+              echo "  $NAME: created with initial version"
+              return
             fi
-            printf '%s' "$VALUE" | gcloud secrets versions add "$NAME" \
-              --data-file=- --project=${{ env.GCP_PROJECT }} >/dev/null
-            echo "  $NAME: upserted"
+            # Only add a new version if the value actually changed.
+            CURRENT=$(gcloud secrets versions access latest --secret="$NAME" --project=${{ env.GCP_PROJECT }} 2>/dev/null || echo "")
+            if [ "$CURRENT" = "$VALUE" ]; then
+              echo "  $NAME: unchanged, skipping"
+            else
+              printf '%s' "$VALUE" | gcloud secrets versions add "$NAME" \
+                --data-file=- --project=${{ env.GCP_PROJECT }} >/dev/null
+              echo "  $NAME: updated (value changed)"
+            fi
           }
 
           upsert_secret openai-api-key "$OAI"
@@ -196,7 +217,7 @@ jobs:
           # Phase 6 RBAC: SUPER_ADMIN_EMAIL is the founder identity that the
           # API will resolve to role 'super_admin' on every request. Cannot
           # be locked out. To rotate, change the value here and re-deploy.
-          BASE_ENV="^|^NODE_ENV=production|AUTH_MODE=firebase|PERSISTENCE=firestore|LOG_JSON=true|GCP_PROJECT_ID=nexigrate-prod|GCP_PROJECT_NUMBER=505978726927|GCP_REGION=asia-south1|GCP_SERVICE_ACCOUNT=${{ env.SA_EMAIL }}|CORS_ALLOWED_ORIGINS=https://app.nexigrate.com,https://nexigrate.com|SUPER_ADMIN_EMAIL=manshu.ibc24@gmail.com"
+          BASE_ENV="^|^NODE_ENV=production|AUTH_MODE=firebase|PERSISTENCE=firestore|LOG_JSON=true|LOG_LEVEL=warn|GCP_PROJECT_ID=nexigrate-prod|GCP_PROJECT_NUMBER=505978726927|GCP_REGION=asia-south1|GCP_SERVICE_ACCOUNT=${{ env.SA_EMAIL }}|CORS_ALLOWED_ORIGINS=https://app.nexigrate.com,https://nexigrate.com|SUPER_ADMIN_EMAIL=manshu.ibc24@gmail.com"
           # --no-cpu-throttling + --min-instances=1: the API runs its OWN
           # in-process cron scheduler (apps/api/src/lib/scheduler.ts) for the
           # automatic notifications + current-affairs ingest. Cloud Run
@@ -272,6 +293,69 @@ jobs:
           # Don't fail the deploy on smoke-test alone -- the deploy itself
           # already succeeded above; the post-deploy probe is best-effort.
           echo "::warning::Smoke-test never reached 200 in 60s; check Cloud Run logs."
+
+      - name: Cleanup old Secret Manager versions (cost optimization)
+        run: |
+          # Keep only the latest 2 ENABLED versions per secret. Destroy older
+          # ones to stop the per-version-replica billing that caused ₹2,308/mo.
+          # DISABLED versions are also destroyed since they still incur cost.
+          for SECRET in razorpay-key-secret razorpay-webhook-secret openai-api-key gemini-api-key groq-api-key; do
+            if ! gcloud secrets describe "$SECRET" --project=${{ env.GCP_PROJECT }} >/dev/null 2>&1; then
+              continue
+            fi
+            # List all enabled versions (newest first), skip the 2 most recent
+            VERSIONS=$(gcloud secrets versions list "$SECRET" \
+              --project=${{ env.GCP_PROJECT }} \
+              --filter="state=ENABLED" \
+              --sort-by="~createTime" \
+              --format="value(name)" 2>/dev/null || true)
+            COUNT=0
+            for VER in $VERSIONS; do
+              COUNT=$((COUNT + 1))
+              if [ $COUNT -le 2 ]; then continue; fi
+              echo "  Destroying $SECRET version $VER (old)"
+              gcloud secrets versions destroy "$VER" \
+                --secret="$SECRET" \
+                --project=${{ env.GCP_PROJECT }} \
+                --quiet 2>/dev/null || true
+            done
+            # Also destroy all DISABLED versions
+            DISABLED=$(gcloud secrets versions list "$SECRET" \
+              --project=${{ env.GCP_PROJECT }} \
+              --filter="state=DISABLED" \
+              --format="value(name)" 2>/dev/null || true)
+            for VER in $DISABLED; do
+              echo "  Destroying $SECRET disabled version $VER"
+              gcloud secrets versions destroy "$VER" \
+                --secret="$SECRET" \
+                --project=${{ env.GCP_PROJECT }} \
+                --quiet 2>/dev/null || true
+            done
+          done
+          echo "Secret version cleanup complete."
+
+      - name: Cleanup old Artifact Registry images (keep last 5)
+        run: |
+          # Remove old container images to prevent unbounded storage costs.
+          # Keep the 5 most recent tags per image path.
+          for IMG in api web; do
+            DIGESTS=$(gcloud artifacts docker images list \
+              "${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/nexigrate/${IMG}" \
+              --sort-by="~UPDATE_TIME" \
+              --format="value(version)" \
+              --project=${{ env.GCP_PROJECT }} 2>/dev/null || true)
+            COUNT=0
+            for DIGEST in $DIGESTS; do
+              COUNT=$((COUNT + 1))
+              if [ $COUNT -le 5 ]; then continue; fi
+              echo "  Deleting old image: nexigrate/${IMG}@${DIGEST}"
+              gcloud artifacts docker images delete \
+                "${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/nexigrate/${IMG}@${DIGEST}" \
+                --project=${{ env.GCP_PROJECT }} \
+                --quiet --delete-tags 2>/dev/null || true
+            done
+          done
+          echo "Artifact Registry cleanup complete."
 
       - name: Deploy Firestore rules + indexes (idempotent)
         working-directory: infra/firebase

@@ -53,6 +53,10 @@ resource "google_cloud_run_v2_service" "api" {
         value = "true"
       }
       env {
+        name  = "LOG_LEVEL"
+        value = "warn"
+      }
+      env {
         name  = "GCP_PROJECT_ID"
         value = var.project_id
       }
