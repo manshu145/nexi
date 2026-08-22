@@ -17,9 +17,6 @@ const envSchema = z.object({
   // AI — optional so server starts even without keys (returns 503 on AI endpoints)
   OPENAI_API_KEY: z.string().optional().default(''),
   GEMINI_API_KEY: z.string().optional().default(''),
-  /** Gemini Live API model for the real-time AI interviewer (Elite feature).
-   *  Override to a native-audio model later for richer voice. */
-  GEMINI_LIVE_MODEL: z.string().optional().default('gemini-live-2.5-flash-preview'),
   GEMINI_PRO_API_KEY: z.string().optional().default(''),
   GROQ_API_KEY: z.string().optional().default(''),
   GOOGLE_TTS_API_KEY: z.string().optional().default(''),

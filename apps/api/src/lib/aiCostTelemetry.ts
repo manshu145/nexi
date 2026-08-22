@@ -43,7 +43,7 @@ export type AIFeature =
   | 'image_generation'
   | 'content_refresh'
   | 'pyq_generation'
-  | 'interview_scoring'
+  | 'job_extraction'
   | 'blog_draft'
   | 'syllabus_generation'
   | 'visualization'
