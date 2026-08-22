@@ -67,6 +67,39 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Career profile -- personal eligibility data (DOB, domicile, category,
+    // education, employment history). Owner may READ their own; all writes go
+    // through the api via Admin SDK so the server owns `profileVersion`
+    // (which is half of the eligibility cache key) and enforces the
+    // sensitive-data consent gate.
+    match /careerProfiles/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow write: if false;
+    }
+
+    // Saved jobs + application tracking -- owner-scoped, api-written.
+    match /jobApplications/{recordId} {
+      allow read: if isAdmin() || (
+        isSignedIn() && resource.data.userId == request.auth.uid
+      );
+      allow write: if false; // mutated only by the api via Admin SDK
+    }
+
+    // Canonical job records -- public read (they mirror public official
+    // notifications and back the SEO pages); ingestion writes via Admin SDK.
+    // NOTE: a job doc contains NO user data. Per-user eligibility is computed
+    // at request time and never persisted here.
+    match /jobs/{jobId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Job source registry -- admin-only operational config.
+    match /jobSources/{sourceId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     // Default deny.
     match /{document=**} {
       allow read, write: if false;

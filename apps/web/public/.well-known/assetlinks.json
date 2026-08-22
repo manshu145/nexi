@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.nexigrate.app",
+      "sha256_cert_fingerprints": [
+        "D1:F6:CF:76:C5:E5:B7:23:0F:EE:38:94:4A:BE:CB:69:16:0B:53:64:57:51:4E:A9:50:7B:61:13:60:1C:A5:B4"
+      ]
+    }
+  }
+]

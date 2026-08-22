@@ -1,0 +1,277 @@
+'use client';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
+import { useAuth } from '~/lib/auth-context';
+import { useUser } from '~/lib/userStore';
+import { api } from '~/lib/api';
+import { Logo } from '~/components/Logo';
+import { AILoader } from '~/components/ui/AILoader';
+import { getClientLocale } from '~/lib/locale';
+
+interface SubjectBreakdown { subject: string; subjectName: string; completed: number; total: number; avgScore: number; }
+interface ChapterInfo { subject: string; chapter: string; chapterName: string; score: number; }
+interface AnalysisData { overallPercent: number; subjectBreakdown: SubjectBreakdown[]; weakChapters: ChapterInfo[]; strongChapters: ChapterInfo[]; }
+
+const API = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.nexigrate.com';
+
+export default function LevelPage() {
+  const { user, loading } = useAuth();
+  const { user: userInfo, loading: meLoading } = useUser();
+  const router = useRouter();
+  const t = useTranslations('learningProfile');
+  const tc = useTranslations('common');
+  const [analysis, setAnalysis] = useState<AnalysisData | null>(null);
+  const [mockStats, setMockStats] = useState<{ count: number; best: number } | null>(null);
+  const [pageLoading, setPageLoading] = useState(true);
+
+  useEffect(() => { if (!loading && !user) router.replace('/signin'); }, [user, loading, router]);
+
+  useEffect(() => {
+    if (!user || !userInfo) return;
+    (async () => {
+      try {
+        const exam = userInfo.targetExam;
+        if (!exam) { router.replace('/onboarding/language'); return; }
+        const token = await user.getIdToken();
+        const res = await fetch(`${API}/v1/study/analysis/${exam}?lang=${getClientLocale()}`, { headers: { Authorization: `Bearer ${token}` } });
+        if (res.ok) setAnalysis(await res.json());
+        // Mock-test activity (a now-prominent feature) — best-effort, never
+        // blocks the page. Counts submitted attempts + best percentage.
+        try {
+          const mh = await api.getMockTestHistory();
+          const done = mh.attempts.filter(a => a.status === 'submitted' && typeof a.percentage === 'number');
+          setMockStats({
+            count: done.length,
+            best: done.reduce((m, a) => Math.max(m, a.percentage ?? 0), 0),
+          });
+        } catch { /* mock stats are optional */ }
+      } catch { /* ignore */ }
+      finally { setPageLoading(false); }
+    })();
+  }, [user, userInfo, router]);
+
+  if (loading || !user || meLoading || pageLoading) return (
+    <main className="mx-auto flex min-h-dvh max-w-2xl flex-col items-center justify-center px-5">
+      <AILoader context="general" />
+    </main>
+  );
+
+  const levelLabel = userInfo?.onboardingLevel === 'advanced' ? t('levelAdvanced') : userInfo?.onboardingLevel === 'intermediate' ? t('levelIntermediate') : t('levelBeginner');
+  const levelColor = userInfo?.onboardingLevel === 'advanced' ? 'text-amber-600' : userInfo?.onboardingLevel === 'intermediate' ? 'text-amber-500' : 'text-stone-500';
+  const totalChaptersDone = analysis?.subjectBreakdown.reduce((sum, s) => sum + s.completed, 0) ?? 0;
+  const totalChapters = analysis?.subjectBreakdown.reduce((sum, s) => sum + s.total, 0) ?? 0;
+
+  return (
+    <main className="mx-auto flex min-h-dvh max-w-lg flex-col px-5 pt-6 pb-28">
+      <header className="flex items-center justify-between">
+        <button onClick={() => router.back()} className="btn-ghost-sm">← {tc('back')}</button>
+        <Logo height={36} />
+      </header>
+
+      <section className="mt-6">
+        <h1 className="font-serif text-xl font-bold text-ink-900">{t('title')}</h1>
+        <p className="mt-1 text-sm text-muted-500">{t('subtitle')}</p>
+      </section>
+
+      {/* Level & Assessment Card */}
+      <div className="paper-card mt-6 p-5">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">{t('assessmentResult')}</h2>
+        <div className="mt-3 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-400">{t('exam')}</span>
+            <span className="text-sm font-medium text-ink-900 text-right truncate max-w-[60%]">{userInfo?.targetExam?.replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-400">{t('assessmentScore')}</span>
+            <span className="text-sm font-medium text-ink-900">{userInfo?.onboardingScore ?? '—'}/15</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-400">{t('level')}</span>
+            <span className={`text-sm font-bold ${levelColor}`}>{levelLabel}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-400">{t('memberSince')}</span>
+            <span className="text-sm font-medium text-ink-900">{userInfo?.createdAt ? new Date(userInfo.createdAt).toLocaleDateString(userInfo.language === 'hi' ? 'hi-IN' : 'en-IN') : '—'}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Quick Stats */}
+      <div className="mt-4 grid grid-cols-3 gap-3">
+        <div className="paper-card p-3 text-center">
+          <p className="text-xl font-bold text-ink-900">{totalChaptersDone}</p>
+          <p className="text-[10px] text-muted-500 mt-0.5">{t('chaptersDone')}</p>
+        </div>
+        <div className="paper-card p-3 text-center">
+          <p className="text-xl font-bold text-ink-900">{userInfo?.currentStreak ?? 0}</p>
+          <p className="text-[10px] text-muted-500 mt-0.5">{t('dayStreak')}</p>
+        </div>
+        <div className="paper-card p-3 text-center">
+          <p className="text-xl font-bold text-ink-900">{userInfo?.credits ?? 0}</p>
+          <p className="text-[10px] text-muted-500 mt-0.5">{t('credits')}</p>
+        </div>
+      </div>
+
+      {/* Keep practicing — surface the exam-prep features (PYQ is new). */}
+      <div className="paper-card mt-4 p-5">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">{t('sharpenUp')}</h2>
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => router.push('/pyq')}
+            className="flex items-center gap-2.5 rounded-lg border border-line bg-paper-50 px-3 py-2.5 text-left transition-colors hover:border-ember-500/40 hover:bg-ember-500/5"
+          >
+            <span className="text-lg">📄</span>
+            <div className="min-w-0">
+              <p className="flex items-center gap-1 text-sm font-semibold text-ink-900">
+                PYQ
+                <span className="rounded-full bg-ember-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-ember-600">New</span>
+              </p>
+              <p className="text-[10px] text-muted-500">{t('pyqDesc')}</p>
+            </div>
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push('/mock-tests')}
+            className="flex items-center gap-2.5 rounded-lg border border-line bg-paper-50 px-3 py-2.5 text-left transition-colors hover:border-ember-500/40 hover:bg-ember-500/5"
+          >
+            <span className="text-lg">🧪</span>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-ink-900">{t('mockTests')}</p>
+              <p className="text-[10px] text-muted-500">{t('mockTestsDesc')}</p>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      {/* Exam Readiness */}
+      {analysis && (
+        <div className="paper-card mt-4 p-5">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">{t('examReadiness')}</h2>
+          <div className="mt-3 flex items-center gap-4">
+            <div className="relative h-16 w-16 flex-shrink-0">
+              <svg className="h-16 w-16 -rotate-90" viewBox="0 0 36 36">
+                <circle cx="18" cy="18" r="15.9" fill="none" stroke="var(--color-paper-300)" strokeWidth="3" />
+                <circle cx="18" cy="18" r="15.9" fill="none" stroke="var(--color-ember-500)" strokeWidth="3" strokeDasharray={`${analysis.overallPercent} ${100 - analysis.overallPercent}`} strokeLinecap="round" />
+              </svg>
+              <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-ink-900">{analysis.overallPercent}%</span>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-ink-900">{t('chaptersCompleted', { done: totalChaptersDone, total: totalChapters })}</p>
+              <p className="text-xs text-muted-500 mt-0.5">{t('keepStudying')}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Subject-wise Progress */}
+      {analysis && analysis.subjectBreakdown.length > 0 && (
+        <div className="paper-card mt-4 p-5">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">{t('subjectProgress')}</h2>
+          <div className="mt-3 space-y-3">
+            {analysis.subjectBreakdown.map((sub) => (
+              <div key={sub.subject}>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-ink-800 truncate max-w-[50%]">{sub.subjectName}</p>
+                  <span className="text-[11px] text-muted-500">{sub.completed}/{sub.total} · {sub.avgScore}%</span>
+                </div>
+                <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-paper-300">
+                  <div className="h-full rounded-full bg-gold-500 transition-all" style={{ width: `${sub.total > 0 ? Math.round((sub.completed / sub.total) * 100) : 0}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Weak Areas */}
+      {analysis && analysis.weakChapters.length > 0 && (
+        <div className="paper-card mt-4 p-5">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-red-500">{t('needsImprovement')}</h2>
+          <ul className="mt-3 space-y-2">
+            {analysis.weakChapters.slice(0, 5).map((ch) => (
+              <li key={`${ch.subject}/${ch.chapter}`} className="flex items-center justify-between rounded-lg bg-red-50 dark:bg-red-950/20 px-3 py-2">
+                <span className="text-xs text-ink-800 truncate max-w-[65%]">{ch.chapterName}</span>
+                <span className="text-[10px] font-bold text-red-600">{ch.score}%</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Strong Areas */}
+      {analysis && analysis.strongChapters.length > 0 && (
+        <div className="paper-card mt-4 p-5">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-amber-500">{t('strongAreas')}</h2>
+          <ul className="mt-3 space-y-2">
+            {analysis.strongChapters.slice(0, 5).map((ch) => (
+              <li key={`${ch.subject}/${ch.chapter}`} className="flex items-center justify-between rounded-lg bg-amber-50 dark:bg-amber-950/20 px-3 py-2">
+                <span className="text-xs text-ink-800 truncate max-w-[65%]">{ch.chapterName}</span>
+                <span className="text-[10px] font-bold text-amber-500">{ch.score}%</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Activity Summary */}
+      <div className="paper-card mt-4 p-5">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-500">{t('activitySummary')}</h2>
+        <div className="mt-3 space-y-2.5">
+          <div className="flex items-center justify-between border-b border-line pb-2">
+            <div className="flex items-center gap-2">
+              <span className="text-sm">📖</span>
+              <span className="text-xs text-ink-800">{t('chaptersRead')}</span>
+            </div>
+            <span className="text-sm font-bold text-ink-900">{totalChaptersDone}</span>
+          </div>
+          <div className="flex items-center justify-between border-b border-line pb-2">
+            <div className="flex items-center gap-2">
+              <span className="text-sm">🎯</span>
+              <span className="text-xs text-ink-800">{t('quizzesPassed')}</span>
+            </div>
+            <span className="text-sm font-bold text-ink-900">{analysis?.strongChapters.length ?? 0}</span>
+          </div>
+          <div className="flex items-center justify-between border-b border-line pb-2">
+            <div className="flex items-center gap-2">
+              <span className="text-sm">🧪</span>
+              <span className="text-xs text-ink-800">{t('mockTestsTaken')}</span>
+            </div>
+            <span className="text-sm font-bold text-ink-900">{mockStats?.count ?? 0}</span>
+          </div>
+          {mockStats && mockStats.count > 0 && (
+            <div className="flex items-center justify-between border-b border-line pb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-sm">🏆</span>
+                <span className="text-xs text-ink-800">{t('bestMockScore')}</span>
+              </div>
+              <span className="text-sm font-bold text-ink-900">{mockStats.best}%</span>
+            </div>
+          )}
+          <div className="flex items-center justify-between border-b border-line pb-2">
+            <div className="flex items-center gap-2">
+              <span className="text-sm">📰</span>
+              <span className="text-xs text-ink-800">{t('caQuizzes')}</span>
+            </div>
+            <span className="text-sm font-bold text-ink-900">—</span>
+          </div>
+          <div className="flex items-center justify-between border-b border-line pb-2">
+            <div className="flex items-center gap-2">
+              <span className="text-sm">🔥</span>
+              <span className="text-xs text-ink-800">{t('bestStreak')}</span>
+            </div>
+            <span className="text-sm font-bold text-ink-900">{userInfo?.bestStreak ?? 0} {t('days')}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-sm">💎</span>
+              <span className="text-xs text-ink-800">{t('totalCreditsEarned')}</span>
+            </div>
+            <span className="text-sm font-bold text-ink-900">{userInfo?.credits ?? 0}</span>
+          </div>
+        </div>
+      </div>
+    </main>
+  );
+}

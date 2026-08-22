@@ -1,6 +1,26 @@
 ---
 import '~/styles/global.css';
 
+/**
+ * AdSense publisher ID — hardcoded here so verification works immediately
+ * without waiting for the API to be reachable. The admin panel's
+ * "Head Verification Codes" field is fetched as an ADDITIONAL injection
+ * (for future codes like Search Console, Facebook Pixel, etc.)
+ */
+const ADSENSE_PUB_ID = 'ca-pub-2330721857774535';
+
+/** Fetch admin-managed head verification codes from the API (best-effort). */
+async function fetchHeadCodes(): Promise<string> {
+  try {
+    const res = await fetch('https://api.nexigrate.com/head-codes.json', { signal: AbortSignal.timeout(3000) });
+    if (res.ok) {
+      const data = await res.json() as { codes?: string };
+      return data.codes || '';
+    }
+  } catch { /* API unreachable — AdSense hardcode below still works */ }
+  return '';
+}
+
 export interface Props {
   title?: string;
   description?: string;
@@ -9,7 +29,7 @@ export interface Props {
 
 const {
   title = 'Nexigrate — Study smart. Verified facts. Zero distractions.',
-  description = 'The free, distraction-free study OS for Indian students. Class 11 to UPSC. AI-powered, expert-verified, NCERT-grounded.',
+  description = 'The free, distraction-free study OS for Indian students. Class 11 to UPSC. AI-powered, 3-layer AI verified, NCERT-grounded.',
   pathname = '/',
 } = Astro.props;
 
@@ -28,10 +48,31 @@ const ogImage = new URL('/og-image.svg', Astro.site ?? 'https://nexigrate.com').
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical} />
 
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/svg+xml" href="/brand/nexigrate-favicon.svg" />
+    <link rel="apple-touch-icon" href="/brand/nexigrate-favicon.svg" />
     <meta name="theme-color" content="#F5ECD7" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#2A241A" media="(prefers-color-scheme: dark)" />
-    <meta name="color-scheme" content="light" />
+    <meta name="color-scheme" content="light dark" />
+
+    {/*
+      Pre-paint theme init. MUST run before first paint so the correct
+      logo (dark logo on light bg / light logo on dark bg) and background
+      render together — no flash of the wrong logo. The Nav toggle script
+      reuses the same `nexi.theme` key. Founder reported the marketing
+      logo looked "white on white"; root cause was the theme class being
+      applied AFTER paint by the Nav script, so a dark-default device
+      briefly showed the cream logo on the light default background.
+    */}
+    <script is:inline>
+      (function () {
+        try {
+          var stored = localStorage.getItem('nexi.theme');
+          var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var theme = stored || (prefersDark ? 'dark' : 'light');
+          document.documentElement.classList.toggle('dark', theme === 'dark');
+        } catch (e) { /* no-op */ }
+      })();
+    </script>
 
     {/* Open Graph */}
     <meta property="og:type" content="website" />
@@ -54,7 +95,7 @@ const ogImage = new URL('/og-image.svg', Astro.site ?? 'https://nexigrate.com').
       '@type': 'Organization',
       name: 'Nexigrate',
       url: 'https://nexigrate.com',
-      logo: 'https://nexigrate.com/favicon.svg',
+      logo: 'https://nexigrate.com/brand/nexigrate-favicon.svg',
       description,
       foundingDate: '2026',
       areaServed: 'IN',
@@ -65,6 +106,13 @@ const ogImage = new URL('/og-image.svg', Astro.site ?? 'https://nexigrate.com').
         availableLanguage: ['en', 'hi'],
       },
     })} />
+
+    {/* Google AdSense — hardcoded for immediate verification */}
+    <script async src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ADSENSE_PUB_ID}`} crossorigin="anonymous"></script>
+    <meta name="google-adsense-account" content={ADSENSE_PUB_ID} />
+
+    {/* Additional verification codes from admin panel (best-effort) */}
+    <Fragment set:html={await fetchHeadCodes()} />
   </head>
   <body>
     <a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded focus:bg-ink-900 focus:px-3 focus:py-2 focus:text-paper-100">

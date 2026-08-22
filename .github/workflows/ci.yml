@@ -1,5 +1,33 @@
 name: CI
 
+# Continuous integration for every PR + every push to main.
+#
+# History:
+#   - Pre-PR-13: only marketing was gated; api/web errors landed on main
+#     unnoticed (PR-03 + #186 hotfixes were the cost).
+#   - PR-13:     added a single combined `build` job + a `tests` job that
+#     covered everything serially.
+#   - PR-30:     split the combined `build` job into per-package jobs so
+#     each workspace produces its OWN required-check status. The founder
+#     enabled branch protection on `main` with the per-package check
+#     names (`shared`, `credits`, `ai-pipeline`, `api`, `web`, plus the
+#     aggregate `build` and `tests`). The single combined job emitted
+#     only one status, so 7 of those 7 required checks stayed forever
+#     "Expected — Waiting for status to be reported" and blocked merge.
+#     This file emits all 7 names, so branch protection unblocks.
+#
+# Required status checks (Settings → Branches → Protect main):
+#   shared
+#   credits
+#   ai-pipeline
+#   api
+#   web
+#   build         ← aggregate; depends on the 5 above
+#   tests         ← aggregate; depends on credits + ai-pipeline
+#   marketing — typecheck + build
+#   Cloudflare Pages
+# (The "format check" job stays warn-only by design.)
+
 on:
   pull_request:
     branches: [main]
@@ -15,68 +43,160 @@ env:
   PNPM_VERSION: '9.15.0'
 
 jobs:
+  # ────────────────────────────────────────────────────────────────────
+  # Marketing site (Astro). Stays as its own job so a red marketing
+  # build doesn't cascade into the rest of the matrix and so the
+  # Cloudflare deploy preview path matches what ships to production.
+  # ────────────────────────────────────────────────────────────────────
   marketing:
     name: marketing \u2014 typecheck + build
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-          run_install: false
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile=false
-
-      - name: Typecheck (astro check)
-        working-directory: apps/marketing
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4.1.0
+        with: { version: '${{ env.PNPM_VERSION }}', run_install: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile=false
+      - working-directory: apps/marketing
         run: pnpm astro check
-
-      - name: Build
-        working-directory: apps/marketing
+      - working-directory: apps/marketing
         run: pnpm build
-
-      - name: Upload build output
-        if: github.event_name == 'pull_request'
+      - if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v4
-        with:
-          name: marketing-dist
-          path: apps/marketing/dist
-          retention-days: 7
+        with: { name: marketing-dist, path: apps/marketing/dist, retention-days: 7 }
 
+  # ────────────────────────────────────────────────────────────────────
+  # Per-package jobs. Each emits a status check matching its workspace
+  # name so branch protection can require them individually.
+  #
+  # Dependency tree (built by `needs:` so .d.ts artifacts flow correctly):
+  #   shared → credits, ai-pipeline → api → web
+  # The marketing site does NOT depend on these and runs in parallel.
+  # ────────────────────────────────────────────────────────────────────
+
+  shared:
+    name: shared
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4.1.0
+        with: { version: '${{ env.PNPM_VERSION }}', run_install: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile=false
+      - run: pnpm --filter @nexigrate/shared run build
+
+  credits:
+    name: credits
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: shared
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4.1.0
+        with: { version: '${{ env.PNPM_VERSION }}', run_install: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile=false
+      - run: pnpm --filter @nexigrate/shared run build
+      - run: pnpm --filter @nexigrate/credits run build
+      - run: pnpm --filter @nexigrate/credits run test
+
+  ai-pipeline:
+    name: ai-pipeline
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: shared
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4.1.0
+        with: { version: '${{ env.PNPM_VERSION }}', run_install: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile=false
+      - run: pnpm --filter @nexigrate/shared run build
+      - run: pnpm --filter @nexigrate/ai-pipeline run build
+      - run: pnpm --filter @nexigrate/ai-pipeline run test
+
+  api:
+    name: api
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [shared, credits, ai-pipeline]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4.1.0
+        with: { version: '${{ env.PNPM_VERSION }}', run_install: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile=false
+      - run: pnpm --filter @nexigrate/shared run build
+      - run: pnpm --filter @nexigrate/credits run build
+      - run: pnpm --filter @nexigrate/ai-pipeline run build
+      - run: pnpm --filter @nexigrate/api run typecheck
+      - run: pnpm --filter @nexigrate/api run build
+
+  web:
+    name: web
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [shared, credits]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4.1.0
+        with: { version: '${{ env.PNPM_VERSION }}', run_install: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile=false
+      - run: pnpm --filter @nexigrate/shared run build
+      - run: pnpm --filter @nexigrate/credits run build
+      - run: pnpm --filter @nexigrate/web run typecheck
+      - run: pnpm --filter @nexigrate/web run build
+
+  # ────────────────────────────────────────────────────────────────────
+  # Aggregate jobs.
+  #
+  # Why aggregates exist alongside per-package jobs:
+  #   - Branch protection has BOTH `build` AND per-package names in the
+  #     required list. We could rename / reduce to per-package only, but
+  #     the aggregates also serve as a single "everything is happy"
+  #     marker that's easier to wire into deploys / dashboards / chat
+  #     bots than 5 separate names.
+  #   - These do zero real work (just `echo OK`); they only exist to
+  #     emit a status check that depends on the per-package jobs.
+  # ────────────────────────────────────────────────────────────────────
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    needs: [shared, credits, ai-pipeline, api, web]
+    steps:
+      - run: echo "All per-package builds passed"
+
+  tests:
+    name: tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    needs: [credits, ai-pipeline]
+    steps:
+      - run: echo "All test suites passed"
+
+  # ────────────────────────────────────────────────────────────────────
+  # Prettier check. Warn-only by design.
+  # ────────────────────────────────────────────────────────────────────
   format:
     name: format check
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-          run_install: false
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile=false
-
-      - name: Prettier check
-        run: pnpm format:check
-        continue-on-error: true # do not block PRs on formatting in pre-launch
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4.1.0
+        with: { version: '${{ env.PNPM_VERSION }}', run_install: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile=false
+      - run: pnpm format:check
+        continue-on-error: true # warn-only; do not block merges

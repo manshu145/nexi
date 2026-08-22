@@ -1,24 +1,27 @@
 ---
 const earn = [
-  { label: 'Verified signup',       value: '+200', note: 'one-time, expires in 14 days' },
-  { label: 'Daily login',           value: '+10',  note: 'every day' },
-  { label: 'Pass daily MCQ (70%+)', value: '+50',  note: 'core loop' },
-  { label: 'Failed MCQ attempt',    value: '+5',   note: 'no one gets locked out' },
-  { label: '7-day streak bonus',    value: '+150', note: 'rewards consistency' },
-  { label: 'Refer a verified friend', value: '+100', note: 'on their signup' },
-  { label: 'Friend stays 7 days',   value: '+200', note: 'on their retention' },
+  { label: 'Verified signup',          value: '+100', note: 'one-time, on phone verify' },
+  { label: 'Daily login',              value: '+5',   note: 'every day' },
+  { label: 'Complete a chapter',       value: '+20',  note: 'finish reading + quiz' },
+  { label: 'Pass daily MCQ (70%+)',    value: '+10',  note: 'core loop' },
+  { label: 'Failed MCQ attempt',       value: '+5',   note: 'no one gets locked out' },
+  { label: '7-day streak bonus',       value: '+5',   note: 'rewards consistency' },
+  { label: '30-day streak bonus',      value: '+10',  note: 'rewards persistence' },
+  { label: 'Refer a friend (you)',     value: '+50',  note: 'on their signup' },
+  { label: 'Welcome bonus (friend)',   value: '+100', note: 'extra credits for joining via referral' },
 ] as const;
 
 const spend = [
   { label: 'Read a chapter',          value: '−5'  },
   { label: '1-hour focus session',    value: '−10' },
   { label: 'Mock test',               value: '−20' },
-  { label: 'Question to AI tutor',    value: '−5'  },
+  { label: 'Question to AI tutor',    value: '−2'  },
   { label: 'Concept video',           value: '−5'  },
+  { label: 'Long-answer grading',     value: '−30' },
 ] as const;
 ---
 
-<section id="credits" class="section">
+<section id="credits" class="section reveal-on-scroll">
   <div class="mx-auto max-w-6xl px-5 py-20 sm:py-24">
     <div class="max-w-2xl">
       <p class="pill mb-5">Credits</p>
@@ -68,12 +71,17 @@ const spend = [
             Optional subscriptions
           </p>
           <ul class="mt-2 space-y-1 text-sm text-ink-800">
-            <li><span class="font-medium">Scholar</span> — ₹99/mo · Class 8–10</li>
-            <li><span class="font-medium">Aspirant</span> — ₹299/mo · Class 11–12, JEE, NEET</li>
-            <li><span class="font-medium">Achiever</span> — ₹599/mo · UPSC, SSC, State PSCs</li>
+            <li><span class="font-medium">Starter</span> — ₹79/mo · ad-free study, AI tutor & mock tests</li>
+            <li><span class="font-medium">Pro</span> — ₹249/mo · more of everything + essay grading</li>
+            <li><span class="font-medium">Elite</span> — ₹599/mo · unlimited study + priority AI + mentor support</li>
           </ul>
-          <p class="mt-2 text-xs text-muted-500">Annual plans are 40% cheaper. Available at launch.</p>
+          <p class="mt-2 text-xs text-muted-500">Annual plans save ~30% vs monthly.</p>
         </div>
+
+        <p class="mt-4 text-xs text-muted-500">
+          Default earn and spend rates shown here. Final amounts may be tuned —
+          your in-app <a href="https://app.nexigrate.com/credits" class="underline">Credits</a> page always shows the live rates.
+        </p>
       </div>
     </div>
   </div>

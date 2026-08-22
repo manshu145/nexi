@@ -1,0 +1,21 @@
+# Cloudflare Pages — root-level configuration for the marketing site.
+#
+# Why this lives at the repo root, not next to the Astro project:
+# Cloudflare Pages' "v2 root directory strategy" looks for a Wrangler
+# config at the cloned repo root before running the build, so it can
+# discover `pages_build_output_dir`. With our pnpm monorepo, the Astro
+# build emits to `apps/marketing/dist/`, but Cloudflare resolves the
+# directory it validates relative to wherever it finds the Wrangler
+# config -- so the only way to point it at the nested output without
+# also moving the build root is to keep this file here.
+#
+# The detailed Pages config (bindings, framework preset notes,
+# environment variables) lives in apps/marketing/wrangler.toml so the
+# Astro project stays self-describing for local development. That file
+# stays the source of truth for runtime config; this one is purely a
+# build-time pointer for Cloudflare's deploy pipeline.
+
+name = "nexigrate-marketing"
+compatibility_date = "2025-01-15"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = "./apps/marketing/dist"

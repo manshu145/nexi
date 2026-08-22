@@ -9,6 +9,8 @@
  *   - types/      pure TypeScript types (no runtime cost)
  *   - schemas/    Zod schemas for runtime validation at trust boundaries
  *   - constants/  immutable configuration tables (credit rates, exam catalog)
+ *   - jobs/       pure domain logic for the Jobs & Eligibility engine
+ *                 (deterministic, no I/O — safe on server and in browser)
  *
  * Strict rules for this package:
  *   - No imports of platform-specific code (no firebase, no DOM, no React,
@@ -18,3 +20,4 @@
 export * from './types/index.js';
 export * from './schemas/index.js';
 export * from './constants/index.js';
+export * from './jobs/index.js';

@@ -1,26 +1,20 @@
 import type { ISODateTime, SubscriptionId, UserId } from './brand.js';
+import type { PlanId } from '../constants/subscriptions.js';
 
 /**
  * Subscription tiers and Razorpay subscription state.
- *
- * Free users can fully use the app via the credits engine. Subscriptions are
- * an optional shortcut: pay a flat monthly fee for unlimited credits, no
- * daily-MCQ obligation, and a few premium features (current affairs daily
- * digest at higher tiers, expert AMAs at the top tier).
- *
- * Pricing in INR. Annual plans are 40% off the monthly rate.
  */
 export type SubscriptionPlan =
-  | 'scholar'    // Class 5-10 boards: ₹99/mo, ₹999/yr
-  | 'aspirant'   // Class 11-12 + JEE/NEET: ₹299/mo, ₹2,999/yr
-  | 'achiever';  // UPSC, SSC, State PSCs: ₹599/mo, ₹5,999/yr
+  | 'scholar'
+  | 'aspirant'
+  | 'achiever';
 
 export type SubscriptionStatus =
   | 'active'
   | 'trialing'
-  | 'past_due'   // Razorpay reports a missed renewal
-  | 'cancelled'  // user cancelled, will lapse at period end
-  | 'lapsed';    // period ended without renewal
+  | 'past_due'
+  | 'cancelled'
+  | 'lapsed';
 
 export type SubscriptionInterval = 'monthly' | 'yearly';
 
@@ -30,15 +24,38 @@ export interface Subscription {
   plan: SubscriptionPlan;
   interval: SubscriptionInterval;
   status: SubscriptionStatus;
-  /** Razorpay subscription id, e.g. `sub_xxx`. */
   razorpaySubscriptionId: string;
-  /** Razorpay customer id, populated after first payment. */
   razorpayCustomerId: string | null;
-  /** ISO datetime when the current paid period ends. */
   currentPeriodEnd: ISODateTime;
-  /** Did the user cancel? Will lapse at currentPeriodEnd. */
   cancelAtPeriodEnd: boolean;
   amountInr: number;
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
+}
+
+/** Coupon for plan discounts */
+export interface Coupon {
+  code: string;
+  discountType: 'percent' | 'flat';
+  discountValue: number;          // percent (10 = 10%) or flat (50 = ₹50 off)
+  maxUses: number;                // 0 = unlimited
+  usedCount: number;
+  expiresAt: string | null;       // ISO datetime or null for no expiry
+  isActive: boolean;
+  applicablePlans: PlanId[];
+  createdAt: string;
+}
+
+/** Billing order stored in Firestore */
+export interface BillingOrder {
+  orderId: string;
+  uid: string;
+  planId: PlanId;
+  amount: number;                 // in paise
+  originalAmount: number;         // before discount, in paise
+  couponCode: string | null;
+  status: 'pending' | 'completed' | 'failed';
+  paymentId: string | null;
+  createdAt: string;
+  completedAt: string | null;
 }

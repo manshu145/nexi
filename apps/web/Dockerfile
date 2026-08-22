@@ -23,6 +23,7 @@ ARG NEXT_PUBLIC_FIREBASE_PROJECT_ID=nexigrate-prod
 ARG NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=nexigrate-prod.firebasestorage.app
 ARG NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=505978726927
 ARG NEXT_PUBLIC_FIREBASE_APP_ID=1:505978726927:web:066fb77f927442d1e3117a
+ARG NEXT_PUBLIC_FIREBASE_VAPID_KEY=
 
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL \
     NEXT_PUBLIC_FIREBASE_API_KEY=$NEXT_PUBLIC_FIREBASE_API_KEY \
@@ -30,16 +31,19 @@ ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL \
     NEXT_PUBLIC_FIREBASE_PROJECT_ID=$NEXT_PUBLIC_FIREBASE_PROJECT_ID \
     NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=$NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET \
     NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=$NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID \
-    NEXT_PUBLIC_FIREBASE_APP_ID=$NEXT_PUBLIC_FIREBASE_APP_ID
+    NEXT_PUBLIC_FIREBASE_APP_ID=$NEXT_PUBLIC_FIREBASE_APP_ID \
+    NEXT_PUBLIC_FIREBASE_VAPID_KEY=$NEXT_PUBLIC_FIREBASE_VAPID_KEY
 
 # Resolve workspace deps first, for layer cache.
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json turbo.json ./
 COPY packages/shared/package.json packages/shared/package.json
+COPY packages/credits/package.json packages/credits/package.json
 COPY apps/web/package.json apps/web/package.json
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --no-frozen-lockfile
 
 # Copy sources and build.
 COPY packages/shared packages/shared
+COPY packages/credits packages/credits
 COPY apps/web apps/web
 RUN pnpm --filter @nexigrate/shared build
 RUN pnpm --filter @nexigrate/web build

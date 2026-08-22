@@ -3,6 +3,7 @@ import Layout from '~/layouts/Layout.astro';
 import Nav from '~/components/Nav.astro';
 import Hero from '~/components/Hero.astro';
 import Pillars from '~/components/Pillars.astro';
+import Features from '~/components/Features.astro';
 import TargetExams from '~/components/TargetExams.astro';
 import HowItWorks from '~/components/HowItWorks.astro';
 import CreditsExplainer from '~/components/CreditsExplainer.astro';
@@ -10,19 +11,21 @@ import Trust from '~/components/Trust.astro';
 import Faq from '~/components/Faq.astro';
 import FinalCta from '~/components/FinalCta.astro';
 import Footer from '~/components/Footer.astro';
+import ScrollReveal from '~/components/ScrollReveal.astro';
 
 export const prerender = true;
 ---
 
 <Layout
   title="Nexigrate — Study smart. Verified facts. Zero distractions."
-  description="The free, distraction-free study OS for Indian students. Class 11 to UPSC. AI-powered, expert-verified, NCERT-grounded."
+  description="The free, distraction-free study OS for Indian students. Class 5 to UPSC. AI-powered, 3-layer AI verified, NCERT-grounded."
   pathname="/"
 >
   <Nav />
   <main id="main">
     <Hero />
     <Pillars />
+    <Features />
     <TargetExams />
     <HowItWorks />
     <CreditsExplainer />
@@ -31,4 +34,5 @@ export const prerender = true;
     <FinalCta />
   </main>
   <Footer />
+  <ScrollReveal />
 </Layout>

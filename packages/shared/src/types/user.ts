@@ -5,6 +5,7 @@ import type {
   UserId,
 } from './brand.js';
 import type { Board, ClassLevel } from './exam.js';
+import type { StreakBadge } from './mcq.js';
 
 /**
  * User and student-profile types.
@@ -45,6 +46,11 @@ export interface User {
   updatedAt: ISODateTime;
   /** Soft-delete flag, set when the user requests deletion under DPDP. */
   deletedAt: ISODateTime | null;
+  /**
+   * Streak-milestone badges the user has earned over their lifetime.
+   * Append-only (a 7-day badge stays even after the streak resets).
+   */
+  streakBadges?: StreakBadge[];
 }
 
 export type ParentalConsentStatus = 'not_required' | 'pending' | 'granted' | 'revoked';

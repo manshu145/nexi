@@ -1,165 +1,132 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import {
-  asISODateTime,
-  awardCreditsRequestSchema,
-  spendCreditsRequestSchema,
-  type CreditEvent,
-  type CreditEventId,
-  type ISODateTime,
-  type UserId,
-} from '@nexigrate/shared';
-import { award, computeBalance, spend } from '@nexigrate/credits';
-import { requireAdmin, requireAuth } from '../auth.js';
+import { requireAuth } from '../auth.js';
 import type { Logger } from '../logger.js';
-
-/**
- * Credit-engine HTTP routes.
- *
- * Phase 2.1 wires the routes to a temporary in-memory ledger so we can
- * exercise the engine end-to-end without Firestore. Phase 2.2 will swap the
- * in-memory store for Firestore transactions, behind the same `LedgerStore`
- * interface so the route handlers do not change.
- *
- *   GET  /v1/credits/balance         caller's own balance
- *   GET  /v1/credits/balance/:userId admin only
- *   POST /v1/credits/award           admin only (admin_grant or test fixtures)
- *   POST /v1/credits/spend           server-to-server only in practice
- *   GET  /v1/credits/events          caller's recent events
- */
-export interface LedgerStore {
-  /** Read all events for a user (oldest first). */
-  read(userId: UserId): Promise<ReadonlyArray<CreditEvent>>;
-  /** Append a single event. Implementations MUST enforce idempotency. */
-  append(event: CreditEvent): Promise<void>;
-}
+import type { UserStore } from '../lib/userStore.js';
+import { InMemoryReferralStore, FirestoreReferralStore, type ReferralStore } from '../lib/referralStore.js';
+import type { Firestore } from 'firebase-admin/firestore';
+import type { CreditLedger } from '../lib/creditLedger.js';
+import type { PlatformConfigStore } from '../lib/platformConfigStore.js';
+import { asUserId } from '@nexigrate/shared';
 
 export interface CreditsRoutesDeps {
-  ledger: LedgerStore;
+  users: UserStore;
   logger: Logger;
-  newId: () => CreditEventId;
-  now: () => ISODateTime;
+  db?: Firestore | null;
+  referrals?: ReferralStore;
+  ledger: CreditLedger;
+  /** Source of truth for current earn/spend amounts (admin-editable). */
+  config: PlatformConfigStore;
 }
 
 export function makeCreditsRoutes(deps: CreditsRoutesDeps): Hono {
   const app = new Hono();
-  const engineDeps = { newId: deps.newId, now: deps.now };
+  const referrals = deps.referrals ?? (deps.db ? new FirestoreReferralStore(deps.db) : new InMemoryReferralStore());
 
+  // ─── Balance + history ────────────────────────────────────────────────────
+
+  // GET /v1/credits/balance — current balance, plan, and the LIVE rate
+  // tables (read from platformConfig, not from compile-time constants) so
+  // the /credits page renders the same numbers the server will award.
   app.get('/balance', async (c) => {
     const principal = requireAuth(c);
-    const events = await deps.ledger.read(principal.userId);
-    const balance = computeBalance(events, principal.userId, deps.now());
-    return c.json(balance);
+    const [user, balance, earnRates, spendRates] = await Promise.all([
+      deps.users.get(principal.userId),
+      deps.ledger.getBalance(principal.userId),
+      deps.config.getEarnAmounts(),
+      deps.config.getSpendAmounts(),
+    ]);
+    return c.json({
+      credits: balance,
+      plan: user?.plan ?? 'free',
+      earnRates,
+      spendRates,
+    });
   });
 
-  app.get('/balance/:userId', async (c) => {
-    requireAdmin(c);
-    const userId = c.req.param('userId') as UserId;
-    const events = await deps.ledger.read(userId);
-    const balance = computeBalance(events, userId, deps.now());
-    return c.json(balance);
-  });
-
+  // GET /v1/credits/events — paginated ledger history for the current user.
+  // Most recent first; backed by the append-only `creditEvents` collection.
   app.get('/events', async (c) => {
     const principal = requireAuth(c);
-    const events = await deps.ledger.read(principal.userId);
-    return c.json({ events });
+    const limit = Math.min(Math.max(parseInt(c.req.query('limit') ?? '50', 10) || 50, 1), 200);
+    const before = c.req.query('before') || undefined;
+    const events = await deps.ledger.listEvents(principal.userId, { limit, before });
+    return c.json({ events, limit });
   });
 
-  app.post('/award', async (c) => {
-    requireAdmin(c);
-    const body = await c.req.json().catch(() => null);
-    const parsed = awardCreditsRequestSchema.safeParse(body);
-    if (!parsed.success) {
-      throw new HTTPException(400, { message: parsed.error.issues[0]?.message ?? 'invalid body' });
-    }
-    const userId = parsed.data.userId as UserId;
-    const events = await deps.ledger.read(userId);
-    const result = award(
-      {
-        userId,
-        source: parsed.data.source,
-        amount: parsed.data.amountOverride,
-        sourceRef: parsed.data.sourceRef,
-        idempotencyKey: parsed.data.idempotencyKey,
-      },
-      events,
-      engineDeps,
-    );
-    if (result.kind === 'awarded') {
-      await deps.ledger.append(result.event);
-      deps.logger.info('credits.award', {
-        userId,
-        source: parsed.data.source,
-        amount: result.event.amount,
-        eventId: result.event.id,
-      });
-    }
-    return c.json(result);
+  // ─── Referral Endpoints ───────────────────────────────────────────────────
+
+  // GET /v1/credits/referral — get user's referral code + stats
+  app.get('/referral', async (c) => {
+    const principal = requireAuth(c);
+    // Ensure user has a code (creates if not exists).
+    await referrals.createReferralCode(principal.userId);
+    const stats = await referrals.getStats(principal.userId);
+    return c.json(stats);
   });
 
-  app.post('/spend', async (c) => {
-    requireAdmin(c);
-    const body = await c.req.json().catch(() => null);
-    const parsed = spendCreditsRequestSchema.safeParse(body);
-    if (!parsed.success) {
-      throw new HTTPException(400, { message: parsed.error.issues[0]?.message ?? 'invalid body' });
+  // POST /v1/credits/referral/apply — invitee applies a code during onboarding.
+  // Awards the invitee bonus (referral_bonus = 100) via the ledger.
+  app.post('/referral/apply', async (c) => {
+    const principal = requireAuth(c);
+    const body = await c.req.json().catch(() => null) as { referralCode?: string } | null;
+    const code = body?.referralCode?.trim();
+    if (!code) throw new HTTPException(400, { message: 'referralCode is required' });
+
+    const referrerId = await referrals.applyReferral(principal.userId, code);
+    if (!referrerId) {
+      return c.json({ success: false, message: 'Invalid or already-used referral code' });
     }
-    const userId = parsed.data.userId as UserId;
-    const events = await deps.ledger.read(userId);
-    const result = spend(
-      {
-        userId,
-        reason: parsed.data.reason,
-        amount: parsed.data.amountOverride,
-        sourceRef: parsed.data.sourceRef,
-        idempotencyKey: parsed.data.idempotencyKey,
-      },
-      events,
-      engineDeps,
-    );
-    if (result.kind === 'spent') {
-      await deps.ledger.append(result.event);
-      deps.logger.info('credits.spend', {
-        userId,
-        reason: parsed.data.reason,
-        amount: result.event.amount,
-        eventId: result.event.id,
-      });
+
+    // Idempotent on (invitee, referrerId): a retry of /apply for the same
+    // pairing collapses to one ledger row. Amount is read from the live
+    // platformConfig so admin edits via /admin/credit-rewards take effect
+    // on the next call without a redeploy.
+    const result = await deps.ledger.award({
+      userId: principal.userId,
+      source: 'referral_bonus',
+      amount: await deps.config.getEarnAmount('referral_bonus'),
+      sourceRef: referrerId,
+      idempotencyKey: `referral_bonus:${principal.userId}:${referrerId}`,
+    });
+
+    deps.logger.info('referral.applied', {
+      newUser: principal.userId,
+      referrerId,
+      code,
+      ledgerKind: result.kind,
+    });
+    return c.json({
+      success: true,
+      bonusCredits: result.kind === 'awarded' ? result.event.amount : 0,
+    });
+  });
+
+  // POST /v1/credits/referral/complete — invitee finished onboarding;
+  // pay the referrer their bonus (referral_signup = 50).
+  app.post('/referral/complete', async (c) => {
+    const principal = requireAuth(c);
+    const result = await referrals.completeReferral(principal.userId);
+    if (!result) {
+      return c.json({ completed: false });
     }
-    return c.json(result);
+
+    const award = await deps.ledger.award({
+      userId: asUserId(result.referrerId),
+      source: 'referral_signup',
+      amount: await deps.config.getEarnAmount('referral_signup'),
+      sourceRef: principal.userId,
+      idempotencyKey: `referral_signup:${result.referrerId}:${principal.userId}`,
+    });
+
+    deps.logger.info('referral.completed', {
+      referrer: result.referrerId,
+      referred: principal.userId,
+      creditsAwarded: award.kind === 'awarded' ? award.event.amount : 0,
+    });
+
+    return c.json({ completed: true, referrerId: result.referrerId });
   });
 
   return app;
-}
-
-/**
- * In-memory ledger store for local development and tests.
- * Phase 2.2 will replace this with a Firestore-backed implementation.
- */
-export class InMemoryLedgerStore implements LedgerStore {
-  private events: Map<UserId, CreditEvent[]> = new Map();
-
-  async read(userId: UserId): Promise<ReadonlyArray<CreditEvent>> {
-    return this.events.get(userId) ?? [];
-  }
-
-  async append(event: CreditEvent): Promise<void> {
-    const existing = this.events.get(event.userId) ?? [];
-    existing.push(event);
-    this.events.set(event.userId, existing);
-  }
-}
-
-/** Factory used by server.ts when wiring up dependencies. */
-export function defaultEngineDeps(): { newId: () => CreditEventId; now: () => ISODateTime } {
-  return {
-    newId: () => `evt_${cryptoRandom()}` as CreditEventId,
-    now: () => asISODateTime(new Date().toISOString()),
-  };
-}
-
-function cryptoRandom(): string {
-  // Node 22 has globalThis.crypto.randomUUID().
-  return globalThis.crypto.randomUUID().replace(/-/g, '').slice(0, 16);
 }

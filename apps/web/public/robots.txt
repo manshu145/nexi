@@ -1,0 +1,11 @@
+# Nexigrate Web App — behind authentication
+# Only the marketing site (nexigrate.com) should be indexed.
+# The app (app.nexigrate.com) is auth-gated; nothing useful for crawlers.
+
+User-agent: *
+Disallow: /
+
+# Allow specific public assets
+Allow: /brand/
+Allow: /manifest.json
+Allow: /favicon.svg
