@@ -15,7 +15,7 @@ const NAV_ITEMS = [
 //   - /chat: textarea + send button live at the bottom of `flex h-dvh`
 //   - /study/<subject>/<chapter>(/quiz): the kindle-toolbar is the nav
 //     surface for that screen. The /study subject list keeps the nav.
-const HIDDEN_PATHS = ['/admin', '/onboarding', '/signin', '/verify-phone', '/chat', '/interview'];
+const HIDDEN_PATHS = ['/admin', '/onboarding', '/signin', '/verify-phone', '/chat'];
 
 export function BottomNav() {
   const pathname = usePathname();

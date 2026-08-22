@@ -68,6 +68,14 @@ export const USER_DATA_COLLECTIONS: readonly UserDataCollection[] = [
   { name: 'referrals',           userField: ['referrerId', 'inviteeId'] },
   { name: 'referralCodes',       userField: 'userId' },
   { name: 'activityLog',         userField: 'userId' },
+  // Jobs & Eligibility. The career profile is squarely personal data (DOB,
+  // domicile, category, education, employment history), and the application
+  // tracker records what a user applied for — both must be covered by
+  // export and erasure. Note `careerProfiles` is keyed BY userId rather than
+  // carrying a userId field, but it also stores `userId` inside the doc, so
+  // the field-scan path finds it correctly.
+  { name: 'careerProfiles',      userField: 'userId' },
+  { name: 'jobApplications',     userField: 'userId' },
 ] as const;
 
 const FIRESTORE_BATCH_LIMIT = 400; // safe under the 500 hard cap, leaves headroom for the user doc

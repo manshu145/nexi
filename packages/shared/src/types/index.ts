@@ -16,3 +16,4 @@ export * from './pyq.js';
 
 export * from './comms.js';
 export * from './syllabus.js';
+export * from './jobs.js';

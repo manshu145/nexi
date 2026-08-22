@@ -32,7 +32,8 @@ export type FeatureFlag =
   | 'mockTestGeneration'
   | 'contentRefresh'
   | 'pyqGeneration'
-  | 'interviewScoring'
+  | 'jobIngestion'
+  | 'jobExtraction'
   | 'blogDraft';
 
 export interface CostGuardrailsConfig {
@@ -82,7 +83,8 @@ export const DEFAULT_GUARDRAILS: CostGuardrailsConfig = {
     mockTestGeneration: true,
     contentRefresh: true,
     pyqGeneration: true,
-    interviewScoring: true,
+    jobIngestion: true,
+    jobExtraction: true,
     blogDraft: true,
   },
   maxAIRequestsPerUserDay: 200,
