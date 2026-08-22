@@ -55,6 +55,8 @@ import { makeExamRoutes } from './routes/exams.js';
 import { FirestoreReviewStore, InMemoryReviewStore, type ReviewStore } from './lib/reviewStore.js';
 import { makeReviewRoutes } from './routes/review.js';
 import { makePYQRoutes } from './routes/pyq.js';
+import { FirestoreCostGuardrailsStore, InMemoryCostGuardrailsStore, type CostGuardrailsStore } from './lib/costGuardrails.js';
+import { FirestoreAICostTelemetryStore, InMemoryAICostTelemetryStore, type AICostTelemetryStore } from './lib/aiCostTelemetry.js';
 
 export interface AppDeps { env: Env; logger: Logger; users?: UserStore; aiEngine?: AIEngine; chapters?: ChapterStore; currentAffairs?: CurrentAffairsStore; ads?: AdsStore; chatStore?: ChatStore; adminStore?: AdminStore; couponStore?: CouponStore; idempotency?: IdempotencyStore; ledger?: CreditLedger; config?: PlatformConfigStore; mockTests?: MockTestStore; pyq?: PYQStore; blog?: BlogStore; aiProviderStore?: AIProviderStore; modelResolver?: AIModelResolver; serviceKeys?: ServiceKeyStore; push?: PushService; teamInvites?: TeamInviteStore; }
 
@@ -102,6 +104,9 @@ export function buildApp(deps: AppDeps): Hono {
   const teamInvites = deps.teamInvites ?? (fs ? new FirestoreTeamInviteStore(fs) : new InMemoryTeamInviteStore());
   // Per-day feature usage counter (image / essay / AI-tutor quotas).
   const featureUsage: FeatureUsageStore = fs ? new FirestoreFeatureUsageStore(fs) : new InMemoryFeatureUsageStore();
+  // P0 Cost Audit: runtime cost guardrails + per-feature AI telemetry.
+  const costGuardrails: CostGuardrailsStore = fs ? new FirestoreCostGuardrailsStore(fs, logger) : new InMemoryCostGuardrailsStore();
+  const aiCostTelemetry: AICostTelemetryStore = fs ? new FirestoreAICostTelemetryStore(fs, logger) : new InMemoryAICostTelemetryStore();
   const firebaseAuth = getFirebaseAuth(env);
 
   // ─── Cron jobs + internal scheduler ─────────────────────────────────
