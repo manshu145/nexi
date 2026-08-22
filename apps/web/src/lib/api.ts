@@ -297,6 +297,35 @@ export const api = {
   async getCurrentAffairsQuizArchive(limit = 30) { return (await authedFetch(`/v1/current-affairs/quiz/archive?limit=${limit}`)).json() as Promise<{ quizzes: QuizArchiveSummary[] }>; },
   async getArchivedCurrentAffairsQuiz(date: string, lang: 'en' | 'hi' = 'en') { return (await authedFetch(`/v1/current-affairs/quiz/archive/${date}?lang=${lang}`)).json() as Promise<ArchivedQuizResponse>; },
 
+  // ─── Jobs & Eligibility ──────────────────────────────────────────────
+  async getCareerProfile() { return (await authedFetch('/v1/jobs/career-profile')).json() as Promise<CareerProfileResponse>; },
+  async updateCareerProfile(patch: Record<string, unknown>) { return (await authedFetch('/v1/jobs/career-profile', { method: 'PATCH', body: JSON.stringify(patch) })).json() as Promise<CareerProfileResponse>; },
+  async getJobsForYou(params: { sector?: string; state?: string; search?: string; limit?: number } = {}) {
+    const qs = new URLSearchParams();
+    if (params.sector) qs.set('sector', params.sector);
+    if (params.state) qs.set('state', params.state);
+    if (params.search) qs.set('search', params.search);
+    if (params.limit) qs.set('limit', String(params.limit));
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return (await authedFetch(`/v1/jobs/for-you${suffix}`)).json() as Promise<JobsForYouResponse>;
+  },
+  async getJobs(params: { sector?: string; state?: string; search?: string; eligibleOnly?: boolean; limit?: number } = {}) {
+    const qs = new URLSearchParams();
+    if (params.sector) qs.set('sector', params.sector);
+    if (params.state) qs.set('state', params.state);
+    if (params.search) qs.set('search', params.search);
+    if (params.eligibleOnly) qs.set('eligibleOnly', 'true');
+    if (params.limit) qs.set('limit', String(params.limit));
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return (await authedFetch(`/v1/jobs${suffix}`)).json() as Promise<{ jobs: JobCard[]; nextCursor: string | null; profileComplete: number }>;
+  },
+  async getSavedJobs(status?: string) { return (await authedFetch(`/v1/jobs/saved${status ? `?status=${status}` : ''}`)).json() as Promise<{ jobs: JobCard[] }>; },
+  async getJobDetail(jobId: string) { return (await authedFetch(`/v1/jobs/${jobId}`)).json() as Promise<JobDetailResponse>; },
+  async getJobEligibility(jobId: string) { return (await authedFetch(`/v1/jobs/${jobId}/eligibility`)).json() as Promise<JobEligibilityResponse>; },
+  async saveJob(jobId: string) { return (await authedFetch(`/v1/jobs/${jobId}/save`, { method: 'POST' })).json() as Promise<{ record: unknown }>; },
+  async unsaveJob(jobId: string) { return (await authedFetch(`/v1/jobs/${jobId}/save`, { method: 'DELETE' })).json() as Promise<{ success: boolean }>; },
+  async setJobApplicationStatus(jobId: string, status: string, notes?: string) { return (await authedFetch(`/v1/jobs/${jobId}/application-status`, { method: 'POST', body: JSON.stringify({ status, notes }) })).json() as Promise<{ record: unknown }>; },
+
   async trackReelAdEvent(id: string, event: 'impression' | 'click') { try { await authedFetch(`/v1/current-affairs/ads/${id}/${event}`, { method: 'POST' }); } catch { /* metrics best-effort */ } },
 
   // Chat
@@ -800,6 +829,96 @@ export interface QuizSubmitResult { score: number; correct: number; total: numbe
 export interface LeaderboardResponse { date: string; leaderboard: LeaderboardEntry[]; yesterdayWinner: LeaderboardEntry | null; }
 export interface QuizArchiveSummary { date: string; generatedAt: string; questionCount: number; }
 export interface ArchivedQuizResponse { date: string; generatedAt: string; questions: GeneratedMCQ[]; headlines: string[]; winner: LeaderboardEntry | null; }
+// ─── Jobs & Eligibility ────────────────────────────────────────────────
+export type EligibilityStatusUI = 'ELIGIBLE' | 'NOT_ELIGIBLE' | 'CONDITIONALLY_ELIGIBLE' | 'PROFILE_INCOMPLETE' | 'MANUAL_REVIEW';
+export type FitBandUI = 'STRONG' | 'GOOD' | 'POSSIBLE' | 'WEAK';
+export type RuleStatusUI = 'PASS' | 'FAIL' | 'UNKNOWN' | 'CONDITIONAL' | 'NOT_APPLICABLE';
+
+export interface JobCard {
+  jobId: string;
+  sector: string;
+  organization: string;
+  title: string;
+  locations: string[];
+  state: string | null;
+  employmentType: string;
+  salary?: { min?: number; max?: number; currency?: string; period?: string; payLevel?: string };
+  applicationDeadline?: string;
+  officialJobUrl: string;
+  officialApplyUrl?: string;
+  status: string;
+  sourceTrustLevel: 'LEVEL_1' | 'LEVEL_2' | 'LEVEL_3' | 'LEVEL_4';
+  lastVerifiedAt?: string;
+  vacancyTotal?: number;
+  daysLeft: number | null;
+  eligibility: { status: EligibilityStatusUI; primaryBlocker?: string; missingProfileFields: string[] };
+  fit?: { canApply: boolean; score: number; band: FitBandUI; missing: string[]; preferredMissing: string[] };
+  applicationStatus?: string;
+}
+
+export interface RuleEvaluationUI {
+  rule: string;
+  label: string;
+  required: string;
+  candidate: string;
+  status: RuleStatusUI;
+  detail?: string;
+  missingFields?: string[];
+  evidence?: { sourceText: string; sourceDocument?: string; page?: number; confidence?: number };
+}
+
+export interface EligibilityResultUI {
+  status: EligibilityStatusUI;
+  rules: RuleEvaluationUI[];
+  blockingReasons: string[];
+  missingProfileFields: string[];
+  warnings: string[];
+  evaluatedAt: string;
+  jobVersion: number;
+  profileVersion: number;
+}
+
+export interface FitResultUI {
+  canApply: boolean;
+  score: number;
+  band: FitBandUI;
+  matched: string[];
+  missing: string[];
+  preferredMissing: string[];
+  components: Array<{ component: string; label: string; score: number; weight: number; detail?: string }>;
+  blockingReasons: string[];
+  missingProfileFields: string[];
+}
+
+export interface CareerProfileResponse {
+  profile: Record<string, unknown> & { profileVersion: number; education: unknown[]; experience: unknown[]; skills: string[]; exams: unknown[] };
+  completeness: { percent: number; missing: Array<{ key: string; label: string; weight: number }> };
+}
+
+export interface JobsForYouResponse {
+  jobs: JobCard[];
+  nextCursor: string | null;
+  summary: { total: number; eligible: number; conditional: number; needsProfile: number; notEligible: number; strongPrivateMatches: number };
+  completeness: { percent: number; missing: Array<{ key: string; label: string; weight: number }> };
+}
+
+export interface JobDetailResponse {
+  job: Record<string, unknown> & { jobId: string; title: string; organization: string; officialJobUrl: string };
+  eligibility: EligibilityResultUI;
+  fit?: FitResultUI;
+  applicationStatus: string | null;
+  daysLeft: number | null;
+}
+
+export interface JobEligibilityResponse {
+  jobId: string;
+  jobVersion: number;
+  eligibility: EligibilityResultUI;
+  fit?: FitResultUI;
+  sourceTrustLevel: string;
+  sourceDocuments: Array<{ kind: string; url: string; title?: string; page?: number }>;
+}
+
 export interface ChatMessage { role: 'user' | 'assistant'; content: string; timestamp: string; }
 export interface ChatSession { id: string; userId: string; title: string; messages: ChatMessage[]; createdAt: string; updatedAt: string; }
 export interface ChatSessionSummary { id: string; title: string; createdAt: string; updatedAt: string; messageCount: number; }

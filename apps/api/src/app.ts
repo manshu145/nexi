@@ -56,6 +56,10 @@ import { makeReviewRoutes } from './routes/review.js';
 import { makePYQRoutes } from './routes/pyq.js';
 import { FirestoreCostGuardrailsStore, InMemoryCostGuardrailsStore, type CostGuardrailsStore } from './lib/costGuardrails.js';
 import { FirestoreAICostTelemetryStore, InMemoryAICostTelemetryStore, type AICostTelemetryStore } from './lib/aiCostTelemetry.js';
+import { FirestoreCareerProfileStore, InMemoryCareerProfileStore, type CareerProfileStore } from './lib/careerProfileStore.js';
+import { FirestoreJobRepository, InMemoryJobRepository, FirestoreSavedJobStore, InMemorySavedJobStore, type JobRepository, type SavedJobStore } from './lib/jobStore.js';
+import { EligibilityCache } from './lib/eligibilityCache.js';
+import { makeJobsRoutes } from './routes/jobs.js';
 
 export interface AppDeps { env: Env; logger: Logger; users?: UserStore; aiEngine?: AIEngine; chapters?: ChapterStore; currentAffairs?: CurrentAffairsStore; ads?: AdsStore; chatStore?: ChatStore; adminStore?: AdminStore; couponStore?: CouponStore; idempotency?: IdempotencyStore; ledger?: CreditLedger; config?: PlatformConfigStore; mockTests?: MockTestStore; pyq?: PYQStore; blog?: BlogStore; aiProviderStore?: AIProviderStore; modelResolver?: AIModelResolver; serviceKeys?: ServiceKeyStore; push?: PushService; teamInvites?: TeamInviteStore; }
 
@@ -106,6 +110,13 @@ export function buildApp(deps: AppDeps): Hono {
   // P0 Cost Audit: runtime cost guardrails + per-feature AI telemetry.
   const costGuardrails: CostGuardrailsStore = fs ? new FirestoreCostGuardrailsStore(fs, logger) : new InMemoryCostGuardrailsStore();
   const aiCostTelemetry: AICostTelemetryStore = fs ? new FirestoreAICostTelemetryStore(fs, logger) : new InMemoryAICostTelemetryStore();
+  // Jobs & Eligibility. The verdict cache is per-instance and disposable —
+  // eligibility is deterministic and cheap to recompute, so persisting it
+  // would cost a write per user per job for no benefit.
+  const careerProfiles: CareerProfileStore = fs ? new FirestoreCareerProfileStore(fs) : new InMemoryCareerProfileStore();
+  const jobRepository: JobRepository = fs ? new FirestoreJobRepository(fs) : new InMemoryJobRepository();
+  const savedJobs: SavedJobStore = fs ? new FirestoreSavedJobStore(fs) : new InMemorySavedJobStore();
+  const eligibilityCache = new EligibilityCache();
   const firebaseAuth = getFirebaseAuth(env);
 
   // ─── Cron jobs + internal scheduler ─────────────────────────────────
@@ -543,6 +554,10 @@ export function buildApp(deps: AppDeps): Hono {
   v1.route('/mock-tests', makeMockTestRoutes({ users, aiEngine, mockTests, ledger, config, usage: featureUsage, logger }));
   v1.route('/drill', makeDrillRoutes({ users, aiEngine, mockTests, logger }));
   v1.route('/pyq', makePYQRoutes({ users, aiEngine, pyq, logger, config }));
+  // Jobs & Eligibility. Deliberately NOT added to AI_GATED_PREFIXES: none of
+  // these endpoints call an LLM, so the per-user AI spend cap is irrelevant
+  // here and gating them would only add a needless Firestore read.
+  v1.route('/jobs', makeJobsRoutes({ profiles: careerProfiles, jobs: jobRepository, saved: savedJobs, cache: eligibilityCache, logger }));
   v1.route('/analytics', makeAnalyticsRoutes({ analytics, adminStore, users, env, logger, db: fs }));
   v1.route('/mailbox', makeMailboxRoutes({ threads: emailThreads, users, env, logger, serviceKeys }));
   v1.route('/notifications', makeNotificationRoutes({ notifications, logger }));
